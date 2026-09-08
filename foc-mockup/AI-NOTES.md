@@ -1,0 +1,370 @@
+<!--
+  AI Assistance Disclosure:
+  Tool: Claude Code (model: claude-opus-5), date: 2026-09-08
+  Scope: Generated UI mockup component AI-NOTES.md from team-authored blueprint.md.
+         Visual/layout implementation only. No requirements, architecture, or
+         schema decisions were made by the AI tool.
+  Author review: <pending — team member to sign>
+-->
+
+# AI usage log — `foc-mockup/`
+
+Paste this into `/ai/usage-log.md`.
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Date:** 2026-09-08
+**Author review:** pending — team member to sign
+
+---
+
+## 1. The prompts
+
+`blueprint.md` is team-authored. It fixes the stack, the folder structure, the design tokens,
+the logo SVG, the component list, the mock data, the copy, and the layout of the seven screens
+it defines. The AI wrote implementation code against that specification.
+
+The build was driven by four prompts in one session:
+
+1. > referring to blueprint.md, build a UI mockup for FoC that is runnable and viewable
+
+2. > wait so all the suppliers should just be food places that can be seen in home page then
+   > once u click into it it shows the images of individual store, for this mock up we will use
+   > deck, so in deck we have images/supplier stores for roasted delights, japanese, yong tau
+   > foo & laksa, vegetarian. For the rest dont care
+
+3. > remove com3 kiosk and com3 coffeebean, and wire the rest according to their name, note
+   > that some of them the image file is webp some is png some is jpg
+
+4. A settled team decision on the supplier data model (§2 below), plus: *"for the stalls make
+   sure to add @deck if they are located at deck etc, and i have added tomoro coffee @ hong
+   swee sen memorial library, for the cafe data that u needed, u can scrap away the com3 ones"*
+
+---
+
+## 2. TEAM DECISION — the supplier data model
+
+**Recorded as a settled team decision. Not an AI choice, and not evaluated by the AI.**
+
+> The supplier entity is the STALL, not the canteen. Roasted Delights is a supplier; "The Deck"
+> is a venue attribute on it. Standalone stalls with no venue are valid suppliers too. The table
+> stays flat — one row per orderable place — and the home-page grouping by venue is a view over
+> that flat list, not a parent-child relationship. Order Service is unaffected: supplierId still
+> points at exactly one supplier row, it just now means a stall.
+
+### How the mockup implements it
+
+- `src/data/suppliers.js` is a single flat array. Every record is a stall and carries
+  `venue: string | null`. The old `stallsBySupplier` map is gone.
+- The Deck's four stalls are four supplier records with `venue: 'The Deck'`.
+- `groupByVenue()` is a pure view function used by the home page and `/suppliers`. Nothing in
+  the data expresses a parent-child link.
+- `matchesQuery()` matches stall name, venue, location and category — "Deck" returns all four
+  Deck stalls, "laksa" returns the one stall.
+- `qualifiedName()` renders "Roasted Delights @ The Deck" everywhere a stall appears outside its
+  venue group: the courier board, activity cards, the chat header, and the pick-up selector.
+- The "Stall list not added yet" empty state has been deleted. A venue with one stall shows one
+  card (UTown Plaza and the library both do).
+- `supplierId` on a request still points at exactly one supplier row. Order Service is untouched.
+
+### Deviation from the written instruction, for the team to confirm
+
+Instruction 5 asked for the pick-up selector to read **"Roasted Delights · The Deck"**, but the
+same message also asked to *"add @deck if they are located at deck"*. The `@` form was used
+everywhere, because it matches the naming convention already in the team's own supplier data
+("Flavours @ UTown", "食堂 @ UTown Plaza"). **Change to `·` if the team prefers it.**
+
+---
+
+## 3. OPEN — the team still owes a real answer
+
+These were explicitly not resolved. The mockup uses whatever renders most simply. Each
+placeholder is a rendering convenience, **not a recommendation, and not a design decision.**
+
+### a. Should `venue` be its own entity rather than a string?
+
+**Placeholder used:** `venue` is a plain nullable string repeated on each stall record.
+`groupByVenue()` groups by string equality, so two stalls are in the same venue only if the
+strings match character for character.
+
+**What this dodges:** a venue has no id, no address, no hours, no photo of its own, and a typo
+silently splits one venue into two groups. If a venue ever needs its own attributes, this
+becomes a real entity and a foreign key.
+
+### b. Do opening hours live on the stall or the venue, and how does the open/closed indicator behave when a venue's stalls disagree?
+
+**Placeholder used:** `hours` and `isOpen` live on the **stall**. A venue heading derives a
+summary from its own stalls — `venueOpenSummary()` renders "3 of 4 open now". There is no
+venue-level open state anywhere in the data.
+
+**Visible in the mockup:** Vegetarian @ The Deck is deliberately set closed while its three
+neighbours are open, so The Deck renders "4 stalls · 3 of 4 open now". That is exactly the case
+the question is about — look at it before deciding.
+
+**What this dodges:** whether a venue can be closed while a stall inside it claims to be open,
+and which one the courier should believe.
+
+### c. May a request target a venue instead of a stall ("any cai fan, whatever's left"), making `supplierId` nullable?
+
+**Placeholder used:** `supplierId` is always a stall. The pick-up selector on `/requests/new`
+offers **only** stalls — there is no "any stall at The Deck" option, and nothing in the UI can
+produce a request without a supplier.
+
+**What this dodges:** the request that motivated the question. "Any 2 dishes cai fan, no pork,
+whatever's left is fine" (request `r3`) is currently pinned to Frontier as a whole, because
+Frontier has not been broken into stalls. Once it is, that request has no correct single stall
+to point at. **This one has teeth — it decides whether `supplierId` is nullable in Order
+Service.**
+
+---
+
+## 4. Data placeholders that need verifying before D1
+
+Blueprint §12.3 asks the team to verify building attributions. These are the ones at risk:
+
+| Record | Risk |
+|---|---|
+| `Hong Swee Sen Memorial Library` | Spelling taken verbatim from the team's message. The NUS business library is **Hon Sui Sen** Memorial Library. Likely a typo, but not corrected without the team saying so. |
+| `Cool Spot` (University Sports Centre) | **Invented placeholder.** Added only to satisfy "add two or three standalone stalls with venue: null". Verify or replace. |
+| `Spinelli Coffee` (Faculty of Law) | **Invented placeholder.** Same. |
+| Techno Edge, Frontier, The Terrace, PGPR Canteen | Carried as single rows with `venue: null` because their stall lists have not been collected. They are **not** standalone by nature — they are canteens that have not been decomposed. They render under "On their own" beside the genuinely standalone stalls, which conflates two different things. Decomposing them needs stall names and photos. |
+
+Stall counts, opening hours and `activeRequests` on every record are illustrative.
+
+---
+
+## 5. Browser verification — 393px and 1440px
+
+Run with Playwright/Chromium against the dev server, every route at both widths (16
+combinations), driving the login modal to reach the gated screens. The harness lives outside
+the repo, in the session scratchpad; nothing was added to `foc-mockup/`.
+
+Checked per route per width: console and page errors, horizontal overflow (measured with
+`body { overflow-x }` neutralised, so the CSS could not mask it), tap-target sizes under 44px on
+mobile, focus rings under real `Tab` presses, and broken images.
+
+### Result: 16 of 16 pass.
+
+**Bugs this found, now fixed:**
+
+1. **React error on every route.** `useEffect(() => window.scrollTo(0, 0), [pathname])` in
+   `App.jsx` and the drawer effect in `TopNav.jsx` used implicit-return arrows, so React treated
+   the return value as a cleanup function: *"destroy is not a function"*, thrown on every
+   navigation on all 8 routes. Both now use block bodies. This alone failed the blueprint's
+   "zero console errors" criterion.
+2. **Tap targets below 44px across the app at 393px** (blueprint §8): every `sm` button
+   (36px), filter chips and segmented controls (40px), both selects (40px), the logo link
+   (32×32 — the wordmark is hidden below 400px per §4, leaving only the mark), card title
+   links (19px), the translate link (17px) and the auto-translate switch (40×24). All now meet
+   44px on mobile and keep their design heights from `md` up.
+3. **Names rendered wrong.** `firstName()` returned the *last* token, so "Gabriel Yap" showed as
+   **"Yap"**, "Tng Wen Xi" as **"Xi"** and "Yeo Bing Teck" as **"Teck"** — on the courier board,
+   activity cards and the chat composer. Users now carry an explicit `given` field.
+4. **Timeline connector overshoot.** On `/activity`, the last lifecycle connector ran past the
+   final dot and out of the card, because the last step used `flex-none` while the others were
+   `flex-1`. All steps now share a width.
+5. **Thumbnail placeholders were unreadable.** At 64px the *Image pending* label overflowed its
+   square. Thumbnails now render the icon alone via a `compact` prop.
+
+**Not a bug, but worth knowing for D1:** a full-page screenshot stitches sticky elements down
+the page, so the top nav can appear floating mid-capture. The verification harness pins sticky
+and fixed elements before capturing. If the team's screenshots show a nav bar in the middle of
+the page, that is the capture tool, not the layout.
+
+**Still not verified by machine:** visual taste — spacing rhythm, whether the orange/blue budget
+in §3 is respected, and whether photos are cropped acceptably. Screens were reviewed by eye at
+both widths and look right, but that judgement is the team's.
+
+---
+
+## 6. Files
+
+Scaffolded by `npm create vite@latest . -- --template react`, then edited: `package.json`
+(`dev` → `vite --host`, React pinned to 18), `vite.config.js`, `.gitignore`, `.oxlintrc.json`,
+`package-lock.json` (all unmodified from the scaffold), `index.html` (rewritten: fonts, title,
+inline SVG favicon), `postcss.config.js`, `tailwind.config.js` (tokens from §3).
+
+Written from scratch:
+
+| File | What it is |
+|---|---|
+| `src/index.css` | Custom properties, base layer, focus ring, the three animations |
+| `src/main.jsx` | Router + `DemoProvider` mount |
+| `src/App.jsx` | Route table, nav/footer shell, modal and demo-panel mounts |
+| `src/context/DemoContext.jsx` | `isLoggedIn`, `role`, `requests`, login gating, `?clean=1` |
+| `src/components/Logo.jsx` | Blueprint §4 SVG, used verbatim |
+| `src/components/TopNav.jsx` | Sticky nav, logged-in/out states, mobile drawer |
+| `src/components/Footer.jsx` | Wordmark and the credit disclaimer |
+| `src/components/Button.jsx` | Four variants, three sizes, 44px mobile floor |
+| `src/components/CreditPill.jsx` | The signature element, `sm` / `md` / `lg` |
+| `src/components/StatusChip.jsx` | The seven lifecycle statuses |
+| `src/components/SupplierImage.jsx` | `onError` placeholder; path-based `image`; `compact` mode |
+| `src/components/SupplierCard.jsx` | Stall card, open/closed dot, bookmark, gated action |
+| `src/components/RequestCard.jsx` | Courier board row, inline expand, three Accept states |
+| `src/components/EmptyState.jsx` | Shared empty state |
+| `src/components/LoginModal.jsx` | Gated-action modal; submitting flips the demo auth state |
+| `src/components/DemoControls.jsx` | Auth / role / status controls; hidden by `?clean=1` |
+| `src/data/suppliers.js` | The flat stall list, venue grouping and search helpers |
+| `src/data/users.js` | The five team members, with explicit given names |
+| `src/data/locations.js` | Ten destinations, two bookmarked |
+| `src/data/requests.js` | Twelve requests spanning every status, plus display helpers |
+| `src/data/messages.js` | Three threads; two Chinese and one Malay message with translations |
+| `src/data/transactions.js` | Wallet history — see §7.3 |
+| `src/pages/Landing.jsx` | Hero, segmented search bar, filter chips, venue-grouped grid |
+| `src/pages/Suppliers.jsx` | Search, filter rail / bottom sheet, sort, venue-grouped results |
+| `src/pages/SupplierDetail.jsx` | Stall detail and its venue siblings — team-directed addition |
+| `src/pages/CreateRequest.jsx` | Six fields in order, credit stepper, insufficient-credit state |
+| `src/pages/RequestBoard.jsx` | Stacked job board, live-update affordance, empty state |
+| `src/pages/Activity.jsx` | Two tabs, lifecycle timeline, role-dependent actions |
+| `src/pages/Chat.jsx` | Thread list, bubbles, per-message translate, auto-translate switch |
+| `src/pages/Wallet.jsx` | Balance, available/reserved bar, expandable history |
+| `README.md`, `AI-NOTES.md` | Documentation |
+
+Every file above carries the blueprint §0 attribution header, except `package.json`,
+`package-lock.json`, `.gitignore` and `.oxlintrc.json`, where a comment block is not valid
+syntax or would be rewritten by npm.
+
+---
+
+## 6b. TEAM-DIRECTED CHANGE — My activity
+
+Requested after the first browser pass:
+
+> for the my activity page, there should be a CLEAR distinction between requesting and running
+> errand, maybe colour code the outline of the card? so my activity should only show 1
+> errand/deliveries that is active the rest should show completed with no option to message
+> them anymore, and also for my deliveries there should also be a message button
+
+### What was done
+
+- **Role is colour-coded and labelled.** Each card carries a 3px left edge — **blue** when you
+  requested it, **orange** when you are delivering it — plus a neutral chip reading
+  *You requested* / *You are delivering* with a bag or bike icon. The chip is deliberately
+  grey rather than coloured so it cannot be mistaken for a `StatusChip`.
+- **Each tab is split into `Active now` and `History`.** Active is `open / accepted /
+  picked_up / delivered`; History is `completed / cancelled / expired`.
+- **Exactly one live item per tab.** Requests `r4`, `r7` and `r8` moved to `completed`, leaving
+  `r6` (accepted) as the only live errand and `r12` (picked up) as the only live delivery.
+- **History cards carry no actions at all** — no message button, nothing to click.
+- **Couriers can message.** `Message <requester>` is now a secondary action beside
+  `Mark picked up`, `Mark delivered`, and the `delivered` waiting state.
+
+### Blueprint deviations this creates — flagged, not resolved
+
+1. **§7.5's action table gives the courier no message action.** It lists only `Mark picked up`
+   and `Mark delivered`. A message button on the courier side contradicts that table. It is
+   still "exactly one primary action per card" — messaging is secondary — but the table itself
+   needs updating to match. **The team asked for this; it is recorded as their decision.**
+
+2. **Two states are no longer visible in a default screenshot.** Both are still reachable
+   through the demo panel's status jump, but they no longer appear on load:
+
+   - **`delivered`** exists nowhere in the seed data now, so the black `delivered` StatusChip
+     and the requester's *Confirm and release credits* card (§7.5) need the demo panel.
+   - **The courier board's *Your errand* state (F3.2.1)** needed a `u1`-owned **open** request.
+     `r4` was that request and is now completed, so the board shows no own-request row by
+     default.
+
+   Fixing either means more than one active item per tab, which is what the change asked to
+   remove. **If those two screenshots matter more than the one-active rule, say so and `r4`
+   goes back to `open` and `r8` back to `delivered`.**
+
+3. **§3's colour discipline.** A 3px coloured card edge is new — the blueprint says cards get
+   `1px solid var(--line)` and that colour "marks state". Here it marks *role*, which is a
+   slight widening of that rule. It is a few pixels per card and well inside the 5% budget.
+   The role chip alone would carry the meaning if the team would rather drop the colour.
+
+---
+
+## 6c. TEAM-DIRECTED CHANGE — three minor edits
+
+> 1) remove the search part from the home page, the from any stall deliver to ... and by when.
+> Then add a search button with word u find suitable beside the open now that lead u to the
+> supplier page
+> 2) delete the 3-5 token recommendation for the requester form, as we didnt mention it in our
+> project log so this is to be safe
+> 3) add a simple search bar in find errand page to search for places, and also 1 small tweak
+> to the open and accepted tag make sure they are aligned so that it is easier to see at a
+> glance
+
+### 1. Landing hero search removed
+
+The segmented From / Deliver to / By when bar is gone, along with its mobile full-screen sheet.
+A `Search stalls` pill now sits after `Open now` in the filter row and navigates to
+`/suppliers`. It is outlined in `ink` rather than `line` so it does not read as a fourth filter
+toggle.
+
+**Blueprint conflict:** §7.1 states *"The search bar is the hero. It is a single rounded
+container with internal dividers, each segment showing a small label above a value — the Airbnb
+pattern."* That element no longer exists, and §7.1's mobile behaviour (*"collapses to a single
+full-width pill … which opens a full-screen sheet with the three fields stacked"*) went with it.
+The landing page is now hero copy, filter chips, and the venue-grouped grid. **Recorded as the
+team's decision.**
+
+Nothing was lost functionally: the bar's three fields were decorative (they filtered nothing),
+and its button already went to `/suppliers`, which is where the real search and filters live.
+
+### 2. Credit recommendation removed
+
+The line *"Most errands to this location are picked up at 3–5 credits."* is deleted from
+`/requests/new`. **Blueprint conflict:** §7.3 field 5 specifies it verbatim. The team's reason —
+it implies pricing guidance the backlog never committed to — is recorded as theirs. The
+insufficient-credit error (Credit F1.2.2) and the *"After posting, you'll have 10 of 14 credits
+available"* line are untouched.
+
+### 3. Courier board search, and status-chip alignment
+
+- A search input sits above the filter chips on `/requests`. It matches **either end of the
+  errand**: the stall it is collected from (name, venue, location, category, via the shared
+  `matchesQuery`) or the drop-off point. "Deck" and "COM1" both return two rows. The empty
+  state changes wording when a search is what produced no results. **§7.4 does not specify a
+  search on this screen — this is an addition.**
+- **Status chips moved onto the top-left corner of the thumbnail.** They no longer flow after
+  the stall name, so every chip sits at the same x *and* the same y and the board reads straight
+  down its left edge. `StatusChip` gained an `sm` size (h-5, 11px) so the widest label still
+  fits inside the thumbnail, and the mobile thumbnail went from 64px to 80px to hold it —
+  a small deviation from §7.4's *"thumbnail shrinks to 64px"*. All chip fills are opaque, so
+  they stay legible over a photo. Measured aligned to the pixel on both axes, with no overflow
+  past the image, at 393px and 1440px.
+- Along the way the desktop action column was given a fixed width: sized by content, an
+  `Accept` row and a `Taken` row ended at different x positions, which had been nudging the
+  right-hand column out of line.
+
+---
+
+## 7. Other deviations from the blueprint
+
+1. **An eighth screen, `/suppliers/:id`.** Added on the team's instruction (prompt 2), then
+   reframed as a stall detail page by the model decision. Two blueprint conflicts were raised
+   before it was built and both were accepted: §7 says "Do not add screens", and §0 lists "No
+   supplier menus, product catalogs, inventory, or checkout" as a hard scope boundary. To stay
+   on the defensible side of that boundary the page lists no items and no prices; the only
+   action is the same free-text `Request from here`.
+
+2. **Two suppliers removed** (prompt 3): COM3 Food Kiosk and The Coffee Bean @ COM3. Knock-ons:
+   the `Café` category briefly emptied, so `categories` is now derived from the data rather than
+   hardcoded — it refilled when Tomoro Coffee arrived. The landing heading "Canteens and cafés
+   on campus" (§7.1) became inaccurate and now reads "Places to fetch from on campus";
+   **revert if the team prefers the original.** Two requests pointing at the deleted rows were
+   reassigned. No School of Computing supplier remains.
+
+3. **`src/data/transactions.js` is not in the blueprint's file list (§2).** The wallet screen
+   needs transaction history for Credit F1.5.2 and F2.1.1 and no data file was named. A
+   file-placement choice, not a schema decision. **Confirm or relocate.**
+
+4. **Image filenames follow the files the team supplied**, which mix `.webp`, `.png` and `.jpg`.
+   `image` is a path under `/images/`, so one field covers both folders. `SupplierImage`
+   URL-encodes each path segment because `roasted delight.webp` contains a space.
+
+5. **React 18 pinned deliberately.** `npm create vite` scaffolds React 19; the blueprint says
+   React 18.
+
+6. **Small helpers were appended to blueprint-listed files** rather than creating modules §2
+   does not list: time formatting and the lifecycle label map in `requests.js`, grouping and
+   search helpers in `suppliers.js`.
+
+7. **`AGENTS.md` at the repo root is empty**, so there were no conventions to conflict with.
+
+8. **The expired-confirmation gap (§12.2) is still open and unresolved.** The lifecycle ends
+   `delivered → completed` on requester confirmation. Nothing specifies what happens if the
+   requester never confirms, so credits stay reserved indefinitely. The `delivered` state on
+   `/activity` is built with no auto-confirm affordance, exactly as §7.5 instructs.
