@@ -8,6 +8,15 @@
  */
 
 // Timestamps are generated relative to page load so the demo always reads as "just now".
+//
+// Three separate clocks per request (team decision):
+//   postAt     - when the request is sent out to the board. null means it went out
+//                immediately. A future value means it is scheduled and not yet listed.
+//   expiresAt  - when an UNACCEPTED request stops being offered and the credits come back.
+//                Runs from the moment it posts. Irrelevant once a courier has accepted.
+//   completeBy - the deadline for the food to actually arrive. null means as soon as
+//                possible, with no stated deadline. A reference for the courier, not a
+//                lifecycle state.
 const now = Date.now()
 const minutes = (n) => new Date(now + n * 60000).toISOString()
 const hoursAgo = (n) => new Date(now - n * 3600000).toISOString()
@@ -40,7 +49,9 @@ export const requests = [
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
+    postAt: null,
     expiresAt: minutes(42),
+    completeBy: minutes(75),
     notes: 'I am at the back of the study area, near the printers.',
     status: 'open',
     requesterId: 'u3',
@@ -54,7 +65,9 @@ export const requests = [
     description: 'Kopi-o kosong and a kaya toast set.',
     deliveryLocation: 'COM2 Level 3 Lounge',
     credits: 3,
+    postAt: null,
     expiresAt: minutes(18),
+    completeBy: null,
     notes: 'No sugar in the kopi, please double check with the stall.',
     status: 'open',
     requesterId: 'u4',
@@ -68,7 +81,9 @@ export const requests = [
     description: 'Any 2 dishes cai fan, no pork. Whatever is left is fine.',
     deliveryLocation: 'Central Library',
     credits: 3,
+    postAt: null,
     expiresAt: minutes(65),
+    completeBy: minutes(120),
     notes: '',
     status: 'open',
     requesterId: 'u5',
@@ -82,7 +97,9 @@ export const requests = [
     description: 'Large ban mian, extra chilli. Please do not let it get soggy.',
     deliveryLocation: 'UTown Residence',
     credits: 5,
+    postAt: null,
     expiresAt: minutes(55),
+    completeBy: minutes(90),
     notes: 'Leave it at the front desk if I do not pick up.',
     status: 'completed',
     requesterId: 'u1',
@@ -96,7 +113,9 @@ export const requests = [
     description: 'Mixed rice, one meat two veg. Gravy on the rice is fine.',
     deliveryLocation: 'Yusof Ishak House',
     credits: 4,
+    postAt: null,
     expiresAt: minutes(30),
+    completeBy: minutes(60),
     notes: '',
     status: 'accepted',
     requesterId: 'u5',
@@ -110,7 +129,9 @@ export const requests = [
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
+    postAt: null,
     expiresAt: minutes(35),
+    completeBy: minutes(50),
     notes: 'I am in a lecture until 3, meet at the side entrance.',
     status: 'accepted',
     requesterId: 'u1',
@@ -124,7 +145,9 @@ export const requests = [
     description: 'Two prata kosong and one teh peng.',
     deliveryLocation: 'PGP Residence Block A',
     credits: 4,
+    postAt: null,
     expiresAt: minutes(20),
+    completeBy: minutes(35),
     notes: 'Block A lobby, I will wait downstairs.',
     status: 'completed',
     requesterId: 'u1',
@@ -138,7 +161,9 @@ export const requests = [
     description: 'Yong tau foo, dry, six pieces. Chilli and sweet sauce.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
+    postAt: null,
     expiresAt: minutes(-5),
+    completeBy: hoursAgo(2.3),
     notes: '',
     status: 'completed',
     requesterId: 'u1',
@@ -156,7 +181,9 @@ export const requests = [
     description: 'Sliced fish soup, thick bee hoon, no milk.',
     deliveryLocation: 'i3 Building',
     credits: 5,
+    postAt: null,
     expiresAt: daysAgo(1),
+    completeBy: daysAgo(1),
     notes: '',
     status: 'completed',
     requesterId: 'u2',
@@ -176,7 +203,9 @@ export const requests = [
     description: 'Nasi lemak set with extra sambal, and a bandung.',
     deliveryLocation: 'SDE4 Studio',
     credits: 6,
+    postAt: null,
     expiresAt: daysAgo(2),
+    completeBy: daysAgo(2),
     notes: '',
     status: 'cancelled',
     requesterId: 'u1',
@@ -190,7 +219,9 @@ export const requests = [
     description: 'Any bubble tea, half sugar, less ice.',
     deliveryLocation: 'UTown Residence',
     credits: 3,
+    postAt: null,
     expiresAt: daysAgo(3),
+    completeBy: null,
     notes: '',
     status: 'expired',
     requesterId: 'u1',
@@ -204,7 +235,9 @@ export const requests = [
     description: 'Iced milo and a tuna sandwich, if they still have it.',
     deliveryLocation: 'LT19',
     credits: 3,
+    postAt: null,
     expiresAt: minutes(25),
+    completeBy: minutes(40),
     notes: 'Back row of LT19, I will come down to the door.',
     status: 'picked_up',
     requesterId: 'u4',
@@ -237,6 +270,14 @@ export const fullTime = (iso) =>
     hour: '2-digit',
     minute: '2-digit',
   })
+
+// "Deliver by 15:30", or the ASAP wording when no deadline was set.
+export const completeByLabel = (iso) => (iso ? 'deliver by ' + clockTime(iso) : 'deliver ASAP')
+
+export const completeByShort = (iso) => (iso ? clockTime(iso) : 'ASAP')
+
+// "Goes out at 14:30", or the immediate wording when it was not scheduled.
+export const postAtLabel = (iso) => (iso ? 'goes out at ' + clockTime(iso) : 'posted immediately')
 
 export const LIFECYCLE = ['open', 'accepted', 'picked_up', 'delivered', 'completed']
 

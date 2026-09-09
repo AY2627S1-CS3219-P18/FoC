@@ -17,6 +17,10 @@ import { bookmarkedLocations, otherLocations, locations } from '../data/location
 import { useDemo } from '../context/DemoContext'
 
 const MAX_CHARS = 200
+const EXPIRY_CHOICES = [15, 30, 45, 60, 120]
+
+// Defaults follow the clock rather than a hardcoded date that goes stale overnight.
+const today = () => new Date().toISOString().slice(0, 10)
 
 // Order F1.1.1 — supplier, description, delivery location, credits offered, expiration,
 // additional details. Plus the scheduled-errand and bookmarked-location nice-to-haves.
@@ -33,13 +37,32 @@ export default function CreateRequest() {
   const [supplierId, setSupplierId] = useState(params.get('supplier') || '')
   const [description, setDescription] = useState('')
   const [location, setLocation] = useState(locations[0].name)
+  const [postMode, setPostMode] = useState('now')
+  const [postDate, setPostDate] = useState(today)
+  const [postTime, setPostTime] = useState('11:30')
   const [timing, setTiming] = useState('asap')
-  const [date, setDate] = useState('2026-09-08')
+  const [expiry, setExpiry] = useState(45)
+  const [date, setDate] = useState(today)
   const [time, setTime] = useState('15:30')
   const [offer, setOffer] = useState(4)
   const [extra, setExtra] = useState('')
 
   const supplier = supplierId ? getSupplier(supplierId) : null
+
+  // An errand that is still collecting couriers past its own delivery deadline is incoherent.
+  // Warned about, not blocked - see AI-NOTES for the open question.
+  const goesOutAt = (() => {
+    if (postMode !== 'schedule') return Date.now()
+    const t = new Date(postDate + 'T' + postTime).getTime()
+    return Number.isNaN(t) ? Date.now() : t
+  })()
+
+  const deadlineTooTight = (() => {
+    if (timing !== 'later') return false
+    const deadline = new Date(date + 'T' + time)
+    if (Number.isNaN(deadline.getTime())) return false
+    return deadline.getTime() < goesOutAt + expiry * 60000
+  })()
   const insufficient = offer > credits.available
   const remaining = credits.available - offer
 
@@ -147,13 +170,69 @@ export default function CreateRequest() {
           )}
         </section>
 
-        {/* 4. When do you need it? */}
+        {/* 4. Post time: optional. When the request is sent out to the board. */}
         <section>
-          <span className="block text-base font-semibold text-ink">When do you need it?</span>
+          <span className="block text-base font-semibold text-ink">
+            When should this go out?{' '}
+            <span className="font-normal text-ink-40">Optional</span>
+          </span>
+          <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
+            {[
+              ['now', 'Send it out now'],
+              ['schedule', 'Schedule for later'],
+            ].map(([value, text]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPostMode(value)}
+                aria-pressed={postMode === value}
+                className={
+                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
+                  (postMode === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                }
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+          {postMode === 'schedule' && (
+            <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm text-ink-70">Date</span>
+                <input
+                  type="date"
+                  value={postDate}
+                  onChange={(e) => setPostDate(e.target.value)}
+                  className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm text-ink-70">Time</span>
+                <input
+                  type="time"
+                  value={postTime}
+                  onChange={(e) => setPostTime(e.target.value)}
+                  className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                />
+              </label>
+            </div>
+          )}
+          <p className="mt-1.5 max-w-prose text-sm text-ink-40">
+            {postMode === 'schedule'
+              ? 'Nobody sees this errand until then. It appears on the board at that time and the countdown below starts from there.'
+              : 'Your errand goes on the board as soon as you post it.'}
+          </p>
+        </section>
+
+        {/* 5. Complete-by: the deadline for the food to arrive. */}
+        <section>
+          <span className="block text-base font-semibold text-ink">
+            When do you need it by?
+          </span>
           <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
             {[
               ['asap', 'As soon as possible'],
-              ['later', 'Schedule for later'],
+              ['later', 'By a specific time'],
             ].map(([value, text]) => (
               <button
                 key={value}
@@ -191,9 +270,49 @@ export default function CreateRequest() {
               </label>
             </div>
           )}
+          <p className="mt-1.5 max-w-prose text-sm text-ink-40">
+            This is when the food should reach you. Your courier sees it before accepting.
+          </p>
         </section>
 
-        {/* 5. Offer */}
+        {/* 6. Expiration: how long the request stays on the board unaccepted. */}
+        <section>
+          <span className="block text-base font-semibold text-ink">
+            How long should this stay open?
+          </span>
+          <div className="hide-scrollbar -mx-4 mt-2 flex gap-2 overflow-x-auto px-4 md:mx-0 md:px-0">
+            {EXPIRY_CHOICES.map((mins) => (
+              <button
+                key={mins}
+                type="button"
+                onClick={() => setExpiry(mins)}
+                aria-pressed={expiry === mins}
+                className={
+                  'h-11 md:h-10 shrink-0 rounded-pill border px-4 text-sm font-medium transition-colors duration-150 ' +
+                  (expiry === mins
+                    ? 'border-ink bg-ink text-white'
+                    : 'border-line bg-surface text-ink-70 hover:border-ink hover:text-ink')
+                }
+              >
+                {mins < 60 ? mins + ' min' : mins / 60 + (mins === 60 ? ' hour' : ' hours')}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 max-w-prose text-sm text-ink-40">
+            If nobody accepts it within{' '}
+            {expiry < 60 ? expiry + ' minutes' : expiry / 60 + (expiry === 60 ? ' hour' : ' hours')}{' '}
+            {postMode === 'schedule' ? 'of it going out' : 'of posting'}, the errand expires and
+            your reserved credits come straight back.
+          </p>
+          {deadlineTooTight && (
+            <p className="mt-1.5 max-w-prose text-sm text-alert">
+              This errand could still be unaccepted at {time}. Shorten how long it stays open, or
+              give a later time to deliver by.
+            </p>
+          )}
+        </section>
+
+        {/* 7. Offer */}
         <section>
           <span className="block text-base font-semibold text-ink">Offer</span>
           <div
@@ -240,7 +359,7 @@ export default function CreateRequest() {
           )}
         </section>
 
-        {/* 6. Anything else? */}
+        {/* 8. Anything else? */}
         <section>
           {label('Anything else?', 'extra')}
           <input
@@ -260,6 +379,12 @@ export default function CreateRequest() {
           <p className="max-w-prose text-sm text-ink-70">
             <span className="tnum">{offer}</span> credits will be reserved until this errand is
             completed or cancelled
+            {postMode === 'schedule' && (
+              <span className="text-ink-40">
+                {' '}
+                · scheduled to go out {postDate} at {postTime}
+              </span>
+            )}
           </p>
           <div className="flex shrink-0 gap-2">
             <Button variant="ghost" className="flex-1 md:flex-none" onClick={() => navigate(-1)}>
@@ -270,7 +395,7 @@ export default function CreateRequest() {
               disabled={insufficient}
               onClick={() => navigate('/activity')}
             >
-              Post errand
+              {postMode === 'schedule' ? 'Schedule errand' : 'Post errand'}
             </Button>
           </div>
         </div>

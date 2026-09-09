@@ -15,7 +15,7 @@ import CreditPill from './CreditPill'
 import Button from './Button'
 import { getSupplier, qualifiedName } from '../data/suppliers'
 import { getUser, firstName } from '../data/users'
-import { expiryLabel, fullTime } from '../data/requests'
+import { expiryLabel, fullTime, completeByLabel } from '../data/requests'
 import { useDemo } from '../context/DemoContext'
 
 // Courier board row (Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 validation).
@@ -116,8 +116,14 @@ export default function RequestCard({ request }) {
 
           <p className="mt-1.5 text-sm text-ink-70">
             <span aria-hidden="true">&rarr;</span> {request.deliveryLocation}
-            <span className="text-ink-40"> · {expiryLabel(request.expiresAt)}</span>
+            <span className="text-ink-40"> · {completeByLabel(request.completeBy)}</span>
           </p>
+          {/* The second clock: how long this stays on the board if nobody takes it. */}
+          {request.status === 'open' && (
+            <p className="mt-0.5 text-sm text-ink-40">
+              Offer {expiryLabel(request.expiresAt)}
+            </p>
+          )}
 
           <p className="mt-1 flex items-center gap-1 text-sm text-ink-40">
             Posted by {firstName(requester)} ·
@@ -136,13 +142,19 @@ export default function RequestCard({ request }) {
 
       {expanded && (
         <div className="foc-fade border-t border-line bg-surface-alt px-3 py-3 sm:px-4">
-          <dl className="grid gap-2 text-sm sm:grid-cols-3">
+          <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-ink-40">Additional details</dt>
               <dd className="text-ink-70">{request.notes || 'None given'}</dd>
             </div>
             <div>
-              <dt className="text-ink-40">Expires</dt>
+              <dt className="text-ink-40">Deliver by</dt>
+              <dd className="tnum text-ink-70">
+                {request.completeBy ? fullTime(request.completeBy) : 'As soon as possible'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-40">Offer expires</dt>
               <dd className="tnum text-ink-70">{fullTime(request.expiresAt)}</dd>
             </div>
             <div>

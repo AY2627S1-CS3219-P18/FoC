@@ -331,6 +331,94 @@ available"* line are untouched.
 
 ---
 
+## 6d. TEAM-DIRECTED CHANGE — three separate clocks per errand
+
+> request expiration time is for open request to expire and complete-by time is for time for
+> food to be delivered … provide an option to indicate that … both time should be shown in the
+> find errand page, and also track activity should show the complete by time as well
+
+### The distinction, as implemented
+
+| Field | Meaning | Applies while |
+|---|---|---|
+| `postAt` | When the request is **sent out to the board**. `null` = it went out immediately. A future value means it is scheduled and not yet listed. | before it posts |
+| `expiresAt` | When an **unaccepted** request stops being offered and the reserved credits come back. Counts from the moment it posts. | `open` only |
+| `completeBy` | The deadline for the **food to arrive**. `null` = as soon as possible. A reference for the courier, never a lifecycle state. | the whole errand |
+
+### Where each one appears
+
+- **`/requests/new`** — three consecutive fields, each with a one-line explanation so they
+  cannot be confused:
+  - **4. *"When should this go out?"*** — marked `Optional`. `Send it out now` /
+    `Schedule for later`, revealing date and time. Sets `postAt`. The primary button changes to
+    `Schedule errand`, and the footer adds `· scheduled to go out …`.
+  - **5. *"When do you need it by?"*** — `As soon as possible` / `By a specific time`. Sets
+    `completeBy`.
+  - **6. *"How long should this stay open?"*** — 15 / 30 / 45 / 60 / 120 minutes. Sets
+    `expiresAt`. Its helper reads *"of it going out"* when scheduled and *"of posting"*
+    otherwise, and the contradiction warning now measures from the scheduled send-out time
+    rather than from now.
+
+  Date inputs default to today's date, computed at render — not a hardcoded string that goes
+  stale overnight.
+- **`/requests`** — the drop-off line reads `→ COM1 Basement · deliver by 19:09`, with
+  `Offer expires in 42 min` beneath it. The expiry line is rendered **only for `open`
+  requests**, since it stops meaning anything once a courier accepts. The expanded row shows
+  both as full timestamps.
+- **`/activity`** — live cards carry a `Deliver by 19:09` line. History cards omit it.
+
+### Blueprint deviation
+
+§7.3 says *"Fields, in this order and no others"* and lists six. There are now eight: the
+expiry control and the send-out control are both new. Order F1.1.1 did list "expiration" as a
+required field, so the form was arguably incomplete before. The split into three clocks is the
+team's decision, recorded here as theirs.
+
+The scheduled-errand nice-to-have, noted as dropped in an earlier revision, is back — but as a
+**send-out** time rather than the old "schedule for later" pick-up. All three clocks now exist
+independently.
+
+### Gaps raised, and the team's answers
+
+All six were put to the team and answered. **No code changed as a result — every answer
+confirmed the behaviour already built.** Recorded so the reasoning survives into D2.
+
+| # | Raised | Team's answer | Status in the mockup |
+|---|---|---|---|
+| 1 | No overdue state for a passed `completeBy` | *"complete by is just a reference, its not a state"* | Correct as built. The deadline is displayed and never enforced; no chip, no status, no notification. |
+| 2 | No consequence for missing the deadline | Same answer — reference only | No penalty, no partial credit, no rating effect anywhere. |
+| 3 | Is `completeBy` nullable? | *"yes it can be"* | `null` means "as soon as possible" and renders as `deliver ASAP`. |
+| 4 | What happens to `expiresAt` after acceptance? | *"can ignore after accept"* | The `Offer expires in …` line renders only while the status is `open`. |
+| 5 | The two clocks can contradict each other | *"doesnt matter this is a mockup"* | Warning shown in `alert`; posting is **not** blocked. |
+| 6 | Scheduled errands absorbed into the deadline | *"doesnt matter"* | No third time on the record. The nice-to-have is dropped. |
+
+### Open on the send-out clock specifically
+
+The team answered the six questions on the first two clocks. Adding `postAt` raises three more,
+none of them answered:
+
+1. **A scheduled errand has no status and appears nowhere.** Between scheduling and posting it
+   is not on the board and not in `My activity`. Nothing in the lifecycle
+   (`open → accepted → …`) covers "written but not yet sent". If the requester should be able
+   to see, edit or cancel it in that window, it needs a state.
+2. **When are the credits reserved — at schedule time or at post time?** The footer says
+   reserved until completed or cancelled, which is unambiguous for an immediate post and
+   ambiguous for a scheduled one. It also decides whether scheduling an errand you cannot
+   currently afford is allowed.
+3. **Can a scheduled errand be edited or cancelled before it goes out?** F5 covers cancellation
+   and F6 editing for posted requests; neither mentions this window.
+
+All three are only relevant if the team wants scheduling to be real rather than a form control
+for the D1 screenshot. In the mockup every seeded request has `postAt: null`, so nothing is
+currently in that state.
+
+**Consequence worth knowing at the presentation:** a grader may ask why an errand carries a
+delivery deadline that nothing enforces. The answer is item 1 — for D1 the complete-by is a
+reference the courier reads before accepting, deliberately not a lifecycle state. If Order
+Service later needs to act on it, items 1 and 2 are where that work starts.
+
+---
+
 ## 7. Other deviations from the blueprint
 
 1. **An eighth screen, `/suppliers/:id`.** Added on the team's instruction (prompt 2), then

@@ -110,7 +110,7 @@ grey *Image pending* placeholder, so photos can be added one at a time.
 | `/` | Landing | User F2 (suppliers visible logged out, posting/accepting gated), Supplier F1.1 |
 | `/suppliers` | Supplier listing | Supplier F1.1, F1.1.1 search/filter, F1.2.1 open-closed indicator; bookmarking (nice-to-have) |
 | `/suppliers/:id` | Stall detail | Supplier F1.1 — **added at the team's direction after the blueprint was written**; see AI-NOTES.md |
-| `/requests/new` | Create an errand | Order F1.1.1 (supplier, description, location, credits, expiration, details), Credit F1.2.2 insufficient credits; scheduled errands and bookmarked locations (nice-to-have) |
+| `/requests/new` | Create an errand | Order F1.1.1 (supplier, description, location, credits, expiration, details), Credit F1.2.2 insufficient credits; bookmarked locations (nice-to-have). Two separate clocks: `completeBy` (deliver-by deadline) and `expiresAt` (how long it stays open unaccepted) — see AI-NOTES.md §6d |
 | `/requests` | Find errands (courier board) | Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 / F3.2.1 / F3.2.3 validation, F3.5.1 / F3.5.2 updates |
 | `/activity` | My activity | Order F3.4.2 active requests, F5 cancellation, F6 editing, lifecycle open → accepted → picked up → delivered → completed, F1.4.1 / F4.1.3 credit outcomes |
 | `/chat/:id` | Chat with translate | Real-time chat/call and translation (nice-to-have) |

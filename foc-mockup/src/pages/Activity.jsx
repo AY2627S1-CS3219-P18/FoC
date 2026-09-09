@@ -18,7 +18,7 @@ import EmptyState from '../components/EmptyState'
 import { useDemo } from '../context/DemoContext'
 import { getSupplier, qualifiedName } from '../data/suppliers'
 import { getUser, firstName } from '../data/users'
-import { LIFECYCLE, LIFECYCLE_LABELS, clockTime } from '../data/requests'
+import { LIFECYCLE, LIFECYCLE_LABELS, clockTime, completeByShort } from '../data/requests'
 
 const CLOSED = ['completed', 'cancelled', 'expired']
 const ACTIVE = ['open', 'accepted', 'picked_up', 'delivered']
@@ -222,6 +222,12 @@ function ActivityCard({ request, asCourier, setRequestStatus }) {
             <span aria-hidden="true">&rarr;</span> {request.deliveryLocation}
             {other && (asCourier ? ' · for ' + firstName(other) : ' · courier ' + firstName(other))}
           </p>
+          {/* The delivery deadline stays visible for as long as the errand is live. */}
+          {!CLOSED.includes(request.status) && (
+            <p className="mt-1 text-sm text-ink-70">
+              Deliver by <span className="tnum">{completeByShort(request.completeBy)}</span>
+            </p>
+          )}
 
           {dimmed && (
             <p className="mt-1.5 text-sm text-ink-40">
