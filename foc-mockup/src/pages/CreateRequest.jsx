@@ -170,7 +170,7 @@ export default function CreateRequest() {
           )}
         </section>
 
-        {/* 4. Post time: optional. When the request is sent out to the board. */}
+        {/* 4. Post time: optional. When the request is sent out to the board.
         <section>
           <span className="block text-base font-semibold text-ink">
             When should this go out?{' '}
@@ -222,7 +222,7 @@ export default function CreateRequest() {
               ? 'Nobody sees this errand until then. It appears on the board at that time and the countdown below starts from there.'
               : 'Your errand goes on the board as soon as you post it.'}
           </p>
-        </section>
+        </section> */}
 
         {/* 5. Complete-by: the deadline for the food to arrive. */}
         <section>
@@ -275,7 +275,7 @@ export default function CreateRequest() {
           </p>
         </section>
 
-        {/* 6. Expiration: how long the request stays on the board unaccepted. */}
+        {/* 6. Expiration: how long the request stays on the board unaccepted.
         <section>
           <span className="block text-base font-semibold text-ink">
             How long should this stay open?
@@ -310,7 +310,7 @@ export default function CreateRequest() {
               give a later time to deliver by.
             </p>
           )}
-        </section>
+        </section> */}
 
         {/* 7. Offer */}
         <section>

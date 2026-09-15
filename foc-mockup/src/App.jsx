@@ -13,6 +13,7 @@ import TopNav from './components/TopNav'
 import Footer from './components/Footer'
 import LoginModal from './components/LoginModal'
 import DemoControls from './components/DemoControls'
+import ChatBubble from './components/ChatBubble'
 import Landing from './pages/Landing'
 import Suppliers from './pages/Suppliers'
 import SupplierDetail from './pages/SupplierDetail'
@@ -56,6 +57,7 @@ export default function App() {
       </main>
       {showFooter && <Footer />}
       <LoginModal />
+      <ChatBubble />
       <DemoControls />
     </div>
   )

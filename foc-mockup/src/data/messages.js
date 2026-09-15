@@ -8,7 +8,33 @@
  */
 
 // Translations are pre-written by hand. There is no translation API in this mockup.
+// The system speaks as FoC itself. It has no user record and no errand attached, so the chat
+// screen falls back to an account-updates layout for it.
+export const SYSTEM_USER = {
+  id: 'system',
+  name: 'FoC',
+  given: 'FoC',
+  initials: 'FoC',
+}
+
 export const threads = [
+  {
+    id: 'system',
+    requestId: null,
+    withUserId: 'system',
+    lastAt: '10:00',
+    unread: 1,
+    messages: [
+      {
+        id: 'm0',
+        from: 'system',
+        text: "Welcome to FoC. You've been awarded 20 credits to get you started. Post an errand to spend them, or run one for someone else to earn more.",
+        translation: null,
+        lang: 'en',
+        at: '10:00',
+      },
+    ],
+  },
   {
     id: 't1',
     requestId: 'r6',
@@ -121,3 +147,10 @@ export const threads = [
 export const LANG_NAMES = { zh: 'Chinese', ms: 'Malay', en: 'English' }
 
 export const getThreadByRequest = (requestId) => threads.find((t) => t.requestId === requestId)
+
+// A thread is addressed by its errand id where it has one, and by its own id otherwise.
+export const threadHref = (thread) => '/chat/' + (thread.requestId || thread.id)
+
+export const findThread = (id) => threads.find((t) => t.requestId === id || t.id === id)
+
+export const totalUnread = () => threads.reduce((sum, t) => sum + t.unread, 0)

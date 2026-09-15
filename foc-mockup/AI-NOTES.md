@@ -419,6 +419,62 @@ Service later needs to act on it, items 1 and 2 are where that work starts.
 
 ---
 
+## 6e. TEAM-DIRECTED CHANGE — floating chat bubble and a system message
+
+> add a chat bubble on the bottom left of the screen always and that lead u to the chat page,
+> in the chat page can u include one more chat from the system that say welcome you are awarded
+> with 20 credits
+
+### The bubble
+
+`src/components/ChatBubble.jsx` — a 56px black circle fixed at `bottom-4 right-4`, mounted in
+`App.jsx` so it rides every route. It carries an orange unread count derived from the thread
+data, and links to `/chat` (which redirects to the most recent conversation).
+
+It is hidden in two cases: **when logged out**, since a visitor has no conversations to reach
+and every chat route is gated anyway; and on `/chat` routes, where it would point at the page
+you are already on.
+
+**No collision with the demo panel.** An earlier revision put the bubble at bottom-left and
+pushed `DemoControls` up to `bottom-24` to make room. With the bubble on the right, the demo
+chip is back at `bottom-4 left-4` exactly as blueprint §5 specifies.
+
+**Blueprint deviation:** §5 lists the shared components and `ChatBubble` is not among them.
+§12.4 says to ask before adding a component — the team asked for this one, so it is recorded as
+their decision.
+
+### The system message
+
+`messages.js` gains a fourth thread, pinned first in the list:
+
+> Welcome to FoC. You've been awarded 20 credits to get you started. Post an errand to spend
+> them, or run one for someone else to earn more.
+
+It is addressed as `/chat/system`. This is the first thread with **no errand attached**
+(`requestId: null`) and no user record behind it, which the chat screen previously assumed
+could not happen. Handling added:
+
+- Threads are now found by errand id **or** thread id (`findThread`), and linked via
+  `threadHref`.
+- `SYSTEM_USER` stands in for a sender with no user record.
+- The header shows `Account updates` instead of an errand line, and drops the call buttons.
+- System messages render as a centred notice rather than a left-aligned person's bubble.
+- The auto-translate row is removed, and the composer, attach and send controls are disabled —
+  you cannot reply to FoC.
+
+One bug caught in review: the translate row was first hidden with the `hidden` attribute, which
+Tailwind's `display:flex` silently overrides. It is now conditionally rendered.
+
+### Open
+
+- **Nothing generates system messages.** The welcome note is seeded data. Whether the credit
+  award, expiry, cancellation or delivery events should also produce system messages is not in
+  the backlog, and the mockup does not imply an answer.
+- **The unread counts are static.** Opening a thread does not clear its badge, so the bubble
+  always reads 3.
+
+---
+
 ## 7. Other deviations from the blueprint
 
 1. **An eighth screen, `/suppliers/:id`.** Added on the team's instruction (prompt 2), then

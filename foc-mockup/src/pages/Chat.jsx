@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Languages, Paperclip, Phone, Send, Video } from 'lucide-react'
-import { threads, LANG_NAMES } from '../data/messages'
+import { threads, LANG_NAMES, SYSTEM_USER, threadHref, findThread } from '../data/messages'
 import { getUser, firstName } from '../data/users'
 import { getSupplier, qualifiedName } from '../data/suppliers'
 import { useDemo } from '../context/DemoContext'
@@ -27,10 +27,11 @@ export default function Chat() {
   const [autoTranslate, setAutoTranslate] = useState(false)
   const [translated, setTranslated] = useState({})
 
-  const thread = threads.find((t) => t.requestId === id) || threads[0]
-  const request = requests.find((r) => r.id === thread.requestId)
-  const supplier = getSupplier(request.supplierId)
-  const other = getUser(thread.withUserId)
+  const thread = findThread(id) || threads[0]
+  const isSystem = thread.withUserId === 'system'
+  const request = thread.requestId ? requests.find((r) => r.id === thread.requestId) : null
+  const supplier = request ? getSupplier(request.supplierId) : null
+  const other = isSystem ? SYSTEM_USER : getUser(thread.withUserId)
 
   const isTranslated = (m) => autoTranslate || translated[m.id]
 
@@ -44,13 +45,13 @@ export default function Chat() {
           </h1>
           <ul className="flex-1 overflow-y-auto">
             {threads.map((t) => {
-              const person = getUser(t.withUserId)
+              const person = t.withUserId === 'system' ? SYSTEM_USER : getUser(t.withUserId)
               const active = t.id === thread.id
               const last = t.messages[t.messages.length - 1]
               return (
                 <li key={t.id}>
                   <Link
-                    to={'/chat/' + t.requestId}
+                    to={threadHref(t)}
                     className={
                       'flex gap-3 border-b border-line px-4 py-3 ' +
                       (active ? 'bg-surface-alt' : 'hover:bg-surface-alt')
@@ -94,28 +95,39 @@ export default function Chat() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-ink">{other.name}</p>
               <p className="truncate text-xs text-ink-40">
-                {qualifiedName(supplier)} <span aria-hidden="true">&rarr;</span>{' '}
-                {request.deliveryLocation} ·{' '}
-                <span className="tnum">{request.credits}</span> cr
+                {isSystem ? (
+                  'Account updates'
+                ) : (
+                  <>
+                    {qualifiedName(supplier)} <span aria-hidden="true">&rarr;</span>{' '}
+                    {request.deliveryLocation} ·{' '}
+                    <span className="tnum">{request.credits}</span> cr
+                  </>
+                )}
               </p>
             </div>
-            <button
-              type="button"
-              aria-label="Voice call"
-              className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
-            >
-              <Phone size={18} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label="Video call"
-              className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
-            >
-              <Video size={18} aria-hidden="true" />
-            </button>
+            {!isSystem && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Voice call"
+                  className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
+                >
+                  <Phone size={18} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Video call"
+                  className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
+                >
+                  <Video size={18} aria-hidden="true" />
+                </button>
+              </>
+            )}
           </header>
 
-          <div className="flex items-center justify-end gap-2 border-b border-line px-3 py-2 md:px-4">
+          {!isSystem && (
+            <div className="flex items-center justify-end gap-2 border-b border-line px-3 py-2 md:px-4">
             <span id="auto-translate-label" className="text-xs text-ink-70">
               Auto-translate
             </span>
@@ -144,9 +156,20 @@ export default function Chat() {
               </span>
             </button>
           </div>
+          )}
 
           <ol className="flex-1 space-y-4 overflow-y-auto px-3 py-4 md:px-4">
             {thread.messages.map((m) => {
+              if (m.from === 'system') {
+                return (
+                  <li key={m.id} className="flex flex-col items-center">
+                    <div className="max-w-prose rounded-card border border-line bg-surface-alt px-4 py-3 text-center text-sm text-ink-70">
+                      {m.text}
+                    </div>
+                    <p className="tnum mt-1 text-xs text-ink-40">{m.at}</p>
+                  </li>
+                )
+              }
               const own = m.from === currentUser.id
               const translatable = m.lang !== 'en' && m.translation
               const showing = translatable && isTranslated(m)
@@ -197,21 +220,34 @@ export default function Chat() {
           >
             <button
               type="button"
+              disabled={isSystem}
               aria-label="Attach a file"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt disabled:text-ink-40"
             >
               <Paperclip size={18} aria-hidden="true" />
             </button>
             <input
               type="text"
-              placeholder={'Message ' + firstName(other)}
-              aria-label={'Message ' + firstName(other)}
-              className="h-11 min-w-0 flex-1 rounded-pill border border-line bg-surface px-4 text-base text-ink"
+              disabled={isSystem}
+              placeholder={isSystem ? 'You cannot reply to FoC' : 'Message ' + firstName(other)}
+              aria-label={isSystem ? 'Replies are not available' : 'Message ' + firstName(other)}
+              className={
+                'h-11 min-w-0 flex-1 rounded-pill border border-line px-4 text-base ' +
+                (isSystem
+                  ? 'cursor-not-allowed bg-surface-alt text-ink-40'
+                  : 'bg-surface text-ink')
+              }
             />
             <button
               type="submit"
+              disabled={isSystem}
               aria-label="Send message"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-pill bg-ink text-white transition-colors duration-150 hover:bg-ink-70"
+              className={
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-pill transition-colors duration-150 ' +
+                (isSystem
+                  ? 'cursor-not-allowed bg-surface-alt text-ink-40'
+                  : 'bg-ink text-white hover:bg-ink-70')
+              }
             >
               <Send size={17} aria-hidden="true" />
             </button>
