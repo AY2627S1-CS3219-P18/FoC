@@ -1,0 +1,16 @@
+// Order service Prisma schema.
+// Datasource URL is supplied by prisma.config.ts (Prisma 7 no longer reads it here).
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// TODO(team): define the order domain models here, then run
+//   npm run db:migrate -- --name <migration_name>
