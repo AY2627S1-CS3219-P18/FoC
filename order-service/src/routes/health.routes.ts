@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-09-23
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: george-yeo
  */
 
 import { Router } from 'express';
