@@ -73,7 +73,7 @@ export async function register({
   const passwordHash = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
 
   try {
-    await userQueries.createUser({ username, email, passwordHash });
+    await userQueries.createUser({ username, email, passwordHash, status: 'active' });
   } catch (err) {
     if (isPgUniqueViolation(err)) {
       const constraint = err.constraint ?? '';

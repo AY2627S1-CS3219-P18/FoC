@@ -2,9 +2,11 @@
 -- Tool: Claude Code (claude-sonnet-5)
 --  2026-09-24: Generated initial implementation as part of Stage 2b
 --    Author review: No changes needed. 
+--  2026-09-25: Stage 5a - added 'pending' to status_enum
+--    Author review:
 
 DO $$ BEGIN
-  CREATE TYPE status_enum AS ENUM ('active', 'suspended');
+  CREATE TYPE status_enum AS ENUM ('pending', 'active', 'suspended');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
