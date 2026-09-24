@@ -80,3 +80,21 @@ Wire up cookie-parser/cors middleware, mount the auth router, and add the shared
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 4b: Registration
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement user registration: users.queries.ts (CRUD reads + insert), auth.service.ts register() with format/complexity validation and duplicate-username/email handling (both a pre-check and a race-safe unique-constraint catch), and the register controller with a strict Zod schema for presence/type checks. Verified all 12 checklist cases inside Docker, including a concurrent duplicate-registration race test.
+
+**What it produced:**
+
+- user-service/src/db/queries/users.queries.ts
+- user-service/src/services/auth.service.ts
+- user-service/src/controllers/auth.controller.ts
+- user-service/src/routes/auth.routes.ts (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
