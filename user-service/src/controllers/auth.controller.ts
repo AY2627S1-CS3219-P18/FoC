@@ -4,6 +4,8 @@
 // Author review:
 // 25/09/2026: Stage 4c - login controller
 // Author review:
+// 25/09/2026: Stage 4d - logout + refresh controllers
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -62,4 +64,23 @@ export const login = asyncHandler(async (req, res) => {
   });
 
   res.status(200).json({ accessToken, user });
+});
+
+export const logout = asyncHandler(async (req, res) => {
+  const refreshToken: string =
+    typeof req.cookies.refreshToken === 'string' ? req.cookies.refreshToken : '';
+
+  await authService.logout(refreshToken);
+
+  res.clearCookie('refreshToken', REFRESH_COOKIE_OPTIONS);
+  res.status(200).json({ message: 'Logged out successfully', code: 'LOGOUT_SUCCESS' });
+});
+
+export const refresh = asyncHandler(async (req, res) => {
+  const refreshToken: string =
+    typeof req.cookies.refreshToken === 'string' ? req.cookies.refreshToken : '';
+
+  const { accessToken } = await authService.refresh(refreshToken);
+
+  res.status(200).json({ accessToken });
 });
