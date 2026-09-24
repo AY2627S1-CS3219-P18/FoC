@@ -1,8 +1,9 @@
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-24
-// Scope: Generated initial implementation as part of Stage 1
-// Author review:
+//  Scope: Generated initial implementation as part of Stage 1
+//    Author review: No changes needed. 
 import express from 'express';
+import { config } from './config.js';
 
 const app = express();
 
@@ -12,11 +13,8 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// TODO (Stage 2b): read the port from config.ts instead of process.env
-const port = Number(process.env.PORT ?? 3001);
-
-app.listen(port, () => {
-  console.log(`user-service listening on port ${port}`);
+app.listen(config.server.port, () => {
+  console.log(`user-service listening on port ${config.server.port}`);
 });
 
 export default app;
