@@ -157,3 +157,32 @@ Add GET /auth/verify (reusing verifyAccessToken so it agrees with the authentica
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 5a: Schema, Config, Utilities
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement Stage 5a: add 'pending' to status_enum, OTP env vars/config, SMTP optional in development, hashesMatch, generateOtp, withTransaction/Queryable, and user query updates (db param, status param, lockUserById, activateUser, deleteStalePendingUsers).
+
+**What it produced:**
+Modified: user-service/src/db/init.sql, src/config.ts, src/utils/hash.ts, src/db/queries/users.queries.ts, src/services/auth.service.ts, .env.example
+Created: src/utils/otp.ts, src/utils/otp.test.ts, src/db/transaction.ts
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+## 2026-09-25 — Stage 5b: Email Service
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement Stage 5b: Nodemailer-based sendOtpEmail with purpose map, text+html bodies, throw on failure, and a development-only console fallback when SMTP_HOST is empty.
+
+**What it produced:**
+Created: user-service/src/services/email.service.ts
+
+**What I kept/changed/rejected:**
+I kept all changes.

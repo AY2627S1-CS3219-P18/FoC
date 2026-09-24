@@ -858,7 +858,7 @@ Keep all existing format validation (username, email, password) and error messag
 4. `createUser({ ..., status: 'pending' })`, keeping the existing `23505` catch → `USERNAME_TAKEN` / `EMAIL_TAKEN` mapping (this still covers the concurrent-register race)
 5. `issueOtp({ userId, email, purpose: 'Registration' })`
 
-If step 5 fails, the transaction rolls back and no pending user remains.
+If any of the 5 steps fails, the transaction rolls back and no pending user remains.
 
 #### Update `register` in `src/controllers/auth.controller.ts`
 
