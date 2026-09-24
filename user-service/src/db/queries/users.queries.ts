@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 4b - user queries
 // Author review:
+// 25/09/2026: Stage 4e - super admin queries
+// Author review:
 
 import pool from '../pool.js';
 
@@ -45,4 +47,27 @@ export async function findByEmail(email: string): Promise<UserRow | null> {
 export async function findById(userId: string): Promise<UserRow | null> {
   const result = await pool.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [userId]);
   return result.rows[0] ?? null;
+}
+
+export async function findSuperAdmin(): Promise<UserRow | null> {
+  const result = await pool.query<UserRow>(
+    `SELECT * FROM users WHERE role = 'super admin' LIMIT 1`,
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function createSuperAdmin({
+  username,
+  email,
+  passwordHash,
+}: {
+  username: string;
+  email: string;
+  passwordHash: string;
+}): Promise<UserRow> {
+  const result = await pool.query<UserRow>(
+    `INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, 'super admin') RETURNING *`,
+    [username, email, passwordHash],
+  );
+  return result.rows[0]!;
 }

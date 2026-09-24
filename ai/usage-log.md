@@ -117,3 +117,43 @@ Implement login: tokens.queries.ts for refresh token CRUD, a signAccessToken() a
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 4d: Logout + Refresh
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement logout() (revoke by token hash) and refresh() (validate not-found/revoked/expired, re-check current user status so suspension takes effect immediately and role changes propagate on next refresh rather than requiring re-login) in auth.service.ts, plus their controllers and routes (logout behind authenticate). Verified all 10 checklist cases inside Docker, including a live suspend/promote-then-refresh test confirming the new token reflects fresh DB state.
+
+**What it produced:**
+
+- user-service/src/services/auth.service.ts (modified)
+- user-service/src/controllers/auth.controller.ts (modified)
+- user-service/src/routes/auth.routes.ts (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+## 2026-09-25 — Stage 4e: Inter-Service Verify + Super Admin Bootstrap
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Add GET /auth/verify (reusing verifyAccessToken so it agrees with the authenticate middleware), and a super admin bootstrap that runs on startup: checks for an existing 'super admin' role, creates one from SUPER*ADMIN*_ config (reusing the registration password-complexity regex) if none exists, and is awaited before app.listen(). Added SUPER*ADMIN*_ to config.ts's Zod schema and .env/.env.example. Verified all checklist cases inside Docker, including a container restart to confirm no duplicate bootstrap.
+
+**What it produced:**
+
+- user-service/src/services/bootstrap.service.ts
+- user-service/src/config.ts (modified)
+- user-service/.env.example (modified)
+- user-service/.env (modified)
+- user-service/src/services/auth.service.ts (modified)
+- user-service/src/db/queries/users.queries.ts (modified)
+- user-service/src/controllers/auth.controller.ts (modified)
+- user-service/src/routes/auth.routes.ts (modified)
+- user-service/src/app.ts (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
