@@ -50,5 +50,47 @@ services:
       retries: 5
       start_period: 15s
 
+  # ---- user-service -------------------------------------------------------
+  # AI Assistance Disclosure:
+  # Tool: Claude Code (claude-sonnet-5), date: 2026-09-24
+  #   24/09/2026: Stage 3b - user-db + user-service compose services
+  #     Author review: No changes needed. 
+  user-db:
+    image: postgres:16-alpine
+    container_name: foc-user-db
+    restart: unless-stopped
+    # Must match DB_USER / DB_PASSWORD / DB_NAME in user-service/.env — Compose
+    # variable interpolation can't read values out of a service's own env_file,
+    # so these are set directly rather than via ${DB_USER}-style substitution.
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: user_service
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+      - ./user-service/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d user_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  user-service:
+    build:
+      context: ./user-service
+      target: dev
+    container_name: foc-user-service
+    restart: unless-stopped
+    env_file: ./user-service/.env
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./user-service/src:/app/src
+      - ./user-service/keys:/app/keys
+    depends_on:
+      user-db:
+        condition: service_healthy
+
 volumes:
   order-db-data:
+  user-db-data:
