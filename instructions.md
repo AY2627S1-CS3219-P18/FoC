@@ -681,3 +681,307 @@ Add super admin credentials to `config.ts` Zod schema.
 - `GET /auth/verify` with no `Authorization` header at all → `401 INVALID_TOKEN`
 - `GET /auth/verify` with a well-formed but wrong-signature token (e.g. signed with a different key pair) → `401 INVALID_TOKEN`
 - Take one valid access token, confirm it's accepted by both an `authenticate`-protected route (e.g. `/auth/logout`) and by `GET /auth/verify` — confirms both call sites agree, since they share `verifyAccessToken`
+
+## Stage 5: OTP Flow (Send, Verify, Resend)
+
+> **Scope**: This stage builds the generic OTP infrastructure (generation, hashing, email delivery, verification, resend) and wires it up for the **Registration** purpose only. Forgot Password, Change Email, Change Password and Admin Action are wired in later stages, so the service layer must take `purpose` as a parameter, but the public endpoints only accept `registration` for now.
+>
+> Registration changes from "instant active account" (Stage 4b) to "pending account, active only after OTP verification".
+>
+> Backlog refs: F1.1.5, F1.1.6, F1.1.7, F1.1.8.
+
+### Design decisions (already made, do not change)
+
+| Rule                       | Value                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| OTP format                 | 6 digits, numeric, cryptographically random (`crypto.randomInt`), zero-padded                                             |
+| OTP storage                | SHA-256 hash in `users_otps.otp_hash`, never the plaintext                                                                |
+| OTP lifetime               | 10 minutes from creation                                                                                                  |
+| Single use                 | Consumed on successful verification (`consumed_at` set)                                                                   |
+| New OTP invalidates old    | Generating a new OTP sets `consumed_at` on all of that user's still-active OTPs for the same purpose                      |
+| Wrong-guess limit          | `max_attempts` = 5 per OTP (DB default). Once `attempts_count` reaches the max, that OTP is dead and the user must resend |
+| Resend cooldown            | 60 seconds since the previous OTP was created                                                                             |
+| Resend limit               | 5 resends per registration (i.e. at most 6 OTP rows per user for `Registration`)                                          |
+| Username/email reservation | The pending user row itself holds the username and email until the latest OTP expires                                     |
+| Registration `new_email`   | `NULL` (only used by Change Email later)                                                                                  |
+
+---
+
+### Stage 5a: Schema, Config, Utilities
+
+#### Update `src/db/init.sql`
+
+- Add `'pending'` to `status_enum`: `('pending', 'active', 'suspended')`
+- Keep the `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object` wrapper
+- Note: `init.sql` only runs on a fresh DB volume. After this change, reset the dev DB with `docker compose down -v` (dev data only) so the enum is recreated. Remind me of this in your summary.
+
+#### Update `.env.example` and `.env`
+
+```env
+# OTP
+OTP_TTL_MINUTES=10
+OTP_RESEND_COOLDOWN_SECONDS=60
+OTP_MAX_RESENDS=5
+```
+
+#### Update `src/config.ts`
+
+- Add the three OTP vars to the Zod schema (coerce to numbers, positive integers) and expose them as `config.otp = { ttlMinutes, resendCooldownSeconds, maxResends }`
+- SMTP vars (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) may be empty **only when** `NODE_ENV=development`. In any other environment they are required and the app must exit with a clear error, as before.
+
+#### Update `src/utils/hash.ts`
+
+- Add `hashesMatch(a: string, b: string): boolean` using `crypto.timingSafeEqual` on the two hex digests (return `false` if lengths differ, never throw)
+
+#### Create `src/utils/otp.ts`
+
+- `generateOtp(): string` — `crypto.randomInt(0, 1_000_000)` padded to 6 digits with leading zeros. Do not use `Math.random`.
+
+#### Create `src/db/transaction.ts`
+
+Some operations in this stage involve several database steps that must succeed or fail together (e.g. creating a pending user _and_ its OTP). This file provides a helper for that.
+
+**`withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T>`**
+
+A transaction has to run on a single connection, so this helper:
+
+1. Borrows one connection from the pool.
+2. Runs `BEGIN`, then calls `fn(client)`. All queries inside `fn` must use this `client`, not the pool.
+3. If `fn` finishes normally, runs `COMMIT` and returns its result.
+4. If `fn` throws, runs `ROLLBACK` to undo everything, then rethrows the same error so the global error handler still sees it.
+5. Always returns the connection to the pool in a `finally` block, whether it succeeded or failed. A leaked connection will eventually make the whole service hang.
+
+**`Queryable` type: `pg.Pool | pg.PoolClient`**
+
+Both the pool and a checked-out client have a `.query()` method. Exporting this type lets each query function accept either one, so it works on its own (using the pool) or inside a transaction (using the transaction's client).
+
+#### Update `src/db/queries/users.queries.ts`
+
+All query functions now accept an optional last parameter `db: Queryable = pool` so they can run inside a transaction. Existing callers keep working unchanged.
+
+- `createUser({ username, email, passwordHash, status })` — `status` is now a parameter (`'pending' | 'active'`). Update the Stage 4b caller and the super admin bootstrap to pass it explicitly (bootstrap passes `'active'`).
+- `lockUserById(userId, db)` — `SELECT ... FOR UPDATE`, returns the row or null
+- `activateUser(userId, db)` — sets `status = 'active'`, `updated_at = NOW()` **only where `status = 'pending'`**; returns whether a row was updated
+- `deleteStalePendingUsers({ username, email }, db)` — a single statement:
+
+```sql
+DELETE FROM users
+WHERE status = 'pending'
+  AND (username = $1 OR email = $2)
+  AND NOT EXISTS (
+    SELECT 1 FROM users_otps o
+    WHERE o.user_id = users.id AND o.expires_at > NOW()
+  );
+```
+
+Cascade deletes the stale OTP rows. This is how an expired reservation is released.
+
+#### Verification
+
+- `docker compose down -v && docker compose up --build` starts cleanly
+- `\dT+ status_enum` shows `pending`, `active`, `suspended`
+- App still boots with SMTP vars empty in development
+- Temporarily set `NODE_ENV=production` with empty SMTP vars → app exits with a clear error naming the missing variables (revert afterwards)
+- `generateOtp()` never returns a string that isn't exactly 6 digits (quick Vitest unit test: 10,000 iterations, regex `^\d{6}$`)
+
+---
+
+### Stage 5b: Email Service
+
+#### Create `src/services/email.service.ts`
+
+- Create one Nodemailer transport from `config.email`
+- Export `sendOtpEmail({ to, otp, purpose }: { to: string; otp: string; purpose: string }): Promise<void>`
+- Subject and body wording come from a small `purpose → { subject, intro }` map. For now only `Registration` is needed: subject `"Your FoC verification code"`.
+- Send both `text` and `html` bodies. Body contains the OTP and the expiry (`config.otp.ttlMinutes` minutes). No links.
+- The function **throws** on send failure. Callers decide what to do (see 5d/5e).
+- Development fallback: if `NODE_ENV=development` and `SMTP_HOST` is empty, do not attempt SMTP. Log `[DEV EMAIL] to=<to> purpose=<purpose> otp=<otp>` to the console instead. This branch must be unreachable in any other environment.
+- Never log the OTP anywhere else.
+
+#### Verification
+
+- With SMTP empty in development, calling the function prints the dev log line
+- With real SMTP credentials filled in, an email arrives at a real inbox with the correct code and expiry text
+
+---
+
+### Stage 5c: OTP Queries + Service
+
+#### Create `src/db/queries/otp.queries.ts`
+
+All functions take `db: Queryable` as the last parameter.
+
+- `createOtp({ userId, otpHash, purpose, newEmail, expiresAt }, db)` — inserts into `users_otps`
+- `invalidateActiveOtps(userId, purpose, db)` — `UPDATE users_otps SET consumed_at = NOW() WHERE user_id = $1 AND purpose = $2 AND consumed_at IS NULL`
+- `findLatestOtp(userId, purpose, db)` — most recent row by `created_at` (any state), or null
+- `countOtps(userId, purpose, db)` — number of rows for that user and purpose (used for the resend limit)
+- `incrementAttempts(otpId, db)` — `attempts_count = attempts_count + 1`, returns the new count
+- `consumeOtp(otpId, db)` — `SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL`, returns whether a row was updated
+
+#### Create `src/services/otp.service.ts`
+
+This layer is purpose-agnostic and knows nothing about HTTP.
+
+- `issueOtp({ userId, email, purpose, newEmail? }, db)`:
+  1. `invalidateActiveOtps`
+  2. `generateOtp()`, then `sha256` it
+  3. `createOtp` with `expiresAt = now + config.otp.ttlMinutes`
+  4. `sendOtpEmail` (sent to `newEmail ?? email`)
+  5. If sending throws, log the error (without the OTP) and throw `AppError(503, 'Unable to send verification email. Please try again.', 'EMAIL_SEND_FAILED')`
+  - Callers run this inside `withTransaction`, so a send failure rolls back the new OTP (and any invalidation of the previous one).
+
+- `checkOtp({ userId, purpose, otp }, db)` — must be called inside a transaction that already holds the user row lock:
+  1. `findLatestOtp`. If null, or `consumed_at` is set → `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
+  2. If `expires_at` has passed → `AppError(400, 'OTP has expired. Please request a new one.', 'OTP_EXPIRED')`
+  3. If `attempts_count >= max_attempts` → `AppError(429, 'Too many incorrect attempts. Please request a new OTP.', 'OTP_ATTEMPTS_EXCEEDED')`
+  4. Compare `sha256(otp)` to `otp_hash` with `hashesMatch`
+  5. On mismatch: `incrementAttempts`, then return `{ ok: false }` (do **not** throw inside the transaction, see the warning below)
+  6. On match: `consumeOtp`. If it returns false, treat as `INVALID_OTP`. Return `{ ok: true }`.
+
+> **Warning: the attempt increment must survive.** If the wrong-guess path throws inside `withTransaction`, the `ROLLBACK` will undo the `incrementAttempts` and the attempt limit becomes bypassable. `checkOtp` returns `{ ok: false }`, the transaction commits, and only then does the caller throw `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`.
+
+#### Verification
+
+- Unit-test `checkOtp`'s branching with a stubbed `db` where practical (Vitest); at minimum verify manually via 5e
+
+---
+
+### Stage 5d: Registration Now Creates a Pending Account
+
+#### Update `authService.register()` in `src/services/auth.service.ts`
+
+Keep all existing format validation (username, email, password) and error messages unchanged. Replace the persistence part with a single `withTransaction`:
+
+1. `deleteStalePendingUsers({ username, email })`
+2. Existing duplicate checks: `findByUsername` then `findByEmail`, throwing `USERNAME_TAKEN` / `EMAIL_TAKEN` (409) as before. A live pending user (unexpired OTP) counts as taken, which is the F1.1.8 reservation.
+3. Hash the password with bcrypt (work factor 10)
+4. `createUser({ ..., status: 'pending' })`, keeping the existing `23505` catch → `USERNAME_TAKEN` / `EMAIL_TAKEN` mapping (this still covers the concurrent-register race)
+5. `issueOtp({ userId, email, purpose: 'Registration' })`
+
+If step 5 fails, the transaction rolls back and no pending user remains.
+
+#### Update `register` in `src/controllers/auth.controller.ts`
+
+- Request validation unchanged
+- Return `201` with `{ message: 'Verification code sent to your email', code: 'OTP_SENT' }`
+
+#### Update `authService.login()`
+
+- After the password check succeeds, if `status = 'pending'` → `AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED')`
+- Keep the order: not found / wrong password (401) first, then pending (403), then suspended (403). This prevents revealing account state to someone who doesn't know the password.
+
+#### Verification
+
+- `POST /auth/register` valid body → `201 OTP_SENT`, user row exists with `status = 'pending'`, one `users_otps` row exists with `purpose = 'Registration'`, `otp_hash` is 64 hex chars, `expires_at` ≈ 10 min out, `new_email` is NULL
+- Dev console shows the OTP (or a real email arrives if SMTP is configured)
+- `POST /auth/login` with the pending account's correct credentials → `403 ACCOUNT_NOT_VERIFIED`
+- `POST /auth/login` with the pending account and a wrong password → `401 INVALID_CREDENTIALS`
+- `POST /auth/register` again with the same username/email while the OTP is still live → `409 USERNAME_TAKEN` / `EMAIL_TAKEN`
+- Set the pending user's OTP `expires_at` to the past in the DB, then register again with the same username and email → `201`, and the old pending row is gone (only one row for that username)
+- Force an email failure (e.g. temporarily break the transport) → `503 EMAIL_SEND_FAILED`, and no pending user or OTP row is left behind
+- Concurrent duplicate registration test from Stage 4b still returns one `201` and one `409`, never `500`
+- Existing super admin bootstrap still works (creates an `active` super admin)
+
+---
+
+### Stage 5e: Verify OTP + Resend OTP Endpoints
+
+Both endpoints are **public** (no `authenticate`). The API-facing `purpose` value is lowercase (`'registration'`); map it to the DB enum value (`'Registration'`) in one place. Only `'registration'` is accepted for now; extend the Zod enum in later stages.
+
+#### Request validation (Zod, `.strict()`, custom messages, presence/type/extra-fields only)
+
+`POST /auth/verify-otp`:
+
+- email: required "Email is required", type "Email must be a string"
+- otp: required "OTP is required", type "OTP must be a string"
+- purpose: required "Purpose is required", type "Purpose must be a string", not in the allowed list → "Invalid purpose"
+
+`POST /auth/resend-otp`:
+
+- email and purpose as above (no `otp`)
+
+Format rule stays in the service layer: `otp` must match `^\d{6}$`, else `AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR')`.
+
+#### `authService.verifyRegistrationOtp({ email, otp })`
+
+Inside `withTransaction`:
+
+1. Look up the user by email. If none, or `status !== 'pending'` → `INVALID_OTP` (same generic error, do not reveal which case)
+2. `lockUserById(user.id)` (serialises concurrent verify/resend for this user)
+3. `checkOtp(...)`
+4. If `{ ok: true }` → `activateUser(user.id)`; if it returns false, treat as `INVALID_OTP`
+5. Commit, then: if `{ ok: false }` → throw `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
+6. On success return nothing sensitive
+
+> Leave a `// TODO(credit-service): emit user-registered event here` comment at the activation point. Do not implement it (F19.1.1 is a later stage).
+
+#### `authService.resendRegistrationOtp({ email })`
+
+Inside `withTransaction`:
+
+1. Look up the user by email. If none or not `pending` → `AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION')`
+2. `lockUserById(user.id)`
+3. `countOtps(user.id, 'Registration')`. If `count - 1 >= config.otp.maxResends` → `AppError(429, 'Maximum OTP resends reached. Please register again later.', 'OTP_RESEND_LIMIT')`
+4. `findLatestOtp`. If `created_at + cooldown > now` → `AppError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN')`, and set a `Retry-After` header (seconds remaining). To set the header, attach an optional `retryAfterSeconds` field to `AppError` and have the global error handler emit the header when present. The JSON body stays `{ message, code }`.
+5. `issueOtp(...)` (this invalidates the previous OTP and sends the email)
+
+#### Controllers in `src/controllers/auth.controller.ts`
+
+- `verifyOtp` → `200` with `{ message: 'Registration complete. You can now log in.', code: 'REGISTER_SUCCESS' }`. No tokens are issued; the user logs in normally afterwards.
+- `resendOtp` → `200` with `{ message: 'A new verification code has been sent to your email', code: 'OTP_SENT' }`
+- Both wrapped in `asyncHandler`, no try/catch
+
+#### Wire up routes in `auth.routes.ts`
+
+```ts
+router.post("/verify-otp", authController.verifyOtp);
+router.post("/resend-otp", authController.resendOtp);
+```
+
+#### Verification
+
+Happy path:
+
+- Register → `POST /auth/verify-otp` with the correct OTP → `200 REGISTER_SUCCESS`, user `status = 'active'`, OTP row has `consumed_at` set
+- Login with the now-active account → `200`
+
+OTP rules:
+
+- Re-submitting the same (already used) OTP → `400 INVALID_OTP`
+- Wrong OTP → `400 INVALID_OTP`, `attempts_count` incremented **and persisted** (check the DB after the request)
+- 5 wrong OTPs, then the correct OTP → `429 OTP_ATTEMPTS_EXCEEDED`; account stays `pending`
+- Expired OTP (set `expires_at` to the past) with the correct code → `400 OTP_EXPIRED`
+- Resend, then use the **old** OTP → `400 INVALID_OTP` (old one was invalidated); the **new** OTP works
+- OTP `12345` (5 digits) or `abcdef` → `400 VALIDATION_ERROR`, message `"OTP must be a 6-digit code"`
+- Unknown email → `400 INVALID_OTP`; already-active email → `400 INVALID_OTP`
+
+Resend rules:
+
+- Resend immediately after registering → `429 OTP_RESEND_COOLDOWN` with a `Retry-After` header
+- Resend after 60 seconds (or after backdating `created_at` in the DB) → `200 OTP_SENT`, previous OTP row now has `consumed_at`
+- After 5 successful resends (backdate `created_at` between each), the 6th resend → `429 OTP_RESEND_LIMIT`
+- Resend for an unknown email or already-active account → `400 NO_PENDING_REGISTRATION`
+- Resend when the SMTP send fails → `503 EMAIL_SEND_FAILED`, and the previous OTP is still valid (rolled back)
+
+Validation:
+
+- Missing `otp` → `400 VALIDATION_ERROR`, `"OTP is required"`
+- `otp: 123456` (number) → `400 VALIDATION_ERROR`, `"OTP must be a string"`
+- `purpose: "forgot password"` → `400 VALIDATION_ERROR`, `"Invalid purpose"`
+- Extra field → `400 VALIDATION_ERROR`, `"Request contains unexpected fields"`
+
+Concurrency:
+
+- Fire two `POST /auth/verify-otp` with the correct OTP near-simultaneously → exactly one `200`, the other `400 INVALID_OTP`, user is active exactly once
+- Fire two `POST /auth/resend-otp` near-simultaneously (cooldown backdated) → one `200` and one `429`, and only one active (unconsumed) OTP row exists afterwards
+
+---
+
+### Notes for Later Stages (do not implement now)
+
+- `GET /users` (admin) must exclude `status = 'pending'` users
+- Forgot Password, Change Email, Change Password and Admin Action reuse `issueOtp` / `checkOtp` and extend the `purpose` enum in the Zod schemas; authenticated purposes will need `authenticate` on their own routes
+- Resend-limit counting for those purposes will need a per-flow window (Stage 5 counts all `Registration` OTP rows because a user only ever has one registration flow)
+- NFR2 (email retry ×3 + delivery-failure logging) and NFR1 (lockout after repeated failed OTP attempts) are Week 10 items
+- A periodic cleanup of expired pending users is optional; `deleteStalePendingUsers` already reclaims them lazily on re-registration
+- Frontend: the register response changed (`201 OTP_SENT`, no active session) and two new endpoints exist; the OTP entry screen is a separate frontend task
