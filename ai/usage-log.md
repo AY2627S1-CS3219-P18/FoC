@@ -55,3 +55,46 @@ Build a multi-stage Dockerfile (dev/prod) for user-service, wire up user-db + us
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 4a: App Setup + Middleware
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Wire up cookie-parser/cors middleware, mount the auth router, and add the shared auth building blocks: sha256 hashing, RS256 JWT verification, Bearer-token authenticate middleware, AppError, asyncHandler, REFRESH_COOKIE_OPTIONS, and the global error handler (AppError/ZodError/malformed-JSON/500 cases). Verified against a temporary protected route + generated test JWTs (valid/expired/wrong-signature) inside Docker, then removed the scaffolding.
+
+**What it produced:**
+
+- user-service/src/utils/hash.ts
+- user-service/src/utils/jwt.ts
+- user-service/src/utils/AppError.ts
+- user-service/src/utils/asyncHandler.ts
+- user-service/src/utils/cookies.ts
+- user-service/src/middleware/authenticate.ts
+- user-service/src/types/express.d.ts
+- user-service/src/routes/auth.routes.ts
+- user-service/src/app.ts (modified)
+- user-service/package.json (modified)
+- user-service/eslint.config.js (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+## 2026-09-25 — Stage 4b: Registration
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement user registration: users.queries.ts (CRUD reads + insert), auth.service.ts register() with format/complexity validation and duplicate-username/email handling (both a pre-check and a race-safe unique-constraint catch), and the register controller with a strict Zod schema for presence/type checks. Verified all 12 checklist cases inside Docker, including a concurrent duplicate-registration race test.
+
+**What it produced:**
+
+- user-service/src/db/queries/users.queries.ts
+- user-service/src/services/auth.service.ts
+- user-service/src/controllers/auth.controller.ts
+- user-service/src/routes/auth.routes.ts (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
