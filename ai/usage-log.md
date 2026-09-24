@@ -98,3 +98,22 @@ Implement user registration: users.queries.ts (CRUD reads + insert), auth.servic
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 4c: Login + Tokens
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement login: tokens.queries.ts for refresh token CRUD, a signAccessToken() addition to jwt.ts, auth.service.ts login() (identifier lookup by username/email, bcrypt compare, suspended check, RS256 access token + random refresh token stored as its SHA-256 hash), and the login controller (strict Zod schema, sets the refresh cookie via REFRESH_COOKIE_OPTIONS). Verified all 11 checklist cases inside Docker, including decoding the issued token to confirm claims/algorithm/expiry.
+
+**What it produced:**
+
+- user-service/src/db/queries/tokens.queries.ts
+- user-service/src/utils/jwt.ts (modified)
+- user-service/src/services/auth.service.ts (modified)
+- user-service/src/controllers/auth.controller.ts (modified)
+- user-service/src/routes/auth.routes.ts (modified)
+
+**What I kept/changed/rejected:**
+I accepted all changes.
