@@ -6,15 +6,19 @@
 // Author review:
 // 25/09/2026: Stage 4d - logout + refresh
 // Author review:
+// 25/09/2026: Stage 5d - pending registration with OTP
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { config } from '../config.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
+import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
 import { signAccessToken } from '../utils/jwt.js';
+import { issueOtp } from './otp.service.js';
 
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -60,32 +64,44 @@ export async function register({
     );
   }
 
-  const existingUsername = await userQueries.findByUsername(username);
-  if (existingUsername) {
-    throw new AppError(409, 'Username already in use', 'USERNAME_TAKEN');
-  }
+  await withTransaction(async (client) => {
+    await userQueries.deleteStalePendingUsers({ username, email }, client);
 
-  const existingEmail = await userQueries.findByEmail(email);
-  if (existingEmail) {
-    throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
-  }
-
-  const passwordHash = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
-
-  try {
-    await userQueries.createUser({ username, email, passwordHash, status: 'active' });
-  } catch (err) {
-    if (isPgUniqueViolation(err)) {
-      const constraint = err.constraint ?? '';
-      if (constraint.includes('username')) {
-        throw new AppError(409, 'Username already in use', 'USERNAME_TAKEN');
-      }
-      if (constraint.includes('email')) {
-        throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
-      }
+    // A live pending user (unexpired OTP) still counts as taken: this is the reservation.
+    const existingUsername = await userQueries.findByUsername(username, client);
+    if (existingUsername) {
+      throw new AppError(409, 'Username already in use', 'USERNAME_TAKEN');
     }
-    throw err;
-  }
+
+    const existingEmail = await userQueries.findByEmail(email, client);
+    if (existingEmail) {
+      throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
+
+    let userId: string;
+    try {
+      const user = await userQueries.createUser(
+        { username, email, passwordHash, status: 'pending' },
+        client,
+      );
+      userId = user.id;
+    } catch (err) {
+      if (isPgUniqueViolation(err)) {
+        const constraint = err.constraint ?? '';
+        if (constraint.includes('username')) {
+          throw new AppError(409, 'Username already in use', 'USERNAME_TAKEN');
+        }
+        if (constraint.includes('email')) {
+          throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
+        }
+      }
+      throw err;
+    }
+
+    await issueOtp({ userId, email, purpose: 'Registration' }, client);
+  });
 }
 
 export async function login(
@@ -107,6 +123,10 @@ export async function login(
   const passwordMatches = await bcrypt.compare(password, user.password_hash);
   if (!passwordMatches) {
     throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+  }
+
+  if (user.status === 'pending') {
+    throw new AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED');
   }
 
   if (user.status === 'suspended') {

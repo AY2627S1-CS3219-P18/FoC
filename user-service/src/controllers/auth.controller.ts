@@ -8,6 +8,8 @@
 // Author review:
 // 25/09/2026: Stage 4e - verify controller
 // Author review:
+// 25/09/2026: Stage 5d - register returns OTP_SENT
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -36,7 +38,7 @@ const registerSchema = z
 export const register = asyncHandler(async (req, res) => {
   const { username, email, password } = registerSchema.parse(req.body);
   await authService.register({ username, email, password });
-  res.status(201).json({ message: 'User registered successfully', code: 'REGISTER_SUCCESS' });
+  res.status(201).json({ message: 'Verification code sent to your email', code: 'OTP_SENT' });
 });
 
 const loginSchema = z

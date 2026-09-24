@@ -200,3 +200,17 @@ Created: user-service/src/db/queries/otp.queries.ts, src/services/otp.service.ts
 
 **What I kept/changed/rejected:**
 I kept all changes.
+
+## 2026-09-25 — Stage 5d: Registration Now Creates a Pending Account
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement Stage 5d: transactional register (delete stale pending users, duplicate checks, create pending user, issue OTP), register returns 201 OTP_SENT, login rejects pending accounts with 403 ACCOUNT_NOT_VERIFIED after the credential check.
+
+**What it produced:**
+Modified: user-service/src/services/auth.service.ts, src/controllers/auth.controller.ts
+
+**What I kept/changed/rejected:**
+I kept all changes.
