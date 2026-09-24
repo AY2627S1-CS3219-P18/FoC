@@ -8,6 +8,8 @@
 // Author review:
 // 25/09/2026: Stage 5d - pending registration with OTP
 // Author review:
+// 25/09/2026: Stage 5e - verify and resend registration OTP
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -18,11 +20,14 @@ import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
 import { signAccessToken } from '../utils/jwt.js';
-import { issueOtp } from './otp.service.js';
+import * as otpQueries from '../db/queries/otp.queries.js';
+import { checkOtp, issueOtp } from './otp.service.js';
 
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+const OTP_REGEX = /^\d{6}$/;
 
 const BCRYPT_WORK_FACTOR = 10;
 
@@ -187,4 +192,76 @@ export async function refresh(refreshToken: string): Promise<{ accessToken: stri
   const accessToken = signAccessToken({ userId: user.id, role: user.role });
 
   return { accessToken };
+}
+
+export async function verifyRegistrationOtp({
+  email,
+  otp,
+}: {
+  email: string;
+  otp: string;
+}): Promise<void> {
+  if (!OTP_REGEX.test(otp)) {
+    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
+  }
+
+  const result = await withTransaction(async (client) => {
+    const user = await userQueries.findByEmail(email, client);
+    if (!user || user.status !== 'pending') {
+      throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    }
+
+    await userQueries.lockUserById(user.id, client);
+
+    const check = await checkOtp({ userId: user.id, purpose: 'Registration', otp }, client);
+    if (check.ok) {
+      const activated = await userQueries.activateUser(user.id, client);
+      if (!activated) {
+        throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+      }
+      // TODO(credit-service): emit user-registered event here
+    }
+    return check;
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
+}
+
+export async function resendRegistrationOtp({ email }: { email: string }): Promise<void> {
+  await withTransaction(async (client) => {
+    const user = await userQueries.findByEmail(email, client);
+    if (!user || user.status !== 'pending') {
+      throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
+    }
+
+    await userQueries.lockUserById(user.id, client);
+
+    const count = await otpQueries.countOtps(user.id, 'Registration', client);
+    if (count - 1 >= config.otp.maxResends) {
+      throw new AppError(
+        429,
+        'Maximum OTP resends reached. Please register again later.',
+        'OTP_RESEND_LIMIT',
+      );
+    }
+
+    const latest = await otpQueries.findLatestOtp(user.id, 'Registration', client);
+    if (latest) {
+      const availableAt = latest.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
+      const remainingMs = availableAt - Date.now();
+      if (remainingMs > 0) {
+        throw new AppError(
+          429,
+          'Please wait before requesting another OTP',
+          'OTP_RESEND_COOLDOWN',
+          Math.ceil(remainingMs / 1000),
+        );
+      }
+    }
+
+    await issueOtp({ userId: user.id, email: user.email, purpose: 'Registration' }, client);
+  });
 }
