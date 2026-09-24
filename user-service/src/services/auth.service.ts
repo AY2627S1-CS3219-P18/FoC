@@ -18,7 +18,7 @@ import { signAccessToken } from '../utils/jwt.js';
 
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 const BCRYPT_WORK_FACTOR = 10;
 

@@ -25,6 +25,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().min(1),
   SMTP_PASS: z.string().min(1),
   SMTP_FROM: z.string().min(1),
+
+  SUPER_ADMIN_USERNAME: z.string().min(1),
+  SUPER_ADMIN_EMAIL: z.string().min(1),
+  SUPER_ADMIN_PASSWORD: z.string().min(1),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -63,5 +67,10 @@ export const config = {
     user: env.SMTP_USER,
     pass: env.SMTP_PASS,
     from: env.SMTP_FROM,
+  },
+  superAdmin: {
+    username: env.SUPER_ADMIN_USERNAME,
+    email: env.SUPER_ADMIN_EMAIL,
+    password: env.SUPER_ADMIN_PASSWORD,
   },
 } as const;

@@ -6,12 +6,15 @@
 // Author review:
 // 25/09/2026: Stage 4d - logout + refresh controllers
 // Author review:
+// 25/09/2026: Stage 4e - verify controller
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
 import * as authService from '../services/auth.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { REFRESH_COOKIE_OPTIONS } from '../utils/cookies.js';
+import { verifyAccessToken } from '../utils/jwt.js';
 
 const registerSchema = z
   .object({
@@ -83,4 +86,22 @@ export const refresh = asyncHandler(async (req, res) => {
   const { accessToken } = await authService.refresh(refreshToken);
 
   res.status(200).json({ accessToken });
+});
+
+export const verify = asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ message: 'Invalid token', code: 'INVALID_TOKEN' });
+    return;
+  }
+
+  const token = authHeader.slice('Bearer '.length);
+
+  try {
+    const { user_id, role } = verifyAccessToken(token);
+    res.status(200).json({ user_id, role });
+  } catch {
+    res.status(401).json({ message: 'Invalid token', code: 'INVALID_TOKEN' });
+  }
 });

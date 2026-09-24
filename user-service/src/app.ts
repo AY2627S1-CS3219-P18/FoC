@@ -4,12 +4,15 @@
 //    Author review: No changes needed.
 // 25/09/2026: Stage 4a - app setup, middleware, error handler
 // Author review:
+// 25/09/2026: Stage 4e - super admin bootstrap on startup
+// Author review:
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { ZodError } from 'zod';
 import { config } from './config.js';
 import authRouter from './routes/auth.routes.js';
+import { bootstrapSuperAdmin } from './services/bootstrap.service.js';
 import { AppError } from './utils/AppError.js';
 
 const app = express();
@@ -47,6 +50,8 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
   res.status(500).json({ message: 'Internal server error', code: 'INTERNAL_ERROR' });
 });
+
+await bootstrapSuperAdmin();
 
 app.listen(config.server.port, () => {
   console.log(`user-service listening on port ${config.server.port}`);
