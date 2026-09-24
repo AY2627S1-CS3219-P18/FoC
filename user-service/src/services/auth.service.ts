@@ -4,6 +4,8 @@
 // Author review:
 // 25/09/2026: Stage 4c - login + tokens
 // Author review:
+// 25/09/2026: Stage 4d - logout + refresh
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -132,4 +134,37 @@ export async function login(
     refreshToken: refreshTokenPlain,
     user: { id: user.id, username: user.username, email: user.email, role: user.role },
   };
+}
+
+export async function logout(refreshToken: string): Promise<void> {
+  const tokenHash = sha256(refreshToken);
+  const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
+
+  if (!tokenRow || tokenRow.is_revoked) {
+    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+  }
+
+  await tokenQueries.revokeRefreshToken(tokenHash);
+}
+
+export async function refresh(refreshToken: string): Promise<{ accessToken: string }> {
+  const tokenHash = sha256(refreshToken);
+  const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
+
+  if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < Date.now()) {
+    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+  }
+
+  const user = await userQueries.findById(tokenRow.user_id);
+  if (!user) {
+    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+  }
+
+  if (user.status === 'suspended') {
+    throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
+  }
+
+  const accessToken = signAccessToken({ userId: user.id, role: user.role });
+
+  return { accessToken };
 }
