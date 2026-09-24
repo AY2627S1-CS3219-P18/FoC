@@ -10,6 +10,8 @@
 // Author review:
 // 25/09/2026: Stage 5d - register returns OTP_SENT
 // Author review:
+// 25/09/2026: Stage 5e - verifyOtp and resendOtp controllers
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -106,4 +108,61 @@ export const verify = asyncHandler(async (req, res) => {
   } catch {
     res.status(401).json({ message: 'Invalid token', code: 'INVALID_TOKEN' });
   }
+});
+
+// API-facing purpose -> DB enum value. Extend here in later stages.
+const PURPOSE_MAP = { registration: 'Registration' } as const;
+
+const purposeSchema = z.enum(['registration'], {
+  errorMap: (issue) => {
+    if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
+    if (issue.code === 'invalid_type' && issue.received === 'undefined') {
+      return { message: 'Purpose is required' };
+    }
+    return { message: 'Purpose must be a string' };
+  },
+});
+
+const emailField = z.string({
+  required_error: 'Email is required',
+  invalid_type_error: 'Email must be a string',
+});
+
+const verifyOtpSchema = z
+  .object({
+    email: emailField,
+    otp: z.string({
+      required_error: 'OTP is required',
+      invalid_type_error: 'OTP must be a string',
+    }),
+    purpose: purposeSchema,
+  })
+  .strict();
+
+const resendOtpSchema = z.object({ email: emailField, purpose: purposeSchema }).strict();
+
+export const verifyOtp = asyncHandler(async (req, res) => {
+  const { email, otp, purpose } = verifyOtpSchema.parse(req.body);
+  switch (PURPOSE_MAP[purpose]) {
+    case 'Registration':
+      await authService.verifyRegistrationOtp({ email, otp });
+      break;
+  }
+  res.status(200).json({
+    message: 'Registration complete. You can now log in.',
+    code: 'REGISTER_SUCCESS',
+  });
+});
+
+export const resendOtp = asyncHandler(async (req, res) => {
+  const { email, purpose } = resendOtpSchema.parse(req.body);
+  switch (PURPOSE_MAP[purpose]) {
+    case 'Registration':
+      await authService.resendRegistrationOtp({ email });
+      break;
+  }
+  res.status(200).json({
+    message: 'A new verification code has been sent to your email',
+    code: 'OTP_SENT',
+  });
 });

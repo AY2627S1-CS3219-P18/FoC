@@ -29,6 +29,9 @@ app.use('/auth', authRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {
+    if (err.retryAfterSeconds !== undefined) {
+      res.set('Retry-After', String(err.retryAfterSeconds));
+    }
     res.status(err.status).json({ message: err.message, code: err.code });
     return;
   }

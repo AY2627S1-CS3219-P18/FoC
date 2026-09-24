@@ -214,3 +214,16 @@ Modified: user-service/src/services/auth.service.ts, src/controllers/auth.contro
 
 **What I kept/changed/rejected:**
 I kept all changes.
+
+## 2026-09-25 — Stage 5e: Verify OTP + Resend OTP Endpoints
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement Stage 5e: public POST /auth/verify-otp and /auth/resend-otp with strict Zod validation, verifyRegistrationOtp/resendRegistrationOtp in the service layer (row lock, attempt persistence, resend limit and cooldown), and Retry-After support via AppError.retryAfterSeconds.
+
+**What it produced:**
+Modified: user-service/src/utils/AppError.ts, src/app.ts, src/routes/auth.routes.ts, src/services/auth.service.ts, src/controllers/auth.controller.ts
+
+**What I kept/changed/rejected:**
