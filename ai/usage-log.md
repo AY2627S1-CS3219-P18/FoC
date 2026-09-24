@@ -186,3 +186,17 @@ Created: user-service/src/services/email.service.ts
 
 **What I kept/changed/rejected:**
 I kept all changes.
+
+## 2026-09-25 — Stage 5c: OTP Queries + Service
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Scope:** Implementation code
+
+**What I prompted:**
+Implement Stage 5c: otp.queries.ts (create/invalidate/findLatest/count/increment/consume), otp.service.ts (issueOtp, checkOtp returning {ok:false} instead of throwing on mismatch), plus Vitest tests for checkOtp branching.
+
+**What it produced:**
+Created: user-service/src/db/queries/otp.queries.ts, src/services/otp.service.ts, src/services/otp.service.test.ts
+
+**What I kept/changed/rejected:**
+I kept all changes.
