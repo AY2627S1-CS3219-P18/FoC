@@ -303,3 +303,27 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #4: Forgot Password email template
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 4 (specified in Stage 6a, "Update `src/services/email.service.ts`")
+
+**Prompts (exact):**
+
+> yes let's do 4
+
+**Key responses:**
+Added a `Forgot Password` entry to the `PURPOSE_COPY` map in `email.service.ts` with subject "Your FoC password reset code", as specified. The instructions give no intro text, so the AI wrote the one-line intro "Use the code below to reset your FoC password." in the same shape as the registration one; the body still contains the OTP and the expiry from `config.otp.ttlMinutes`, with no links. The dev-log fallback is unchanged. `npx tsc --noEmit` passes. No email was sent, so the template is unverified.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+The intro sentence wording was not specified in `instructions.md`; the AI supplied it. The team may want to reword it.
+
+**What I kept/changed/rejected:**
+Okay with the wording used.
