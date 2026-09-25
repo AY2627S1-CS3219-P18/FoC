@@ -96,10 +96,13 @@ export async function createSuperAdmin(
   db: Queryable = pool,
 ): Promise<UserRow> {
   const result = await db.query<UserRow>(
-    `INSERT INTO users (username, email, password_hash, status, role) VALUES ($1, $2, $3, 'active', 'super admin') RETURNING *`,
-    [username, email, passwordHash],
-  );
-  return result.rows[0]!;
+  `INSERT INTO users (username, email, password_hash, status, role)
+   VALUES ($1, $2, $3, 'active', 'super admin')
+   ON CONFLICT DO NOTHING
+   RETURNING *`,
+  [username, email, passwordHash],
+);
+  return result.rows[0] ?? null;
 }
 
 export async function lockUserById(

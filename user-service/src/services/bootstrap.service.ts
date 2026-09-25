@@ -24,11 +24,21 @@ export async function bootstrapSuperAdmin(): Promise<void> {
 
   const passwordHash = await bcrypt.hash(config.superAdmin.password, BCRYPT_WORK_FACTOR);
 
-  await userQueries.createSuperAdmin({
+  const created = await userQueries.createSuperAdmin({
     username: config.superAdmin.username.trim().toLowerCase(),
     email: config.superAdmin.email.trim().toLowerCase(),
     passwordHash,
   });
 
-  console.log(`Super admin bootstrap: created super admin user '${config.superAdmin.username}'`);
+  if (created) {
+    console.log(`Super admin bootstrap: created super admin user '${config.superAdmin.username}'`);
+  }
+
+  if (await userQueries.findSuperAdmin()) {
+    return;
+}
+throw new Error(
+  'SUPER_ADMIN_USERNAME or SUPER_ADMIN_EMAIL is already used by a non-super-admin account.'
+);
+ 
 }
