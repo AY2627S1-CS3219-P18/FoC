@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5c - OTP queries
 // Author review:
+// 25/09/2026: Stage 6 pre-work - countOtps optional rolling window (sinceMinutes)
+// Author review:
 
 import type { Queryable } from "../transaction.js";
 
@@ -78,15 +80,26 @@ export async function findLatestOtp(
   return result.rows[0] ?? null;
 }
 
+// Without sinceMinutes, counts every row (registration). With it, counts only rows
+// created within that many minutes, compared against the database clock.
 export async function countOtps(
   userId: string,
   purpose: OtpPurpose,
   db: Queryable,
+  sinceMinutes?: number,
 ): Promise<number> {
-  const result = await db.query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM users_otps WHERE user_id = $1 AND purpose = $2`,
-    [userId, purpose],
-  );
+  const result =
+    sinceMinutes === undefined
+      ? await db.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM users_otps WHERE user_id = $1 AND purpose = $2`,
+          [userId, purpose],
+        )
+      : await db.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM users_otps
+           WHERE user_id = $1 AND purpose = $2
+             AND created_at > clock_timestamp() - make_interval(mins => $3)`,
+          [userId, purpose, sinceMinutes],
+        );
   return Number(result.rows[0]!.count);
 }
 

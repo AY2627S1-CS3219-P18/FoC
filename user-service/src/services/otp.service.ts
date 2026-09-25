@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5c - OTP service
 // Author review:
+// 25/09/2026: Stage 6 pre-work - checkOtp optional consume flag
+// Author review:
 
 import { config } from "../config.js";
 import * as otpQueries from "../db/queries/otp.queries.js";
@@ -61,6 +63,7 @@ export async function checkOtp(
     otp,
   }: { userId: string; purpose: OtpPurpose; otp: string },
   db: Queryable,
+  consume: boolean = true,
 ): Promise<{ ok: boolean }> {
   const row = await otpQueries.findLatestOtp(userId, purpose, db);
   if (!row || row.consumed_at) {
@@ -86,9 +89,12 @@ export async function checkOtp(
     return { ok: false };
   }
 
-  const consumed = await otpQueries.consumeOtp(row.id, db);
-  if (!consumed) {
-    throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
+  // consume=false validates the code without using it up (wrong guesses still count above).
+  if (consume) {
+    const consumed = await otpQueries.consumeOtp(row.id, db);
+    if (!consumed) {
+      throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
+    }
   }
   return { ok: true };
 }

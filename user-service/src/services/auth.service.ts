@@ -10,6 +10,12 @@
 // Author review:
 // 25/09/2026: Stage 5e - verify and resend registration OTP
 // Author review:
+// 25/09/2026: Stage 6 pre-work - login creates refresh token under user row lock
+// Author review:
+// 25/09/2026: Stage 6 pre-work - registration resend-limit message text
+// Author review:
+// 25/09/2026: Stage 6 pre-work - refresh locks user then token in a transaction
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -138,23 +144,39 @@ export async function login(
     throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
   }
 
-  const accessToken = signAccessToken({ userId: user.id, role: user.role });
-
   const refreshTokenPlain = randomBytes(32).toString('hex');
   const refreshTokenHash = sha256(refreshTokenPlain);
 
-  await tokenQueries.createRefreshToken({
-    userId: user.id,
-    tokenHash: refreshTokenHash,
-    ttlDays: config.jwt.refreshTokenTtlDays,
-    userAgent,
-    ipAddress,
+  // The password was verified before locking (bcrypt is slow). Lock the user and re-check,
+  // so a reset or suspend that committed in between cannot be followed by a new refresh token.
+  const role = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(user.id, client);
+    if (!locked || locked.password_hash !== user.password_hash) {
+      throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+    }
+    if (locked.status === 'suspended') {
+      throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
+    }
+
+    await tokenQueries.createRefreshToken(
+      {
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        ttlDays: config.jwt.refreshTokenTtlDays,
+        userAgent,
+        ipAddress,
+      },
+      client,
+    );
+    return locked.role;
   });
+
+  const accessToken = signAccessToken({ userId: user.id, role });
 
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { id: user.id, username: user.username, email: user.email, role: user.role },
+    user: { id: user.id, username: user.username, email: user.email, role },
   };
 }
 
@@ -178,16 +200,33 @@ if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < tokenRow
     throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   }
 
-  const user = await userQueries.findById(tokenRow.user_id);
-  if (!user) {
-    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
-  }
+  // Lock order: user row first, then token row (see the lock ordering rule in Stage 4d).
+  // Re-check on the locked rows, so a logout, reset or suspend that committed while this
+  // request waited cannot be followed by a freshly issued access token.
+  const { id, role } = await withTransaction(async (client) => {
+    const lockedUser = await userQueries.lockUserById(tokenRow.user_id, client);
+    if (!lockedUser) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
 
-  if (user.status === 'suspended') {
-    throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
-  }
+    const lockedToken = await tokenQueries.lockRefreshToken(tokenHash, client);
+    if (
+      !lockedToken ||
+      lockedToken.is_revoked ||
+      lockedToken.expires_at.getTime() < lockedToken.db_now.getTime()
+    ) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
 
-  const accessToken = signAccessToken({ userId: user.id, role: user.role });
+    if (lockedUser.status === 'suspended') {
+      throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
+    }
+
+    // Role comes from the freshly locked row, so a promotion applies on the next refresh.
+    return { id: lockedUser.id, role: lockedUser.role };
+  });
+
+  const accessToken = signAccessToken({ userId: id, role });
 
   return { accessToken };
 }
@@ -249,7 +288,7 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
     if (count - 1 >= config.otp.maxResends) {
       throw new AppError(
         429,
-        'Maximum OTP resends reached. Please register again later.',
+        'Maximum OTP resends reached. Please try registering again in about 10 minutes.',
         'OTP_RESEND_LIMIT',
       );
     }

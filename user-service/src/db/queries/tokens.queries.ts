@@ -4,6 +4,8 @@
 // Author review:
 // 25/09/2026: Stage 5 - optional db param, lockRefreshToken for atomic logout
 // Author review:
+// 25/09/2026: Stage 6 pre-work - lockRefreshToken also returns db_now
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -60,9 +62,9 @@ export async function findRefreshToken(
 export async function lockRefreshToken(
   tokenHash: string,
   db: Queryable = pool,
-): Promise<RefreshTokenRow | null> {
-  const result = await db.query<RefreshTokenRow>(
-    `SELECT * FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
+): Promise<RefreshTokenRowWithNow | null> {
+  const result = await db.query<RefreshTokenRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
     [tokenHash],
   );
   return result.rows[0] ?? null;

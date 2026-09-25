@@ -74,3 +74,11 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-25 | user-service | Stage 5c: OTP Queries + Service | OTP queries, issue/check service, Vitest tests |
 | 2026-09-25 | user-service | Stage 5d: Registration Creates a Pending Account | Transactional register creating pending user; login rejects pending |
 | 2026-09-25 | user-service | Stage 5e: Verify OTP + Resend OTP Endpoints | Public verify-otp and resend-otp endpoints with limits and cooldown |
+| 2026-09-25 | user-service | Stage 6 pre-work #1: OTP resend window config | Added OTP_RESEND_WINDOW_MINUTES to env files and config |
+| 2026-09-25 | user-service | Stage 6 pre-work #2: Windowed countOtps | countOtps gains optional rolling-window parameter; registration unchanged |
+| 2026-09-25 | user-service | Stage 6 pre-work #3: checkOtp consume flag | checkOtp gains optional consume flag; registration unchanged |
+| 2026-09-25 | user-service | Stage 6 pre-work #4: Forgot Password email template | Added Forgot Password subject and intro to the email template map |
+| 2026-09-25 | user-service | Stage 6 pre-work #6: Login race-safety | Login creates refresh token under user row lock with hash and status re-check |
+| 2026-09-25 | user-service | Stage 6 pre-work #7: Registration resend-limit message | Updated registration resend-limit message text |
+| 2026-09-25 | user-service | Stage 6 pre-work #8: Locked refresh | Refresh locks user then token in a transaction; lockRefreshToken returns db_now |
+| 2026-09-25 | user-service | Stage 6 pre-work #9: Logout route without authenticate | Logout route no longer requires an access token |

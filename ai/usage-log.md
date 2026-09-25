@@ -227,3 +227,206 @@ Implement Stage 5e: public POST /auth/verify-otp and /auth/resend-otp with stric
 Modified: user-service/src/utils/AppError.ts, src/app.ts, src/routes/auth.routes.ts, src/services/auth.service.ts, src/controllers/auth.controller.ts
 
 **What I kept/changed/rejected:**
+
+## 2026-09-25 — Stage 6 pre-work #1: OTP resend window config
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** explain, generate
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 1 (specified in Stage 5a: "Update `.env.example` and `.env`", "Update `src/config.ts`")
+
+**Prompts (exact):**
+
+> read thru the code base and instructions.md and understand what's going on. don't start coding first.
+
+> okay let's work on the Changes to already-implemented code (do these first). do them one by one and let me know what you did after each one before asking for permission to proceed. the one that's under stage 6.
+
+**Key responses:**
+Read `instructions.md` and the `user-service` source, and summarised the codebase and where it differs from the instructions (no code changes in that turn). Then implemented row 1 only: added `OTP_RESEND_WINDOW_MINUTES=60` to the env files, added it to the Zod schema in `config.ts` (coerced positive integer), and exposed it as `config.otp.resendWindowMinutes`. `npx tsc --noEmit` reported one error in `users.queries.ts` (`createSuperAdmin` return type), which was already present and was not changed. The app was not run, so startup behaviour is unverified. Rows 2–9 are not done yet.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/.env.example` (modified; no header added)
+- `user-service/.env` (modified; gitignored, no header)
+
+**Deviations / questions raised for the team:**
+Pre-existing typecheck error at `users.queries.ts:105` (`createSuperAdmin` returns `UserRow | null` but is typed `Promise<UserRow>`); left unchanged pending a decision.
+
+**What I kept/changed/rejected:**
+Had to merge in the changes in a PR for the questions, but accepted everything else.
+
+## 2026-09-25 — Stage 6 pre-work #2: Windowed countOtps
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 2 (specified in Stage 5c, `countOtps`)
+
+**Prompts (exact):**
+
+> let's go with 2.
+
+**Key responses:**
+Added an optional `sinceMinutes` parameter to `countOtps` in `otp.queries.ts`. Without it the query is unchanged and counts all rows (registration, as before). With it, the query counts only rows where `created_at > clock_timestamp() - make_interval(mins => $3)`. The only existing caller (`resendRegistrationOtp`) does not pass it, so registration behaviour is unchanged. `npx tsc --noEmit` passes with no errors (the `createSuperAdmin` error noted in the previous entry no longer appears; I did not change that file). The query was not run against a database, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #3: checkOtp consume flag
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 3 (specified in Stage 6a)
+
+**Prompts (exact):**
+
+> let's do 3.
+
+**Key responses:**
+Added an optional third parameter `consume: boolean = true` to `checkOtp` in `otp.service.ts`. When `false`, a correct guess returns `{ ok: true }` without calling `consumeOtp`. A wrong guess still increments attempts and returns `{ ok: false }` regardless of the flag. The expiry, attempts-exceeded and missing/consumed-OTP checks are unchanged. The only existing caller (`verifyRegistrationOtp`) does not pass the argument, so registration behaviour is unchanged. `npx tsc --noEmit` passes. The `consume: false` path is not exercised yet (no caller until Stage 6c), so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/otp.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #4: Forgot Password email template
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 4 (specified in Stage 6a, "Update `src/services/email.service.ts`")
+
+**Prompts (exact):**
+
+> yes let's do 4
+
+**Key responses:**
+Added a `Forgot Password` entry to the `PURPOSE_COPY` map in `email.service.ts` with subject "Your FoC password reset code", as specified. The instructions give no intro text, so the AI wrote the one-line intro "Use the code below to reset your FoC password." in the same shape as the registration one; the body still contains the OTP and the expiry from `config.otp.ttlMinutes`, with no links. The dev-log fallback is unchanged. `npx tsc --noEmit` passes. No email was sent, so the template is unverified.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+The intro sentence wording was not specified in `instructions.md`; the AI supplied it. The team may want to reword it.
+
+**What I kept/changed/rejected:**
+Okay with the wording used.
+
+## 2026-09-25 — Stage 6 pre-work #6: Login race-safety
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 6 (specified in Stage 4c, "Race-safety" bullet)
+
+**Prompts (exact):**
+
+> let's skip 5 first. what's 6?
+
+> yes let's do 6
+
+**Key responses:**
+Changed `login` in `auth.service.ts` so the refresh token is created inside `withTransaction` after locking the user row. The password is still verified before the lock. Inside the transaction: `lockUserById(user.id, client)`; if the locked row is null or its `password_hash` differs from the earlier read, throw `401 INVALID_CREDENTIALS`; if it is `suspended`, throw `403 ACCOUNT_SUSPENDED`; otherwise `createRefreshToken(..., client)`. The role for the access token and the response comes from the locked row, and the access token is signed after the transaction commits. The pending check and its order (401, then pending 403, then suspended 403) are unchanged. The unused `Date.now()`-based `expiresAt` variable had already been removed from the file before this change. Change #5 was deliberately skipped for now (to be done with 6c/6e, since it needs service functions that do not exist yet). `npx tsc --noEmit` passes. The race itself (login concurrent with reset or suspend) was not exercised, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+Change #5 skipped for now at the user's request; because it has dependencies in Stage 6.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #7: Registration resend-limit message
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 7 (specified in Stage 5e, `resendRegistrationOtp` step 3)
+
+**Prompts (exact):**
+
+> yes do 7
+
+**Key responses:**
+Changed the `OTP_RESEND_LIMIT` message in `resendRegistrationOtp` (`auth.service.ts`) from "Maximum OTP resends reached. Please register again later." to "Maximum OTP resends reached. Please try registering again in about 10 minutes.", as specified. Only the text changed; the status code, error code and limit logic are unchanged. The 10 minutes is hard-coded in the message and matches `OTP_TTL_MINUTES=10`, as `instructions.md` notes it must be updated by hand if that value changes. `npx tsc --noEmit` passes. The endpoint was not called, so the message is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #8: Locked refresh
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 8 (specified in Stage 4d, `refresh` and the lock ordering rule)
+
+**Prompts (exact):**
+
+> 8 now! also, for all the prev parts, the header should say pre-work for 6
+
+**Key responses:**
+Renamed the header entries added for changes #1–#4, #6 and #7 from "Stage 6 - ..." to "Stage 6 pre-work - ..." in `config.ts`, `otp.queries.ts`, `otp.service.ts`, `email.service.ts` and `auth.service.ts`. Then implemented #8. `lockRefreshToken` in `tokens.queries.ts` now selects `clock_timestamp() AS db_now` and returns `RefreshTokenRowWithNow`; `logout`, its only other caller, is unaffected. `refresh` in `auth.service.ts` keeps its plain early-exit read (not found, revoked or expired against `db_now` gives `401 INVALID_REFRESH_TOKEN`), then runs `withTransaction`: lock the user row first (null gives 401), then the token row via `lockRefreshToken`, and re-check revoked or expired on the locked token (401). It then throws `403 ACCOUNT_SUSPENDED` if the locked user is suspended, and otherwise issues the access token from the locked user's id and role. The existing expiry comparison (`expires_at < db_now`) was kept as is. `npx tsc --noEmit` passes. The lock behaviour (refresh concurrent with logout, reset or suspend, and the no-deadlock check in Stage 4d verification) was not exercised, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/db/queries/tokens.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/config.ts` (modified, header text only)
+- `user-service/src/db/queries/otp.queries.ts` (modified, header text only)
+- `user-service/src/services/otp.service.ts` (modified, header text only)
+- `user-service/src/services/email.service.ts` (modified, header text only)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #9: Logout route without authenticate
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 9 (specified in Stage 4d, "Update `src/controllers/auth.controller.ts`")
+
+**Prompts (exact):**
+
+> 9 now
+
+**Key responses:**
+Changed the logout route in `auth.routes.ts` to `router.post('/logout', authController.logout)`, so logout depends only on the refresh cookie and still works with an expired access token. Also removed the now-unused `authenticate` import from that file (not listed in the instructions, done to avoid an unused-import warning). The `authenticate` middleware file itself is untouched and has no consumers until `GET /users/me` (Stage 7). The controller already reads the refresh cookie, so nothing else changed. `npx tsc --noEmit` passes. The route was not called, so the behaviour is unverified at runtime. Change #5 remains skipped and is planned to be done with Stages 6c/6e.
+
+**Files:**
+
+- `user-service/src/routes/auth.routes.ts` (modified)
+
+**Deviations / questions raised for the team:**
+Removed the unused `authenticate` import in `auth.routes.ts`, which the instructions did not explicitly list.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
