@@ -6,6 +6,8 @@
 // Author review:
 // 25/09/2026: Stage 6 pre-work - lockRefreshToken also returns db_now
 // Author review:
+// 25/09/2026: Stage 6d - revokeAllRefreshTokensForUser
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -77,5 +79,17 @@ export async function revokeRefreshToken(
   await db.query(
     `UPDATE refresh_tokens SET is_revoked = TRUE, revoked_at = NOW() WHERE token_hash = $1`,
     [tokenHash],
+  );
+}
+
+// Call inside the same transaction that changes the password or suspends the user.
+export async function revokeAllRefreshTokensForUser(
+  userId: string,
+  db: Queryable = pool,
+): Promise<void> {
+  await db.query(
+    `UPDATE refresh_tokens SET is_revoked = TRUE, revoked_at = NOW()
+     WHERE user_id = $1 AND is_revoked = FALSE`,
+    [userId],
   );
 }

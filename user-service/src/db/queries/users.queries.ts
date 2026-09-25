@@ -6,6 +6,8 @@
 // Author review:
 // 25/09/2026: Stage 5a - optional db param, status param, lock/activate/stale-cleanup queries
 // Author review:
+// 25/09/2026: Stage 6d - updatePasswordHash
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -145,5 +147,16 @@ export async function deleteStalePendingUsers(
        FOR UPDATE SKIP LOCKED
      )`,
     [username, email],
+  );
+}
+
+export async function updatePasswordHash(
+  userId: string,
+  passwordHash: string,
+  db: Queryable = pool,
+): Promise<void> {
+  await db.query(
+    `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+    [userId, passwordHash],
   );
 }
