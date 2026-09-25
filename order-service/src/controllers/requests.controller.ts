@@ -9,7 +9,7 @@ export const createRequest = (req: Request, res: Response) => {
   const details: createRequestPayload = req.body;
   const response = requestsService.createRequest(details);
   if (response !== OK) {
-    console.log(response);
+    console.log(ErrorMessage[response]);
   }
   res.status(200).json({ message: 'hi' });
 };

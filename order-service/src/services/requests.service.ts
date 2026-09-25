@@ -7,7 +7,6 @@ export const createRequest = (
   requestPayload: createRequestPayload,
 ): CreateRequestResult => {
   // TODO: handle multiple missing fields
-  console.log('CREATING REQUEST');
   console.log('VALIDATING PAYLOAD');
   if (!requestPayload.supplier) {
     return ErrorCode.MISSING_SUPPLIER;
@@ -24,5 +23,7 @@ export const createRequest = (
   if (requestPayload.credits <= 0) {
     return ErrorCode.INVALID_CREDITS_OFFERED;
   }
+  console.log('CREATING REQUEST');
+  // TODO: Create request
   return OK;
 };
