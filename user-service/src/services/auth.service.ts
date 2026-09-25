@@ -18,6 +18,8 @@
 // Author review:
 // 25/09/2026: Stage 6b - forgotPassword
 // Author review:
+// 25/09/2026: Stage 6c - verifyForgotPasswordOtp
+// Author review:
 // 25/09/2026: Stage 6d - resetPassword
 // Author review:
 
@@ -365,6 +367,53 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
         );
     }
   });
+}
+
+// Non-consuming check: the code stays valid until reset-password consumes it.
+export async function verifyForgotPasswordOtp({
+  email,
+  otp,
+}: {
+  email: string;
+  otp: string;
+}): Promise<void> {
+  if (!OTP_REGEX.test(otp)) {
+    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
+  }
+
+  const result = await withTransaction(async (client) => {
+    const user = await userQueries.findByEmail(email, client);
+    if (!user) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (user.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    // Re-check after the lock: the pre-lock read can be stale. Suspended accounts are allowed.
+    const locked = await userQueries.lockUserById(user.id, client);
+    if (!locked) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (locked.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    return checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client, false);
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
 }
 
 export async function resetPassword({
