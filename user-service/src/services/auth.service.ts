@@ -10,6 +10,8 @@
 // Author review:
 // 25/09/2026: Stage 5e - verify and resend registration OTP
 // Author review:
+// 25/09/2026: Stage 6 - login creates refresh token under user row lock
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -138,22 +140,39 @@ export async function login(
     throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
   }
 
-  const accessToken = signAccessToken({ userId: user.id, role: user.role });
   const refreshTokenPlain = randomBytes(32).toString('hex');
   const refreshTokenHash = sha256(refreshTokenPlain);
 
-  await tokenQueries.createRefreshToken({
-    userId: user.id,
-    tokenHash: refreshTokenHash,
-    ttlDays: config.jwt.refreshTokenTtlDays,
-    userAgent,
-    ipAddress,
+  // The password was verified before locking (bcrypt is slow). Lock the user and re-check,
+  // so a reset or suspend that committed in between cannot be followed by a new refresh token.
+  const role = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(user.id, client);
+    if (!locked || locked.password_hash !== user.password_hash) {
+      throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+    }
+    if (locked.status === 'suspended') {
+      throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
+    }
+
+    await tokenQueries.createRefreshToken(
+      {
+        userId: user.id,
+        tokenHash: refreshTokenHash,
+        ttlDays: config.jwt.refreshTokenTtlDays,
+        userAgent,
+        ipAddress,
+      },
+      client,
+    );
+    return locked.role;
   });
+
+  const accessToken = signAccessToken({ userId: user.id, role });
 
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { id: user.id, username: user.username, email: user.email, role: user.role },
+    user: { id: user.id, username: user.username, email: user.email, role },
   };
 }
 

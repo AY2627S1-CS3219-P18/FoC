@@ -78,3 +78,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-25 | user-service | Stage 6 pre-work #2: Windowed countOtps | countOtps gains optional rolling-window parameter; registration unchanged |
 | 2026-09-25 | user-service | Stage 6 pre-work #3: checkOtp consume flag | checkOtp gains optional consume flag; registration unchanged |
 | 2026-09-25 | user-service | Stage 6 pre-work #4: Forgot Password email template | Added Forgot Password subject and intro to the email template map |
+| 2026-09-25 | user-service | Stage 6 pre-work #6: Login race-safety | Login creates refresh token under user row lock with hash and status re-check |

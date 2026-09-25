@@ -327,3 +327,29 @@ The intro sentence wording was not specified in `instructions.md`; the AI suppli
 
 **What I kept/changed/rejected:**
 Okay with the wording used.
+
+## 2026-09-25 — Stage 6 pre-work #6: Login race-safety
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 6 (specified in Stage 4c, "Race-safety" bullet)
+
+**Prompts (exact):**
+
+> let's skip 5 first. what's 6?
+
+> yes let's do 6
+
+**Key responses:**
+Changed `login` in `auth.service.ts` so the refresh token is created inside `withTransaction` after locking the user row. The password is still verified before the lock. Inside the transaction: `lockUserById(user.id, client)`; if the locked row is null or its `password_hash` differs from the earlier read, throw `401 INVALID_CREDENTIALS`; if it is `suspended`, throw `403 ACCOUNT_SUSPENDED`; otherwise `createRefreshToken(..., client)`. The role for the access token and the response comes from the locked row, and the access token is signed after the transaction commits. The pending check and its order (401, then pending 403, then suspended 403) are unchanged. The unused `Date.now()`-based `expiresAt` variable had already been removed from the file before this change. Change #5 was deliberately skipped for now (to be done with 6c/6e, since it needs service functions that do not exist yet). `npx tsc --noEmit` passes. The race itself (login concurrent with reset or suspend) was not exercised, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+Change #5 skipped for now at the user's request; because it has dependencies in Stage 6.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
