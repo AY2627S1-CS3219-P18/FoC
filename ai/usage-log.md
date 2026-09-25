@@ -377,3 +377,32 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #8: Locked refresh
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 8 (specified in Stage 4d, `refresh` and the lock ordering rule)
+
+**Prompts (exact):**
+
+> 8 now! also, for all the prev parts, the header should say pre-work for 6
+
+**Key responses:**
+Renamed the header entries added for changes #1–#4, #6 and #7 from "Stage 6 - ..." to "Stage 6 pre-work - ..." in `config.ts`, `otp.queries.ts`, `otp.service.ts`, `email.service.ts` and `auth.service.ts`. Then implemented #8. `lockRefreshToken` in `tokens.queries.ts` now selects `clock_timestamp() AS db_now` and returns `RefreshTokenRowWithNow`; `logout`, its only other caller, is unaffected. `refresh` in `auth.service.ts` keeps its plain early-exit read (not found, revoked or expired against `db_now` gives `401 INVALID_REFRESH_TOKEN`), then runs `withTransaction`: lock the user row first (null gives 401), then the token row via `lockRefreshToken`, and re-check revoked or expired on the locked token (401). It then throws `403 ACCOUNT_SUSPENDED` if the locked user is suspended, and otherwise issues the access token from the locked user's id and role. The existing expiry comparison (`expires_at < db_now`) was kept as is. `npx tsc --noEmit` passes. The lock behaviour (refresh concurrent with logout, reset or suspend, and the no-deadlock check in Stage 4d verification) was not exercised, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/db/queries/tokens.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/config.ts` (modified, header text only)
+- `user-service/src/db/queries/otp.queries.ts` (modified, header text only)
+- `user-service/src/services/otp.service.ts` (modified, header text only)
+- `user-service/src/services/email.service.ts` (modified, header text only)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.

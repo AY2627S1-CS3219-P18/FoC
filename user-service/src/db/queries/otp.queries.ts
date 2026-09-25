@@ -2,7 +2,7 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5c - OTP queries
 // Author review:
-// 25/09/2026: Stage 6 - countOtps optional rolling window (sinceMinutes)
+// 25/09/2026: Stage 6 pre-work - countOtps optional rolling window (sinceMinutes)
 // Author review:
 
 import type { Queryable } from "../transaction.js";

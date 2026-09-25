@@ -2,7 +2,7 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5b - email service
 // Author review:
-// 25/09/2026: Stage 6 - Forgot Password email template
+// 25/09/2026: Stage 6 pre-work - Forgot Password email template
 // Author review:
 
 import nodemailer from "nodemailer";

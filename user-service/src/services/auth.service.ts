@@ -10,9 +10,11 @@
 // Author review:
 // 25/09/2026: Stage 5e - verify and resend registration OTP
 // Author review:
-// 25/09/2026: Stage 6 - login creates refresh token under user row lock
+// 25/09/2026: Stage 6 pre-work - login creates refresh token under user row lock
 // Author review:
-// 25/09/2026: Stage 6 - registration resend-limit message text
+// 25/09/2026: Stage 6 pre-work - registration resend-limit message text
+// Author review:
+// 25/09/2026: Stage 6 pre-work - refresh locks user then token in a transaction
 // Author review:
 
 import { randomBytes } from 'node:crypto';
@@ -198,16 +200,33 @@ if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < tokenRow
     throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   }
 
-  const user = await userQueries.findById(tokenRow.user_id);
-  if (!user) {
-    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
-  }
+  // Lock order: user row first, then token row (see the lock ordering rule in Stage 4d).
+  // Re-check on the locked rows, so a logout, reset or suspend that committed while this
+  // request waited cannot be followed by a freshly issued access token.
+  const { id, role } = await withTransaction(async (client) => {
+    const lockedUser = await userQueries.lockUserById(tokenRow.user_id, client);
+    if (!lockedUser) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
 
-  if (user.status === 'suspended') {
-    throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
-  }
+    const lockedToken = await tokenQueries.lockRefreshToken(tokenHash, client);
+    if (
+      !lockedToken ||
+      lockedToken.is_revoked ||
+      lockedToken.expires_at.getTime() < lockedToken.db_now.getTime()
+    ) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
 
-  const accessToken = signAccessToken({ userId: user.id, role: user.role });
+    if (lockedUser.status === 'suspended') {
+      throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
+    }
+
+    // Role comes from the freshly locked row, so a promotion applies on the next refresh.
+    return { id: lockedUser.id, role: lockedUser.role };
+  });
+
+  const accessToken = signAccessToken({ userId: id, role });
 
   return { accessToken };
 }

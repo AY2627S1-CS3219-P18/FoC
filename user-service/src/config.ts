@@ -4,7 +4,7 @@
 //    Author review: No changes needed.
 //  2026-09-25: Stage 5a - OTP config, SMTP optional in development
 //    Author review:
-//  2026-09-25: Stage 6 - add OTP resend window config
+//  2026-09-25: Stage 6 pre-work - add OTP resend window config
 //    Author review:
 
 import { z } from "zod";

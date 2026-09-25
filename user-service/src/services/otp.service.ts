@@ -2,7 +2,7 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5c - OTP service
 // Author review:
-// 25/09/2026: Stage 6 - checkOtp optional consume flag
+// 25/09/2026: Stage 6 pre-work - checkOtp optional consume flag
 // Author review:
 
 import { config } from "../config.js";
