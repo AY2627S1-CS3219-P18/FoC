@@ -279,3 +279,27 @@ None
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #3: checkOtp consume flag
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 3 (specified in Stage 6a)
+
+**Prompts (exact):**
+
+> let's do 3.
+
+**Key responses:**
+Added an optional third parameter `consume: boolean = true` to `checkOtp` in `otp.service.ts`. When `false`, a correct guess returns `{ ok: true }` without calling `consumeOtp`. A wrong guess still increments attempts and returns `{ ok: false }` regardless of the flag. The expiry, attempts-exceeded and missing/consumed-OTP checks are unchanged. The only existing caller (`verifyRegistrationOtp`) does not pass the argument, so registration behaviour is unchanged. `npx tsc --noEmit` passes. The `consume: false` path is not exercised yet (no caller until Stage 6c), so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/otp.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
