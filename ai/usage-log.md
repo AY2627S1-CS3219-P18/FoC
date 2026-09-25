@@ -507,7 +507,6 @@ Row 5 split across stages as described above: the verify-otp side is done here, 
 **What I kept/changed/rejected:**
 Approved all changes.
 
-
 ## 2026-09-25 — Stage 6d: POST /auth/reset-password
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -536,6 +535,33 @@ Added `revokeAllRefreshTokensForUser(userId, db)` to `tokens.queries.ts` (sets `
 Extracted the registration password message into a `PASSWORD_MESSAGE` constant (text unchanged) so `resetPassword` reuses it; this touches `register`, which the spec did not mention.
 
 The 6d branch was cut from a `main` that did not yet contain PR #84 (6c), so before pushing, `origin/main` was merged into it (user asked for this). The merge conflicted at the end of `auth.service.ts`, `auth.controller.ts`, `ai/usage-log.md` and `README.md`; the log and README were resolved by keeping both sides. Separately, `origin/main` itself did not typecheck after PR #84: the earlier "Merge branch 'main' into feat/stage-6c..." auto-merge had interleaved the end-of-file `forgotPassword` (6b) and `verifyForgotPasswordOtp` (6c) functions (`tsc` error TS1128 in `auth.service.ts`). While resolving this merge the AI restored those two functions from their own commits (`f797583`, `cda9a47`) and kept `resetPassword` after them, so this branch's `auth.service.ts` also carries that repair. After the merge `npx tsc --noEmit` and `npx eslint src` pass, and forgot-password, verify-otp (`forgot_password`), reset-password, login with the new and old passwords, and re-use of the consumed OTP were re-run against the containers with the expected results.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-09-26 — Stage 6e: resend-otp for forgot_password (includes pre-work #5, resend-otp half)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6e, and Stage 6 "Changes to already-implemented code" row 5 (resend-otp half; the verify-otp half was done in 6c)
+
+**Prompts (exact):**
+
+> okay, can proceed with 6e
+
+(After PR #85 for 6d was merged into `main`, this work was started on a new branch from an updated `main`, as the user had asked.)
+
+**Key responses:**
+In `auth.controller.ts`: `resendPurposeSchema` now accepts `registration` and `forgot_password`, and `resendOtp` dispatches `'Forgot Password'` to `authService.resendForgotPasswordOtp`; the stale comment saying resend-otp does not accept `forgot_password` was removed. `PURPOSE_MAP` already contained the mapping from 6c. In `auth.service.ts`: added `resendForgotPasswordOtp({ email })`, which calls `forgotPassword` (same operation, implemented once, per the spec), so both endpoints share the `requestOtp` lock, cooldown, rolling-window limit and error mapping. The success response for resend keeps the existing body (`200 { message: 'A new verification code has been sent to your email', code: 'OTP_SENT' }`). This completes pre-work #5. `npx tsc --noEmit` and `npx eslint src` pass. Tested against the dev containers with a fresh user: a resend before verifying registration gave 403 `ACCOUNT_NOT_VERIFIED` and no `Forgot Password` row; after `forgot-password`, an immediate resend gave 429 `OTP_RESEND_COOLDOWN` with `Retry-After: 60`; with the cooldown backdated a resend gave 200 and left one active OTP row (previous consumed); after 5 successful resends (6 rows) the next gave 429 `OTP_RESEND_LIMIT` ("try again in about an hour") with no new row; after ageing all rows past the window a resend gave 200 (limit not permanent); an unknown email gave 404 with no row created; an extra field, a non-string email and `purpose: "forgot password"` each gave 400 with the expected message; a suspended account's resend gave 200; a pending account's `forgot_password` resend gave 403 with no row; and the registration resend still gave its cooldown 429. Not run: the email-send-failure 503 path, and concurrent resends for this purpose.
+
+**Files:**
+
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
 
 **What I kept/changed/rejected:**
 Accepted all changes.

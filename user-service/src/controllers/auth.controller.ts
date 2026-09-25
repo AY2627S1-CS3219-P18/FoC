@@ -20,6 +20,8 @@
 // Author review:
 // 25/09/2026: Stage 6d - resetPassword controller
 // Author review:
+// 25/09/2026: Stage 6e - resend-otp accepts forgot_password purpose
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -145,11 +147,13 @@ const purposeErrorMap: z.ZodErrorMap = (issue) => {
   return { message: 'Purpose must be a string' };
 };
 
-// Each endpoint lists the purposes it supports. resend-otp does not accept forgot_password yet.
+// Each endpoint lists the purposes it supports.
 const verifyPurposeSchema = z.enum(['registration', 'forgot_password'], {
   errorMap: purposeErrorMap,
 });
-const resendPurposeSchema = z.enum(['registration'], { errorMap: purposeErrorMap });
+const resendPurposeSchema = z.enum(['registration', 'forgot_password'], {
+  errorMap: purposeErrorMap,
+});
 
 const verifyOtpSchema = z
   .object({
@@ -189,6 +193,9 @@ export const resendOtp = asyncHandler(async (req, res) => {
   switch (PURPOSE_MAP[purpose]) {
     case 'Registration':
       await authService.resendRegistrationOtp({ email });
+      break;
+    case 'Forgot Password':
+      await authService.resendForgotPasswordOtp({ email });
       break;
   }
   res.status(200).json({
