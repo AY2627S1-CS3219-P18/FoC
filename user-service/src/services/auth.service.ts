@@ -149,7 +149,7 @@ export async function login(
   await tokenQueries.createRefreshToken({
     userId: user.id,
     tokenHash: refreshTokenHash,
-    expiresAt,
+    ttlDays: config.jwt.refreshTokenTtlDays,
     userAgent,
     ipAddress,
   });
@@ -163,20 +163,21 @@ export async function login(
 
 export async function logout(refreshToken: string): Promise<void> {
   const tokenHash = sha256(refreshToken);
-  const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
-  if (!tokenRow || tokenRow.is_revoked) {
-    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
-  }
-
-  await tokenQueries.revokeRefreshToken(tokenHash);
+  await withTransaction(async (client) => {
+    const tokenRow = await tokenQueries.lockRefreshToken(tokenHash, client);
+    if (!tokenRow || tokenRow.is_revoked) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
+    await tokenQueries.revokeRefreshToken(tokenHash, client);
+  });
 }
 
 export async function refresh(refreshToken: string): Promise<{ accessToken: string }> {
   const tokenHash = sha256(refreshToken);
   const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
-  if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < Date.now()) {
+if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < tokenRow.db_now.getTime()) {
     throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   }
 
@@ -211,7 +212,11 @@ export async function verifyRegistrationOtp({
       throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
     }
 
-    await userQueries.lockUserById(user.id, client);
+    const locked = await userQueries.lockUserById(user.id, client);
+
+    if (!locked || locked.status !== 'pending') {
+      throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    }
 
     const check = await checkOtp({ userId: user.id, purpose: 'Registration', otp }, client);
     if (check.ok) {
@@ -237,7 +242,11 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
       throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
     }
 
-    await userQueries.lockUserById(user.id, client);
+    const locked = await userQueries.lockUserById(user.id, client);
+
+    if (!locked || locked.status !== 'pending') {
+      throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
+    }
 
     const count = await otpQueries.countOtps(user.id, 'Registration', client);
     if (count - 1 >= config.otp.maxResends) {
@@ -251,7 +260,7 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
     const latest = await otpQueries.findLatestOtp(user.id, 'Registration', client);
     if (latest) {
       const availableAt = latest.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
-      const remainingMs = availableAt - Date.now();
+      const remainingMs = availableAt - latest.db_now.getTime();
       if (remainingMs > 0) {
         throw new AppError(
           429,

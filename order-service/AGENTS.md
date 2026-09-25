@@ -3,10 +3,11 @@
 Guidance for AI coding agents working in this folder.
 
 ## Scope rules (course AI policy)
+- The root `../AGENTS.md` (AI usage policy, guardrails, header and log formats) applies here in full.
 - Implementation code only. Do **not** decide or change the Prisma schema's domain
   models, API routes/DTOs, auth, or inter-service communication. Ask the team.
 - Every new file starts with the AI Assistance Disclosure header (see any file in `src/`).
-- Log generated files in `AI-NOTES.md`.
+- Log work in the root `/ai/usage-log.md`, not in `AI-NOTES.md` (legacy).
 
 ## Stack facts
 - Express 5 + TypeScript strict, **native ESM**: relative imports end in `.js`;

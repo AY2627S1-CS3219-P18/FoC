@@ -46,3 +46,31 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
   one-service-per-folder skeleton** for core implementation.
 
 ---
+## AI Use Summary
+
+**Tools:** Claude Code (claude-sonnet-5; claude-opus-5 / claude-opus-5-5 for the mockup and order-service scaffolding)
+**Prohibited phases avoided:** requirements elicitation; architecture/design decisions.
+**Used for:** implementation code, boilerplate/scaffolding, and verification against team-written specifications.
+**Verification:** All AI outputs are reviewed, edited, and tested by the authors.
+**Prompts / key exchanges:** see [/ai/usage-log.md](ai/usage-log.md) for all services except `foc-mockup/`,
+which keeps its own standalone log in [foc-mockup/AI-NOTES.md](foc-mockup/AI-NOTES.md).
+
+### Log index
+
+One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. Keep each summary to one line.
+
+| Date | Service | Entry | High-level summary |
+| ---- | ------- | ----- | ------------------ |
+| 2026-09-24 | user-service | Stage 1: Project Scaffold | Project scaffold: package.json, tsconfig, ESLint, .env.example, RS256 keys, src layout |
+| 2026-09-24 | user-service | Stage 2: Database Setup | Postgres schema, Zod-validated config, pg pool |
+| 2026-09-24 | user-service | Stage 3: Docker Setup | Multi-stage Dockerfile and compose wiring for user-service and user-db |
+| 2026-09-25 | user-service | Stage 4a: App Setup + Middleware | Shared auth building blocks (hashing, JWT verify, authenticate, error handler) |
+| 2026-09-25 | user-service | Stage 4b: Registration | Registration with validation and duplicate handling |
+| 2026-09-25 | user-service | Stage 4c: Login + Tokens | Login, RS256 access token, hashed refresh token storage |
+| 2026-09-25 | user-service | Stage 4d: Logout + Refresh | Logout and refresh with live status re-check |
+| 2026-09-25 | user-service | Stage 4e: Inter-Service Verify + Super Admin Bootstrap | `GET /auth/verify` and startup super admin bootstrap |
+| 2026-09-25 | user-service | Stage 5a: Schema, Config, Utilities | `pending` status, OTP config, hash/OTP utilities, transaction helper |
+| 2026-09-25 | user-service | Stage 5b: Email Service | Nodemailer OTP email with dev console fallback |
+| 2026-09-25 | user-service | Stage 5c: OTP Queries + Service | OTP queries, issue/check service, Vitest tests |
+| 2026-09-25 | user-service | Stage 5d: Registration Creates a Pending Account | Transactional register creating pending user; login rejects pending |
+| 2026-09-25 | user-service | Stage 5e: Verify OTP + Resend OTP Endpoints | Public verify-otp and resend-otp endpoints with limits and cooldown |
