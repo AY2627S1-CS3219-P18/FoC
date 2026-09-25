@@ -26,8 +26,6 @@ export function createApp({ prisma }: AppDeps): Express {
   app.use(express.json());
 
   app.use('/health', healthRouter(prisma));
-  // TODO(team): mount order routes here, e.g. app.use('/orders', ordersRouter(prisma));
-
   app.use('/requests', requestsRouter(prisma));
 
   app.use(notFound);
