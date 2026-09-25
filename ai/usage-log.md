@@ -406,3 +406,27 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #9: Logout route without authenticate
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 9 (specified in Stage 4d, "Update `src/controllers/auth.controller.ts`")
+
+**Prompts (exact):**
+
+> 9 now
+
+**Key responses:**
+Changed the logout route in `auth.routes.ts` to `router.post('/logout', authController.logout)`, so logout depends only on the refresh cookie and still works with an expired access token. Also removed the now-unused `authenticate` import from that file (not listed in the instructions, done to avoid an unused-import warning). The `authenticate` middleware file itself is untouched and has no consumers until `GET /users/me` (Stage 7). The controller already reads the refresh cookie, so nothing else changed. `npx tsc --noEmit` passes. The route was not called, so the behaviour is unverified at runtime. Change #5 remains skipped and is planned to be done with Stages 6c/6e.
+
+**Files:**
+
+- `user-service/src/routes/auth.routes.ts` (modified)
+
+**Deviations / questions raised for the team:**
+Removed the unused `authenticate` import in `auth.routes.ts`, which the instructions did not explicitly list.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
