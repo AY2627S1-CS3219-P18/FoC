@@ -454,3 +454,31 @@ None. The interrupted first request produced no changes; the work was done on th
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6b: POST /auth/forgot-password
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6b (design decisions in Stage 6 header; `requestOtp` from Stage 6a)
+
+**Prompts (exact):**
+
+> yes
+
+(Reply to: "Shall I create `feat/stage-6b-forgot-password` from `main` and start 6b?")
+
+**Key responses:**
+Added `forgotPassword({ email })` to `auth.service.ts`, inside `withTransaction`: `findByEmail` (none gives `404 EMAIL_NOT_FOUND`, `pending` gives `403 ACCOUNT_NOT_VERIFIED` as early exits), then `requestOtp` with purpose `Forgot Password`, mapping its result: `sent` returns; `throttled` with `cooldown` gives `429 OTP_RESEND_COOLDOWN` with `retryAfterSeconds`; `throttled` with `limit` gives `429 OTP_RESEND_LIMIT` ("try again in about an hour"); `no-user` gives `404`; `not-verified` gives `403`. `EMAIL_SEND_FAILED` propagates as `503`. Added a `forgotPassword` controller with a strict Zod schema using the shared `emailField` (returns `200 OTP_SENT`, "A reset code has been sent to your email") and the route `POST /auth/forgot-password`. The `forgot_password` purpose in `verify-otp`/`resend-otp` (pre-work #5) was not touched. `npx tsc --noEmit` passes. Ran against the dev containers (`docker compose up` of user-db and user-service): unknown email gave 404; a registered email gave 200 and one `Forgot Password` OTP row; an immediate repeat gave 429 with `Retry-After: 60`; an extra field gave 400 "Request contains unexpected fields"; a missing email gave 400 "Email is required"; with the cooldown backdated, three concurrent requests gave one 200 and two 429, leaving one active OTP row. Not run: the resend-limit path, the pending-account path, the email-send-failure path (503) and the wrong-type email path. These OTP rows were created for the bootstrap super admin account in the dev database.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
