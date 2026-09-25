@@ -25,26 +25,29 @@ export interface OtpRow {
   created_at: Date;
 }
 
+export type OtpRowWithNow = OtpRow & { db_now: Date };
+
+
 export async function createOtp(
   {
     userId,
     otpHash,
     purpose,
     newEmail,
-    expiresAt,
+    ttlMinutes,
   }: {
     userId: string;
     otpHash: string;
     purpose: OtpPurpose;
     newEmail: string | null;
-    expiresAt: Date;
+    ttlMinutes: number;
   },
   db: Queryable,
 ): Promise<OtpRow> {
   const result = await db.query<OtpRow>(
     `INSERT INTO users_otps (user_id, otp_hash, purpose, new_email, expires_at)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [userId, otpHash, purpose, newEmail, expiresAt],
+     VALUES ($1, $2, $3, $4, NOW() + make_interval(mins => $5)) RETURNING *`,
+    [userId, otpHash, purpose, newEmail, ttlMinutes],
   );
   return result.rows[0]!;
 }
@@ -65,9 +68,10 @@ export async function findLatestOtp(
   userId: string,
   purpose: OtpPurpose,
   db: Queryable,
-): Promise<OtpRow | null> {
-  const result = await db.query<OtpRow>(
-    `SELECT * FROM users_otps WHERE user_id = $1 AND purpose = $2
+): Promise<OtpRowWithNow | null> {
+  const result = await db.query<OtpRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM users_otps
+     WHERE user_id = $1 AND purpose = $2
      ORDER BY created_at DESC LIMIT 1`,
     [userId, purpose],
   );

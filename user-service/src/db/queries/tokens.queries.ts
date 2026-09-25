@@ -20,17 +20,19 @@ export interface RefreshTokenRow {
   created_at: Date;
 }
 
+export type RefreshTokenRowWithNow = RefreshTokenRow & { db_now: Date };
+
 export async function createRefreshToken(
   {
     userId,
     tokenHash,
-    expiresAt,
+    ttlDays,
     userAgent,
     ipAddress,
   }: {
     userId: string;
     tokenHash: string;
-    expiresAt: Date;
+    ttlDays: number;
     userAgent: string | null;
     ipAddress: string | null;
   },
@@ -38,8 +40,8 @@ export async function createRefreshToken(
 ): Promise<RefreshTokenRow> {
   const result = await db.query<RefreshTokenRow>(
     `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, user_agent, ip_address)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [userId, tokenHash, expiresAt, userAgent, ipAddress],
+     VALUES ($1, $2, NOW() + make_interval(days => $3), $4, $5) RETURNING *`,
+    [userId, tokenHash, ttlDays, userAgent, ipAddress],
   );
   return result.rows[0]!;
 }
@@ -47,9 +49,9 @@ export async function createRefreshToken(
 export async function findRefreshToken(
   tokenHash: string,
   db: Queryable = pool,
-): Promise<RefreshTokenRow | null> {
-  const result = await db.query<RefreshTokenRow>(
-    `SELECT * FROM refresh_tokens WHERE token_hash = $1`,
+): Promise<RefreshTokenRowWithNow | null> {
+  const result = await db.query<RefreshTokenRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM refresh_tokens WHERE token_hash = $1`,
     [tokenHash],
   );
   return result.rows[0] ?? null;

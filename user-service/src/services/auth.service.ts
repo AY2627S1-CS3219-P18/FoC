@@ -149,7 +149,7 @@ export async function login(
   await tokenQueries.createRefreshToken({
     userId: user.id,
     tokenHash: refreshTokenHash,
-    expiresAt,
+    ttlDays: config.jwt.refreshTokenTtlDays,
     userAgent,
     ipAddress,
   });
@@ -177,7 +177,7 @@ export async function refresh(refreshToken: string): Promise<{ accessToken: stri
   const tokenHash = sha256(refreshToken);
   const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
-  if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < Date.now()) {
+if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < tokenRow.db_now.getTime()) {
     throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   }
 
@@ -260,7 +260,7 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
     const latest = await otpQueries.findLatestOtp(user.id, 'Registration', client);
     if (latest) {
       const availableAt = latest.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
-      const remainingMs = availableAt - Date.now();
+      const remainingMs = availableAt - latest.db_now.getTime();
       if (remainingMs > 0) {
         throw new AppError(
           429,
