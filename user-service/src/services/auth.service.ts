@@ -139,7 +139,6 @@ export async function login(
   }
 
   const accessToken = signAccessToken({ userId: user.id, role: user.role });
-
   const refreshTokenPlain = randomBytes(32).toString('hex');
   const refreshTokenHash = sha256(refreshTokenPlain);
 

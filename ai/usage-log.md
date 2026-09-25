@@ -227,3 +227,31 @@ Implement Stage 5e: public POST /auth/verify-otp and /auth/resend-otp with stric
 Modified: user-service/src/utils/AppError.ts, src/app.ts, src/routes/auth.routes.ts, src/services/auth.service.ts, src/controllers/auth.controller.ts
 
 **What I kept/changed/rejected:**
+
+## 2026-09-25 — Stage 6 pre-work #1: OTP resend window config
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** explain, generate
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 1 (specified in Stage 5a: "Update `.env.example` and `.env`", "Update `src/config.ts`")
+
+**Prompts (exact):**
+
+> read thru the code base and instructions.md and understand what's going on. don't start coding first.
+
+> okay let's work on the Changes to already-implemented code (do these first). do them one by one and let me know what you did after each one before asking for permission to proceed. the one that's under stage 6.
+
+**Key responses:**
+Read `instructions.md` and the `user-service` source, and summarised the codebase and where it differs from the instructions (no code changes in that turn). Then implemented row 1 only: added `OTP_RESEND_WINDOW_MINUTES=60` to the env files, added it to the Zod schema in `config.ts` (coerced positive integer), and exposed it as `config.otp.resendWindowMinutes`. `npx tsc --noEmit` reported one error in `users.queries.ts` (`createSuperAdmin` return type), which was already present and was not changed. The app was not run, so startup behaviour is unverified. Rows 2–9 are not done yet.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/.env.example` (modified; no header added)
+- `user-service/.env` (modified; gitignored, no header)
+
+**Deviations / questions raised for the team:**
+Pre-existing typecheck error at `users.queries.ts:105` (`createSuperAdmin` returns `UserRow | null` but is typed `Promise<UserRow>`); left unchanged pending a decision.
+
+**What I kept/changed/rejected:**
+Had to merge in the changes in a PR for the questions, but accepted everything else.
