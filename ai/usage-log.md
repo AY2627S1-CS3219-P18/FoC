@@ -255,3 +255,27 @@ Pre-existing typecheck error at `users.queries.ts:105` (`createSuperAdmin` retur
 
 **What I kept/changed/rejected:**
 Had to merge in the changes in a PR for the questions, but accepted everything else.
+
+## 2026-09-25 — Stage 6 pre-work #2: Windowed countOtps
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 2 (specified in Stage 5c, `countOtps`)
+
+**Prompts (exact):**
+
+> let's go with 2.
+
+**Key responses:**
+Added an optional `sinceMinutes` parameter to `countOtps` in `otp.queries.ts`. Without it the query is unchanged and counts all rows (registration, as before). With it, the query counts only rows where `created_at > clock_timestamp() - make_interval(mins => $3)`. The only existing caller (`resendRegistrationOtp`) does not pass it, so registration behaviour is unchanged. `npx tsc --noEmit` passes with no errors (the `createSuperAdmin` error noted in the previous entry no longer appears; I did not change that file). The query was not run against a database, so it is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I accepted all changes.

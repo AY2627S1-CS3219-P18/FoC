@@ -75,3 +75,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-25 | user-service | Stage 5d: Registration Creates a Pending Account | Transactional register creating pending user; login rejects pending |
 | 2026-09-25 | user-service | Stage 5e: Verify OTP + Resend OTP Endpoints | Public verify-otp and resend-otp endpoints with limits and cooldown |
 | 2026-09-25 | user-service | Stage 6 pre-work #1: OTP resend window config | Added OTP_RESEND_WINDOW_MINUTES to env files and config |
+| 2026-09-25 | user-service | Stage 6 pre-work #2: Windowed countOtps | countOtps gains optional rolling-window parameter; registration unchanged |
