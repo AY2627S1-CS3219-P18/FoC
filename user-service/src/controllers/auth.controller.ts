@@ -14,6 +14,8 @@
 // Author review:
 // 25/09/2026: Stage 5 - normalise email and username (lowercase) at the request boundary
 // Author review:
+// 25/09/2026: Stage 6b - forgotPassword controller
+// Author review:
 // 25/09/2026: Stage 6c - verify-otp accepts forgot_password purpose
 // Author review:
 
@@ -191,4 +193,12 @@ export const resendOtp = asyncHandler(async (req, res) => {
     message: 'A new verification code has been sent to your email',
     code: 'OTP_SENT',
   });
+});
+
+const forgotPasswordSchema = z.object({ email: emailField }).strict();
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = forgotPasswordSchema.parse(req.body);
+  await authService.forgotPassword({ email });
+  res.status(200).json({ message: 'A reset code has been sent to your email', code: 'OTP_SENT' });
 });

@@ -16,6 +16,8 @@
 // Author review:
 // 25/09/2026: Stage 6 pre-work - refresh locks user then token in a transaction
 // Author review:
+// 25/09/2026: Stage 6b - forgotPassword
+// Author review:
 // 25/09/2026: Stage 6c - verifyForgotPasswordOtp
 // Author review:
 
@@ -29,7 +31,7 @@ import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
 import { signAccessToken } from '../utils/jwt.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
-import { checkOtp, issueOtp } from './otp.service.js';
+import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
 
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -326,6 +328,9 @@ export async function verifyForgotPasswordOtp({
   }
 
   const result = await withTransaction(async (client) => {
+export async function forgotPassword({ email }: { email: string }): Promise<void> {
+  await withTransaction(async (client) => {
+    // Plain read is a cheap early exit; requestOtp re-checks after locking the row.
     const user = await userQueries.findByEmail(email, client);
     if (!user) {
       throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
@@ -358,4 +363,36 @@ export async function verifyForgotPasswordOtp({
   if (!result.ok) {
     throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
   }
+    const result = await requestOtp(
+      { userId: user.id, email: user.email, purpose: 'Forgot Password' },
+      client,
+    );
+
+    switch (result.status) {
+      case 'sent':
+        return;
+      case 'throttled':
+        if (result.reason === 'cooldown') {
+          throw new AppError(
+            429,
+            'Please wait before requesting another OTP',
+            'OTP_RESEND_COOLDOWN',
+            result.retryAfterSeconds,
+          );
+        }
+        throw new AppError(
+          429,
+          'Maximum OTP resends reached. Please try again in about an hour.',
+          'OTP_RESEND_LIMIT',
+        );
+      case 'no-user':
+        throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+      case 'not-verified':
+        throw new AppError(
+          403,
+          'Account not verified. Please finish registration first.',
+          'ACCOUNT_NOT_VERIFIED',
+        );
+    }
+  });
 }

@@ -83,4 +83,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-25 | user-service | Stage 6 pre-work #8: Locked refresh | Refresh locks user then token in a transaction; lockRefreshToken returns db_now |
 | 2026-09-25 | user-service | Stage 6 pre-work #9: Logout route without authenticate | Logout route no longer requires an access token |
 | 2026-09-25 | user-service | Stage 6a: requestOtp | Locked, rate-limited OTP request wrapper reporting sent, throttled, no-user, not-verified |
+| 2026-09-25 | user-service | Stage 6b: POST /auth/forgot-password | Forgot-password endpoint using requestOtp with 404, 403 and 429 mapping |
 | 2026-09-25 | user-service | Stage 6c: verify-otp for forgot_password (includes pre-work #5, verify-otp half) | verify-otp accepts forgot_password with a non-consuming OTP check |
