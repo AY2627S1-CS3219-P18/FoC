@@ -14,6 +14,10 @@
 // Author review:
 // 25/09/2026: Stage 5 - normalise email and username (lowercase) at the request boundary
 // Author review:
+// 25/09/2026: Stage 6b - forgotPassword controller
+// Author review:
+// 25/09/2026: Stage 6c - verify-otp accepts forgot_password purpose
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -129,17 +133,21 @@ export const verify = asyncHandler(async (req, res) => {
 });
 
 // API-facing purpose -> DB enum value. Extend here in later stages.
-const PURPOSE_MAP = { registration: 'Registration' } as const;
+const PURPOSE_MAP = { registration: 'Registration', forgot_password: 'Forgot Password' } as const;
 
-const purposeSchema = z.enum(['registration'], {
-  errorMap: (issue) => {
-    if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
-    if (issue.code === 'invalid_type' && issue.received === 'undefined') {
-      return { message: 'Purpose is required' };
-    }
-    return { message: 'Purpose must be a string' };
-  },
+const purposeErrorMap: z.ZodErrorMap = (issue) => {
+  if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
+  if (issue.code === 'invalid_type' && issue.received === 'undefined') {
+    return { message: 'Purpose is required' };
+  }
+  return { message: 'Purpose must be a string' };
+};
+
+// Each endpoint lists the purposes it supports. resend-otp does not accept forgot_password yet.
+const verifyPurposeSchema = z.enum(['registration', 'forgot_password'], {
+  errorMap: purposeErrorMap,
 });
+const resendPurposeSchema = z.enum(['registration'], { errorMap: purposeErrorMap });
 
 const verifyOtpSchema = z
   .object({
@@ -148,23 +156,30 @@ const verifyOtpSchema = z
       required_error: 'OTP is required',
       invalid_type_error: 'OTP must be a string',
     }),
-    purpose: purposeSchema,
+    purpose: verifyPurposeSchema,
   })
   .strict();
 
-const resendOtpSchema = z.object({ email: emailField, purpose: purposeSchema }).strict();
+const resendOtpSchema = z.object({ email: emailField, purpose: resendPurposeSchema }).strict();
 
 export const verifyOtp = asyncHandler(async (req, res) => {
   const { email, otp, purpose } = verifyOtpSchema.parse(req.body);
   switch (PURPOSE_MAP[purpose]) {
     case 'Registration':
       await authService.verifyRegistrationOtp({ email, otp });
-      break;
+      res.status(200).json({
+        message: 'Registration complete. You can now log in.',
+        code: 'REGISTER_SUCCESS',
+      });
+      return;
+    case 'Forgot Password':
+      await authService.verifyForgotPasswordOtp({ email, otp });
+      res.status(200).json({
+        message: 'Code verified. You can now set a new password.',
+        code: 'OTP_VERIFIED',
+      });
+      return;
   }
-  res.status(200).json({
-    message: 'Registration complete. You can now log in.',
-    code: 'REGISTER_SUCCESS',
-  });
 });
 
 export const resendOtp = asyncHandler(async (req, res) => {
@@ -178,4 +193,12 @@ export const resendOtp = asyncHandler(async (req, res) => {
     message: 'A new verification code has been sent to your email',
     code: 'OTP_SENT',
   });
+});
+
+const forgotPasswordSchema = z.object({ email: emailField }).strict();
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = forgotPasswordSchema.parse(req.body);
+  await authService.forgotPassword({ email });
+  res.status(200).json({ message: 'A reset code has been sent to your email', code: 'OTP_SENT' });
 });

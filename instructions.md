@@ -40,6 +40,52 @@ Also add this header comment to every file you create:
 
 You are implementing the **User Service** for a campus errand platform (FoC) built on a microservices architecture. This service handles everything user-related: registration, login, OTP verification, JWT auth, RBAC, and profile management.
 
+CLAUDE NOTE
+Before implementing this stage, read the current code, not just instructions.md. Several
+fixes were made after the instructions were written, and the file has not been updated.
+Where the two disagree, follow the codebase and tell me about the difference.
+
+Conventions established in the code (keep them):
+
+1. Emails and usernames are lowercased at the Zod boundary. Emails are also trimmed.
+   Use the shared emailField and usernameField in auth.controller.ts for every new schema.
+   A login identifier is lowercased whole.
+2. Locking: use withTransaction plus SELECT ... FOR UPDATE, and pass `client` to EVERY query
+   inside it. Never use the pool inside a transaction, because it deadlocks. AFTER the lock
+   is granted, re-check the row that lockUserById returns (null, or status changed). The
+   pre-lock read can be stale.
+3. A single-row state change (logout, consume OTP, activate user) should be a conditional
+   UPDATE ... WHERE <expected state>, checking rowCount. Do not read, check, then write.
+4. Wrong OTP guesses must persist: return { ok: false } from checkOtp and throw only after
+   the transaction commits, or the rollback undoes the increment.
+5. Time comes from the database clock. Write expiries as NOW() + make_interval(...) in SQL.
+   Compare against clock_timestamp() AS db_now. Do not use Date.now() for OTPs or refresh
+   tokens (JWT iat/exp is the only exception).
+6. deleteStalePendingUsers uses FOR UPDATE SKIP LOCKED, so rows in use are not deleted.
+7. Queries take db: Queryable = pool. Queries used only inside transactions may make it required.
+8. The super admin bootstrap uses ON CONFLICT DO NOTHING plus a re-check.
+
+Watch for these when implementing:
+
+- Anti-enumeration: forgot-password, resend and reset for an unknown email must give the SAME
+  response AND similar timing as for a known email. That includes the throttled (429) and
+  email-failure (503) cases. Consider sending the email after the commit.
+- forgot-password must go through the same lock, cooldown and resend limit as resend-otp.
+  Otherwise it is an unlimited email spammer, and each call kills the victim's live OTP.
+- Resend/cooldown counts need a per-flow window (for example the last hour, or since the last
+  successful use). An all-time count permanently locks users out of password reset.
+- Anything that changes a password, suspends a user or resets a password must revoke ALL that
+  user's refresh tokens in the SAME transaction as the change (revokeAllRefreshTokensForUser
+  with a db param).
+- A login racing a reset or suspend can issue a refresh token after the revoke. Handle it.
+- Do not add new test cases unless I ask. Existing tests may need fixtures updated.
+- Rate limiting and account lockout (NFR1, NFR2) are deferred to week 10. Do not add them now,
+  but do not build anything that assumes they never exist.
+
+When done, list any place where you deviated from instructions.md and why.
+
+Also, don’t implement test cases first.
+
 ## Stage 1: Project Scaffold
 
 Set up the below files and directory structure.
@@ -467,6 +513,12 @@ Validate request body with Zod (use custom messages instead of Zod's own default
 - email: required error "Email is required", type error "Email must be a string"
 - password: required error "Password is required", type error "Password must be a string"
 
+**Normalisation (applied in the Zod schema, so the service and DB only ever see normalised values):**
+
+- `email`: trim, then lowercase. Define it once as a shared `emailField` in `auth.controller.ts` and reuse it in every schema that takes an email (register, verify-otp, resend-otp, and any later stage).
+- `username`: lowercase only. Do **not** trim, so a leading or trailing space still fails the "no spaces" rule in the service layer.
+- Usernames and emails are stored lowercase, so lookups are effectively case-insensitive.
+
 Use .strict() to reject requests containing fields not defined in the schema above. The resulting unrecognized_keys error is handled by the global error handler set up in Stage 4a (message: "Request contains unexpected fields") — no additional handling needed in this controller.
 
 - Call `authService.register()`
@@ -503,9 +555,12 @@ router.post("/register", authController.register);
 
 Implement the following query functions:
 
-- `createRefreshToken({ userId, tokenHash, expiresAt, userAgent, ipAddress })` — inserts into `refresh_tokens` table
-- `findRefreshToken(tokenHash)` — returns token row or null
-- `revokeRefreshToken(tokenHash)` — sets `is_revoked = true`, `revoked_at = now`
+- `createRefreshToken({ userId, tokenHash, ttlDays, userAgent, ipAddress })` — inserts into `refresh_tokens` table, with `expires_at = NOW() + make_interval(days => $ttl)` computed in SQL (see the clock rule in Stage 5c)
+- `findRefreshToken(tokenHash)` — returns token row (plus `clock_timestamp() AS db_now`) or null
+- `lockRefreshToken(tokenHash, db)` — `SELECT *, clock_timestamp() AS db_now ... FOR UPDATE`, returns the token row (plus `db_now`) or null
+- `revokeRefreshToken(tokenHash, db)` — sets `is_revoked = true`, `revoked_at = now`
+
+All token queries take an optional last parameter `db: Queryable = pool`, like the user queries, so they can run inside a transaction.
 
 #### Update `src/services/auth.service.ts`
 
@@ -518,6 +573,7 @@ Implement `login({ identifier, password }, userAgent, ipAddress)`:
 - Issue RS256 access token (15 min TTL) with claims `{ sub: user.id, role: user.role }` using private key from `config.ts`
 - Generate refresh token: 32 cryptographically random bytes (hex string) using Node's built-in `crypto`
 - Store SHA-256 hash of refresh token in `refresh_tokens` table with `expires_at = now + 7 days`
+- **Race-safety:** verify the password before locking (bcrypt is slow), then create the refresh token inside `withTransaction`: `locked = lockUserById(user.id, client)`; if `locked` is null or `locked.password_hash !== user.password_hash` → `401 INVALID_CREDENTIALS` (the password changed while logging in); if `locked.status` is `'suspended'` → `403 ACCOUNT_SUSPENDED`; otherwise `createRefreshToken(..., client)`. Take the role for the access token from `locked`. Without this, a login that verified the old password can create a refresh token _after_ a password reset has revoked all of them. (Added in Stage 6, see "Changes to already-implemented code".)
 - Return `{ accessToken, refreshToken, user: { id, username, email, role } }`
 
 #### Update `src/controllers/auth.controller.ts`
@@ -528,6 +584,7 @@ Validate request body with Zod (use custom messages instead of Zod's own default
 
 - identifier: required error "Username/Email is required", type error "Username/Email must be a string"
 - password: required error "Password is required", type error "Password must be a string"
+- `identifier` is trimmed and lowercased whole (usernames and emails are both stored lowercase).
 
 Use .strict() to reject requests containing fields not defined in the schema above. The resulting unrecognized_keys error is handled by the global error handler set up in Stage 4a (message: "Request contains unexpected fields") — no additional handling needed in this controller.
 
@@ -571,27 +628,36 @@ router.post("/login", authController.login);
 Implement `logout(refreshToken)`:
 
 - Hash refresh token with SHA-256
-- Look up in `refresh_tokens` table
-- If not found or already revoked → throw `401` with `{ message: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN' }`
-- Set `is_revoked = true`, `revoked_at = now`
+- Run everything inside `withTransaction`, so two concurrent logouts with the same cookie cannot both succeed:
+  - Look up the token with `lockRefreshToken(tokenHash, client)`, which is `SELECT ... FOR UPDATE` on `refresh_tokens`, so a second request waits and then sees the first one's committed result
+  - If not found or already revoked → throw `401` with `{ message: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN' }`
+  - Set `is_revoked = true`, `revoked_at = now` using the same `client`
 
 Implement `refresh(refreshToken)`:
 
 - Hash refresh token with SHA-256
-- Look up in `refresh_tokens` table
-- Reject if not found, revoked, or expired → throw `401` with `{ message: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN' }`
-- After finding a valid (non-revoked, non-expired) refresh token row, look up the associated user via userQueries.findById(userId) . If the user's status is 'suspended', throw AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED') instead of issuing a new token. Otherwise, issue the new access token using the freshly-loaded role (not any role cached elsewhere), so a role change (e.g. promotion) takes effect on the next refresh rather than only after re-login.
-  Issue new RS256 access token (15 min TTL).
+- `findRefreshToken(tokenHash)` as a plain, unlocked read. This is a cheap early exit and it gives the `user_id`: if not found, revoked, or expired (compare `expires_at` against the row's `db_now`, not `Date.now()`) → throw `401` with `{ message: 'Invalid refresh token', code: 'INVALID_REFRESH_TOKEN' }`
+- Then, inside `withTransaction`, lock and re-check. **Lock order matters: user row first, then token row.**
+  1. `lockedUser = lockUserById(tokenRow.user_id, client)`. If null → `401 INVALID_REFRESH_TOKEN`
+  2. `lockedToken = lockRefreshToken(tokenHash, client)`. If null, revoked, or expired (compare against its `db_now`) → `401 INVALID_REFRESH_TOKEN`
+  3. If `lockedUser.status` is `'suspended'` → `AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED')` instead of issuing a new token
+  4. Issue the new RS256 access token (15 min TTL) from `lockedUser.id` and the freshly-locked `lockedUser.role` (not any cached role), so a role change (e.g. promotion) takes effect on the next refresh rather than only after re-login
 - Return `{ accessToken }`
+
+**Why the locks:** without them, a refresh already in flight can mint an access token after a logout, password reset, or suspension has committed. With them, a refresh either finishes before that action or waits and then sees the revoked token (`401`). An access token issued earlier still lives out its 15 minutes.
+
+**Lock ordering rule (whole service):** whenever a transaction locks both a user row and refresh-token rows, lock the **user row first**. Reset-password (user, then its tokens), login and refresh all follow it. Locking a token first and the user second could deadlock against reset-password, and the caller would get a 500. Logout locks only the token row, so it cannot form a cycle.
 
 #### Update `src/controllers/auth.controller.ts`
 
-Implement `logout` handler (protected — requires `authenticate` middleware):
+Implement `logout` handler. It does **not** use the `authenticate` middleware: the refresh cookie is the credential, so logout still works after the access token has expired (otherwise an expired access token blocks logout, the refresh token stays valid, and the browser's silent refresh logs the user straight back in):
 
-- Extract refresh token from `req.cookies.refreshToken`
+- Extract refresh token from `req.cookies.refreshToken`. If the cookie is missing → `401 INVALID_REFRESH_TOKEN`
 - Call `authService.logout()`
 - Clear the `refreshToken` cookie (with settings from `src/utils/cookies.ts`)
 - Return `200` with `{ message: 'Logged out successfully', code: 'LOGOUT_SUCCESS' }`
+
+Logout revokes only the refresh token in the cookie (that device's session). The access token is stateless and stays valid until it expires.
 
 Implement `refresh` handler:
 
@@ -604,22 +670,25 @@ Implement `refresh` handler:
 Add to `auth.routes.ts`:
 
 ```ts
-router.post("/logout", authenticate, authController.logout);
+router.post("/logout", authController.logout);
 router.post("/refresh", authController.refresh);
 ```
 
 #### Verification
 
-- `POST /auth/logout` with valid access token → `200`, cookie cleared, token revoked in DB
-- `POST /auth/logout` without access token → `401`
+- `POST /auth/logout` with a valid refresh cookie → `200`, cookie cleared, token revoked in DB, whether or not an `Authorization` header is sent (including an expired access token)
+- `POST /auth/logout` without a `refreshToken` cookie → `401 INVALID_REFRESH_TOKEN`
 - `POST /auth/refresh` with valid cookie → `200`, new access token returned
 - `POST /auth/refresh` after logout → `401`
 - `POST /auth/refresh` with expired refresh token → `401`
 - `POST /auth/logout` with a valid access token but a missing/garbage `refreshToken` cookie → `401 INVALID_REFRESH_TOKEN`
 - `POST /auth/logout` with a valid access token but an already-revoked `refreshToken` cookie → `401 INVALID_REFRESH_TOKEN`
+- Fire several `POST /auth/logout` requests at once with the same access token and cookie → exactly one `200`, the rest `401 INVALID_REFRESH_TOKEN`
 - Suspend the user in the DB directly (`UPDATE users SET status = 'suspended' WHERE ...`), then `POST /auth/refresh` with their still-valid, non-expired, non-revoked cookie → `403 ACCOUNT_SUSPENDED`, no new access token issued
 - Promote the user in the DB directly (`UPDATE users SET role = 'admin' WHERE ...`), then `POST /auth/refresh` with a valid cookie → `200`, decode the new access token and confirm its `role` claim reflects `'admin'`, not the stale role from the original login
 - `POST /auth/refresh` with a `refreshToken` cookie that never existed (random hex string, never issued) → `401 INVALID_REFRESH_TOKEN`
+- Run `POST /auth/refresh` in a loop while `POST /auth/logout` runs with the same cookie → once logout has returned `200`, every refresh that starts afterwards returns `401 INVALID_REFRESH_TOKEN`
+- Run `POST /auth/refresh` and `POST /auth/reset-password` concurrently several times (Stage 6d) → no deadlock errors: no `500` responses and no `deadlock detected` in the service logs
 
 ---
 
@@ -661,6 +730,14 @@ On app startup in `app.ts`:
 - Log a clear message when bootstrap creates the super admin
 - Skip silently if super admin already exists
 
+**Race-safe creation:** the check-then-create must tolerate two instances starting at once, and a configured username or email that already belongs to a regular user.
+
+- Insert with `INSERT ... ON CONFLICT DO NOTHING RETURNING *`. `createSuperAdmin` returns the new row, or nothing if the insert was skipped.
+- Lowercase (and trim) the configured username and email before inserting, like every other username and email.
+- If the insert was skipped, run the super admin check again:
+  - A super admin now exists → another instance created it; continue silently.
+  - Still none → the configured username or email belongs to a non-super-admin account; throw a clear error, for example `SUPER_ADMIN_USERNAME or SUPER_ADMIN_EMAIL is already used by a non-super-admin account.`
+
 - In app.ts, ensure the super admin bootstrap check completes (await it) before calling app.listen().
 - In config.ts's Zod schema, SUPER_ADMIN_PASSWORD must use .min(1) (or equivalent) rather than a bare .string().
 
@@ -678,9 +755,10 @@ Add super admin credentials to `config.ts` Zod schema.
 ```
 
 - Restart containers and confirm super admin is not duplicated
+- Configure `SUPER_ADMIN_USERNAME` to a username already held by a regular user (on a DB that has no super admin) → the app exits with the clear error message, not a raw Postgres unique-violation
 - `GET /auth/verify` with no `Authorization` header at all → `401 INVALID_TOKEN`
 - `GET /auth/verify` with a well-formed but wrong-signature token (e.g. signed with a different key pair) → `401 INVALID_TOKEN`
-- Take one valid access token, confirm it's accepted by both an `authenticate`-protected route (e.g. `/auth/logout`) and by `GET /auth/verify` — confirms both call sites agree, since they share `verifyAccessToken`
+- Take one valid access token, confirm it's accepted by both an `authenticate`-protected route and by `GET /auth/verify` (logout no longer uses `authenticate`, so no route uses it until `GET /users/me` in a later stage; until then check this with a temporary protected test route, or defer it) — confirms both call sites agree, since they share `verifyAccessToken`
 
 ## Stage 5: OTP Flow (Send, Verify, Resend)
 
@@ -722,11 +800,12 @@ Add super admin credentials to `config.ts` Zod schema.
 OTP_TTL_MINUTES=10
 OTP_RESEND_COOLDOWN_SECONDS=60
 OTP_MAX_RESENDS=5
+OTP_RESEND_WINDOW_MINUTES=60
 ```
 
 #### Update `src/config.ts`
 
-- Add the three OTP vars to the Zod schema (coerce to numbers, positive integers) and expose them as `config.otp = { ttlMinutes, resendCooldownSeconds, maxResends }`
+- Add the four OTP vars to the Zod schema (coerce to numbers, positive integers) and expose them as `config.otp = { ttlMinutes, resendCooldownSeconds, maxResends, resendWindowMinutes }`. `resendWindowMinutes` is the rolling window used to count resends for purposes other than registration (see `countOtps` in Stage 5c).
 - SMTP vars (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) may be empty **only when** `NODE_ENV=development`. In any other environment they are required and the app must exit with a clear error, as before.
 
 #### Update `src/utils/hash.ts`
@@ -766,13 +845,19 @@ All query functions now accept an optional last parameter `db: Queryable = pool`
 
 ```sql
 DELETE FROM users
-WHERE status = 'pending'
-  AND (username = $1 OR email = $2)
-  AND NOT EXISTS (
-    SELECT 1 FROM users_otps o
-    WHERE o.user_id = users.id AND o.expires_at > NOW()
-  );
+WHERE id IN (
+  SELECT id FROM users
+  WHERE status = 'pending'
+    AND (username = $1 OR email = $2)
+    AND NOT EXISTS (
+      SELECT 1 FROM users_otps o
+      WHERE o.user_id = users.id AND o.expires_at > NOW()
+    )
+  FOR UPDATE SKIP LOCKED
+);
 ```
+
+`FOR UPDATE SKIP LOCKED` matters: a row that a verify or resend has locked is skipped instead of waited on. Without it, the delete waits for the lock and then deletes the row even though the resend just gave it a live OTP. The skipped row is then seen as taken, and the register request returns `USERNAME_TAKEN` or `EMAIL_TAKEN`.
 
 Cascade deletes the stale OTP rows. This is how an expired reservation is released.
 
@@ -811,12 +896,16 @@ Cascade deletes the stale OTP rows. This is how an expired reservation is releas
 
 All functions take `db: Queryable` as the last parameter.
 
-- `createOtp({ userId, otpHash, purpose, newEmail, expiresAt }, db)` — inserts into `users_otps`
+- `createOtp({ userId, otpHash, purpose, newEmail, ttlMinutes }, db)` — inserts into `users_otps`, with `expires_at = NOW() + make_interval(mins => $ttl)` computed in SQL
 - `invalidateActiveOtps(userId, purpose, db)` — `UPDATE users_otps SET consumed_at = NOW() WHERE user_id = $1 AND purpose = $2 AND consumed_at IS NULL`
-- `findLatestOtp(userId, purpose, db)` — most recent row by `created_at` (any state), or null
-- `countOtps(userId, purpose, db)` — number of rows for that user and purpose (used for the resend limit)
+- `findLatestOtp(userId, purpose, db)` — most recent row by `created_at` (any state), plus `clock_timestamp() AS db_now`, or null
+- `countOtps(userId, purpose, db, sinceMinutes?)` — number of rows for that user and purpose (used for the resend limit).
+  - Without `sinceMinutes` it counts **all** rows. Registration deliberately calls it this way (5 resends per registration, per F1.1.6), because the flow ends when the last OTP expires and the user can register again. Do not route the registration resend through `requestOtp` (Stage 6a) without keeping this behaviour.
+  - With `sinceMinutes` it counts only rows with `created_at > clock_timestamp() - sinceMinutes`. Purposes that can be requested repeatedly over an account's lifetime (forgot password, change email, change password, admin action) pass `config.otp.resendWindowMinutes`, so the limit is per rolling window and a user is never locked out permanently.
 - `incrementAttempts(otpId, db)` — `attempts_count = attempts_count + 1`, returns the new count
 - `consumeOtp(otpId, db)` — `SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL`, returns whether a row was updated
+
+**Clock rule (applies to the whole service):** the database owns time. Write expiries in SQL (`NOW() + make_interval(...)`). For "has it expired?" and cooldown checks, compare against the `db_now` returned by the query (`clock_timestamp()`), never `Date.now()`. Use `clock_timestamp()` rather than `NOW()` for these reads, because `NOW()` is frozen at the start of the transaction and would be stale after waiting on a row lock. JWT `iat`/`exp` are the only exception, since they are set by the JWT library.
 
 #### Create `src/services/otp.service.ts`
 
@@ -825,7 +914,7 @@ This layer is purpose-agnostic and knows nothing about HTTP.
 - `issueOtp({ userId, email, purpose, newEmail? }, db)`:
   1. `invalidateActiveOtps`
   2. `generateOtp()`, then `sha256` it
-  3. `createOtp` with `expiresAt = now + config.otp.ttlMinutes`
+  3. `createOtp` with `ttlMinutes: config.otp.ttlMinutes` (the database computes the expiry)
   4. `sendOtpEmail` (sent to `newEmail ?? email`)
   5. If sending throws, log the error (without the OTP) and throw `AppError(503, 'Unable to send verification email. Please try again.', 'EMAIL_SEND_FAILED')`
   - Callers run this inside `withTransaction`, so a send failure rolls back the new OTP (and any invalidation of the previous one).
@@ -892,7 +981,7 @@ Both endpoints are **public** (no `authenticate`). The API-facing `purpose` valu
 
 `POST /auth/verify-otp`:
 
-- email: required "Email is required", type "Email must be a string"
+- email: required "Email is required", type "Email must be a string" (use the shared `emailField`: trimmed and lowercased)
 - otp: required "OTP is required", type "OTP must be a string"
 - purpose: required "Purpose is required", type "Purpose must be a string", not in the allowed list → "Invalid purpose"
 
@@ -907,7 +996,7 @@ Format rule stays in the service layer: `otp` must match `^\d{6}$`, else `AppErr
 Inside `withTransaction`:
 
 1. Look up the user by email. If none, or `status !== 'pending'` → `INVALID_OTP` (same generic error, do not reveal which case)
-2. `lockUserById(user.id)` (serialises concurrent verify/resend for this user)
+2. `locked = lockUserById(user.id)` (serialises concurrent verify/resend for this user). **Re-check after the lock:** if `locked` is null or `locked.status !== 'pending'` → `INVALID_OTP`. The status read in step 1 can be stale, because another request may have changed the row while this one waited for the lock.
 3. `checkOtp(...)`
 4. If `{ ok: true }` → `activateUser(user.id)`; if it returns false, treat as `INVALID_OTP`
 5. Commit, then: if `{ ok: false }` → throw `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
@@ -920,10 +1009,12 @@ Inside `withTransaction`:
 Inside `withTransaction`:
 
 1. Look up the user by email. If none or not `pending` → `AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION')`
-2. `lockUserById(user.id)`
-3. `countOtps(user.id, 'Registration')`. If `count - 1 >= config.otp.maxResends` → `AppError(429, 'Maximum OTP resends reached. Please register again later.', 'OTP_RESEND_LIMIT')`
-4. `findLatestOtp`. If `created_at + cooldown > now` → `AppError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN')`, and set a `Retry-After` header (seconds remaining). To set the header, attach an optional `retryAfterSeconds` field to `AppError` and have the global error handler emit the header when present. The JSON body stays `{ message, code }`.
+2. `locked = lockUserById(user.id)`. **Re-check after the lock:** if `locked` is null or `locked.status !== 'pending'` → `AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION')`. The status read in step 1 can be stale, because another request may have changed the row while this one waited for the lock.
+3. `countOtps(user.id, 'Registration')`. If `count - 1 >= config.otp.maxResends` → `AppError(429, 'Maximum OTP resends reached. Please try registering again in about 10 minutes.', 'OTP_RESEND_LIMIT')`. No `Retry-After` here. The 10 minutes is the OTP lifetime (`OTP_TTL_MINUTES`): the pending registration holds the username and email until its latest OTP expires, and registering again earlier returns `USERNAME_TAKEN` / `EMAIL_TAKEN`. If you change `OTP_TTL_MINUTES`, update this message. (The already-implemented code still says "Please register again later."; only the message text needs to change.)
+4. `findLatestOtp`. If `created_at + cooldown > db_now` → `AppError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN')`, and set a `Retry-After` header (seconds remaining, about 60). To set the header, attach an optional `retryAfterSeconds` field to `AppError` and have the global error handler emit the header when present. The JSON body stays `{ message, code }`.
 5. `issueOtp(...)` (this invalidates the previous OTP and sends the email)
+
+> **Frontend behaviour for registration:** during the first 5 resends, disable the resend button and show a countdown from `Retry-After` ("try again in 60 seconds"). When `OTP_RESEND_LIMIT` is returned, disable resend and show the message ("try registering again in about 10 minutes"); there is no countdown.
 
 #### Controllers in `src/controllers/auth.controller.ts`
 
@@ -981,7 +1072,313 @@ Concurrency:
 
 - `GET /users` (admin) must exclude `status = 'pending'` users
 - Forgot Password, Change Email, Change Password and Admin Action reuse `issueOtp` / `checkOtp` and extend the `purpose` enum in the Zod schemas; authenticated purposes will need `authenticate` on their own routes
-- Resend-limit counting for those purposes will need a per-flow window (Stage 5 counts all `Registration` OTP rows because a user only ever has one registration flow)
+- Resend-limit counting for those purposes uses the rolling window (`config.otp.resendWindowMinutes`) via `requestOtp`. Only registration counts all rows, because a user only ever has one registration flow.
 - NFR2 (email retry ×3 + delivery-failure logging) and NFR1 (lockout after repeated failed OTP attempts) are Week 10 items
 - A periodic cleanup of expired pending users is optional; `deleteStalePendingUsers` already reclaims them lazily on re-registration
 - Frontend: the register response changed (`201 OTP_SENT`, no active session) and two new endpoints exist; the OTP entry screen is a separate frontend task
+
+# Stage 6: Forgot Password Flow
+
+> **Scope**: This stage adds the Forgot Password flow (F3.1), reusing the generic OTP
+> infrastructure built in Stage 5 (`issueOtp`, `checkOtp`, `otp.queries.ts`,
+> `email.service.ts`). It extends the `purpose` handling in the existing `verify-otp` and
+> `resend-otp` endpoints rather than creating parallel ones, and adds one new endpoint:
+> `POST /auth/reset-password`.
+>
+> Backlog refs: F3.1.1, F3.1.2, F3.1.3, F3.1.4.
+
+### Design decisions (already made, do not change)
+
+- **API-facing purpose string** — `forgot_password` maps to the DB enum value `'Forgot Password'`
+- **Unknown email** — `forgot-password` and `resend-otp` (purpose `forgot_password`) return `404 EMAIL_NOT_FOUND` and send no OTP (F3.1.2). Hiding which emails are registered is deliberately not a goal for this flow, since registration already reveals it.
+- **Throttling is reported, not hidden** — a throttled request gets a real `429`: `OTP_RESEND_COOLDOWN` for the first 5 resends (with a `Retry-After` header, about 60 seconds), and `OTP_RESEND_LIMIT` once the limit is reached, with the message "try again in about an hour" (no `Retry-After`; it matches the default `resendWindowMinutes` of 60)
+- **OTP verification is two-step** — `verify-otp` checks the code without consuming it; `reset-password` does the real, consuming check
+- **`checkOtp` change** — add an optional `consume` param, defaulting to `true`, so existing callers (registration) are unaffected
+- **On successful reset** — set the new password hash, then revoke all of that user's refresh tokens (logs them out everywhere)
+- **Account status** — reset works for active and suspended accounts; it doesn't change status. A **pending** (unverified) account gets `403 ACCOUNT_NOT_VERIFIED` from forgot-password, resend, verify and reset: it cannot log in anyway, so a reset would do nothing useful, and a forgot-password OTP on a pending row would keep its username and email reserved for longer (the stale-user cleanup treats any live OTP as a reason to keep the row).
+- **New password validation** — reuses the same complexity rule and error message as registration
+- **Resend/cooldown/attempt limits** — reuse the OTP infrastructure and config from Stage 5, except that the resend count uses the rolling window (`config.otp.resendWindowMinutes`) instead of counting all rows
+
+---
+
+## Changes to already-implemented code (do these first)
+
+Stage 6 needs the following changes to code that earlier stages already built. Each is specified in detail in the stage named.
+
+| #   | File                                                                                                | Change                                                                                                                                                                                                                                                                       | Where specified |
+| --- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 1   | `.env.example`, `.env`, `src/config.ts`                                                             | Add `OTP_RESEND_WINDOW_MINUTES=60` to the env files, the Zod schema, and `config.otp.resendWindowMinutes`                                                                                                                                                                    | Stage 5a        |
+| 2   | `src/db/queries/otp.queries.ts`                                                                     | `countOtps(userId, purpose, db, sinceMinutes?)`: without `sinceMinutes` it counts all rows (registration, unchanged); with it, only rows created within that many minutes (compared against `clock_timestamp()`)                                                             | Stage 5c        |
+| 3   | `src/services/otp.service.ts`                                                                       | `checkOtp` gets an optional `consume` parameter, default `true`; when `false`, skip `consumeOtp` but still increment attempts on a wrong guess                                                                                                                               | Stage 6a        |
+| 4   | `src/services/email.service.ts`                                                                     | Add a `Forgot Password` entry to the purpose map (subject "Your FoC password reset code")                                                                                                                                                                                    | Stage 6a        |
+| 5   | `src/controllers/auth.controller.ts`                                                                | Extend the purpose map (`PURPOSE_MAP`) and the Zod `purpose` enum for `verify-otp` and `resend-otp` with `forgot_password` → `'Forgot Password'`, and add the dispatch case in `verifyOtp` and `resendOtp`                                                                   | Stage 6c, 6e    |
+| 6   | `src/services/auth.service.ts` (`login`)                                                            | Create the refresh token inside `withTransaction` after locking the user, and re-check the password hash and status on the locked row (see the race-safety bullet in Stage 4c)                                                                                               | Stage 4c        |
+| 7   | `src/services/auth.service.ts` (`resendRegistrationOtp`)                                            | Change the limit message text to `'Maximum OTP resends reached. Please try registering again in about 10 minutes.'`. Nothing else about registration changes.                                                                                                                | Stage 5e        |
+| 8   | `src/services/auth.service.ts` (`refresh`), `src/db/queries/tokens.queries.ts` (`lockRefreshToken`) | `refresh` runs in `withTransaction`: plain early-exit read, then lock the user row, then lock the token row (`lockRefreshToken`), re-check revoked/expired/suspended on the locked rows, and issue the token from the locked user. `lockRefreshToken` also returns `db_now`. | Stage 4d        |
+| 9   | `src/routes/auth.routes.ts`                                                                         | Remove `authenticate` from `POST /auth/logout`: `router.post('/logout', authController.logout)`. The handler already reads the refresh cookie, so nothing else changes. `authenticate` then has no consumers until `GET /users/me` (Stage 7).                                | Stage 4d        |
+
+New code (not changes to existing code): `requestOtp` in `otp.service.ts`, `revokeAllRefreshTokensForUser` in `tokens.queries.ts`, `updatePasswordHash` in `users.queries.ts`, and the new service functions and controllers in 6b–6e.
+
+---
+
+## Stage 6a: `checkOtp` Consume Flag + Email Template
+
+### Update `src/services/otp.service.ts`
+
+Change `checkOtp`'s signature to accept an optional `consume` parameter, default `true`:
+
+```ts
+checkOtp({ userId, purpose, otp }, db, consume: boolean = true)
+```
+
+- Steps 1–4 (find latest OTP, check expiry, check attempts, compare hash) are unchanged.
+- Step 5 (wrong guess): unchanged — always `incrementAttempts`, return `{ ok: false }`, regardless of `consume`.
+- Step 6 (correct guess):
+  - If `consume` is `true` (the default): unchanged — call `consumeOtp`. If it returns `false`, treat as `INVALID_OTP`. Return `{ ok: true }`.
+  - If `consume` is `false`: **do not** call `consumeOtp`. Just return `{ ok: true }`.
+
+All existing callers (registration's `verifyRegistrationOtp`) keep working unchanged since they don't pass the third argument.
+
+### Add `requestOtp` to `src/services/otp.service.ts`
+
+`issueOtp` sends an email unconditionally, so calling it directly from an endpoint lets a caller spam an address and repeatedly invalidate a user's live OTP. **Any endpoint that sends an OTP must go through `requestOtp`, never `issueOtp` directly** (forgot-password, resend, and later change email, change password and admin action).
+
+`requestOtp({ userId, email, purpose, newEmail? }, db)` — must be called inside `withTransaction`:
+
+1. `locked = lockUserById(userId, db)`. If `locked` is null (deleted while waiting) → return `{ status: 'no-user' }`. If `locked.status === 'pending'` → return `{ status: 'not-verified' }` (a pending account never gets OTPs through `requestOtp`; registration has its own resend).
+2. Resend limit: `countOtps(userId, purpose, db, config.otp.resendWindowMinutes)` (rolling window). If `count - 1 >= config.otp.maxResends` → return `{ status: 'throttled', reason: 'limit' }`.
+3. Cooldown: `findLatestOtp(userId, purpose, db)`. If `created_at + config.otp.resendCooldownSeconds > db_now` → return `{ status: 'throttled', reason: 'cooldown', retryAfterSeconds }`, where `retryAfterSeconds` is the time until the next resend is allowed.
+4. Otherwise `issueOtp(...)` and return `{ status: 'sent' }`. `EMAIL_SEND_FAILED` from `issueOtp` propagates unchanged.
+
+When throttled, **nothing is sent and the existing OTP is not invalidated**. `requestOtp` only reports what happened; each caller decides how to react. Forgot-password and its resend turn `throttled` into a real `429` (`OTP_RESEND_COOLDOWN` with `Retry-After`, or `OTP_RESEND_LIMIT`).
+
+### Update `src/services/email.service.ts`
+
+Add an entry to the `purpose → { subject, intro }` map for `Forgot Password`:
+
+- Subject: `"Your FoC password reset code"`
+- Body: same shape as the registration email (OTP + expiry from `config.otp.ttlMinutes`), no links, dev-log fallback unchanged
+
+### Verification
+
+- No behavior change for the existing registration flow: re-run Stage 5e's happy-path and wrong-OTP tests, confirm they still pass unmodified
+- The `consume: false` behaviour is verified through the endpoints in Stage 6c (the OTP row's `consumed_at` stays `NULL` after `verify-otp`, and wrong guesses still increment `attempts_count`). Vitest unit tests for Stage 6 are deferred.
+- `requestOtp` when throttled (inside the cooldown, or at the resend limit) → returns `throttled`, no email is sent, and the previous OTP row's `consumed_at` is still `NULL`
+
+---
+
+## Stage 6b: `POST /auth/forgot-password`
+
+### Update `src/services/auth.service.ts`
+
+Implement `forgotPassword({ email })`, inside `withTransaction`:
+
+- `findByEmail(email)`. If no user found → `AppError(404, 'Email not found', 'EMAIL_NOT_FOUND')` (no OTP sent). If the user is `pending` → `AppError(403, 'Account not verified. Please finish registration first.', 'ACCOUNT_NOT_VERIFIED')` (cheap early exit; `requestOtp` re-checks after the lock)
+- If found → `requestOtp({ userId: user.id, email, purpose: 'Forgot Password' }, client)` (see Stage 6a) and map its result:
+  - `sent` → return normally
+  - `throttled` with `reason: 'cooldown'` → `AppError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN', retryAfterSeconds)` (about 60 seconds)
+  - `throttled` with `reason: 'limit'` → `AppError(429, 'Maximum OTP resends reached. Please try again in about an hour.', 'OTP_RESEND_LIMIT')`
+  - `no-user` → `AppError(404, 'Email not found', 'EMAIL_NOT_FOUND')`
+  - `not-verified` → `AppError(403, 'Account not verified. Please finish registration first.', 'ACCOUNT_NOT_VERIFIED')`
+- `EMAIL_SEND_FAILED` from `requestOtp` propagates as `503`
+
+### Update `src/controllers/auth.controller.ts`
+
+Implement `forgotPassword` handler:
+
+Validate request body with Zod (`.strict()`, custom messages, presence/type/extra-fields only):
+
+- `email`: required `"Email is required"`, type `"Email must be a string"` (use the shared `emailField`: trimmed and lowercased)
+
+- Call `authService.forgotPassword()`
+- Return `200` with `{ message: 'A reset code has been sent to your email', code: 'OTP_SENT' }`
+
+### Wire up route
+
+Add to `auth.routes.ts`:
+
+```ts
+router.post("/forgot-password", authController.forgotPassword);
+```
+
+### Verification
+
+- `POST /auth/forgot-password` with a registered email → `200 OTP_SENT`, one `users_otps` row created with `purpose = 'Forgot Password'`, dev console shows the OTP
+- `POST /auth/forgot-password` twice in a row for a registered email → the second returns `429 OTP_RESEND_COOLDOWN` with a `Retry-After` header; only one `users_otps` row exists and the first OTP is still valid
+- Two concurrent `POST /auth/forgot-password` for the same email → exactly one `200`, the other `429`, and exactly one OTP row created
+- `POST /auth/forgot-password` after the resend limit is reached (backdate `created_at` between requests) → `429 OTP_RESEND_LIMIT` with the message "try again in about an hour"; no new row, no email
+- `POST /auth/forgot-password` with an unregistered email → `404 EMAIL_NOT_FOUND`, no `users_otps` row created
+- `POST /auth/forgot-password` with the email of a still-pending (unverified) registration → `403 ACCOUNT_NOT_VERIFIED`, no `Forgot Password` OTP row created
+- `POST /auth/forgot-password` with a missing/wrong-type `email` field → `400 VALIDATION_ERROR` as usual
+- `POST /auth/forgot-password` with an extra field → `400 VALIDATION_ERROR`, `"Request contains unexpected fields"`
+- Force an email-send failure for a registered email → `503 EMAIL_SEND_FAILED`
+
+---
+
+## Stage 6c: `verify-otp` — Forgot Password Purpose
+
+This extends the existing `verify-otp` endpoint from Stage 5e rather than adding a new route.
+
+### Update Zod schema in `src/controllers/auth.controller.ts`
+
+Extend the `purpose` enum for `POST /auth/verify-otp` to accept `'registration'` (existing) and `'forgot_password'` (new). Same error message pattern: not in the allowed list → `"Invalid purpose"`.
+
+### Update `src/services/auth.service.ts`
+
+Implement `verifyForgotPasswordOtp({ email, otp })`:
+
+Inside `withTransaction`:
+
+1. `findByEmail(email)`. If none → `AppError(404, 'Email not found', 'EMAIL_NOT_FOUND')`. If the user is `pending` → `AppError(403, 'Account not verified. Please finish registration first.', 'ACCOUNT_NOT_VERIFIED')`.
+2. `locked = lockUserById(user.id)`. If `locked` is null (the row was deleted while waiting) → `EMAIL_NOT_FOUND`. If `locked.status === 'pending'` → `ACCOUNT_NOT_VERIFIED`. Suspended accounts are allowed.
+3. `checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client, /* consume */ false)`
+4. Commit, then: if `{ ok: false }` → throw `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
+5. On success, return nothing sensitive — **no state change happens here**, this call only validates
+
+> Note the same warning from Stage 5c applies: the wrong-guess path must not throw inside the transaction, or the attempt increment gets rolled back and the limit becomes bypassable.
+
+### Update the `verifyOtp` controller
+
+Dispatch on `purpose`:
+
+- `'registration'` → existing `authService.verifyRegistrationOtp()` call, unchanged, returns `{ message: 'Registration complete. You can now log in.', code: 'REGISTER_SUCCESS' }`
+- `'forgot_password'` → new `authService.verifyForgotPasswordOtp()` call, returns `200` with `{ message: 'Code verified. You can now set a new password.', code: 'OTP_VERIFIED' }`
+
+### Verification
+
+- `POST /auth/verify-otp` with the correct forgot-password OTP → `200 OTP_VERIFIED`, and the OTP row's `consumed_at` is still `NULL` afterward (confirm in DB)
+- Re-submitting the same correct OTP again → still `200 OTP_VERIFIED` (not yet consumed, so it's still valid) — confirm this is the intended behavior, not a bug
+- Wrong OTP → `400 INVALID_OTP`, `attempts_count` incremented and persisted
+- 5 wrong OTPs → `429 OTP_ATTEMPTS_EXCEEDED`
+- Expired OTP with the correct code → `400 OTP_EXPIRED`
+- Unknown email → `404 EMAIL_NOT_FOUND`
+- Email of a still-pending (unverified) registration → `403 ACCOUNT_NOT_VERIFIED`
+- `purpose: "forgot password"` (with a space, wrong format) → `400 VALIDATION_ERROR`, `"Invalid purpose"`
+
+---
+
+## Stage 6d: `POST /auth/reset-password`
+
+### Create query in `src/db/queries/tokens.queries.ts`
+
+- `revokeAllRefreshTokensForUser(userId, db)` — `UPDATE refresh_tokens SET is_revoked = true, revoked_at = NOW() WHERE user_id = $1 AND is_revoked = false`
+
+### Update `src/services/auth.service.ts`
+
+Implement `resetPassword({ email, otp, newPassword })`:
+
+- Validate `newPassword` complexity using the same rule and message as registration → `AppError(400, '...', 'VALIDATION_ERROR')` if it fails
+- Validate `otp` matches `^\d{6}$` → `AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR')` if not
+
+Inside `withTransaction`:
+
+1. `findByEmail(email)`. If none → `AppError(404, 'Email not found', 'EMAIL_NOT_FOUND')`. If the user is `pending` → `AppError(403, 'Account not verified. Please finish registration first.', 'ACCOUNT_NOT_VERIFIED')`.
+2. `locked = lockUserById(user.id)`. If `locked` is null (the row was deleted while waiting) → `EMAIL_NOT_FOUND`. If `locked.status === 'pending'` → `ACCOUNT_NOT_VERIFIED`. Suspended accounts are allowed.
+3. `checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client)` — **default consuming check**, this is the real gate
+4. If `{ ok: true }`:
+   - Hash `newPassword` with bcrypt (work factor 10)
+   - Update `users.password_hash` for this user
+   - `revokeAllRefreshTokensForUser(user.id, client)`
+5. Commit, then: if `{ ok: false }` → throw `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
+
+You'll need a new query function for the password update — add `updatePasswordHash(userId, passwordHash, db)` to `users.queries.ts` if it doesn't already exist.
+
+### Update `src/controllers/auth.controller.ts`
+
+Implement `resetPassword` handler:
+
+Validate request body with Zod (`.strict()`, custom messages, presence/type/extra-fields only — format/complexity rules stay in the service layer):
+
+- `email`: required `"Email is required"`, type `"Email must be a string"` (use the shared `emailField`: trimmed and lowercased)
+- `otp`: required `"OTP is required"`, type `"OTP must be a string"`
+- `newPassword`: required `"New password is required"`, type `"New password must be a string"`
+
+- Call `authService.resetPassword()`
+- Return `200` with `{ message: 'Password reset successful. Please log in with your new password.', code: 'PASSWORD_RESET_SUCCESS' }`
+
+### Wire up route
+
+Add to `auth.routes.ts`:
+
+```ts
+router.post("/reset-password", authController.resetPassword);
+```
+
+### Verification
+
+Happy path:
+
+- `forgot-password` → `verify-otp {purpose: forgot_password}` (optional, doesn't consume) → `reset-password` with the correct OTP → `200 PASSWORD_RESET_SUCCESS`, password hash changed in DB, all that user's `refresh_tokens` rows now have `is_revoked = true`
+- Login with the new password → `200`
+- Login with the old password → `401 INVALID_CREDENTIALS`
+- A previously-issued access token for this user is still valid until it naturally expires (only refresh tokens are revoked) — confirm this is the intended behavior
+
+OTP rules (same shape as Stage 5e, now on `reset-password` instead of `verify-otp`):
+
+- Wrong OTP → `400 INVALID_OTP`, attempt incremented and persisted
+- 5 wrong OTPs, then the correct one → `429 OTP_ATTEMPTS_EXCEEDED`, password unchanged
+- Expired OTP with the correct code → `400 OTP_EXPIRED`
+- Re-using an already-consumed OTP (call `reset-password` twice with the same code) → second call → `400 INVALID_OTP`
+- Calling `reset-password` directly, skipping `verify-otp` entirely, with a correct OTP → `200 PASSWORD_RESET_SUCCESS` (confirms `verify-otp` is optional UX, not a required gate)
+- Unknown email → `404 EMAIL_NOT_FOUND`
+- Email of a still-pending (unverified) registration → `403 ACCOUNT_NOT_VERIFIED`
+
+Validation:
+
+- Weak `newPassword` → `400 VALIDATION_ERROR` with the standard password-complexity message
+- `otp` not 6 digits → `400 VALIDATION_ERROR`, `"OTP must be a 6-digit code"`
+- Missing `newPassword` → `400 VALIDATION_ERROR`, `"New password is required"`
+- Extra field → `400 VALIDATION_ERROR`, `"Request contains unexpected fields"`
+
+Concurrency:
+
+- Fire two `POST /auth/reset-password` with the correct OTP near-simultaneously → exactly one `200`, the other `400 INVALID_OTP`, password changed exactly once
+- Run several `POST /auth/login` requests with the **old** password in a loop while calling `reset-password` → after the reset, no non-revoked refresh token exists for that user that was created by an old-password login
+
+---
+
+## Stage 6e: `resend-otp` — Forgot Password Purpose
+
+This extends the existing `resend-otp` endpoint from Stage 5e.
+
+### Update Zod schema in `src/controllers/auth.controller.ts`
+
+Extend the `purpose` enum for `POST /auth/resend-otp` to accept `'forgot_password'` alongside `'registration'`.
+
+### Update `src/services/auth.service.ts`
+
+Implement `resendForgotPasswordOtp({ email })`. It is the same operation as `forgotPassword` (both request a fresh OTP through `requestOtp`), so implement it once and call it from both:
+
+- `findByEmail(email)`, then `requestOtp(...)` inside `withTransaction`, with the same result mapping as Stage 6b: unknown email or `no-user` → `404 EMAIL_NOT_FOUND`; pending account or `not-verified` → `403 ACCOUNT_NOT_VERIFIED`; `throttled` → `429 OTP_RESEND_COOLDOWN` (with `Retry-After`) or `429 OTP_RESEND_LIMIT`; `sent` → return normally.
+
+### Update the `resendOtp` controller
+
+Dispatch on `purpose`, same pattern as `verifyOtp`:
+
+- `'registration'` → existing `authService.resendRegistrationOtp()`, unchanged
+- `'forgot_password'` → new `authService.resendForgotPasswordOtp()`
+
+Both return `200` with `{ message: 'A new verification code has been sent to your email', code: 'OTP_SENT' }` on success. For `forgot_password`, an unknown email returns `404 EMAIL_NOT_FOUND`, and a throttled request returns a real `429`.
+
+### Verification
+
+- Resend for a registered email, immediately after `forgot-password` → `429 OTP_RESEND_COOLDOWN` with a `Retry-After` header (seconds until the next resend is allowed)
+- Resend for a registered email, after the cooldown → `200 OTP_SENT`, previous OTP row now has `consumed_at` set
+- After 5 successful resends inside the window, the 6th → `429 OTP_RESEND_LIMIT` (message: try again in about an hour)
+- Once the oldest OTP is older than `resendWindowMinutes`, resend works again (the limit is not permanent)
+- Resend for an unregistered email → `404 EMAIL_NOT_FOUND`, no DB row created
+- Resend for a still-pending (unverified) registration → `403 ACCOUNT_NOT_VERIFIED`, no `Forgot Password` OTP row created
+
+- Extra/wrong-type fields → same `400 VALIDATION_ERROR` pattern as before
+
+---
+
+### Notes for Later Stages (do not implement now)
+
+- Every endpoint that sends an OTP (change email, change password, admin action, and any future one) must call `requestOtp`, never `issueOtp` directly. Without it, a logged-in user could use `PUT /users/me/email` to email any address without limit.
+- Frontend for forgot-password: for the first 5 resends, disable the resend button with a countdown from `Retry-After` ("try again in 60 seconds"). On `OTP_RESEND_LIMIT`, disable resend and show "try again in about an hour" (no countdown).
+- Change Email and Change Password reuse the same `issueOtp`/`checkOtp` pair, but don't need the `consume` flag — their `PUT /users/me/...` endpoints already know the new value (new email / new password) before the OTP is even sent, so it's natural for them to store it on the pending user/OTP state and let `verify-otp` finalize directly in one step, the same way registration does. Confirm this design when we get there rather than assuming it carries over unchanged.
+- Admin Action's OTP purpose will need its own finalize shape (likely: the pending action's target and effect stored somewhere before the OTP is sent) — not yet designed.
+- Lock ordering: any transaction that locks both a user row and refresh-token rows locks the user row first (see the lock ordering rule in Stage 4d). Suspend and change-password must follow it too.
+- Suspending a user (admin) and changing a password (F4.3.4) must revoke all of the user's refresh tokens in the same locked transaction as the change; the login check added in Stage 4c (re-verify hash and status after locking) is what stops a concurrent login from issuing a token afterwards.
+- NFR1 (account lockout after repeated failed attempts) is a Week 10 item and separate from the per-OTP `max_attempts` limit already built.
