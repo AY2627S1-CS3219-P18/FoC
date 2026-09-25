@@ -163,14 +163,16 @@ export async function login(
 
 export async function logout(refreshToken: string): Promise<void> {
   const tokenHash = sha256(refreshToken);
-  const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
-  if (!tokenRow || tokenRow.is_revoked) {
-    throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
-  }
-
-  await tokenQueries.revokeRefreshToken(tokenHash);
+  await withTransaction(async (client) => {
+    const tokenRow = await tokenQueries.lockRefreshToken(tokenHash, client);
+    if (!tokenRow || tokenRow.is_revoked) {
+      throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
+    }
+    await tokenQueries.revokeRefreshToken(tokenHash, client);
+  });
 }
+
 
 export async function refresh(refreshToken: string): Promise<{ accessToken: string }> {
   const tokenHash = sha256(refreshToken);
@@ -214,7 +216,7 @@ export async function verifyRegistrationOtp({
     const locked = await userQueries.lockUserById(user.id, client);
 
     if (!locked || locked.status !== 'pending') {
-      throw new AppError(400, 'Invalid OTP', 'INVALID_OTP');
+      throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
     }
 
     const check = await checkOtp({ userId: user.id, purpose: 'Registration', otp }, client);
