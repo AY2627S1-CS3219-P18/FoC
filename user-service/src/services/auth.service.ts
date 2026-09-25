@@ -211,7 +211,11 @@ export async function verifyRegistrationOtp({
       throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
     }
 
-    await userQueries.lockUserById(user.id, client);
+    const locked = await userQueries.lockUserById(user.id, client);
+
+    if (!locked || locked.status !== 'pending') {
+      throw new AppError(400, 'Invalid OTP', 'INVALID_OTP');
+    }
 
     const check = await checkOtp({ userId: user.id, purpose: 'Registration', otp }, client);
     if (check.ok) {
@@ -237,7 +241,11 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
       throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
     }
 
-    await userQueries.lockUserById(user.id, client);
+    const locked = await userQueries.lockUserById(user.id, client);
+
+    if (!locked || locked.status !== 'pending') {
+      throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
+    }
 
     const count = await otpQueries.countOtps(user.id, 'Registration', client);
     if (count - 1 >= config.otp.maxResends) {
