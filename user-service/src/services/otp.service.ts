@@ -4,10 +4,13 @@
 // Author review:
 // 25/09/2026: Stage 6 pre-work - checkOtp optional consume flag
 // Author review:
+// 25/09/2026: Stage 6a - requestOtp (locked, rate-limited OTP request)
+// Author review:
 
 import { config } from "../config.js";
 import * as otpQueries from "../db/queries/otp.queries.js";
 import type { OtpPurpose } from "../db/queries/otp.queries.js";
+import * as userQueries from "../db/queries/users.queries.js";
 import type { Queryable } from "../db/transaction.js";
 import { AppError } from "../utils/AppError.js";
 import { hashesMatch, sha256 } from "../utils/hash.js";
@@ -51,6 +54,63 @@ export async function issueOtp(
       "EMAIL_SEND_FAILED",
     );
   }
+}
+
+export type RequestOtpResult =
+  | { status: "sent" }
+  | { status: "no-user" }
+  | { status: "not-verified" }
+  | { status: "throttled"; reason: "limit" }
+  | { status: "throttled"; reason: "cooldown"; retryAfterSeconds: number };
+
+// Any endpoint that sends an OTP must go through this, never issueOtp directly.
+// Must run inside withTransaction. It only reports what happened; callers decide the response.
+// When throttled, nothing is sent and the existing OTP is not invalidated.
+export async function requestOtp(
+  {
+    userId,
+    email,
+    purpose,
+    newEmail,
+  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string },
+  db: Queryable,
+): Promise<RequestOtpResult> {
+  const locked = await userQueries.lockUserById(userId, db);
+  if (!locked) {
+    return { status: "no-user" };
+  }
+  // A pending account never gets OTPs here; registration has its own resend.
+  if (locked.status === "pending") {
+    return { status: "not-verified" };
+  }
+
+  // Rolling window, so the limit is never permanent.
+  const count = await otpQueries.countOtps(
+    userId,
+    purpose,
+    db,
+    config.otp.resendWindowMinutes,
+  );
+  if (count - 1 >= config.otp.maxResends) {
+    return { status: "throttled", reason: "limit" };
+  }
+
+  const latest = await otpQueries.findLatestOtp(userId, purpose, db);
+  if (latest) {
+    const availableAt =
+      latest.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
+    const remainingMs = availableAt - latest.db_now.getTime();
+    if (remainingMs > 0) {
+      return {
+        status: "throttled",
+        reason: "cooldown",
+        retryAfterSeconds: Math.ceil(remainingMs / 1000),
+      };
+    }
+  }
+
+  await issueOtp({ userId, email, purpose, newEmail }, db);
+  return { status: "sent" };
 }
 
 // Must run inside a transaction that already holds the user row lock.

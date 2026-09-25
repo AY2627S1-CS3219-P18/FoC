@@ -430,3 +430,27 @@ Removed the unused `authenticate` import in `auth.routes.ts`, which the instruct
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6a: requestOtp
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6a, "Add `requestOtp` to `src/services/otp.service.ts`"
+
+**Prompts (exact):**
+
+> let's do 6a
+
+**Key responses:**
+Stage 6a has three parts. The `consume` flag on `checkOtp` and the `Forgot Password` email template were already done as pre-work #3 and #4, so this entry covers only `requestOtp`, added to `otp.service.ts` and exported with a `RequestOtpResult` type. It must run inside `withTransaction` and does the following in order: lock the user (`lockUserById`; null returns `no-user`, `pending` returns `not-verified`); count OTPs in the rolling window (`countOtps` with `config.otp.resendWindowMinutes`), returning `throttled` with reason `limit` when `count - 1 >= maxResends`; check the cooldown against `db_now` from `findLatestOtp`, returning `throttled` with reason `cooldown` and `retryAfterSeconds` (rounded up); otherwise call `issueOtp` and return `sent`. `EMAIL_SEND_FAILED` from `issueOtp` propagates unchanged. When throttled, nothing is sent and the existing OTP is not invalidated. There is no caller yet (forgot-password arrives in 6b), so `requestOtp` is unexercised. `npx tsc --noEmit` passes. Not verified at runtime: throttled paths, no email sent when throttled, and the previous OTP staying valid.
+
+**Files:**
+
+- `user-service/src/services/otp.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None. The interrupted first request produced no changes; the work was done on the repeated prompt.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
