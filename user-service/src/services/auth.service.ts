@@ -173,7 +173,6 @@ export async function logout(refreshToken: string): Promise<void> {
   });
 }
 
-
 export async function refresh(refreshToken: string): Promise<{ accessToken: string }> {
   const tokenHash = sha256(refreshToken);
   const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
