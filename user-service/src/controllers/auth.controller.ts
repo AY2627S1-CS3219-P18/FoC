@@ -12,6 +12,8 @@
 // Author review:
 // 25/09/2026: Stage 5e - verifyOtp and resendOtp controllers
 // Author review:
+// 25/09/2026: Stage 5 - normalise email and username (lowercase) at the request boundary
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -20,16 +22,28 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { REFRESH_COOKIE_OPTIONS } from '../utils/cookies.js';
 import { verifyAccessToken } from '../utils/jwt.js';
 
+// Emails are matched case-sensitively in the DB, so normalise them once here.
+const emailField = z
+  .string({
+    required_error: 'Email is required',
+    invalid_type_error: 'Email must be a string',
+  })
+  .trim()
+  .toLowerCase();
+
+// Usernames are matched case-insensitively too. Not trimmed, so leading/trailing
+// spaces still fail the service's "no spaces" rule.
+const usernameField = z
+  .string({
+    required_error: 'Username is required',
+    invalid_type_error: 'Username must be a string',
+  })
+  .toLowerCase();
+
 const registerSchema = z
   .object({
-    username: z.string({
-      required_error: 'Username is required',
-      invalid_type_error: 'Username must be a string',
-    }),
-    email: z.string({
-      required_error: 'Email is required',
-      invalid_type_error: 'Email must be a string',
-    }),
+    username: usernameField,
+    email: emailField,
     password: z.string({
       required_error: 'Password is required',
       invalid_type_error: 'Password must be a string',
@@ -45,10 +59,14 @@ export const register = asyncHandler(async (req, res) => {
 
 const loginSchema = z
   .object({
-    identifier: z.string({
-      required_error: 'Username/Email is required',
-      invalid_type_error: 'Username/Email must be a string',
-    }),
+    // Both usernames and emails are stored lowercase, so match on the lowercase form.
+    identifier: z
+      .string({
+        required_error: 'Username/Email is required',
+        invalid_type_error: 'Username/Email must be a string',
+      })
+      .trim()
+      .toLowerCase(),
     password: z.string({
       required_error: 'Password is required',
       invalid_type_error: 'Password must be a string',
@@ -121,11 +139,6 @@ const purposeSchema = z.enum(['registration'], {
     }
     return { message: 'Purpose must be a string' };
   },
-});
-
-const emailField = z.string({
-  required_error: 'Email is required',
-  invalid_type_error: 'Email must be a string',
 });
 
 const verifyOtpSchema = z

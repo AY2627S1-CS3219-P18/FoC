@@ -24,14 +24,13 @@ export async function issueOtp(
   await otpQueries.invalidateActiveOtps(userId, purpose, db);
 
   const otp = generateOtp();
-  const expiresAt = new Date(Date.now() + config.otp.ttlMinutes * 60_000);
   await otpQueries.createOtp(
     {
       userId,
       otpHash: sha256(otp),
       purpose,
       newEmail: newEmail ?? null,
-      expiresAt,
+      ttlMinutes: config.otp.ttlMinutes,
     },
     db,
   );
@@ -67,7 +66,7 @@ export async function checkOtp(
   if (!row || row.consumed_at) {
     throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
   }
-  if (row.expires_at.getTime() <= Date.now()) {
+  if (row.expires_at.getTime() <= row.db_now.getTime()) {
     throw new AppError(
       400,
       "OTP has expired. Please request a new one.",
