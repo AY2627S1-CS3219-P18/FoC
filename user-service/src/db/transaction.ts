@@ -2,8 +2,6 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5a - transaction helper
 // Author review:
-// 25/09/2026: Stage 5 - keep original error and discard broken connection if ROLLBACK fails
-// Author review:
 
 import type pg from "pg";
 import pool from "./pool.js";

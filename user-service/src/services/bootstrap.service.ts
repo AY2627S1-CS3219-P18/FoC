@@ -25,8 +25,8 @@ export async function bootstrapSuperAdmin(): Promise<void> {
   const passwordHash = await bcrypt.hash(config.superAdmin.password, BCRYPT_WORK_FACTOR);
 
   await userQueries.createSuperAdmin({
-    username: config.superAdmin.username,
-    email: config.superAdmin.email,
+    username: config.superAdmin.username.trim().toLowerCase(),
+    email: config.superAdmin.email.trim().toLowerCase(),
     passwordHash,
   });
 
