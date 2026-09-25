@@ -142,9 +142,6 @@ export async function login(
 
   const refreshTokenPlain = randomBytes(32).toString('hex');
   const refreshTokenHash = sha256(refreshTokenPlain);
-  const expiresAt = new Date(
-    Date.now() + config.jwt.refreshTokenTtlDays * 24 * 60 * 60 * 1000,
-  );
 
   await tokenQueries.createRefreshToken({
     userId: user.id,
