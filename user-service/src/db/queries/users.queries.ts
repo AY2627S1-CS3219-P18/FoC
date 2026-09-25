@@ -124,18 +124,23 @@ export async function activateUser(
   return (result.rowCount ?? 0) > 0;
 }
 
+
 export async function deleteStalePendingUsers(
   { username, email }: { username: string; email: string },
   db: Queryable = pool,
 ): Promise<void> {
   await db.query(
     `DELETE FROM users
-     WHERE status = 'pending'
-       AND (username = $1 OR email = $2)
-       AND NOT EXISTS (
-         SELECT 1 FROM users_otps o
-         WHERE o.user_id = users.id AND o.expires_at > NOW()
-       )`,
+     WHERE id IN (
+       SELECT id FROM users
+       WHERE status = 'pending'
+         AND (username = $1 OR email = $2)
+         AND NOT EXISTS (
+           SELECT 1 FROM users_otps o
+           WHERE o.user_id = users.id AND o.expires_at > NOW()
+         )
+       FOR UPDATE SKIP LOCKED
+     )`,
     [username, email],
   );
 }
