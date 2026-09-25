@@ -12,6 +12,8 @@
 // Author review:
 // 25/09/2026: Stage 6 - login creates refresh token under user row lock
 // Author review:
+// 25/09/2026: Stage 6 - registration resend-limit message text
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -267,7 +269,7 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
     if (count - 1 >= config.otp.maxResends) {
       throw new AppError(
         429,
-        'Maximum OTP resends reached. Please register again later.',
+        'Maximum OTP resends reached. Please try registering again in about 10 minutes.',
         'OTP_RESEND_LIMIT',
       );
     }

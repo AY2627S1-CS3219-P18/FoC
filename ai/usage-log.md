@@ -353,3 +353,27 @@ Change #5 skipped for now at the user's request; because it has dependencies in 
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-25 — Stage 6 pre-work #7: Registration resend-limit message
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6 "Changes to already-implemented code", row 7 (specified in Stage 5e, `resendRegistrationOtp` step 3)
+
+**Prompts (exact):**
+
+> yes do 7
+
+**Key responses:**
+Changed the `OTP_RESEND_LIMIT` message in `resendRegistrationOtp` (`auth.service.ts`) from "Maximum OTP resends reached. Please register again later." to "Maximum OTP resends reached. Please try registering again in about 10 minutes.", as specified. Only the text changed; the status code, error code and limit logic are unchanged. The 10 minutes is hard-coded in the message and matches `OTP_TTL_MINUTES=10`, as `instructions.md` notes it must be updated by hand if that value changes. `npx tsc --noEmit` passes. The endpoint was not called, so the message is unverified at runtime.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
