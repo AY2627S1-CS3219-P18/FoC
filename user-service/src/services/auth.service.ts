@@ -20,6 +20,8 @@
 // Author review:
 // 25/09/2026: Stage 6c - verifyForgotPasswordOtp
 // Author review:
+// 25/09/2026: Stage 6d - resetPassword
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -36,6 +38,9 @@ import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
 const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+const PASSWORD_MESSAGE =
+  'Password must contain at least 8 characters, with at least one uppercase, one lowercase, one digit and one special character. ';
 
 const OTP_REGEX = /^\d{6}$/;
 
@@ -74,7 +79,7 @@ export async function register({
   if (!PASSWORD_REGEX.test(password)) {
     throw new AppError(
       400,
-      'Password must contain at least 8 characters, with at least one uppercase, one lowercase, one digit and one special character. ',
+      PASSWORD_MESSAGE,
       'VALIDATION_ERROR',
     );
   }
@@ -315,19 +320,6 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
   });
 }
 
-// Non-consuming check: the code stays valid until reset-password consumes it.
-export async function verifyForgotPasswordOtp({
-  email,
-  otp,
-}: {
-  email: string;
-  otp: string;
-}): Promise<void> {
-  if (!OTP_REGEX.test(otp)) {
-    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
-  }
-
-  const result = await withTransaction(async (client) => {
 export async function forgotPassword({ email }: { email: string }): Promise<void> {
   await withTransaction(async (client) => {
     // Plain read is a cheap early exit; requestOtp re-checks after locking the row.
@@ -343,26 +335,6 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
       );
     }
 
-    // Re-check after the lock: the pre-lock read can be stale. Suspended accounts are allowed.
-    const locked = await userQueries.lockUserById(user.id, client);
-    if (!locked) {
-      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
-    }
-    if (locked.status === 'pending') {
-      throw new AppError(
-        403,
-        'Account not verified. Please finish registration first.',
-        'ACCOUNT_NOT_VERIFIED',
-      );
-    }
-
-    return checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client, false);
-  });
-
-  // Thrown only after commit so the incremented attempt count is persisted.
-  if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
-  }
     const result = await requestOtp(
       { userId: user.id, email: user.email, purpose: 'Forgot Password' },
       client,
@@ -395,4 +367,111 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
         );
     }
   });
+}
+
+// Non-consuming check: the code stays valid until reset-password consumes it.
+export async function verifyForgotPasswordOtp({
+  email,
+  otp,
+}: {
+  email: string;
+  otp: string;
+}): Promise<void> {
+  if (!OTP_REGEX.test(otp)) {
+    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
+  }
+
+  const result = await withTransaction(async (client) => {
+    const user = await userQueries.findByEmail(email, client);
+    if (!user) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (user.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    // Re-check after the lock: the pre-lock read can be stale. Suspended accounts are allowed.
+    const locked = await userQueries.lockUserById(user.id, client);
+    if (!locked) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (locked.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    return checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client, false);
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
+}
+
+export async function resetPassword({
+  email,
+  otp,
+  newPassword,
+}: {
+  email: string;
+  otp: string;
+  newPassword: string;
+}): Promise<void> {
+  if (!PASSWORD_REGEX.test(newPassword)) {
+    throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
+  }
+  if (!OTP_REGEX.test(otp)) {
+    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
+  }
+
+  const result = await withTransaction(async (client) => {
+    const user = await userQueries.findByEmail(email, client);
+    if (!user) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (user.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    // Lock the user row first (lock order: user, then its refresh tokens).
+    // Re-check after the lock: the pre-lock read can be stale. Suspended accounts are allowed.
+    const locked = await userQueries.lockUserById(user.id, client);
+    if (!locked) {
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    }
+    if (locked.status === 'pending') {
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+    }
+
+    // Default consuming check: this is the real gate.
+    const check = await checkOtp({ userId: user.id, purpose: 'Forgot Password', otp }, client);
+    if (check.ok) {
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_WORK_FACTOR);
+      await userQueries.updatePasswordHash(user.id, passwordHash, client);
+      // Same transaction as the password change, so no old session outlives it.
+      await tokenQueries.revokeAllRefreshTokensForUser(user.id, client);
+    }
+    return check;
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
 }

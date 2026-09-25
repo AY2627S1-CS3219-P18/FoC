@@ -506,3 +506,36 @@ Row 5 split across stages as described above: the verify-otp side is done here, 
 
 **What I kept/changed/rejected:**
 Approved all changes.
+
+
+## 2026-09-25 — Stage 6d: POST /auth/reset-password
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, Stage 6d (and the lock ordering rule in Stage 4d)
+
+**Prompts (exact):**
+
+> good to go, let's go on to the next part
+
+(Reply to the 6c hand-off asking the user to review before committing. The 6c work was then committed, pushed and opened as PR #84, and this work was started on a new branch from `main`.)
+
+**Key responses:**
+Added `revokeAllRefreshTokensForUser(userId, db)` to `tokens.queries.ts` (sets `is_revoked` and `revoked_at` on the user's non-revoked tokens) and `updatePasswordHash(userId, passwordHash, db)` to `users.queries.ts` (also sets `updated_at`). Added `resetPassword({ email, otp, newPassword })` to `auth.service.ts`: validates `newPassword` complexity with the registration message and `otp` as 6 digits (400 `VALIDATION_ERROR`), then inside `withTransaction`: `findByEmail` (none gives `404 EMAIL_NOT_FOUND`, `pending` gives `403 ACCOUNT_NOT_VERIFIED`), `lockUserById` with the same re-checks after the lock (suspended allowed), then the default consuming `checkOtp` for `Forgot Password`; on `{ ok: true }` it bcrypt-hashes the new password (work factor 10), updates the hash, and revokes all the user's refresh tokens, all in the same transaction (user row locked first, per the lock order rule). `INVALID_OTP` is thrown only after commit so wrong-guess attempts persist. To reuse the registration password message without duplicating the string, it was moved into a `PASSWORD_MESSAGE` constant that `register` now also uses (text unchanged; small refactor beyond the spec). Added the `resetPassword` controller (strict Zod schema with the shared `emailField`; messages "OTP is required", "OTP must be a string", "New password is required", "New password must be a string"; returns `200 PASSWORD_RESET_SUCCESS`) and the route `POST /auth/reset-password`. `npx tsc --noEmit` and `npx eslint src` pass. Tested against the dev containers with a freshly registered user (register, verify, login, forgot-password, reset): weak password gave 400 with the standard message; missing `newPassword` gave 400 "New password is required"; an extra field gave 400 "Request contains unexpected fields"; a 2-digit OTP gave 400 "OTP must be a 6-digit code"; a wrong OTP gave 400 `INVALID_OTP` with `attempts_count` persisted at 1; an unknown email gave 404; two concurrent resets with the correct OTP gave one 200 and one 400 `INVALID_OTP`; after the reset the user had 0 non-revoked refresh tokens (the pre-reset token was revoked and the old cookie's refresh gave 401); login with the new password gave 200 and with the old password 401; re-using the consumed OTP gave 400 `INVALID_OTP`. My first two test runs failed because of mistakes in my test script (the service was mid-restart, then a wrong log-grep pattern), not because of the code, and were rerun. Not run: 5 wrong OTPs then the correct one, an expired OTP, a pending account on this endpoint, a suspended account, and the login-loop-versus-reset race.
+
+**Files:**
+
+- `user-service/src/db/queries/tokens.queries.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+
+**Deviations / questions raised for the team:**
+Extracted the registration password message into a `PASSWORD_MESSAGE` constant (text unchanged) so `resetPassword` reuses it; this touches `register`, which the spec did not mention.
+
+The 6d branch was cut from a `main` that did not yet contain PR #84 (6c), so before pushing, `origin/main` was merged into it (user asked for this). The merge conflicted at the end of `auth.service.ts`, `auth.controller.ts`, `ai/usage-log.md` and `README.md`; the log and README were resolved by keeping both sides. Separately, `origin/main` itself did not typecheck after PR #84: the earlier "Merge branch 'main' into feat/stage-6c..." auto-merge had interleaved the end-of-file `forgotPassword` (6b) and `verifyForgotPasswordOtp` (6c) functions (`tsc` error TS1128 in `auth.service.ts`). While resolving this merge the AI restored those two functions from their own commits (`f797583`, `cda9a47`) and kept `resetPassword` after them, so this branch's `auth.service.ts` also carries that repair. After the merge `npx tsc --noEmit` and `npx eslint src` pass, and forgot-password, verify-otp (`forgot_password`), reset-password, login with the new and old passwords, and re-use of the consumed OTP were re-run against the containers with the expected results.
+
+**What I kept/changed/rejected:**
+Accepted all changes.

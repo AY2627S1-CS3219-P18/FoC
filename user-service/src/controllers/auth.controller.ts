@@ -18,6 +18,8 @@
 // Author review:
 // 25/09/2026: Stage 6c - verify-otp accepts forgot_password purpose
 // Author review:
+// 25/09/2026: Stage 6d - resetPassword controller
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -201,4 +203,27 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = forgotPasswordSchema.parse(req.body);
   await authService.forgotPassword({ email });
   res.status(200).json({ message: 'A reset code has been sent to your email', code: 'OTP_SENT' });
+});
+
+const resetPasswordSchema = z
+  .object({
+    email: emailField,
+    otp: z.string({
+      required_error: 'OTP is required',
+      invalid_type_error: 'OTP must be a string',
+    }),
+    newPassword: z.string({
+      required_error: 'New password is required',
+      invalid_type_error: 'New password must be a string',
+    }),
+  })
+  .strict();
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = resetPasswordSchema.parse(req.body);
+  await authService.resetPassword({ email, otp, newPassword });
+  res.status(200).json({
+    message: 'Password reset successful. Please log in with your new password.',
+    code: 'PASSWORD_RESET_SUCCESS',
+  });
 });

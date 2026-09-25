@@ -8,6 +8,8 @@
 // Author review:
 // 25/09/2026: Stage 6b - forgot-password route
 // Author review:
+// 25/09/2026: Stage 6d - reset-password route
+// Author review:
 
 import { Router } from 'express';
 import * as authController from '../controllers/auth.controller.js';
@@ -21,6 +23,7 @@ router.post('/refresh', authController.refresh);
 router.post('/verify-otp', authController.verifyOtp);
 router.post('/resend-otp', authController.resendOtp);
 router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 router.get('/verify', authController.verify);
 
 export default router;
