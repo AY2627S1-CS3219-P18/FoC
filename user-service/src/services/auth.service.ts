@@ -22,6 +22,8 @@
 // Author review:
 // 25/09/2026: Stage 6d - resetPassword
 // Author review:
+// 25/09/2026: Stage 6e - resendForgotPasswordOtp
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -367,6 +369,12 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
         );
     }
   });
+}
+
+// Same operation as forgotPassword (both request a fresh OTP through requestOtp), so it is
+// implemented once there and reused here for POST /auth/resend-otp.
+export async function resendForgotPasswordOtp({ email }: { email: string }): Promise<void> {
+  await forgotPassword({ email });
 }
 
 // Non-consuming check: the code stays valid until reset-password consumes it.

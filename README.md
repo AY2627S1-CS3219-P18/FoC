@@ -86,3 +86,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-25 | user-service | Stage 6b: POST /auth/forgot-password | Forgot-password endpoint using requestOtp with 404, 403 and 429 mapping |
 | 2026-09-25 | user-service | Stage 6c: verify-otp for forgot_password (includes pre-work #5, verify-otp half) | verify-otp accepts forgot_password with a non-consuming OTP check |
 | 2026-09-25 | user-service | Stage 6d: POST /auth/reset-password | Reset-password endpoint consuming the OTP and revoking all refresh tokens |
+| 2026-09-26 | user-service | Stage 6e: resend-otp for forgot_password (includes pre-work #5, resend-otp half) | resend-otp accepts forgot_password by reusing forgot-password logic |
