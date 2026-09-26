@@ -1646,11 +1646,6 @@ role-claim freshness after promotion, and the "confirm this is intended, not a
 bug" notes (e.g. non-consuming `verify-otp` for forgot-password being
 re-submittable, an old access token surviving a password reset).
 
-In addition, build a **traceability table** as a final deliverable, mapping
-every Product Backlog FR/NFR number (F1.1.x, F2.x, F3.1.x, F5.1.x, etc.) that's
-in scope for what's built so far to the test file(s) covering it, so any gap
-is visible rather than assumed away.
-
 ### Deliverables
 
 1. The test files
