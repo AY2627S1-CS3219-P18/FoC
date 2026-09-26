@@ -8,6 +8,8 @@
 // Author review:
 // 25/09/2026: Stage 6d - updatePasswordHash
 // Author review:
+// 27/09/2026: Stage 9 - listAllUsers, updateUserStatus
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -159,4 +161,23 @@ export async function updatePasswordHash(
     `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
     [userId, passwordHash],
   );
+}
+
+export async function listAllUsers(db: Queryable = pool): Promise<UserRow[]> {
+  const result = await db.query<UserRow>(
+    `SELECT * FROM users ORDER BY created_at DESC`,
+  );
+  return result.rows;
+}
+
+export async function updateUserStatus(
+  userId: string,
+  status: "active" | "suspended",
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, status],
+  );
+  return result.rows[0]!;
 }

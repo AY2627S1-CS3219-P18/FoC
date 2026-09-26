@@ -1757,7 +1757,7 @@ case. Do not modify application code to make a test pass.
 | Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                                             |
 | Target role restriction            | An `admin` caller may only suspend/unsuspend a target with `role = 'user'`. A `super admin` caller may suspend/unsuspend a `user` or `admin` target, but not another `super admin`.                                                                                        |
 | Error codes for role restrictions  | Any caller targeting a `super admin` (including a super admin targeting one) → `403 SUPER_ADMIN_IMMUTABLE`. An `admin` caller targeting an `admin` → `403 FORBIDDEN`.                                                                                                      |
-| Pending target                     | The status of a `pending` user cannot be changed through this endpoint, to either `suspended` or `active`. A pending account only becomes active through OTP verification. Responds `422 CANNOT_SUSPEND_PENDING_USER`, message `'Cannot suspend pending user'`, for either target status.                                      |
+| Pending target                     | The status of a `pending` user cannot be changed through this endpoint, to either `suspended` or `active`. A pending account only becomes active through OTP verification. Responds `422 CANNOT_CHANGE_STATUS_PENDING_USER`, message `'Cannot change the status of a pending user'`, for either target status.                                      |
 | No-op requests                     | If the target is already in the requested status, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation                                                                                               |
 | Service file location              | `listUsers`, `getUserById`, `changeUserStatus` (and Stage 10's `changeUserRole`) live in a new `src/services/users.service.ts`, not `auth.service.ts` — matching how `otp.service.ts` and `email.service.ts` were already split out from `auth.service.ts`                 |
 | Naming (query vs. service)         | The query function stays `updateUserStatus` (matches the SQL operation). The service function that calls it is `changeUserStatus`, to avoid two different-layer functions sharing one name (same split for Stage 10's `updateUserRole` query vs. `changeUserRole` service) |
@@ -1786,7 +1786,7 @@ Inside `withTransaction`:
 2. Target-role restriction, checked before anything else:
    - If `locked.role === 'super admin'` → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')` (whoever the caller is)
    - If `locked.role === 'admin' && requestorRole === 'admin'` → `AppError(403, 'Only a super admin may suspend an admin', 'FORBIDDEN')`
-3. Pending target: if `locked.status === 'pending'` → reject; the status of a pending user cannot be changed → `AppError(422, 'Cannot suspend pending user', 'CANNOT_SUSPEND_PENDING_USER')`
+3. Pending target: if `locked.status === 'pending'` → reject; the status of a pending user cannot be changed → `AppError(422, 'Cannot change the status of a pending user', 'CANNOT_CHANGE_STATUS_PENDING_USER')`
 4. No-op check: if `locked.status === status` → return `locked` (minus `password_hash`) as-is, no write, no revocation
 5. `updateUserStatus(locked.id, status, client)`
 6. If `status === 'suspended'` → `revokeAllRefreshTokensForUser(locked.id, client)` (already built in Stage 6d)
@@ -1834,8 +1834,8 @@ Mount at `/users` in `app.ts`.
 - Super admin suspends a plain user → `200`
 - Super admin suspends an admin → `200`
 - Super admin attempts to suspend the super admin account → `403 SUPER_ADMIN_IMMUTABLE`
-- `PUT /users/:id/status {status: 'suspended'}` on a `pending` user → `422 CANNOT_SUSPEND_PENDING_USER`, user stays `pending`
-- `PUT /users/:id/status {status: 'active'}` on a `pending` user → `422 CANNOT_SUSPEND_PENDING_USER`, user stays `pending`, not activated
+- `PUT /users/:id/status {status: 'suspended'}` on a `pending` user → `422 CANNOT_CHANGE_STATUS_PENDING_USER`, user stays `pending`
+- `PUT /users/:id/status {status: 'active'}` on a `pending` user → `422 CANNOT_CHANGE_STATUS_PENDING_USER`, user stays `pending`, not activated
 - Suspend an already-suspended user → `200`, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamps change
 - Unsuspend an already-active user → `200`, unchanged user returned, `updated_at` unchanged, no new revocation activity
 - Suspend a user, then attempt `POST /auth/refresh` with their pre-suspension refresh cookie → `401` (revoked) — confirms this endpoint reuses the same revocation your reset-password flow already relies on
@@ -1862,7 +1862,7 @@ Do not modify application code to make a test pass.
 | Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint)                                      |
 | Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                                                                  |
 | Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)                                                |
-| Target is not active     | Rejected — the role of a `pending` or `suspended` user cannot be changed; only an `active` target is allowed. `pending` → `422 CANNOT_PROMOTE_PENDING_USER` (`'Cannot promote pending user'`); `suspended` → `422 CANNOT_PROMOTE_SUSPENDED_USER` (`'Cannot promote suspended user'`). |
+| Target is not active     | Rejected — the role of a `pending` or `suspended` user cannot be changed; only an `active` target is allowed. `pending` → `422 CANNOT_CHANGE_ROLE_PENDING_USER` (`'Cannot change the role of a pending user'`); `suspended` → `422 CANNOT_CHANGE_ROLE_SUSPENDED_USER` (`'Cannot change the role of a suspended user'`). |
 | Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)                                                   |
 | No-op requests           | If the target already has the requested role, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation |
 | Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                                                                 |
@@ -1884,8 +1884,8 @@ Inside `withTransaction`:
 1. `locked = lockUserById(targetId, client)`. If null → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
 2. If `locked.role === 'super admin'` → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')`
 3. Non-active target: the role of a non-active user cannot be changed.
-   - If `locked.status === 'pending'` → `AppError(422, 'Cannot promote pending user', 'CANNOT_PROMOTE_PENDING_USER')`
-   - If `locked.status === 'suspended'` → `AppError(422, 'Cannot promote suspended user', 'CANNOT_PROMOTE_SUSPENDED_USER')`
+   - If `locked.status === 'pending'` → `AppError(422, 'Cannot change the role of a pending user', 'CANNOT_CHANGE_ROLE_PENDING_USER')`
+   - If `locked.status === 'suspended'` → `AppError(422, 'Cannot change the role of a suspended user', 'CANNOT_CHANGE_ROLE_SUSPENDED_USER')`
    This is checked before the no-op case, so a non-active user is rejected even if `newRole` equals their current role.
 4. No-op check: if `locked.role === newRole` → return `locked` (minus `password_hash`) as-is, no write, no revocation
 5. `updateUserRole(locked.id, newRole, client)`
@@ -1920,8 +1920,8 @@ router.put(
 - Non-UUID target ID → `400 VALIDATION_ERROR`, `"Invalid user ID"`
 - Promote a user to admin, then that user's _pre-promotion_ access token (still `role: user`) hits an admin-only route within its remaining lifetime → still rejected with `403` (expected — a promotion also doesn't take effect until refresh, same as the stale-claim rule from Stage 8); after they `refresh`, the new token carries `role: admin` and the same route succeeds
 - Demote an admin, then within the old token's remaining lifetime, hit an admin route → still succeeds (expected, matches Stage 8's documented tradeoff); attempt `POST /auth/refresh` with their old refresh cookie → `401` (revoked), forcing re-login rather than a quiet demotion
-- `PUT /users/:id/role` on a `pending` user → `422 CANNOT_PROMOTE_PENDING_USER`, role unchanged
-- `PUT /users/:id/role` on a `suspended` user → `422 CANNOT_PROMOTE_SUSPENDED_USER`, role unchanged, no token rows touched
+- `PUT /users/:id/role` on a `pending` user → `422 CANNOT_CHANGE_ROLE_PENDING_USER`, role unchanged
+- `PUT /users/:id/role` on a `suspended` user → `422 CANNOT_CHANGE_ROLE_SUSPENDED_USER`, role unchanged, no token rows touched
 - Two concurrent `PUT /users/:id/role` calls on the same target with different roles → no deadlock, no `500`, exactly one role wins
 - Promote an admin to admin again → `200`, unchanged user, no refresh tokens revoked
 - Demote a user to user again → `200`, unchanged user, no refresh tokens revoked

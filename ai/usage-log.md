@@ -851,3 +851,69 @@ Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+---
+
+## 2026-09-27 — Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend" (design decisions table, `users.queries.ts` / `users.service.ts` / `users.controller.ts` / `users.routes.ts` specs, Verification bullets and "Tests (Vitest)" section), including the team's decisions recorded there: pending users listed and viewable with their `status`, `SUPER_ADMIN_IMMUTABLE` for any caller targeting a super admin, and `422 CANNOT_CHANGE_STATUS_PENDING_USER` for a status change on a pending user.
+
+**Prompts (exact):**
+
+> leave both as it is bah. finished my AI declaration already, can proceed to finish the git workflow, then start on stage 9
+
+> sorry just merged my PR, proceed
+
+> password_hash is removed by destructuring, not a field whitelist, so a column added later would show up in responses unless the service changes.
+>
+> - point me to the relevant code
+>
+> The pending rule returns "Cannot suspend pending user" even when the request was to set active, as specified.
+>
+> - can change to a generic "cannot change the status/role of pending/suspended user" (accordingly)
+
+> can change the code as well (CANNOT*CHANGE_STATUS*...) you know the rest
+
+**Key responses:**
+Pulled `main` after the Stage 8 PR was merged and branched to `feat/stage-9-admin-users`. Implemented the three endpoints, all behind `authenticate` + `authorize('admin')` and mounted at `/users`:
+
+- `users.queries.ts`: `listAllUsers` (every status, newest first) and `updateUserStatus` (`UPDATE ... RETURNING *`, run on the locked row).
+- `users.service.ts` (new): `listUsers`, `getUserById` and `changeUserStatus`, each stripping `password_hash` before returning. `changeUserStatus` runs in `withTransaction` with `lockUserById` and checks, in order: not found (404), super admin target (403 `SUPER_ADMIN_IMMUTABLE`), admin caller on admin target (403 `FORBIDDEN`), pending target (422 `CANNOT_CHANGE_STATUS_PENDING_USER`), no-op (200, no write, no revocation). Suspending revokes all of the target's refresh tokens in the same transaction.
+- `users.controller.ts` (new): Zod `.uuid('Invalid user ID')` on `req.params.id`, and a `.strict()` body schema for `status` with the specified custom messages.
+- `users.routes.ts` (new) and the `/users` mount in `app.ts`.
+
+Tests, all against the real test DB: users query tests (appended), `users.service.test.ts`, `users.controller.test.ts` (HTTP), `users.concurrency.test.ts`, and four deterministic re-check-after-lock cases (target promoted to super admin, turned pending, already suspended, or deleted while the request waited) appended to `lock-recheck.concurrency.test.ts`. A `createUserWithRole` / `accessTokenFor` / `bearer` fixture helper was added to `tests/helpers/fixtures.ts`. Every Stage 9 Verification bullet has a test.
+
+Verification actually run: full suite 478 passed (19 files), `eslint .`, `tsc --noEmit` for `src` and for `tests/tsconfig.json`, and a build to a scratch directory were clean. Mutation checks: removing the revocation, the no-op check or the pending check each made 4 tests fail; removing `FOR UPDATE` from `lockUserById` made the lock tests fail (20 failures). Before the re-check tests were added, the looped concurrent-status test alone did NOT catch a missing row lock, which is why the deterministic tests were added. All mutated sources were restored and re-verified identical.
+
+Environment: Docker Desktop was not running and was started. The existing `foc-user-db` container had been created before the `5434:5432` test port mapping existed, so it was recreated with `docker compose up -d --no-deps --force-recreate user-db` (the `foc_user-db-data` volume was kept). Compose needed values for the other services' required variables, which were passed inline as dummy values for that one command; no `.env` file was created.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (created)
+- `user-service/src/controllers/users.controller.ts` (created)
+- `user-service/src/routes/users.routes.ts` (created)
+- `user-service/src/app.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (created)
+- `user-service/tests/controllers/users.controller.test.ts` (created)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (created)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `user-service/tests/helpers/fixtures.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- `password_hash` is removed with a destructure and a one-line `eslint-disable` for the unused variable, rather than a field whitelist, so any column added later will appear in responses unless the service is changed.
+- The pending-target rule applies whichever status is requested (`suspended` or `active`). At the team's request its message and code were made generic: `422 CANNOT_CHANGE_STATUS_PENDING_USER`, "Cannot change the status of a pending user" (previously `CANNOT_SUSPEND_PENDING_USER`). The Stage 10 rules in `instructions.md` were reworded the same way and are not implemented yet: `CANNOT_CHANGE_ROLE_PENDING_USER` / `CANNOT_CHANGE_ROLE_SUSPENDED_USER` (previously `CANNOT_PROMOTE_*`).
+- Stage 9 makes `authenticate` a route dependency for the first time. Access tokens are stateless, so a suspended user's or demoted admin's existing access token keeps working on these routes for up to 15 minutes (the documented Stage 8 trade-off).
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+Got Claude to help modify the error codes, to make it accurate (e.g. not just "suspend", but "change status").

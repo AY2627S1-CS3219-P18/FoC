@@ -93,3 +93,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-26 | credit-service | Recess iteration: Credit Service schema, allocation and reservation            | Postgres schema plus transactional allocate and reserve, each logged in the same commit   |
 | 2026-09-26 | credit-service | Recess iteration: Credit Service verification run                              | Ran schema and suite against a real credit-db; 10 tests pass, concurrency mutation-checked |
 | 2026-09-27 | user-service | Stage 8: RBAC Middleware                                                         | Minimum-role authorize middleware factory with unit tests; not yet wired to routes        |
+| 2026-09-27 | user-service | Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend                         | Admin list/get users and suspend/unsuspend endpoints with role rules and tests           |

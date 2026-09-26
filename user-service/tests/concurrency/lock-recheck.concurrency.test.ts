@@ -2,8 +2,11 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - deterministic re-check-after-lock tests (a held row lock forces the interleaving)
 // Author review:
+// 27/09/2026: Stage 9 - changeUserStatus re-checks the locked row
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
+import * as usersService from '../../src/services/users.service.js';
 import { AppError } from '../../src/utils/AppError.js';
 import { NEW_PASSWORD, PASSWORD } from '../helpers/constants.js';
 import {
@@ -311,5 +314,60 @@ describe('stale pending cleanup skips locked rows (FOR UPDATE SKIP LOCKED)', () 
     // Once the lock is gone, the expired reservation is released as usual.
     await authService.register(userInput(1));
     expect((await getUserByEmail(u.email))!.id).not.toBe(u.id);
+  });
+});
+
+describe('changeUserStatus re-checks the locked row', () => {
+  it('a target promoted to super admin while the request waited: 403 SUPER_ADMIN_IMMUTABLE, status unchanged', async () => {
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      async (c) => {
+        await c.query(`UPDATE users SET role = 'super admin' WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 403, 'SUPER_ADMIN_IMMUTABLE');
+    expect((await getUserByEmail(u.email))!.status).toBe('active');
+  });
+
+  it('a target that became pending while the request waited: 422 CANNOT_CHANGE_STATUS_PENDING_USER', async () => {
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      async (c) => {
+        await c.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 422, 'CANNOT_CHANGE_STATUS_PENDING_USER');
+    expect((await getUserByEmail(u.email))!.status).toBe('pending');
+  });
+
+  it('a target already suspended while the request waited: no-op, no token revocation', async () => {
+    const u = await createActiveUser(1);
+    await seedRefreshToken(u.id, 'tok-a');
+    const { value, error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      async (c) => {
+        await c.query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [u.id]);
+      },
+    );
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({ id: u.id, status: 'suspended' });
+    expect((await getRefreshTokens(u.id))[0]!.is_revoked).toBe(false);
+  });
+
+  it('a target deleted while the request waited: 404 USER_NOT_FOUND', async () => {
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      async (c) => {
+        await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 404, 'USER_NOT_FOUND');
   });
 });

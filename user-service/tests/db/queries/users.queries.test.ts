@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - integration tests for users.queries.ts against the real test DB
 // Author review:
+// 27/09/2026: Stage 9 - tests for listAllUsers and updateUserStatus
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -250,5 +252,61 @@ describe('updatePasswordHash', () => {
     const after = (await users.findById(u.id))!;
     expect(after.password_hash).toBe('new-hash');
     expect(after.updated_at.getTime()).toBeGreaterThan(u.updated_at.getTime());
+  });
+});
+
+describe('listAllUsers', () => {
+  it('returns users of every status, newest first, including password_hash', async () => {
+    const a = await users.createUser({ ...base, status: 'active' });
+    const b = await users.createUser({
+      username: 'bob',
+      email: 'bob@example.com',
+      passwordHash: 'hash',
+      status: 'pending',
+    });
+    const c = await users.createUser({
+      username: 'carol',
+      email: 'carol@example.com',
+      passwordHash: 'hash',
+      status: 'active',
+    });
+    await users.updateUserStatus(c.id, 'suspended');
+
+    const rows = await users.listAllUsers();
+    expect(rows.map((r) => r.status).sort()).toEqual(['active', 'pending', 'suspended']);
+    expect(rows.map((r) => r.id)).toEqual([c.id, b.id, a.id]);
+    expect(rows[0]).toHaveProperty('password_hash');
+  });
+
+  it('returns an empty array when there are no users', async () => {
+    expect(await users.listAllUsers()).toEqual([]);
+  });
+});
+
+describe('updateUserStatus', () => {
+  it('sets the status, bumps updated_at and returns the updated row', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    const updated = await users.updateUserStatus(u.id, 'suspended');
+    expect(updated.id).toBe(u.id);
+    expect(updated.status).toBe('suspended');
+    expect(updated.updated_at.getTime()).toBeGreaterThanOrEqual(u.updated_at.getTime());
+    expect((await users.findById(u.id))!.status).toBe('suspended');
+  });
+
+  it('can flip a suspended user back to active', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    await users.updateUserStatus(u.id, 'suspended');
+    expect((await users.updateUserStatus(u.id, 'active')).status).toBe('active');
+  });
+
+  it('runs on the transaction client and rolls back with it', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    await expect(
+      withTransaction(async (client) => {
+        await users.updateUserStatus(u.id, 'suspended', client);
+        throw new Error('abort');
+      }),
+    ).rejects.toThrow('abort');
+    expect((await users.findById(u.id))!.status).toBe('active');
   });
 });
