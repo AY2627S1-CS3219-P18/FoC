@@ -724,7 +724,7 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 - `credit-service/package.json` (created; no header possible, JSON)
 - `credit-service/package-lock.json` (created; no header possible)
 - `compose.yaml` (modified: credit-db and credit-service services, credit-db-data volume)
-- `.env.example` (modified: CREDIT_* variables)
+- `.env.example` (modified: CREDIT\_\* variables)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified: Log index row)
 
@@ -753,14 +753,15 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Prompts (exact):**
 
-> 1) this can be put on hold
-> 2) move f20.1 to recess week
-> 3) It's right to have left it unenforced.
-> 4) remind me later
+> 1. this can be put on hold
+> 2. move f20.1 to recess week
+> 3. It's right to have left it unenforced.
+> 4. remind me later
 >
 > Both user_id and request_id are confirmed by the team to be UUIDs.
 >
 > Please write the `credit-db` service for `compose.yaml` and `.env.example`.
+>
 > - Check the host ports mapped to `user-db` and `order-db` and pick the next free port.
 > - Match their patterns exactly (Postgres image/tag, volume naming, healthchecks).
 > - Ensure `init.sql` is mounted exactly how the sibling services do it.
@@ -806,3 +807,47 @@ Note for whoever runs this next: the Docker environment was later found to be co
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+---
+
+## 2026-09-27 — Stage 8: RBAC Middleware
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 8: RBAC Middleware" (design decisions table, `src/middleware/authorize.ts` spec, Verification bullets, and the "Tests (Vitest)" section).
+
+**Prompts (exact):**
+
+> let's go with stage 8. here's the workflow:
+>
+> 1. before starting the stage, make sure you go to main and pull from it.
+> 2. branch from main to a branch called (e.g. feat/stage-8a-name)
+> 3. complete the changes.
+> 4. fill in the AI declaration in usage-log.md (follow the format for the last few ones) and the AI header in individual files.
+> 5. wait for further instructions.
+> 6. once i approve, you can do git add, commit (feat: implement ...(stage 8a)), push the branch and PR
+
+**Key responses:**
+Pulled `main` (already up to date) and branched to `feat/stage-8-rbac-middleware`. Created `authorize(minimumRole)`, a middleware factory in `user-service/src/middleware/authorize.ts`, with the exported `ROLE_RANK` table (`user` 0, `admin` 1, `super admin` 2). The returned middleware responds `401 { message: 'Unauthorized', code: 'UNAUTHORIZED' }` when `req.user` is missing (same shape as `authenticate`), calls `next()` when the caller's rank is at least the minimum, and otherwise responds `403 { message: 'Forbidden', code: 'FORBIDDEN' }`. It is synchronous, does no DB work and does not use `asyncHandler`. Nothing is wired onto a route (Stages 9-10 do that) and there are no DB changes.
+
+One point the spec does not state: a role name missing from `ROLE_RANK` (on the caller or as `minimumRole`) makes the comparison false, so the request gets `403`. This is a side effect of the specified comparison, not an added rule.
+
+Wrote `tests/middleware/authorize.test.ts` (9 tests, fake req/res/next, no DB, no Express app): the six caller-by-required-role combinations from Verification, missing `req.user` gives `401` and `next()` is not called, the factory returns a function, and the middleware throws nothing and returns no promise.
+
+Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json`, and `eslint` on the two new files, were clean. The new test file passed 9/9, run with a throwaway config kept outside the repo that skips the Vitest `globalSetup`, because Docker was not running and `globalSetup` needs the `user_service_test` database. Mutation check: changing `>=` to `>` in `authorize.ts` made 2 tests fail; the source was restored afterwards. The rest of the suite was not re-run, since nothing existing was modified.
+
+**Files:**
+
+- `user-service/src/middleware/authorize.ts` (created)
+- `user-service/tests/middleware/authorize.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- The full Vitest suite was not run against the database (Docker was not running); only the new DB-free test file was run.
+- The instructions list `ROLE_RANK` as a plain `const` in the snippet but say to "Export a rank table"; it is exported.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
