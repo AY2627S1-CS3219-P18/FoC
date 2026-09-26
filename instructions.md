@@ -67,9 +67,6 @@ Conventions established in the code (keep them):
 
 Watch for these when implementing:
 
-- Anti-enumeration: forgot-password, resend and reset for an unknown email must give the SAME
-  response AND similar timing as for a known email. That includes the throttled (429) and
-  email-failure (503) cases. Consider sending the email after the commit.
 - forgot-password must go through the same lock, cooldown and resend limit as resend-otp.
   Otherwise it is an unlimited email spammer, and each call kills the victim's live OTP.
 - Resend/cooldown counts need a per-flow window (for example the last hour, or since the last
@@ -85,6 +82,89 @@ Watch for these when implementing:
 When done, list any place where you deviated from instructions.md and why.
 
 Also, don’t implement test cases first.
+
+## Product Backlog — User Service (F1–F5, NFR1–NFR4)
+
+### F1 — User Registration
+
+- **F1.1.1** (High, Recess) Reject usernames that are already in use.
+- **F1.1.2** (High, Recess) Reject emails that are not in a valid format (must contain @ and domain).
+- **F1.1.3** (High, Recess) Reject emails that are already registered to another account.
+- **F1.1.4** (High, Recess) Reject passwords that don't contain at least 8 characters, one uppercase, one lowercase, one digit, and one special character.
+- **F1.1.5** (High, Week 7) Send an OTP to the provided email and only complete registration after the OTP is verified.
+- **F1.1.6** (High, Week 7) Allow requesting a new OTP email 60 seconds after the previous one, up to 5 times.
+- **F1.1.7** (High, Week 7) Invalidate the OTP after one use OR after 10 minutes OR after a new OTP is generated, whichever comes first.
+- **F1.1.8** (High, Week 7) Reserve the username and email during the OTP period to prevent duplicates.
+- **F1.2.1** (High, Recess) Store passwords as salted hashes.
+
+### F2 — Login / Logout
+
+- **F2.1.1** (High, Recess) Accept login attempts where username/email and password match a registered account.
+- **F2.1.2** (High, Recess) Reject login attempts where they don't match.
+- **F2.1.3** (High, Recess) Authenticate subsequent requests from a logged-in user without re-entering credentials for the session duration.
+- **F2.2.1** (High, Week 7) Users who have logged out must log in again to access the app.
+- **F2.3.1** (High, Week 7) Allow other services to verify a user's identity and role from their active session.
+
+### F3 — Password Reset ("Forgot Password")
+
+- **F3.1.1** (High, Week 7) If the email matches a registered email, send an OTP before permitting password change.
+- **F3.1.2** (High, Week 7) If the email does not match, do not send an OTP.
+- **F3.1.3** (High, Week 7) Reject the new password if it doesn't meet F1.1.4 complexity rules.
+- **F3.1.4** (High, Week 7) Invalidate the OTP after one use or 10 minutes or a new OTP generated, whichever comes first.
+
+### F4 — Viewing and Updating Profile Information
+
+- **F4.1.1** (Med, Week 10) Allow users to view their username and registered email.
+- **F4.2.1** (Med, Week 10) Reject a new email if already in use, same as old email, or fails F1.1.2 complexity rules.
+- **F4.2.2** (Med, Week 10) Require password re-entry; reject the email change if it doesn't match the current password.
+- **F4.2.3** (Med, Week 10) Send an OTP to the new email and require entry before allowing the change.
+- **F4.2.4** (Med, Week 10) Allow requesting a new OTP email 60 seconds after the previous one, up to 5 times.
+- **F4.2.5** (Med, Week 10) Invalidate the OTP after one use or 10 minutes or a new OTP generated, whichever comes first.
+- **F4.2.6** (Med, Week 10) Use the existing email for all communications/authentication until OTP verification completes.
+- **F4.3.1** (Med, Week 10) Require password re-entry; reject the password change if it doesn't match the current password.
+- **F4.3.2** (Med, Week 10) Send an OTP to the registered email and require entry before allowing the password change.
+- **F4.3.3** (Med, Week 10) Reject the new password if it fails F1.1.4 complexity rules, or is identical to the old password.
+- **F4.3.4** (Low, Week 10) Invalidate any active sessions on other devices after a successful password change.
+- **F4.4.1** (Med, Week 10) Reject a new username if already in use by another user or identical to the old username.
+
+### F5 — Role Management
+
+- **F5.1.1** (High, Week 7) Enforce administrative privilege separation across user/administrator/super administrator.
+- **F5.1.2** (High, Week 7) On startup, if no super administrator exists, bootstrap one using pre-configured system credentials.
+- **F5.1.3** (High, Week 7) Prevent registration of an administrator account via public registration endpoints.
+- **F5.1.4** (High, Week 7) Prevent a standard user from modifying the role of any user (including themself).
+- **F5.1.5** (High, Week 7) Prevent an administrator from modifying the role of any user (including themself).
+- **F5.1.6** (High, Week 7) Allow a super administrator to modify the role of any other user (excluding themself) to administrator or standard user.
+- **F5.2.1** (High, Week 7) All users can post and fulfill errands without restriction.
+- **F5.2.2** (High, Week 7) Persist the user's last active view (requestor/courier) across sessions.
+- **F5.3.1** (High, Week 7) Allow administrators to view all users.
+- **F5.3.2** (High, Week 7) Allow administrators to view transaction details of individual users.
+- **F5.3.3** (High, Week 7) Allow administrators to suspend/unsuspend individual users.
+
+### NFR1 — Brute-Force Protection
+
+- **NFR1.1** Automatically lock an account for 1 hour after 5 consecutive failed login or OTP attempts within a 15-minute window.
+- **NFR1.1.1** (Med, Week 10) Upon lock, dispatch a security notification email with an unlock link within 60 seconds.
+
+### NFR2 — Timely OTP Delivery
+
+- **NFR2.1** Dispatch the OTP email within 1 minute of the triggering event.
+- **NFR2.1.1** (Med, Week 10) Retry failed OTP email attempts up to 3 times.
+- **NFR2.1.2** (Med, Week 10) Log any OTP email delivery failures for monitoring.
+
+### NFR3 — Additional Auth & Data Masking for Sensitive Info
+
+- **NFR3.1.1** (Med, Week 10) Mask sensitive user fields (e.g. email addresses) by default across all standard admin views.
+- **NFR3.1.2** (Med, Week 10) Require secondary OTP verification before unmasking sensitive user fields.
+- **NFR3.1.3** (Med, Week 10) Unmasked info remains visible for max 15 minutes before automatically re-masking.
+- **NFR3.2.1** (Med, Week 10) Require secondary OTP verification prior to high-risk admin actions (e.g. manual suspension, direct credit adjustments).
+- **NFR3.2.2** (Med, Week 10) Record all secondary OTP verification attempts and high-risk admin actions in an audit log.
+
+### NFR4 — Session Support
+
+- **NFR4.1.1** (High, Week 8) Automatically invalidate a session after 30 minutes of inactivity, requiring re-authentication.
+- **NFR4.1.2** (High, Week 8) Automatically invalidate a session after 7 days since last login, requiring re-authentication. _(labeled "NFR4.1." in the source — likely a typo for NFR4.1.2)_
+- **NFR4.2.1** (High, Week 8) Notify the user 1 minute before session expiry due to inactivity, with an option to extend.
 
 ## Stage 1: Project Scaffold
 
@@ -1395,3 +1475,100 @@ Both return `200` with `{ message: 'A new verification code has been sent to you
 - Lock ordering: any transaction that locks both a user row and refresh-token rows locks the user row first (see the lock ordering rule in Stage 4d). Suspend and change-password must follow it too.
 - Suspending a user (admin) and changing a password (F4.3.4) must revoke all of the user's refresh tokens in the same locked transaction as the change; the login check added in Stage 4c (re-verify hash and status after locking) is what stops a concurrent login from issuing a token afterwards.
 - NFR1 (account lockout after repeated failed attempts) is a Week 10 item and separate from the per-OTP `max_attempts` limit already built.
+
+## Stage 7: Comprehensive Test Suite (For Stage 1-6)
+
+> **How to use this stage**: This supersedes the earlier instruction "Do not add
+> new test cases unless I ask" — this stage is that ask. It covers everything
+> built in Stages 1–6 (scaffold through Forgot Password). Do not write
+> implementation code changes as part of this stage — see the rules below.
+
+### Ground rules
+
+1. **Read the current codebase first**, not just this file. Where the code and
+   this file disagree, follow the code and tell me about the difference (same
+   rule as every other stage).
+2. **Do not make any design decisions, choose behavior for unclear cases, or
+   pick an interpretation when this file is ambiguous.** If you're about to
+   write a test and the correct expected behavior isn't clearly specified
+   anywhere (in this file, the product backlog, or the working docs), stop and
+   ask me instead of guessing. A wrong guess here becomes a de facto spec that
+   later work gets held to — that's worse than an unanswered question.
+3. **Do not modify application code to make a test pass.** If a test reveals a
+   real deviation from something this file specifies, report it as a separate
+   finding — do not fix it, and do not write the test to assert the buggy
+   behavior as correct.
+4. **Do not test for the absence of deferred features.** NFR1 (lockout), NFR2
+   (email retry/delivery logging), and rate limiting generally are Week 10
+   items per this file's own notes. Don't write tests asserting they don't
+   exist yet — that breaks the day they land — and don't write tests for their
+   behavior since they aren't built.
+5. Before writing any tests, produce a list of every point you found unclear
+   or unspecified, as a separate deliverable — not buried in code comments.
+   Wait for my answers on anything you're genuinely unsure about rather than
+   picking a reasonable-sounding default.
+
+### Test stack
+
+- **Vitest** for the runner and assertions (already the project's choice).
+- **Supertest** for HTTP-level tests against the Express app — add it and its
+  types to `package.json` devDependencies.
+- **A real Postgres instance for integration tests — do not mock `pg`.** Most
+  of what this file cares about (`SELECT ... FOR UPDATE`, `FOR UPDATE SKIP
+LOCKED`, transaction rollback on wrong OTP guesses, lock ordering to avoid
+  deadlocks, `clock_timestamp()` vs `NOW()`) is database behavior that a
+  mocked pool cannot validate. Set up a dedicated test database (or schema),
+  apply `init.sql` fresh, and truncate the relevant tables in
+  `beforeEach`/`afterEach`.
+- Reserve mocked-`pg` unit tests for pure logic with no locking or
+  transactions involved — `hash.ts`, `otp.ts`'s digit-format check, `jwt.ts`
+  claim shape, and Zod schema validation in isolation.
+- For tests that need to manipulate DB state directly (expire an OTP, backdate
+  `created_at`, suspend a user, promote a role), write small SQL test helpers
+  rather than going through the API — several of this file's own verification
+  steps already describe doing this manually.
+- Structure test files to mirror the source tree, not the build stages.
+  Co-locate each test file next to the source it covers, with `describe`
+  blocks per function/route and further nesting for edge cases where a
+  function has several (happy path, expiry handling, attempt limiting, etc.):
+  - `controllers/auth.controller.test.ts` — one `describe` per route handler
+    (register, login, logout, refresh, forgotPassword, resetPassword)
+  - `services/auth.service.test.ts` — one `describe` per exported function
+  - `services/otp.service.test.ts` — verify, resend, generate (whichever
+    exist as separate functions)
+  - `services/email.service.test.ts`
+  - `services/bootstrap.service.test.ts`
+  - `middleware/authenticate.test.ts` — inter-service token verification
+  - `db/queries/users.queries.test.ts`, `otp.queries.test.ts`,
+    `tokens.queries.test.ts` — integration tests against the real test DB
+  - `utils/hash.test.ts`, `jwt.test.ts`, `otp.test.ts` — pure-logic unit
+    tests, mocked `pg` where relevant (per the mocking rule above)
+    Keep a separate top-level `concurrency/` folder for the cross-cutting
+    race-condition tests (these show up across login, register, verify-otp,
+    resend-otp, logout, refresh, and reset-password, and are easiest to review
+    together) — do not duplicate a concurrency case inside its
+    controller/service test file just because it's _about_ that function.
+
+### Coverage
+
+Treat every bullet under every stage's **Verification** section (Stages 1
+through 6, including the "Changes to already-implemented code" table in
+Stage 6) as a required test case, not a suggestion — that list already
+enumerates the edge cases and alternative workflows this file cares about most:
+duplicate username/email races, OTP wrong-guess persistence across rollback,
+resend cooldown/limit boundaries (including the rolling-window vs all-time
+distinction between registration and forgot-password), lock-ordering deadlock
+checks between `refresh` and `reset-password`, stale-pending-user cleanup with
+`SKIP LOCKED`, suspended/pending account interactions with login/refresh,
+role-claim freshness after promotion, and the "confirm this is intended, not a
+bug" notes (e.g. non-consuming `verify-otp` for forgot-password being
+re-submittable, an old access token surviving a password reset).
+
+In addition, build a **traceability table** as a final deliverable, mapping
+every Product Backlog FR/NFR number (F1.1.x, F2.x, F3.1.x, F5.1.x, etc.) that's
+in scope for what's built so far to the test file(s) covering it, so any gap
+is visible rather than assumed away.
+
+### Deliverables
+
+1. The test files
