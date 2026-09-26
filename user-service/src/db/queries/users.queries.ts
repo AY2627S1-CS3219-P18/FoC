@@ -10,6 +10,8 @@
 // Author review:
 // 27/09/2026: Stage 9 - listAllUsers, updateUserStatus
 // Author review:
+// 27/09/2026: Stage 10 - updateUserRole
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -178,6 +180,19 @@ export async function updateUserStatus(
   const result = await db.query<UserRow>(
     `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [userId, status],
+  );
+  return result.rows[0]!;
+}
+
+// Call inside a transaction, against a row already locked with lockUserById.
+export async function updateUserRole(
+  userId: string,
+  role: "admin" | "user",
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, role],
   );
   return result.rows[0]!;
 }

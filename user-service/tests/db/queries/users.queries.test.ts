@@ -4,6 +4,8 @@
 // Author review:
 // 27/09/2026: Stage 9 - tests for listAllUsers and updateUserStatus
 // Author review:
+// 27/09/2026: Stage 10 - tests for updateUserRole
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -308,5 +310,33 @@ describe('updateUserStatus', () => {
       }),
     ).rejects.toThrow('abort');
     expect((await users.findById(u.id))!.status).toBe('active');
+  });
+});
+
+describe('updateUserRole', () => {
+  it('sets the role, bumps updated_at and returns the updated row', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    const updated = await users.updateUserRole(u.id, 'admin');
+    expect(updated.id).toBe(u.id);
+    expect(updated.role).toBe('admin');
+    expect(updated.updated_at.getTime()).toBeGreaterThanOrEqual(u.updated_at.getTime());
+    expect((await users.findById(u.id))!.role).toBe('admin');
+  });
+
+  it('can demote an admin back to user', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    await users.updateUserRole(u.id, 'admin');
+    expect((await users.updateUserRole(u.id, 'user')).role).toBe('user');
+  });
+
+  it('runs on the transaction client and rolls back with it', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    await expect(
+      withTransaction(async (client) => {
+        await users.updateUserRole(u.id, 'admin', client);
+        throw new Error('abort');
+      }),
+    ).rejects.toThrow('abort');
+    expect((await users.findById(u.id))!.role).toBe('user');
   });
 });

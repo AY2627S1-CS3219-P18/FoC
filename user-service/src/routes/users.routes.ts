@@ -5,6 +5,11 @@
  *        instructions.md Stage 9.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added PUT /:id/role as specified in instructions.md Stage 10.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -17,5 +22,6 @@ const router = Router();
 router.get('/', authenticate, authorize('admin'), usersController.list);
 router.get('/:id', authenticate, authorize('admin'), usersController.getById);
 router.put('/:id/status', authenticate, authorize('admin'), usersController.updateStatus);
+router.put('/:id/role', authenticate, authorize('super admin'), usersController.changeRole);
 
 export default router;

@@ -4,6 +4,8 @@
 // Author review:
 // 27/09/2026: Stage 9 - changeUserStatus re-checks the locked row
 // Author review:
+// 27/09/2026: Stage 10 - changeUserRole re-checks the locked row
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
 import * as usersService from '../../src/services/users.service.js';
@@ -21,7 +23,12 @@ import {
   withHeldUserLock,
 } from '../helpers/db.js';
 import { latestOtpFor, resetEmailMock } from '../helpers/email.js';
-import { createActiveUser, registerPending, userInput } from '../helpers/fixtures.js';
+import {
+  createActiveUser,
+  createUserWithRole,
+  registerPending,
+  userInput,
+} from '../helpers/fixtures.js';
 import jwt from 'jsonwebtoken';
 
 resetEmailMock();
@@ -364,6 +371,83 @@ describe('changeUserStatus re-checks the locked row', () => {
     const { error } = await raceAgainstChange(
       u.id,
       () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      async (c) => {
+        await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 404, 'USER_NOT_FOUND');
+  });
+});
+
+describe('changeUserRole re-checks the locked row', () => {
+  const requester = () => createUserWithRole('sa', 'super admin');
+
+  it('a target promoted to super admin while the request waited: 403 SUPER_ADMIN_IMMUTABLE, role unchanged', async () => {
+    const sa = await requester();
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserRole(sa.id, u.id, 'admin'),
+      async (c) => {
+        await c.query(`UPDATE users SET role = 'super admin' WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 403, 'SUPER_ADMIN_IMMUTABLE');
+    expect((await getUserByEmail(u.email))!.role).toBe('super admin');
+  });
+
+  it('a target suspended while the request waited: 422 CANNOT_CHANGE_ROLE_SUSPENDED_USER, no revocation', async () => {
+    const sa = await requester();
+    const u = await createActiveUser(1);
+    await seedRefreshToken(u.id, 'tok-a');
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserRole(sa.id, u.id, 'admin'),
+      async (c) => {
+        await c.query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 422, 'CANNOT_CHANGE_ROLE_SUSPENDED_USER');
+    expect((await getUserByEmail(u.email))!.role).toBe('user');
+    expect((await getRefreshTokens(u.id))[0]!.is_revoked).toBe(false);
+  });
+
+  it('a target that became pending while the request waited: 422 CANNOT_CHANGE_ROLE_PENDING_USER', async () => {
+    const sa = await requester();
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserRole(sa.id, u.id, 'admin'),
+      async (c) => {
+        await c.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [u.id]);
+      },
+    );
+    expectAppError(error, 422, 'CANNOT_CHANGE_ROLE_PENDING_USER');
+    expect((await getUserByEmail(u.email))!.role).toBe('user');
+  });
+
+  it('a target that already got the requested role while the request waited: no-op, no token revocation', async () => {
+    const sa = await requester();
+    const u = await createActiveUser(1);
+    await seedRefreshToken(u.id, 'tok-a');
+    const { value, error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserRole(sa.id, u.id, 'admin'),
+      async (c) => {
+        await c.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [u.id]);
+      },
+    );
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({ id: u.id, role: 'admin' });
+    expect((await getRefreshTokens(u.id))[0]!.is_revoked).toBe(false);
+  });
+
+  it('a target deleted while the request waited: 404 USER_NOT_FOUND', async () => {
+    const sa = await requester();
+    const u = await createActiveUser(1);
+    const { error } = await raceAgainstChange(
+      u.id,
+      () => usersService.changeUserRole(sa.id, u.id, 'admin'),
       async (c) => {
         await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
       },

@@ -914,6 +914,53 @@ Environment: Docker Desktop was not running and was started. The existing `foc-u
 - Stage 9 makes `authenticate` a route dependency for the first time. Access tokens are stateless, so a suspended user's or demoted admin's existing access token keeps working on these routes for up to 15 minutes (the documented Stage 8 trade-off).
 
 **What I kept/changed/rejected:**
-
-**Author review:**
 Got Claude to help modify the error codes, to make it accurate (e.g. not just "suspend", but "change status").
+
+---
+
+## 2026-09-27 — Stage 10: Super Admin — Promote / Demote
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 10: Super Admin — Promote / Demote" (design decisions table, `updateUserRole` / `changeUserRole` / `changeRole` specs, Verification bullets and "Tests (Vitest)" section), including the team's recorded decisions there: only an `active` target's role can change (`422 CANNOT_CHANGE_ROLE_PENDING_USER` / `CANNOT_CHANGE_ROLE_SUSPENDED_USER`), and no-op requests return `200` unchanged.
+
+**Prompts (exact):**
+
+> go ahead. stop after opening the PR.
+
+> let's go to 10.
+
+**Key responses:**
+Pulled `main` after the Stage 9 PR was merged and branched to `feat/stage-10-role-management`. Implemented `PUT /users/:id/role` behind `authenticate` + `authorize('super admin')`:
+
+- `users.queries.ts`: `updateUserRole` (`UPDATE ... RETURNING *`, run on the locked row).
+- `users.service.ts`: `changeUserRole(requesterId, targetId, newRole)`. Self-targeting is rejected first (403 `SELF_ROLE_CHANGE`, before any DB access). Then, in `withTransaction` with `lockUserById`: not found (404), super admin target (403 `SUPER_ADMIN_IMMUTABLE`), pending target (422 `CANNOT_CHANGE_ROLE_PENDING_USER`), suspended target (422 `CANNOT_CHANGE_ROLE_SUSPENDED_USER`), no-op (200, no write, no revocation). A real change updates the role and revokes all of the target's refresh tokens in the same transaction. `password_hash` is stripped by the existing `toPublicUser`.
+- `users.controller.ts`: `changeRole`, with the Stage 9 `.uuid('Invalid user ID')` params schema and a `.strict()` body schema for `role` with the specified custom messages; the requester id comes from `req.user.user_id`.
+- `users.routes.ts`: the `/:id/role` route.
+
+Tests, all against the real test DB, appended to the Stage 9 test files: `updateUserRole` query tests; `changeUserRole` service tests; HTTP tests for `PUT /users/:id/role`; a concurrent-role test in `users.concurrency.test.ts`; and five deterministic re-check-after-lock cases in `lock-recheck.concurrency.test.ts` (target became super admin, suspended, pending, already had the role, or was deleted while the request waited). Every Stage 10 Verification bullet has a test except the one listed under Deviations.
+
+Verification actually run: full suite 524 passed (19 files), `eslint .`, `tsc --noEmit` for `src` and for `tests/tsconfig.json`, and a build to a scratch directory were clean. Mutation checks on `changeUserRole`: removing the token revocation failed 9 tests, the no-op check 8, the suspended check 5 and the self-target check 4; the source was restored and verified identical. The first run of the concurrency test failed on a test-fixture mistake (a hyphen in a generated username, which registration rejects) and was fixed in the test only. The `foc-user-db` container from Stage 9 was still running.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- **One Verification bullet was not written as a test because the spec contradicts itself.** The bullet "Promote a user to admin, then that user's pre-promotion access token ... still rejected with `403` ...; after they `refresh`, the new token carries `role: admin` and the same route succeeds" cannot hold as written: a successful role change revokes ALL of the target's refresh tokens in the same transaction (Stage 10 design table), so `POST /auth/refresh` with the pre-promotion cookie returns `401 INVALID_REFRESH_TOKEN`, exactly as the demotion bullet says. The first half of the bullet (old token still gets `403`) is tested, and so is "refresh with the old cookie gets `401`" after a promotion. What the promoted user does to get a token carrying `role: admin` (for example, logging in again) is not specified, so no test asserts it. Raised for the team rather than guessed.
+- The Stage 8 note that "enforcement catches up at the next `refresh` call" has the same tension for promotions, since the refresh is revoked.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
