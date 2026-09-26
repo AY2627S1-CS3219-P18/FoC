@@ -658,3 +658,151 @@ Committed separately on `main` at the user's request: the user's own `instructio
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+---
+
+## 2026-09-26 — Recess iteration: Credit Service schema, allocation and reservation
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate
+**Scope:** Requirements formatting | Implementation code | Boilerplate
+**Governing decision:** `credit-service/credit-service-context.md` §3 (service boundaries), §4 (stack), §5 (schema decisions), §6 (F19, F20), §7 (NFR8), §8 (API surface); `docs/FoC-ProductBacklog.md` (reference only — the team directed that the context file takes precedence); schema conventions follow the team's existing `user-service/src/db/init.sql`.
+
+**Prompts (exact):**
+
+> Read credit-service/CONTEXT.md, paying special attention to §10 regarding the ordering problems. I agree with the flagged gaps. Please officially move F20.1.1 (logging) to the current Recess iteration, and move NFR8.1.2 (rollback) to Week 7 so it is built alongside F19.3 (transfer).
+>
+> With that updated plan, begin implementing the Recess iteration tasks (F19.1 and F19.2). Start by creating the PostgreSQL schema for both the balances and transaction_log tables. Ensure that all credit operations (like allocation and reservation) are wrapped in atomic database transactions that write to both tables simultaneously, fulfilling NFR8.1.1 and F20.1.1 from the start.
+>
+> make sure to summarise what you have change after every iteration of prompt. You are now to write all the credit service related files in credit-service folder, MAKE SURE to ask for my permission before you touch any code outside of this folder
+
+> u can edit 1 2 and 4, for the productbacklog, you can just treat that as reference and just follow the credit service context file
+
+Answers given to five questions the agent stopped to ask (see "Deviations" below):
+
+> Destination = new user
+>
+> ai/usage-log.md + README row, docs/FoC-ProductBacklog.md, compose.yaml + .env.example, for the productbacklog make sure to ask my permission everytime you change, same goes for the other 2
+>
+> Unique index per request
+>
+> Follow user-service conventions
+>
+> TypeScript + vitest
+
+**Key responses:**
+Stopped before writing any SQL and asked five questions, because `AGENTS.md` §2.1 lists schema, interface and dependency choices as stop-and-ask triggers. The blocking one: F20.1.1 says originating user is "not applicable for allocation" and destination user is "applicable to transfer only", so an allocation row would name nobody and F19.5.2 could never return a user's own allocation. The team chose destination = the new user.
+
+Recorded the team's two iteration moves in `credit-service-context.md` (F20.1.1 → Recess in §6, NFR8.1.2 → week 7 in §7, §10 gaps 1 and 2 struck through and marked resolved with the date). No rationale was written for either move; `AGENTS.md` §2 prohibits the agent drafting decision rationales. The backlog was left untouched at the team's instruction, so `docs/FoC-ProductBacklog.md` lines 216 and 274 still read week 9 and week 8 and now disagree with the context file by design.
+
+Wrote the schema in `src/db/init.sql`: `balances` (user_id PK, total_balance, reserved_balance, timestamps, CHECK constraints for non-negative values and reserved <= total) and `transaction_log` (the seven F20.1.1 fields, CHECK constraints fixing which party columns each transaction type fills and requiring request_id on everything except allocation). Partial unique indexes enforce one transfer per request (F19.3.2, placed early) and one reservation per request (team decision this session). No FK on user_id, per §3. NFR8.2.3's `REVOKE` is deliberately left inert and documented, because the sibling services connect as the `postgres` superuser, which bypasses REVOKE entirely; it is a week 7 item.
+
+Implemented F19.1.1 and F19.2.1–F19.2.3. Both write paths run inside one `withTransaction` (helper copied from `user-service/src/db/transaction.ts`), issuing the balance write and the `transaction_log` insert on the same client, so NFR8.1.1 and F20.1.1 hold from the first commit. Reservation takes `SELECT … FOR UPDATE` on the balance row before comparing the offer against unreserved. Allocation uses `INSERT … ON CONFLICT DO NOTHING RETURNING`, so a repeated registration trigger is resolved by the primary key rather than by a check-then-write race, and writes no second log row.
+
+Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. **The test suite was not run and the SQL has never been executed by a server** — the Docker daemon was not running, nothing was listening on ports 5432–5435, and `psql` is not installed, so no database was reachable. `tests/services/credits.service.test.ts` and `tests/concurrency/reserve.concurrency.test.ts` are written but unproven.
+
+**Files:**
+
+- `credit-service/credit-service-context.md` (modified: §6, §7, §10)
+- `credit-service/src/db/init.sql` (created)
+- `credit-service/src/db/pool.ts`, `src/db/transaction.ts`, `src/db/queries/credits.queries.ts` (created)
+- `credit-service/src/services/credits.service.ts` (created)
+- `credit-service/src/controllers/credits.controller.ts` (created)
+- `credit-service/src/routes/credits.routes.ts` (created)
+- `credit-service/src/middleware/errorHandler.ts` (created)
+- `credit-service/src/utils/AppError.ts`, `src/utils/asyncHandler.ts` (created)
+- `credit-service/src/domain/constants.ts` (created)
+- `credit-service/src/app.ts`, `src/server.ts`, `src/config.ts` (created)
+- `credit-service/tests/services/credits.service.test.ts` (created)
+- `credit-service/tests/concurrency/reserve.concurrency.test.ts` (created)
+- `credit-service/tests/helpers/db.ts` (created)
+- `credit-service/vitest.config.ts` (created)
+- `credit-service/tsconfig.json` (created)
+- `credit-service/Dockerfile` (created — was an empty placeholder)
+- `credit-service/README.md` (created — was an empty placeholder)
+- `credit-service/.env.example`, `credit-service/.dockerignore` (created)
+- `credit-service/package.json` (created; no header possible, JSON)
+- `credit-service/package-lock.json` (created; no header possible)
+- `compose.yaml` (modified: credit-db and credit-service services, credit-db-data volume)
+- `.env.example` (modified: CREDIT_* variables)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- **F20.1.1 contradicts itself on allocation.** Read literally, an allocation row names no user. Team answered: destination = the new user. Encoded in the `transaction_log_party_shape` CHECK constraint.
+- **The API contract is not team-decided.** §8 fixes only method and path. The request bodies, response bodies and all seven status codes were written by the agent to make the service runnable and are tabulated in `credit-service/README.md` under "pending team sign-off". `AGENTS.md` §2.1 classifies these as team decisions.
+- **NFR8.2.3 is not enforced.** Needs a named least-privilege application role; the current superuser connection would ignore `REVOKE`. Week 7.
+- **F20.1 (parent) still reads week 9** in §6 while its only child F20.1.1 now reads Recess. Not changed without instruction.
+- **Duplicate reservation protection is not in any requirement.** The team added a unique index this session; no FR covers it.
+- **The backlog and the context file now disagree** on F20.1.1 and NFR8.1.2, by the team's instruction.
+- Tests were written but never executed; see Key responses.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-09-26 — Recess iteration: Credit Service verification run
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** debug | docs
+**Scope:** Implementation code | Debugging | Requirements formatting
+**Governing decision:** `credit-service/credit-service-context.md` §6 (F19, F20), §7 (NFR8.1.1); team answers given in chat on 2026-09-26.
+
+**Prompts (exact):**
+
+> 1) this can be put on hold
+> 2) move f20.1 to recess week
+> 3) It's right to have left it unenforced.
+> 4) remind me later
+>
+> Both user_id and request_id are confirmed by the team to be UUIDs.
+>
+> Please write the `credit-db` service for `compose.yaml` and `.env.example`.
+> - Check the host ports mapped to `user-db` and `order-db` and pick the next free port.
+> - Match their patterns exactly (Postgres image/tag, volume naming, healthchecks).
+> - Ensure `init.sql` is mounted exactly how the sibling services do it.
+
+> "Please fold it into the next substantive entry. We don't need a separate log for this minor documentation update.
+> With the Docker compose file confirmed, please proceed with spinning up the database container (`docker compose up -d credit-db`) and running the test suite to verify the Recess iteration logic. Report the results of the concurrency test."
+
+**Key responses:**
+
+**Corrects the previous entry.** The entry above this one states "The test suite was not run and the SQL has never been executed by a server". That was true when written and is no longer true. Entries are append-only (`AGENTS.md` §5.1), so this entry records the verification rather than editing that one.
+
+Folded in from the intervening exchange: F20.1 moved from week 9 to Recess in `credit-service-context.md` §6, so parent and child now agree (F20.1.1 had already moved). The team confirmed `user_id` and `request_id` as UUIDs — already implemented that way in `init.sql` and validated with `z.string().uuid()`, so no code changed. The team confirmed leaving NFR8.2.3 unenforced was correct, and put the API contract sign-off on hold.
+
+The `credit-db` compose service requested in the prompt had already been written in the previous task, so it was verified rather than rewritten: host port 5435 is the next free one after order-db 5433 and user-db 5434; volume `credit-db-data` matches the `*-db-data` naming and is declared in the top-level `volumes:` block; the healthcheck is byte-identical to order-db's; `init.sql` is mounted exactly as user-db mounts its own. Two points where the siblings disagree were flagged rather than silently resolved: the Postgres tag (order-db `postgres:17` vs user-db `postgres:16-alpine` — used 16-alpine, matching user-service) and the port style (used order-db's env-driven form rather than user-db's hardcoded one, which carries a remove-before-deploy note).
+
+Verification actually run, against a real database this time. Docker Desktop was not running and was started. `docker compose up -d credit-db` created the container; the Postgres image applied `src/db/init.sql` on first start, producing both tables and all five indexes, and the container reported healthy. `npm test` passed 10 tests in 2 files. `npx tsc --noEmit` and `npm run build` exit 0.
+
+Concurrency results (NFR8.1.1): six simultaneous 4-credit reservations against a 20-credit balance left exactly five committed and one rejected with `INSUFFICIENT_UNRESERVED_CREDITS`, final state `reserved=20, total=20` with six log rows; ten concurrent 3-credit reservations kept `reserved` equal to three times the number of logged reservations; two simultaneous allocations for one user produced one success and one log row.
+
+Mutation check, to show the concurrency test is not vacuous: removing `FOR UPDATE` from `lockBalanceForUpdate` made the first concurrency test fail, and the failure was informative. All six requests passed the application-level comparison because without the lock they all read `reserved_balance = 0`; the sixth was stopped by the `balances_reserved_not_exceeding_total` CHECK constraint (SQLSTATE 23514) rather than by the service. So the row lock is what produces a clean 422, and the CHECK constraint is what prevents balance corruption if the lock is ever lost. The source was restored and the suite re-run green.
+
+NFR8.2.3 was confirmed still unenforced by deleting a `transaction_log` row while connected as the `credit` application role. Expected; it is a week 7 item.
+
+Tests clean up after themselves — both tables were empty afterwards.
+
+Note for whoever runs this next: the Docker environment was later found to be completely empty (no containers, volumes or images), consistent with a Docker Desktop reset rather than any command run here. Re-running `docker compose up -d credit-db` recreates everything from `init.sql`.
+
+**Files:**
+
+- `credit-service/credit-service-context.md` (modified: §6, F20.1 moved to Recess)
+- `credit-service/tests/setup/env.ts` (created)
+- `credit-service/vitest.config.ts` (modified: setupFiles)
+- `credit-service/.gitignore` (created — the root .gitignore does not cover node_modules, and each sibling service carries its own)
+- `credit-service/.env` (created locally for the test run; git-ignored, not committed)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- The previous entry's verification statement is now out of date; corrected here rather than edited, per the append-only rule.
+- Postgres tag and port style: the two sibling databases disagree, so "match their patterns exactly" had no single answer. Choices recorded above; switching `credit-db` to `postgres:17` is a one-line change if the team prefers order-db's tag.
+- Still open and unchanged: the API contract (request/response bodies and status codes) is agent-written and on hold; NFR8.2.3 needs a named least-privilege role in week 7; author review signatures are outstanding on every credit-service file header and on both log entries.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
