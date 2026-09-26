@@ -1549,6 +1549,88 @@ LOCKED`, transaction rollback on wrong OTP guesses, lock ordering to avoid
     together) — do not duplicate a concurrency case inside its
     controller/service test file just because it's _about_ that function.
 
+### Infrastructure
+
+- **App/server split**: split `app.ts` into a pure `app` export (Express app
+  only, no `bootstrapSuperAdmin()` call, no `.listen()`) and a new
+  `server.ts` that imports `app`, runs the bootstrap, then listens. Nothing that
+  currently imports `app.ts` for its side effects should break; check for any such
+  imports and update them to use `server.ts` instead.
+- **Test database**: a second database on the existing `user-db` Postgres
+  instance (e.g. `user_service_test`), not a new container. Add a one-time
+  setup script that runs the existing `init.sql` against it, so the test
+  schema can never drift from the real schema. Reuse `user-db`'s existing
+  credentials; only `DB_NAME` differs.
+- **Env vars**: a committed `.env.test` (no real secrets — dummy SMTP, dummy
+  super-admin password, test DB name), loaded via a Vitest setup file
+  (`dotenv.config({ path: '.env.test' })`), wired in through
+  `vitest.config.ts`'s `setupFiles`.
+- **JWT keys**: generate a throwaway RS256 key pair at test-setup time
+  (`crypto.generateKeyPairSync`) rather than relying on the gitignored
+  `keys/` folder, which won't exist on a fresh clone or in CI. Write to a
+  temp path and point the key-path env vars at it.
+- **Parallelism**: set `fileParallelism: false` in `vitest.config.ts`. Tests
+  share one DB and truncate between runs, so sequential execution is the
+  safe default.
+- **Location**: tests live in `user-service/tests/`, sibling to `src/`, with
+  `tests/concurrency/` for the cross-cutting race-condition suite. Since
+  `tsconfig.json` only includes `src/**/*`, this keeps test files out of
+  `tsc` and the prod Docker build with no tsconfig changes needed.
+- Add `vitest.config.ts` at `user-service/` root, `supertest` and its
+  `@types` to `package.json` devDependencies, and a `"test"` script already
+  exists (`vitest`) — confirm it picks up the new config and test location.
+
+### Mocking policy
+
+- **Email**: mock `sendOtpEmail` (or the nodemailer transport) with `vi.mock`
+  for both OTP capture and forced-failure (503/rollback) tests. This is
+  exempt from the "no mocking `pg`" rule — that rule is specifically about
+  locking/transaction correctness, which only real Postgres can validate.
+  Prefer mocking the function directly over spying on the dev-fallback
+  `console.log` — the console log is a logging implementation detail, not a
+  stable test seam.
+- **Config (bootstrap tests only)**: `vi.mock` the config module is
+  permitted for the single test file covering "configured super-admin
+  username/email already belongs to a regular user," since it needs
+  different config values than the rest of the suite. Keep this mock scoped
+  to that file.
+
+### Manual-only verification bullets
+
+- `npm install`, `docker compose up --build`, `\dT+ status_enum` inspection,
+  and "keys exist" checks are infra/tooling, not application behavior — leave
+  these manual. List them in the traceability table as "manual — not
+  automated" rather than omitting them.
+- The two config-validation exit cases (missing required env var; empty SMTP
+  vars with `NODE_ENV=production`) are real application logic in `config.ts`
+  and should be automated by spawning it as a child process with a modified
+  env and asserting on exit code and stderr content.
+
+### Temporary protected route
+
+For Stage 4e's cross-check between `authenticate` middleware and
+`GET /auth/verify` against the same token, mount a throwaway Express route
+inside the test file itself. Do not add anything to `app.ts`/`server.ts` for
+this.
+
+### Concurrency test parameters
+
+Define shared constants once (e.g. `CONCURRENT_REQUESTS`, in a test-helpers
+file) and reuse them across the `concurrency/` suite rather than varying
+per-test. Start with a small number sufficient to reliably trigger the race
+(e.g. 5 concurrent requests) and a modest loop count for sustained-race tests
+(e.g. 20 iterations); adjust only if a specific test proves flaky.
+
+### Traceability table
+
+- Items that are partially built (e.g. F5.1.1, F5.1.4–F5.1.6, F2.2.1,
+  F2.3.1, NFR4) are listed as **partial**, with a one-line note of what's
+  covered by tests so far and what isn't — not excluded from the table.
+- Items not yet built at all (F4, F5.3) are listed as **not yet
+  implemented** — not omitted.
+- The table lives in `user-service/tests/TRACEABILITY.md`, not in chat, since
+  it needs to be revisited as later stages land.
+
 ### Coverage
 
 Treat every bullet under every stage's **Verification** section (Stages 1
