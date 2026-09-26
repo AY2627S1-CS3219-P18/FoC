@@ -2,9 +2,11 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - HTTP-level fixtures (register, activate, login)
 // Author review:
+// 27/09/2026: Stage 9 - createUserWithRole, bearer
+// Author review:
 import request from 'supertest';
 import app from '../../src/app.js';
-import { getUserByEmail } from './db.js';
+import { getUserByEmail, setUserRole } from './db.js';
 import { latestOtpFor } from './email.js';
 import { PASSWORD } from './constants.js';
 
@@ -69,4 +71,23 @@ export function cookieValue(res: request.Response, name: string): string | undef
 
 export function refreshCookie(token: string): string {
   return `refreshToken=${token}`;
+}
+
+// An active account with the given role, set directly in the DB (there is no API for it yet).
+export async function createUserWithRole(
+  n: number | string,
+  role: 'user' | 'admin' | 'super admin',
+): Promise<TestUser> {
+  const user = await createActiveUser(n);
+  if (role !== 'user') await setUserRole(user.id, role);
+  return user;
+}
+
+// Access token for a user (logs in, so the role claim reflects the current DB role).
+export async function accessTokenFor(user: TestUser): Promise<string> {
+  return (await loginTokens(user)).accessToken;
+}
+
+export function bearer(accessToken: string): string {
+  return `Bearer ${accessToken}`;
 }

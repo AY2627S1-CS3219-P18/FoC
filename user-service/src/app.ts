@@ -8,11 +8,14 @@
 // Author review:
 // 26/09/2026: Stage 7 - split into a pure app export; bootstrap and listen moved to server.ts
 // Author review:
+// 27/09/2026: Stage 9 - mount users router at /users
+// Author review: New
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { ZodError } from 'zod';
 import authRouter from './routes/auth.routes.js';
+import usersRouter from './routes/users.routes.js';
 import { AppError } from './utils/AppError.js';
 
 const app = express();
@@ -26,6 +29,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/auth', authRouter);
+app.use('/users', usersRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {
