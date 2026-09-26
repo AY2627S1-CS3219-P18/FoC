@@ -4,7 +4,7 @@
 //    Uses Node's built-in process.loadEnvFile rather than adding dotenv, keeping the
 //    dependency list to the stack in credit-service-context.md §4.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';

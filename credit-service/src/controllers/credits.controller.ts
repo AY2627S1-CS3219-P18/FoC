@@ -5,7 +5,7 @@
 //    The request and response bodies here are NOT team-decided. context §8 fixes only
 //    the method and path; the field names, validation rules and status codes are
 //    pending sign-off - see credit-service/README.md.
-//    Author review:
+//    Author review: Wee Jean
 
 import type { Request, Response } from 'express';
 import { z } from 'zod';

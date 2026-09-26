@@ -4,7 +4,7 @@
 //    Column names and the write-path effects follow credit-service-context.md §5;
 //    the transaction_log fields follow F20.1.1.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import type pg from 'pg';
 

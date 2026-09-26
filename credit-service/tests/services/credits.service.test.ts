@@ -4,7 +4,7 @@
 //    F20.1.1 log entry written alongside each balance change.
 //    Requires a running credit-db; see credit-service/README.md.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { AppError } from '../../src/utils/AppError.js';

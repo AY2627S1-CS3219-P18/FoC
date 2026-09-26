@@ -4,7 +4,7 @@
 //    check-then-write implementation and pass with SELECT ... FOR UPDATE.
 //    Requires a running credit-db; see credit-service/README.md.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { allocateInitialCredits, reserveCredits } from '../../src/services/credits.service.js';

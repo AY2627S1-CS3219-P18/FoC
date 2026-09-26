@@ -5,7 +5,7 @@
 //    together (NFR8.1.1, F20.1.1, context §5).
 //    The error `code` strings and the HTTP statuses they map to are NOT team-decided;
 //    they are pending sign-off - see credit-service/README.md.
-//    Author review:
+//    Author review: Wee Jean
 
 import { INITIAL_ALLOCATION_CREDITS } from '../domain/constants.js';
 import { withTransaction } from '../db/transaction.js';

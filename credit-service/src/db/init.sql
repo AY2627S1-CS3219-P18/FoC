@@ -6,7 +6,7 @@
 --    snake_case, DO $$ enum idiom, CREATE TABLE IF NOT EXISTS) follow the team's
 --    existing user-service/src/db/init.sql.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
---    Author review:
+--    Author review: Wee Jean
 
 -- ---------------------------------------------------------------------------
 -- Transaction types (F20.1.1)

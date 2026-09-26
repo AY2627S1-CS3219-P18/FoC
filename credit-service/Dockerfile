@@ -3,7 +3,7 @@
 #  2026-09-26: Recess iteration - multi-stage image, following user-service/Dockerfile
 #    (same node:24-alpine base and dev/prod target names).
 #    No requirements, architecture, schema, or API decisions were made by the AI tool.
-#    Author review:
+#    Author review: Wee Jean
 
 FROM node:24-alpine AS base
 WORKDIR /app

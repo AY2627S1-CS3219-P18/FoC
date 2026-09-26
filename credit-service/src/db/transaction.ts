@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - transaction helper, copied from the team's
 //    user-service/src/db/transaction.ts so both services roll back identically.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import type pg from 'pg';
 import pool from './pool.js';

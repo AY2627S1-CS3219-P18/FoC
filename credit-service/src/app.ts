@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - Express app wiring. Exported without listening so the
 //    tests can mount it, matching user-service (app.ts does not start the server).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import express from 'express';
 import creditsRouter from './routes/credits.routes.js';

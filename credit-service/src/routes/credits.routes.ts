@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - routes for the two operations in scope.
 //    Methods and paths are the team's, from credit-service-context.md §8.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';

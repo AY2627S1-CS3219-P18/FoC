@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - central error handler.
 //    The error response body shape is NOT team-decided; it is pending sign-off -
 //    see credit-service/README.md.
-//    Author review:
+//    Author review: Wee Jean
 
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/AppError.js';

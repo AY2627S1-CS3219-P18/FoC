@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - env schema and config object, following the same
 //    zod-validated pattern as user-service/src/config.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { z } from 'zod';
 

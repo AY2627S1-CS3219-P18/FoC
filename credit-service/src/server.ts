@@ -2,7 +2,7 @@
 // Tool: Claude Code (model: claude-opus-5), date: 2026-09-26
 //  2026-09-26: Recess iteration - process entry point.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import app from './app.js';
 import { config } from './config.js';

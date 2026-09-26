@@ -2,7 +2,7 @@
 // Tool: Claude Code (model: claude-opus-5), date: 2026-09-26
 //  2026-09-26: Recess iteration - test database helpers.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import { randomUUID } from 'node:crypto';
 import pool from '../../src/db/pool.js';

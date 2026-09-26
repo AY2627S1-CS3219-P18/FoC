@@ -3,7 +3,7 @@
 //  2026-09-26: Recess iteration - async controller wrapper, copied from
 //    user-service/src/utils/asyncHandler.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Wee Jean
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 

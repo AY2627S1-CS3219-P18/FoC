@@ -4,7 +4,7 @@
   //  2026-09-26: Recess iteration - copied from the team's user-service/tsconfig.json
   //    so both services compile under the same settings.
   //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-  //    Author review:
+  //    Author review: Wee Jean
   "compilerOptions": {
     "target": "es2022",
     "module": "NodeNext",
