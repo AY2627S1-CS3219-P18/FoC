@@ -81,7 +81,7 @@ Watch for these when implementing:
 
 When done, list any place where you deviated from instructions.md and why.
 
-Also, don’t implement test cases first.
+Also, don't implement test cases first.
 
 ## Product Backlog — User Service (F1–F5, NFR1–NFR4)
 
@@ -1168,6 +1168,8 @@ Concurrency:
 - A periodic cleanup of expired pending users is optional; `deleteStalePendingUsers` already reclaims them lazily on re-registration
 - Frontend: the register response changed (`201 OTP_SENT`, no active session) and two new endpoints exist; the OTP entry screen is a separate frontend task
 
+> **Superseded by Stage 9:** the "GET /users must exclude pending users" note above no longer holds — Stage 9 shows all users regardless of status, including pending ones.
+
 # Stage 6: Forgot Password Flow
 
 > **Scope**: This stage adds the Forgot Password flow (F3.1), reusing the generic OTP
@@ -1725,6 +1727,12 @@ router.put(
 - Confirm `authorize` throws no errors of its own — it only ever calls `next()` or
   responds directly; it should not need `asyncHandler` (no async work, no DB call).
 
+### Tests (Vitest)
+
+Write the Vitest tests for this stage, following the Stage 7 ground rules and layout
+(`tests/middleware/authorize.test.ts`). Every bullet under Verification above is a required test
+case. Do not modify application code to make a test pass.
+
 ---
 
 # Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend
@@ -1736,55 +1744,59 @@ router.put(
 
 ### Design decisions (already made, do not change)
 
-| Rule                               | Value                                                                                                                                                                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /users` response shape        | `{ users: [...] }` (wrapped, not a bare array)                                                                                                                                                                                                          |
-| Fields returned per user           | Every column except `password_hash` — `id, username, email, status, role, created_at, updated_at`                                                                                                                                                       |
-| Pending users                      | `GET /users` excludes `status = 'pending'` accounts (unverified registrations aren't real accounts yet)                                                                                                                                                 |
-| `GET /users/:id` — not found       | `404` with `{ message: 'User not found', code: 'USER_NOT_FOUND' }`                                                                                                                                                                                      |
-| `GET /users/:id` — malformed `:id` | `400` with `{ message: 'Invalid user ID', code: 'VALIDATION_ERROR' }` if `:id` isn't a valid UUID — checked before hitting the DB                                                                                                                       |
-| `PUT /users/:id/status` body       | `{ status: 'active' \| 'suspended' }`                                                                                                                                                                                                                   |
-| Suspend side-effect                | Revokes **all** of the target user's refresh tokens in the same transaction (already required by the general rule from Stage 4: "anything that... suspends a user... must revoke ALL that user's refresh tokens in the SAME transaction as the change") |
-| Unsuspend side-effect              | None beyond the status flip — no tokens to revoke, there's nothing live to reactivate                                                                                                                                                                   |
-| Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                          |
-| Target role restriction            | An admin caller may only suspend/unsuspend a target with role = 'user'. A super admin caller may suspend/unsuspend a user or admin target, but not another super admin.                                                                                 |
+| Rule                               | Value                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /users` response shape        | `{ users: [...] }` (wrapped, not a bare array)                                                                                                                                                                                                                             |
+| Fields returned per user           | Every column except `password_hash` — `id, username, email, status, role, created_at, updated_at`                                                                                                                                                                          |
+| Pending users                      | `GET /users` and `GET /users/:id` both return users **regardless of status, including `pending`**. The `status` field in the response is how a caller tells a pending (unverified) registration apart from a real account — no separate flag needed.                       |
+| `GET /users/:id` — not found       | `404` with `{ message: 'User not found', code: 'USER_NOT_FOUND' }`                                                                                                                                                                                                         |
+| `GET /users/:id` — malformed `:id` | `400` with message `"Invalid user ID"`, code `VALIDATION_ERROR` — enforced via a Zod `.uuid()` check on `req.params.id` at the controller (same convention as every other validation in this codebase), before any DB call                                                 |
+| `PUT /users/:id/status` body       | `{ status: 'active' \| 'suspended' }`                                                                                                                                                                                                                                      |
+| Suspend side-effect                | Revokes **all** of the target user's refresh tokens in the same transaction (already required by the general rule from Stage 4: "anything that... suspends a user... must revoke ALL that user's refresh tokens in the SAME transaction as the change")                    |
+| Unsuspend side-effect              | None beyond the status flip — no tokens to revoke, there's nothing live to reactivate                                                                                                                                                                                      |
+| Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                                             |
+| Target role restriction            | An `admin` caller may only suspend/unsuspend a target with `role = 'user'`. A `super admin` caller may suspend/unsuspend a `user` or `admin` target, but not another `super admin`.                                                                                        |
+| Error codes for role restrictions  | Any caller targeting a `super admin` (including a super admin targeting one) → `403 SUPER_ADMIN_IMMUTABLE`. An `admin` caller targeting an `admin` → `403 FORBIDDEN`.                                                                                                      |
+| Pending target                     | The status of a `pending` user cannot be changed through this endpoint, to either `suspended` or `active`. A pending account only becomes active through OTP verification. Responds `422 CANNOT_SUSPEND_PENDING_USER`, message `'Cannot suspend pending user'`, for either target status.                                      |
+| No-op requests                     | If the target is already in the requested status, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation                                                                                               |
+| Service file location              | `listUsers`, `getUserById`, `changeUserStatus` (and Stage 10's `changeUserRole`) live in a new `src/services/users.service.ts`, not `auth.service.ts` — matching how `otp.service.ts` and `email.service.ts` were already split out from `auth.service.ts`                 |
+| Naming (query vs. service)         | The query function stays `updateUserStatus` (matches the SQL operation). The service function that calls it is `changeUserStatus`, to avoid two different-layer functions sharing one name (same split for Stage 10's `updateUserRole` query vs. `changeUserRole` service) |
 
 ### Add to `src/db/queries/users.queries.ts`
 
-- `listActiveUsers(db)` — `SELECT * FROM users WHERE status != 'pending' ORDER BY created_at DESC` (naming: "active" here means "not pending," i.e. includes both `active` and `suspended` accounts — rename if that's confusing)
+- `listAllUsers(db)` — `SELECT * FROM users ORDER BY created_at DESC`. (Named `listAllUsers`, not `listActiveUsers` — it returns every status, including `pending` and `suspended`, so a name implying an "active" filter would be misleading.)
 - `updateUserStatus(userId, status, db)` — `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`, run inside the transaction against the locked row
 
-### Update `src/services/auth.service.ts` (or a new `users.service.ts` — your call on the split, but keep it consistent with how `auth.service.ts` already owns all user-mutation logic)
+### Create `src/services/users.service.ts`
 
 Implement `listUsers()`:
 
-- Call `listActiveUsers()`, strip `password_hash` from every row before returning
+- Call `listAllUsers()`, strip `password_hash` from every row before returning
 
 Implement `getUserById(id)`:
 
-- Validate `id` is a UUID (zod `.uuid()` at the controller, or a shared validator — your call, but do it before any DB call)
 - `findById(id)`. If none → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
 - Strip `password_hash`, return the rest
+- (UUID format is already validated at the controller before this function is called — no need to re-check here)
 
-Implement `updateUserStatus(requestorRole, targetId, status)`:
+Implement `changeUserStatus(requestorRole, targetId, status)`:
 Inside `withTransaction`:
 
 1. `locked = lockUserById(targetId, client)`. If null → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
-2. Cases:
-
-- If `locked.role === 'admin' && requestorRole === 'admin`' → `AppError(403, 'Only a super admin may suspend an admin', 'FORBIDDEN')`
-- If `locked.role === 'super admin' → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')`
-- if `locked.status === status` → 200, just return `locked`, but no change made
-
-3. `updateUserStatus(locked.id, status, client)`
-4. If `status === 'suspended'` → `revokeAllRefreshTokensForUser(locked.id, client)` (already built in Stage 6d)
-5. Return the updated row, `password_hash` stripped
+2. Target-role restriction, checked before anything else:
+   - If `locked.role === 'super admin'` → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')` (whoever the caller is)
+   - If `locked.role === 'admin' && requestorRole === 'admin'` → `AppError(403, 'Only a super admin may suspend an admin', 'FORBIDDEN')`
+3. Pending target: if `locked.status === 'pending'` → reject; the status of a pending user cannot be changed → `AppError(422, 'Cannot suspend pending user', 'CANNOT_SUSPEND_PENDING_USER')`
+4. No-op check: if `locked.status === status` → return `locked` (minus `password_hash`) as-is, no write, no revocation
+5. `updateUserStatus(locked.id, status, client)`
+6. If `status === 'suspended'` → `revokeAllRefreshTokensForUser(locked.id, client)` (already built in Stage 6d)
+7. Return the updated row, `password_hash` stripped
 
 ### Controllers in a new `src/controllers/users.controller.ts`
 
-- `list` → `asyncHandler`, calls `authService.listUsers()`, returns `200` with `{ users: [...] }`
-- `getById` → validates `:id` as UUID first (`400 VALIDATION_ERROR` if not), then calls `authService.getUserById()`, returns `200` with the user object
-- `updateStatus` → validate body with Zod (`.strict()`, `status` enum of `['active', 'suspended']`, custom messages matching your existing style: required → `"Status is required"`, type → `"Status must be a string"`, invalid enum value → `"Status must be 'active' or 'suspended'"`), then calls `authService.updateUserStatus(req.user.role, req.params.id, status)`, returns `200` with the updated user object
+- `list` → `asyncHandler`, calls `usersService.listUsers()`, returns `200` with `{ users: [...] }`
+- `getById` → validate `req.params.id` with a Zod schema (`z.object({ id: z.string().uuid('Invalid user ID') })`), then calls `usersService.getUserById(id)`, returns `200` with the user object. A failed `.uuid()` check produces a `ZodError`, which the global error handler already turns into `400 VALIDATION_ERROR` with that message — no manual `400` handling needed here.
+- `updateStatus` → validate `req.params.id` the same way as `getById`, validate the body with Zod (`.strict()`, `status` enum of `['active', 'suspended']`, custom messages matching your existing style: required → `"Status is required"`, type → `"Status must be a string"`, invalid enum value → `"Status must be 'active' or 'suspended'"`), then calls `usersService.changeUserStatus(req.user.role, req.params.id, status)`, returns `200` with the updated user object
 
 ### Create `src/routes/users.routes.ts`
 
@@ -1804,26 +1816,37 @@ Mount at `/users` in `app.ts`.
 ### Verification
 
 - `GET /users` as a regular user → `403 FORBIDDEN`
-- `GET /users` as an admin → `200`, `{ users: [...] }`, no `password_hash` field on any entry, no `pending` accounts present
+- `GET /users` as an admin → `200`, `{ users: [...] }`, no `password_hash` field on any entry, includes a `pending` account (mid-registration, OTP not yet verified) alongside `active`/`suspended` ones, distinguishable via its `status` field
 - `GET /users` with no `Authorization` header → `401 UNAUTHORIZED`
 - `GET /users/:id` with a valid existing ID → `200`, full user minus `password_hash`
+- `GET /users/:id` on a pending user's ID → `200`, returns the user with `status: 'pending'`
+- `GET /users/:id` on a suspended user's ID → `200`, returns the user with `status: 'suspended'`
 - `GET /users/:id` with a well-formed UUID that doesn't exist → `404 USER_NOT_FOUND`
-- `GET /users/:id` with a non-UUID string (e.g. `abc123`) → `400 VALIDATION_ERROR`
+- `GET /users/:id` with a non-UUID string (e.g. `abc123`) → `400 VALIDATION_ERROR`, `"Invalid user ID"`
 - `PUT /users/:id/status {status: 'suspended'}` on an active user → `200`, user's status is `suspended` in DB, all their `refresh_tokens` rows now `is_revoked = true`
 - `PUT /users/:id/status {status: 'active'}` on a suspended user → `200`, status flips back, no token rows touched by this call
 - `PUT /users/:id/status {status: 'pending'}` → `400 VALIDATION_ERROR` (not a valid target)
 - `PUT /users/:id/status` as a regular user → `403 FORBIDDEN`
 - `PUT /users/:id/status` on a nonexistent ID → `404 USER_NOT_FOUND`
-- Admin suspends a plain user → 200
-- Admin suspends an admin → 403 FORBIDDEN
-- Admin suspends the super admin → 403 FORBIDDEN
-- Super admin suspends a plain user → 200
-- Super admin suspends an admin → 200
-- Suspend an already-suspended user → 200, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamp changes
-- Unsuspend an already-active user → 200, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamp changes
-  Super admin attempts to suspend the super admin account → 403 SUPER_ADMIN_IMMUTABLE
+- Admin suspends a plain user → `200`
+- Admin suspends an admin → `403 FORBIDDEN`
+- Admin suspends the super admin → `403 SUPER_ADMIN_IMMUTABLE`
+- Super admin suspends a plain user → `200`
+- Super admin suspends an admin → `200`
+- Super admin attempts to suspend the super admin account → `403 SUPER_ADMIN_IMMUTABLE`
+- `PUT /users/:id/status {status: 'suspended'}` on a `pending` user → `422 CANNOT_SUSPEND_PENDING_USER`, user stays `pending`
+- `PUT /users/:id/status {status: 'active'}` on a `pending` user → `422 CANNOT_SUSPEND_PENDING_USER`, user stays `pending`, not activated
+- Suspend an already-suspended user → `200`, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamps change
+- Unsuspend an already-active user → `200`, unchanged user returned, `updated_at` unchanged, no new revocation activity
 - Suspend a user, then attempt `POST /auth/refresh` with their pre-suspension refresh cookie → `401` (revoked) — confirms this endpoint reuses the same revocation your reset-password flow already relies on
 - Two concurrent `PUT /users/:id/status` calls on the same user (different target statuses) → no deadlock, no `500`, exactly one status wins, reflects normal lock-then-write serialization
+
+### Tests (Vitest)
+
+Write the Vitest tests for this stage, following the Stage 7 ground rules, real-Postgres
+approach and layout (query tests, service tests, controller/HTTP tests, and the concurrent-status
+case in `tests/concurrency/`). Every bullet under Verification above is a required test case.
+Do not modify application code to make a test pass.
 
 ---
 
@@ -1834,18 +1857,25 @@ Mount at `/users` in `app.ts`.
 
 ### Design decisions (already made, do not change)
 
-| Rule                     | Value                                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint) |
-| Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                             |
-| Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)           |
-| Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)              |
-| Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                            |
-| `:id` validation         | Same as Stage 9 — `400 VALIDATION_ERROR` for a malformed UUID, `404 USER_NOT_FOUND` for a well-formed one that doesn't exist        |
+| Rule                     | Value                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint)                                      |
+| Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                                                                  |
+| Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)                                                |
+| Target is not active     | Rejected — the role of a `pending` or `suspended` user cannot be changed; only an `active` target is allowed. `pending` → `422 CANNOT_PROMOTE_PENDING_USER` (`'Cannot promote pending user'`); `suspended` → `422 CANNOT_PROMOTE_SUSPENDED_USER` (`'Cannot promote suspended user'`). |
+| Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)                                                   |
+| No-op requests           | If the target already has the requested role, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation |
+| Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                                                                 |
+| `:id` validation         | Same as Stage 9 — Zod `.uuid()` at the controller: `400 VALIDATION_ERROR` for a malformed UUID, `404 USER_NOT_FOUND` for a well-formed one that doesn't exist            |
+| Service/query naming     | Query function `updateUserRole` (in `users.queries.ts`); service function `changeUserRole` (in `users.service.ts`) — same split as Stage 9's status functions            |
 
-### Update `src/services/auth.service.ts` (or `users.service.ts`, matching Stage 9's split)
+### Add to `src/db/queries/users.queries.ts`
 
-Implement `updateUserRole(requesterId, targetId, newRole)`:
+- `updateUserRole(userId, role, db)` — `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`, run inside the transaction against the locked row
+
+### Add to `src/services/users.service.ts`
+
+Implement `changeUserRole(requesterId, targetId, newRole)`:
 
 - If `targetId === requesterId` → `AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE')`
 
@@ -1853,14 +1883,18 @@ Inside `withTransaction`:
 
 1. `locked = lockUserById(targetId, client)`. If null → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
 2. If `locked.role === 'super admin'` → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')`
-3. If `locked.role === newRole` → 200, just return `locked`, but no change made
-4. `updateUserRole(locked.id, newRole, client)` — new query function, `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`
-5. `revokeAllRefreshTokensForUser(locked.id, client)`
-6. Return the updated row, `password_hash` stripped
+3. Non-active target: the role of a non-active user cannot be changed.
+   - If `locked.status === 'pending'` → `AppError(422, 'Cannot promote pending user', 'CANNOT_PROMOTE_PENDING_USER')`
+   - If `locked.status === 'suspended'` → `AppError(422, 'Cannot promote suspended user', 'CANNOT_PROMOTE_SUSPENDED_USER')`
+   This is checked before the no-op case, so a non-active user is rejected even if `newRole` equals their current role.
+4. No-op check: if `locked.role === newRole` → return `locked` (minus `password_hash`) as-is, no write, no revocation
+5. `updateUserRole(locked.id, newRole, client)`
+6. `revokeAllRefreshTokensForUser(locked.id, client)`
+7. Return the updated row, `password_hash` stripped
 
 ### Controller
 
-`changeRole` in `users.controller.ts` → `asyncHandler`, validate `:id` as UUID (`400` if not), validate body with Zod (`.strict()`, `role` enum of `['admin', 'user']`, custom messages: required → `"Role is required"`, type → `"Role must be a string"`, invalid enum → `"Role must be 'admin' or 'user'"`), read the requester's own ID off `req.user.user_id`, call `authService.updateUserRole()`, return `200` with the updated user object.
+`changeRole` in `users.controller.ts` → `asyncHandler`, validate `req.params.id` with the same Zod `.uuid()` schema as Stage 9 (`400 VALIDATION_ERROR`, `"Invalid user ID"` if not), validate body with Zod (`.strict()`, `role` enum of `['admin', 'user']`, custom messages: required → `"Role is required"`, type → `"Role must be a string"`, invalid enum → `"Role must be 'admin' or 'user'"`), read the requester's own ID off `req.user.user_id`, call `usersService.changeUserRole()`, return `200` with the updated user object.
 
 ### Wire up route
 
@@ -1883,9 +1917,17 @@ router.put(
 - Super admin targets the bootstrap super-admin account's own ID (if somehow not caught by the self-check, e.g. a second super admin existed) → `403 SUPER_ADMIN_IMMUTABLE`
 - `{role: 'super admin'}` in the body → `400 VALIDATION_ERROR`, `"Role must be 'admin' or 'user'"`
 - Nonexistent target ID → `404 USER_NOT_FOUND`
-- Non-UUID target ID → `400 VALIDATION_ERROR`
+- Non-UUID target ID → `400 VALIDATION_ERROR`, `"Invalid user ID"`
 - Promote a user to admin, then that user's _pre-promotion_ access token (still `role: user`) hits an admin-only route within its remaining lifetime → still rejected with `403` (expected — a promotion also doesn't take effect until refresh, same as the stale-claim rule from Stage 8); after they `refresh`, the new token carries `role: admin` and the same route succeeds
 - Demote an admin, then within the old token's remaining lifetime, hit an admin route → still succeeds (expected, matches Stage 8's documented tradeoff); attempt `POST /auth/refresh` with their old refresh cookie → `401` (revoked), forcing re-login rather than a quiet demotion
+- `PUT /users/:id/role` on a `pending` user → `422 CANNOT_PROMOTE_PENDING_USER`, role unchanged
+- `PUT /users/:id/role` on a `suspended` user → `422 CANNOT_PROMOTE_SUSPENDED_USER`, role unchanged, no token rows touched
 - Two concurrent `PUT /users/:id/role` calls on the same target with different roles → no deadlock, no `500`, exactly one role wins
-- Promote an admin to admin again → 200, unchanged user, no refresh tokens revoked
-- Demote a user to user again → 200, unchanged user, no refresh tokens revoked
+- Promote an admin to admin again → `200`, unchanged user, no refresh tokens revoked
+- Demote a user to user again → `200`, unchanged user, no refresh tokens revoked
+
+### Tests (Vitest)
+
+Write the Vitest tests for this stage, following the Stage 7 ground rules, real-Postgres
+approach and layout (with the concurrent-role case in `tests/concurrency/`). Every bullet under
+Verification above is a required test case. Do not modify application code to make a test pass.
