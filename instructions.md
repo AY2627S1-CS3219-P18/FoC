@@ -154,29 +154,40 @@ Create `user-service/package.json`:
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node src/app.ts",
-    "dev": "nodemon -L src/app.ts",
+    "start": "tsx src/app.ts",
+    "dev": "nodemon -L --watch src --ext ts,json --exec tsx src/app.ts",
+    "build": "tsc",
     "test": "vitest",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
   "dependencies": {
-    "bcrypt": "^5.x",
-    "express": "^4.18.x",
-    "jsonwebtoken": "^9.x",
-    "nodemailer": "^6.x",
-    "pg": "^8.x",
-    "zod": "^3.x"
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^10.0.10",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
-    "eslint": "^9.x",
-    "nodemon": "^3.x",
-    "prettier": "^3.x",
-    "vitest": "^1.x",
+    "@eslint/js": "^9.17.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^20.11.0",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.11.10",
+    "eslint": "^9.17.0",
+    "nodemon": "^3.1.9",
+    "prettier": "^3.4.2",
     "tsx": "^4.7.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.19.0",
+    "vitest": "^1.6.0"
   }
 }
 ````
@@ -1010,7 +1021,7 @@ Inside `withTransaction`:
 
 1. Look up the user by email. If none or not `pending` → `AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION')`
 2. `locked = lockUserById(user.id)`. **Re-check after the lock:** if `locked` is null or `locked.status !== 'pending'` → `AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION')`. The status read in step 1 can be stale, because another request may have changed the row while this one waited for the lock.
-3. `countOtps(user.id, 'Registration')`. If `count - 1 >= config.otp.maxResends` → `AppError(429, 'Maximum OTP resends reached. Please try registering again in about 10 minutes.', 'OTP_RESEND_LIMIT')`. No `Retry-After` here. The 10 minutes is the OTP lifetime (`OTP_TTL_MINUTES`): the pending registration holds the username and email until its latest OTP expires, and registering again earlier returns `USERNAME_TAKEN` / `EMAIL_TAKEN`. If you change `OTP_TTL_MINUTES`, update this message. (The already-implemented code still says "Please register again later."; only the message text needs to change.)
+3. `countOtps(user.id, 'Registration')`. If `count - 1 >= config.otp.maxResends` → `AppError(429, 'Maximum OTP resends reached. Please try registering again in about 10 minutes.', 'OTP_RESEND_LIMIT')`. No `Retry-After` here. The 10 minutes is the OTP lifetime (`OTP_TTL_MINUTES`): the pending registration holds the username and email until its latest OTP expires, and registering again earlier returns `USERNAME_TAKEN` / `EMAIL_TAKEN`. If you change `OTP_TTL_MINUTES`, update this message.
 4. `findLatestOtp`. If `created_at + cooldown > db_now` → `AppError(429, 'Please wait before requesting another OTP', 'OTP_RESEND_COOLDOWN')`, and set a `Retry-After` header (seconds remaining, about 60). To set the header, attach an optional `retryAfterSeconds` field to `AppError` and have the global error handler emit the header when present. The JSON body stays `{ message, code }`.
 5. `issueOtp(...)` (this invalidates the previous OTP and sends the email)
 
@@ -1104,6 +1115,8 @@ Concurrency:
 ## Changes to already-implemented code (do these first)
 
 Stage 6 needs the following changes to code that earlier stages already built. Each is specified in detail in the stage named.
+
+> Status (2026-09-26): all nine changes below are implemented. Row 5's controller half was completed in 6c (verify-otp) and 6e (resend-otp).
 
 | #   | File                                                                                                | Change                                                                                                                                                                                                                                                                       | Where specified |
 | --- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |

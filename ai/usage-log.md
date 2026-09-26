@@ -565,3 +565,35 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-26 — Docs: align instructions.md with the codebase
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Code in `user-service/` as of Stage 6e; user-approved edits listed under Key responses
+
+**Prompts (exact):**
+
+> read through instructions.md and the code base and understand what's going on.
+
+> is instructions.md and the code base aligned?
+
+> Show me the changes for the "gaps and what i'd suggest"
+
+> go for it for 1-3
+
+**Key responses:**
+Compared `instructions.md` with the user-service source (read only; the app and tests were not run). Proposed three text edits and applied them after approval: (1) the Stage 1 `package.json` block now matches the real scripts and dependency versions; (2) removed the stale sentence in Stage 5e saying the registration resend message still needed changing; (3) added a status note above the Stage 6 "Changes to already-implemented code" table saying all nine changes are implemented. No requirements, design or schema content was changed. Stage 7 was noted as not yet written down and was not drafted.
+
+**Files:**
+
+- `instructions.md` (modified; no header added, as it is a team-owned document)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Stage 7 (`GET /users/me` and later) is not in `instructions.md`; the team needs to write it before it can be implemented.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
