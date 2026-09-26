@@ -90,3 +90,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-26 | user-service | Stage 6e: resend-otp for forgot_password (includes pre-work #5, resend-otp half) | resend-otp accepts forgot_password by reusing forgot-password logic                       |
 | 2026-09-26 | user-service | Docs: align instructions.md with the codebase                                    | Updated package.json block, removed stale note, added Stage 6 status note                 |
 | 2026-09-26 | user-service | Stage 7: Comprehensive Test Suite (Stages 1-6)                                   | Vitest suite against a real test DB: unit, integration, HTTP and concurrency tests       |
+| 2026-09-26 | credit-service | Recess iteration: Credit Service schema, allocation and reservation            | Postgres schema plus transactional allocate and reserve, each logged in the same commit   |
+| 2026-09-26 | credit-service | Recess iteration: Credit Service verification run                              | Ran schema and suite against a real credit-db; 10 tests pass, concurrency mutation-checked |

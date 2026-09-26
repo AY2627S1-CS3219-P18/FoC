@@ -96,6 +96,64 @@ services:
       user-db:
         condition: service_healthy
 
+  # ---- credit-service ---------------------------------------------------------
+  # AI Assistance Disclosure:
+  # Tool: Claude Code (model: claude-opus-5), date: 2026-09-26
+  #   2026-09-26: Recess iteration - credit-db + credit-service compose services.
+  #     No requirements, architecture, schema, or API decisions were made by the AI tool.
+  #     Author review:
+  credit-db:
+    image: postgres:16-alpine
+    container_name: foc-credit-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CREDIT_DB_USER:?set CREDIT_DB_USER in .env}
+      POSTGRES_PASSWORD: ${CREDIT_DB_PASSWORD:?set CREDIT_DB_PASSWORD in .env}
+      POSTGRES_DB: ${CREDIT_DB_NAME:?set CREDIT_DB_NAME in .env}
+    ports:
+      - "${CREDIT_DB_PORT:-5435}:5432"
+    volumes:
+      - credit-db-data:/var/lib/postgresql/data
+      # The postgres image runs this on first start of an empty volume, the same way
+      # user-db loads its schema. Schema changes need the volume recreated.
+      - ./credit-service/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  credit-service:
+    build:
+      context: ./credit-service
+      target: dev
+    container_name: foc-credit-service
+    init: true
+    restart: unless-stopped
+    # credit-service/src/config.ts validates these at startup and exits if any is missing.
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DB_HOST: credit-db
+      DB_PORT: 5432
+      DB_NAME: ${CREDIT_DB_NAME}
+      DB_USER: ${CREDIT_DB_USER}
+      DB_PASSWORD: ${CREDIT_DB_PASSWORD}
+    ports:
+      - "${CREDIT_SERVICE_PORT:-3003}:3003"
+    volumes:
+      - ./credit-service/src:/app/src
+    depends_on:
+      credit-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
 volumes:
   order-db-data:
   user-db-data:
+  credit-db-data:
