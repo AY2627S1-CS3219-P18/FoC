@@ -1658,3 +1658,234 @@ Changes made for the test suite that affect how the service is run. The first tw
 ### Deliverables
 
 1. The test files
+
+# Stage 8: RBAC Middleware
+
+> **Scope**: This stage builds the authorization layer only — the `authorize` middleware
+> itself. It has no consumers yet; Stages 9 and 10 are where it actually gets wired onto
+> routes. No DB changes in this stage.
+>
+> Backlog refs: supports F5.1.1, F5.1.4, F5.1.5, F5.1.6 (enforcement mechanism only —
+> the actual endpoints these protect are Stages 9–10).
+
+### Design decisions (already made, do not change)
+
+| Rule                     | Value                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Role check style         | Minimum-role (`authorize('admin')` = "admin or higher"), not an explicit per-route list                                                                                                                                                                                                                 |
+| Role ordering            | `user` (0) < `admin` (1) < `super admin` (2)                                                                                                                                                                                                                                                            |
+| Stale role claims        | A role change (promotion or demotion) does **not** invalidate an already-issued access token. The token rides out its remaining life (up to 15 min) on the old role — identical to how a suspension is handled today. Enforcement catches up at the next `refresh` call, not immediately.               |
+| Refresh-token revocation | A role change revokes **all** of the target user's refresh tokens in the same transaction as the change (same treatment `resetPassword` and suspend already give). This doesn't shrink the 15-minute window above — it only stops the old role from being extended indefinitely via repeated refreshes. |
+
+### Create `src/middleware/authorize.ts`
+
+- Export a rank table:
+
+```ts
+const ROLE_RANK: Record<string, number> = {
+  user: 0,
+  admin: 1,
+  "super admin": 2,
+};
+```
+
+- Export `authorize(minimumRole: string)` — a middleware **factory**. Calling
+  `authorize('admin')` returns an Express middleware function; it does not itself take
+  `(req, res, next)`.
+- The returned middleware:
+  1. Reads `req.user` (set by `authenticate`, which must run first in the chain).
+  2. If `req.user` is missing (defensive — `authorize` used on a route without
+     `authenticate` ahead of it), reject with `401` and
+     `{ message: 'Unauthorized', code: 'UNAUTHORIZED' }`, matching `authenticate`'s own
+     shape. Do not treat this as a `403` — the caller was never authenticated at all.
+  3. Otherwise compare `ROLE_RANK[req.user.role] >= ROLE_RANK[minimumRole]`.
+  4. If the check passes, call `next()`.
+  5. If it fails, reject with `403` and
+     `{ message: 'Forbidden', code: 'FORBIDDEN' }`.
+- Usage pattern (for reference — not implemented until Stage 9/10):
+
+```ts
+router.get("/users", authenticate, authorize("admin"), usersController.list);
+router.put(
+  "/users/:id/role",
+  authenticate,
+  authorize("super admin"),
+  usersController.changeRole,
+);
+```
+
+### Verification
+
+- Unit test (Vitest, no DB, no Express app needed): for each of the 6 (caller role ×
+  required role) combinations that matter — `user`→`user`, `user`→`admin`,
+  `admin`→`user`, `admin`→`admin`, `admin`→`super admin`, `super admin`→`admin` — confirm
+  `next()` is called or not, as expected, by passing a fake `req`/`res`/`next`.
+- `authorize('admin')` with no `req.user` set at all → `401 UNAUTHORIZED`, `next()` never
+  called.
+- Confirm `authorize` throws no errors of its own — it only ever calls `next()` or
+  responds directly; it should not need `asyncHandler` (no async work, no DB call).
+
+---
+
+# Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend
+
+> **Scope**: `GET /users`, `GET /users/:id`, `PUT /users/:id/status`. All three require
+> `authenticate` + `authorize('admin')`.
+>
+> Backlog refs: F5.3.1, F5.3.3.
+
+### Design decisions (already made, do not change)
+
+| Rule                               | Value                                                                                                                                                                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /users` response shape        | `{ users: [...] }` (wrapped, not a bare array)                                                                                                                                                                                                          |
+| Fields returned per user           | Every column except `password_hash` — `id, username, email, status, role, created_at, updated_at`                                                                                                                                                       |
+| Pending users                      | `GET /users` excludes `status = 'pending'` accounts (unverified registrations aren't real accounts yet)                                                                                                                                                 |
+| `GET /users/:id` — not found       | `404` with `{ message: 'User not found', code: 'USER_NOT_FOUND' }`                                                                                                                                                                                      |
+| `GET /users/:id` — malformed `:id` | `400` with `{ message: 'Invalid user ID', code: 'VALIDATION_ERROR' }` if `:id` isn't a valid UUID — checked before hitting the DB                                                                                                                       |
+| `PUT /users/:id/status` body       | `{ status: 'active' \| 'suspended' }`                                                                                                                                                                                                                   |
+| Suspend side-effect                | Revokes **all** of the target user's refresh tokens in the same transaction (already required by the general rule from Stage 4: "anything that... suspends a user... must revoke ALL that user's refresh tokens in the SAME transaction as the change") |
+| Unsuspend side-effect              | None beyond the status flip — no tokens to revoke, there's nothing live to reactivate                                                                                                                                                                   |
+| Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                          |
+| Target role restriction            | An admin caller may only suspend/unsuspend a target with role = 'user'. A super admin caller may suspend/unsuspend a user or admin target, but not another super admin.                                                                                 |
+
+### Add to `src/db/queries/users.queries.ts`
+
+- `listActiveUsers(db)` — `SELECT * FROM users WHERE status != 'pending' ORDER BY created_at DESC` (naming: "active" here means "not pending," i.e. includes both `active` and `suspended` accounts — rename if that's confusing)
+- `updateUserStatus(userId, status, db)` — `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`, run inside the transaction against the locked row
+
+### Update `src/services/auth.service.ts` (or a new `users.service.ts` — your call on the split, but keep it consistent with how `auth.service.ts` already owns all user-mutation logic)
+
+Implement `listUsers()`:
+
+- Call `listActiveUsers()`, strip `password_hash` from every row before returning
+
+Implement `getUserById(id)`:
+
+- Validate `id` is a UUID (zod `.uuid()` at the controller, or a shared validator — your call, but do it before any DB call)
+- `findById(id)`. If none → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
+- Strip `password_hash`, return the rest
+
+Implement `updateUserStatus(requestorRole, targetId, status)`:
+Inside `withTransaction`:
+
+1. `locked = lockUserById(targetId, client)`. If null → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
+2. Cases:
+
+- If `locked.role === 'admin' && requestorRole === 'admin`' → `AppError(403, 'Only a super admin may suspend an admin', 'FORBIDDEN')`
+- If `locked.role === 'super admin' → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')`
+- if `locked.status === status` → 200, just return `locked`, but no change made
+
+3. `updateUserStatus(locked.id, status, client)`
+4. If `status === 'suspended'` → `revokeAllRefreshTokensForUser(locked.id, client)` (already built in Stage 6d)
+5. Return the updated row, `password_hash` stripped
+
+### Controllers in a new `src/controllers/users.controller.ts`
+
+- `list` → `asyncHandler`, calls `authService.listUsers()`, returns `200` with `{ users: [...] }`
+- `getById` → validates `:id` as UUID first (`400 VALIDATION_ERROR` if not), then calls `authService.getUserById()`, returns `200` with the user object
+- `updateStatus` → validate body with Zod (`.strict()`, `status` enum of `['active', 'suspended']`, custom messages matching your existing style: required → `"Status is required"`, type → `"Status must be a string"`, invalid enum value → `"Status must be 'active' or 'suspended'"`), then calls `authService.updateUserStatus(req.user.role, req.params.id, status)`, returns `200` with the updated user object
+
+### Create `src/routes/users.routes.ts`
+
+```ts
+router.get("/", authenticate, authorize("admin"), usersController.list);
+router.get("/:id", authenticate, authorize("admin"), usersController.getById);
+router.put(
+  "/:id/status",
+  authenticate,
+  authorize("admin"),
+  usersController.updateStatus,
+);
+```
+
+Mount at `/users` in `app.ts`.
+
+### Verification
+
+- `GET /users` as a regular user → `403 FORBIDDEN`
+- `GET /users` as an admin → `200`, `{ users: [...] }`, no `password_hash` field on any entry, no `pending` accounts present
+- `GET /users` with no `Authorization` header → `401 UNAUTHORIZED`
+- `GET /users/:id` with a valid existing ID → `200`, full user minus `password_hash`
+- `GET /users/:id` with a well-formed UUID that doesn't exist → `404 USER_NOT_FOUND`
+- `GET /users/:id` with a non-UUID string (e.g. `abc123`) → `400 VALIDATION_ERROR`
+- `PUT /users/:id/status {status: 'suspended'}` on an active user → `200`, user's status is `suspended` in DB, all their `refresh_tokens` rows now `is_revoked = true`
+- `PUT /users/:id/status {status: 'active'}` on a suspended user → `200`, status flips back, no token rows touched by this call
+- `PUT /users/:id/status {status: 'pending'}` → `400 VALIDATION_ERROR` (not a valid target)
+- `PUT /users/:id/status` as a regular user → `403 FORBIDDEN`
+- `PUT /users/:id/status` on a nonexistent ID → `404 USER_NOT_FOUND`
+- Admin suspends a plain user → 200
+- Admin suspends an admin → 403 FORBIDDEN
+- Admin suspends the super admin → 403 FORBIDDEN
+- Super admin suspends a plain user → 200
+- Super admin suspends an admin → 200
+- Suspend an already-suspended user → 200, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamp changes
+- Unsuspend an already-active user → 200, unchanged user returned, `updated_at` unchanged, no new revocation activity, none of the tokens' `revoked_at` timestamp changes
+  Super admin attempts to suspend the super admin account → 403 SUPER_ADMIN_IMMUTABLE
+- Suspend a user, then attempt `POST /auth/refresh` with their pre-suspension refresh cookie → `401` (revoked) — confirms this endpoint reuses the same revocation your reset-password flow already relies on
+- Two concurrent `PUT /users/:id/status` calls on the same user (different target statuses) → no deadlock, no `500`, exactly one status wins, reflects normal lock-then-write serialization
+
+---
+
+# Stage 10: Super Admin — Promote / Demote
+
+> **Scope**: `PUT /users/:id/role`. Requires `authenticate` + `authorize('super admin')`.
+> Backlog refs: F5.1.6.
+
+### Design decisions (already made, do not change)
+
+| Rule                     | Value                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint) |
+| Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                             |
+| Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)           |
+| Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)              |
+| Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                            |
+| `:id` validation         | Same as Stage 9 — `400 VALIDATION_ERROR` for a malformed UUID, `404 USER_NOT_FOUND` for a well-formed one that doesn't exist        |
+
+### Update `src/services/auth.service.ts` (or `users.service.ts`, matching Stage 9's split)
+
+Implement `updateUserRole(requesterId, targetId, newRole)`:
+
+- If `targetId === requesterId` → `AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE')`
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(targetId, client)`. If null → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
+2. If `locked.role === 'super admin'` → `AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE')`
+3. If `locked.role === newRole` → 200, just return `locked`, but no change made
+4. `updateUserRole(locked.id, newRole, client)` — new query function, `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`
+5. `revokeAllRefreshTokensForUser(locked.id, client)`
+6. Return the updated row, `password_hash` stripped
+
+### Controller
+
+`changeRole` in `users.controller.ts` → `asyncHandler`, validate `:id` as UUID (`400` if not), validate body with Zod (`.strict()`, `role` enum of `['admin', 'user']`, custom messages: required → `"Role is required"`, type → `"Role must be a string"`, invalid enum → `"Role must be 'admin' or 'user'"`), read the requester's own ID off `req.user.user_id`, call `authService.updateUserRole()`, return `200` with the updated user object.
+
+### Wire up route
+
+```ts
+router.put(
+  "/:id/role",
+  authenticate,
+  authorize("super admin"),
+  usersController.changeRole,
+);
+```
+
+### Verification
+
+- `PUT /users/:id/role {role: 'admin'}` on a regular user, as super admin → `200`, role updated, all their refresh tokens revoked
+- `PUT /users/:id/role {role: 'user'}` on an admin, as super admin → `200`, demoted, tokens revoked
+- Same call as a regular admin (not super admin) → `403 FORBIDDEN` (blocked by `authorize`, never reaches the handler — confirms F5.1.5 is satisfied by the middleware alone)
+- Same call as a regular user → `403 FORBIDDEN`
+- Super admin targets their own ID → `403 SELF_ROLE_CHANGE`
+- Super admin targets the bootstrap super-admin account's own ID (if somehow not caught by the self-check, e.g. a second super admin existed) → `403 SUPER_ADMIN_IMMUTABLE`
+- `{role: 'super admin'}` in the body → `400 VALIDATION_ERROR`, `"Role must be 'admin' or 'user'"`
+- Nonexistent target ID → `404 USER_NOT_FOUND`
+- Non-UUID target ID → `400 VALIDATION_ERROR`
+- Promote a user to admin, then that user's _pre-promotion_ access token (still `role: user`) hits an admin-only route within its remaining lifetime → still rejected with `403` (expected — a promotion also doesn't take effect until refresh, same as the stale-claim rule from Stage 8); after they `refresh`, the new token carries `role: admin` and the same route succeeds
+- Demote an admin, then within the old token's remaining lifetime, hit an admin route → still succeeds (expected, matches Stage 8's documented tradeoff); attempt `POST /auth/refresh` with their old refresh cookie → `401` (revoked), forcing re-login rather than a quiet demotion
+- Two concurrent `PUT /users/:id/role` calls on the same target with different roles → no deadlock, no `500`, exactly one role wins
+- Promote an admin to admin again → 200, unchanged user, no refresh tokens revoked
+- Demote a user to user again → 200, unchanged user, no refresh tokens revoked
