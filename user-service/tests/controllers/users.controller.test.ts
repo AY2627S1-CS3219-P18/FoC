@@ -6,6 +6,11 @@
  *        instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added HTTP tests for PUT /users/:id/role, covering the Stage 10 Verification bullets.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -386,6 +391,257 @@ describe('PUT /users/:id/status', () => {
       expect(res.body.status).toBe('active');
       expect(new Date(res.body.updated_at)).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(userBefore.updated_at);
+      expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+    });
+  });
+});
+
+const putRole = (token: string, target: TestUser | { id: string }, role: unknown) =>
+  put(`/users/${target.id}/role`, token, { role });
+
+describe('PUT /users/:id/role', () => {
+  describe('authentication and authorization', () => {
+    it('rejects a request with no token with 401 UNAUTHORIZED', async () => {
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/role`, undefined, { role: 'admin' });
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(UNAUTHORIZED);
+    });
+
+    it('rejects a regular admin with 403 FORBIDDEN, before the handler runs (role unchanged)', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(FORBIDDEN);
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+    });
+
+    it('rejects an admin even for an invalid body or id: authorize runs first', async () => {
+      const { token } = await callerToken('admin');
+      const res = await put('/users/abc123/role', token, { role: 'super admin' });
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(FORBIDDEN);
+    });
+
+    it('rejects a regular user with 403 FORBIDDEN', async () => {
+      const { token } = await callerToken('user');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(FORBIDDEN);
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+    });
+  });
+
+  describe('promote and demote', () => {
+    it('promotes a regular user to admin: 200, role updated, all their refresh tokens revoked', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      await loginTokens(target);
+      await seedRefreshToken(target.id, 'extra-token');
+
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ id: target.id, role: 'admin', status: 'active' });
+      expect(res.body).not.toHaveProperty('password_hash');
+      expect((await getUserByEmail(target.email))!.role).toBe('admin');
+      const tokens = await getRefreshTokens(target.id);
+      expect(tokens.length).toBeGreaterThanOrEqual(2);
+      expect(tokens.every((t) => t.is_revoked)).toBe(true);
+    });
+
+    it('demotes an admin to user: 200, tokens revoked', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+      await loginTokens(target);
+
+      const res = await putRole(token, target, 'user');
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('user');
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+      expect((await getRefreshTokens(target.id)).every((t) => t.is_revoked)).toBe(true);
+    });
+  });
+
+  describe('targets that cannot be changed', () => {
+    it('super admin targeting their own id: 403 SELF_ROLE_CHANGE', async () => {
+      const { user, token } = await callerToken('super admin');
+      const res = await putRole(token, user, 'user');
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({ message: 'Cannot modify your own role', code: 'SELF_ROLE_CHANGE' });
+      expect((await getUserByEmail(user.email))!.role).toBe('super admin');
+    });
+
+    it('super admin targeting another super admin account: 403 SUPER_ADMIN_IMMUTABLE', async () => {
+      const { token } = await callerToken('super admin');
+      const other = await createUserWithRole('sa2', 'super admin');
+      const res = await putRole(token, other, 'user');
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        message: 'Cannot modify a super administrator',
+        code: 'SUPER_ADMIN_IMMUTABLE',
+      });
+      expect((await getUserByEmail(other.email))!.role).toBe('super admin');
+    });
+
+    it('nonexistent target: 404 USER_NOT_FOUND', async () => {
+      const { token } = await callerToken('super admin');
+      const res = await putRole(token, { id: UNKNOWN_ID }, 'admin');
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ message: 'User not found', code: 'USER_NOT_FOUND' });
+    });
+
+    it('a pending user: 422 CANNOT_CHANGE_ROLE_PENDING_USER, role unchanged', async () => {
+      const { token } = await callerToken('super admin');
+      const pending = await registerPending(1);
+      const res = await putRole(token, pending, 'admin');
+      expect(res.status).toBe(422);
+      expect(res.body).toEqual({
+        message: 'Cannot change the role of a pending user',
+        code: 'CANNOT_CHANGE_ROLE_PENDING_USER',
+      });
+      expect((await getUserByEmail(pending.email))!.role).toBe('user');
+    });
+
+    it('a suspended user: 422 CANNOT_CHANGE_ROLE_SUSPENDED_USER, role unchanged, no token rows touched', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      await seedRefreshToken(target.id, 'tok-a');
+      await setUserStatus(target.id, 'suspended');
+      const tokensBefore = await getRefreshTokens(target.id);
+
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(422);
+      expect(res.body).toEqual({
+        message: 'Cannot change the role of a suspended user',
+        code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
+      });
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+      expect(await getRefreshTokens(target.id)).toEqual(tokensBefore);
+    });
+  });
+
+  describe('request validation', () => {
+    it("rejects role 'super admin' with 400 \"Role must be 'admin' or 'user'\"", async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'super admin');
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        message: "Role must be 'admin' or 'user'",
+        code: 'VALIDATION_ERROR',
+      });
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+    });
+
+    it('rejects a missing role with "Role is required"', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/role`, token, {});
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Role is required', code: 'VALIDATION_ERROR' });
+    });
+
+    it('rejects a non-string role with "Role must be a string"', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 123);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Role must be a string', code: 'VALIDATION_ERROR' });
+    });
+
+    it('rejects an extra field with "Request contains unexpected fields"', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/role`, token, { role: 'admin', status: 'active' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        message: 'Request contains unexpected fields',
+        code: 'VALIDATION_ERROR',
+      });
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+    });
+
+    it('rejects a non-UUID target id with 400 "Invalid user ID"', async () => {
+      const { token } = await callerToken('super admin');
+      const res = await put('/users/abc123/role', token, { role: 'admin' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
+    });
+  });
+
+  describe('stale access tokens and revoked refresh tokens', () => {
+    it('after a promotion, the pre-promotion access token (role user) is still rejected by an admin route with 403', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const { accessToken: oldToken } = await loginTokens(target);
+
+      expect((await putRole(token, target, 'admin')).status).toBe(200);
+      const res = await get('/users', oldToken);
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual(FORBIDDEN);
+    });
+
+    it('after a promotion, refreshing with the pre-promotion cookie gets 401 INVALID_REFRESH_TOKEN', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const { refreshToken } = await loginTokens(target);
+
+      await putRole(token, target, 'admin');
+      const res = await request(app).post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
+    });
+
+    it("after a demotion, the demoted admin's old access token still works on an admin route within its lifetime", async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+      const { accessToken: oldToken } = await loginTokens(target);
+
+      expect((await putRole(token, target, 'user')).status).toBe(200);
+      const res = await get('/users', oldToken);
+      expect(res.status).toBe(200);
+    });
+
+    it('after a demotion, refreshing with the old cookie gets 401 INVALID_REFRESH_TOKEN', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+      const { refreshToken } = await loginTokens(target);
+
+      await putRole(token, target, 'user');
+      const res = await request(app).post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
+    });
+  });
+
+  describe('no-op requests', () => {
+    it('promoting an admin to admin again: 200, unchanged user, no refresh tokens revoked', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+      await seedRefreshToken(target.id, 'tok-a');
+      const before = (await getUserByEmail(target.email))!;
+
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('admin');
+      expect(new Date(res.body.updated_at)).toEqual(before.updated_at);
+      expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
+      expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+    });
+
+    it('demoting a user to user again: 200, unchanged user, no refresh tokens revoked', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      await seedRefreshToken(target.id, 'tok-a');
+      const before = (await getUserByEmail(target.email))!;
+
+      const res = await putRole(token, target, 'user');
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('user');
+      expect(new Date(res.body.updated_at)).toEqual(before.updated_at);
+      expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });
   });

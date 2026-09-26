@@ -5,6 +5,11 @@
  *        Stage 9 Verification bullets in instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added tests for changeUserRole, covering the Stage 10 Verification bullets.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
@@ -195,5 +200,158 @@ describe('changeUserStatus', () => {
     await setUserRole(t.id, 'user');
     const result = await usersService.changeUserStatus('admin', t.id, 'suspended');
     expect(result.role).toBe('user');
+  });
+});
+
+describe('changeUserRole', () => {
+  async function superAdmin() {
+    return createUserWithRole('sa', 'super admin');
+  }
+
+  it('promotes a user to admin, revokes all their refresh tokens and strips password_hash', async () => {
+    const sa = await superAdmin();
+    const target = await createActiveUser(1);
+    await seedRefreshToken(target.id, 'tok-a');
+    await seedRefreshToken(target.id, 'tok-b');
+
+    const result = await usersService.changeUserRole(sa.id, target.id, 'admin');
+    expect(result.role).toBe('admin');
+    expect(result).not.toHaveProperty('password_hash');
+    expect((await getUserByEmail(target.email))!.role).toBe('admin');
+    const tokens = await getRefreshTokens(target.id);
+    expect(tokens).toHaveLength(2);
+    expect(tokens.every((t) => t.is_revoked)).toBe(true);
+  });
+
+  it('demotes an admin to user and revokes all their refresh tokens', async () => {
+    const sa = await superAdmin();
+    const target = await createUserWithRole(1, 'admin');
+    await seedRefreshToken(target.id, 'tok-a');
+
+    const result = await usersService.changeUserRole(sa.id, target.id, 'user');
+    expect(result.role).toBe('user');
+    expect((await getRefreshTokens(target.id)).every((t) => t.is_revoked)).toBe(true);
+  });
+
+  it('does not change the target status', async () => {
+    const sa = await superAdmin();
+    const target = await createActiveUser(1);
+    expect((await usersService.changeUserRole(sa.id, target.id, 'admin')).status).toBe('active');
+  });
+
+  it('rejects changing your own role: 403 SELF_ROLE_CHANGE, before touching the DB', async () => {
+    const sa = await superAdmin();
+    await expect(usersService.changeUserRole(sa.id, sa.id, 'user')).rejects.toMatchObject({
+      status: 403,
+      message: 'Cannot modify your own role',
+      code: 'SELF_ROLE_CHANGE',
+    });
+    expect((await getUserByEmail(sa.email))!.role).toBe('super admin');
+  });
+
+  it('self-targeting is rejected even for an id that does not exist', async () => {
+    await expect(
+      usersService.changeUserRole(UNKNOWN_ID, UNKNOWN_ID, 'admin'),
+    ).rejects.toMatchObject({ code: 'SELF_ROLE_CHANGE' });
+  });
+
+  it('rejects a super admin target (a second super admin): 403 SUPER_ADMIN_IMMUTABLE', async () => {
+    const sa = await superAdmin();
+    const other = await createUserWithRole('sa2', 'super admin');
+    await seedRefreshToken(other.id, 'tok-a');
+    await expect(usersService.changeUserRole(sa.id, other.id, 'user')).rejects.toMatchObject({
+      status: 403,
+      message: 'Cannot modify a super administrator',
+      code: 'SUPER_ADMIN_IMMUTABLE',
+    });
+    expect((await getUserByEmail(other.email))!.role).toBe('super admin');
+    expect((await getRefreshTokens(other.id))[0]!.is_revoked).toBe(false);
+  });
+
+  it('throws 404 USER_NOT_FOUND for a nonexistent target', async () => {
+    const sa = await superAdmin();
+    await expect(usersService.changeUserRole(sa.id, UNKNOWN_ID, 'admin')).rejects.toMatchObject({
+      status: 404,
+      code: 'USER_NOT_FOUND',
+    });
+  });
+
+  describe('non-active target', () => {
+    it.each(['admin', 'user'] as const)(
+      'a pending user cannot be set to %s: 422 CANNOT_CHANGE_ROLE_PENDING_USER, role unchanged',
+      async (role) => {
+        const sa = await superAdmin();
+        const pending = await registerPending(1);
+        await expect(usersService.changeUserRole(sa.id, pending.id, role)).rejects.toMatchObject({
+          status: 422,
+          message: 'Cannot change the role of a pending user',
+          code: 'CANNOT_CHANGE_ROLE_PENDING_USER',
+        });
+        expect((await getUserByEmail(pending.email))!.role).toBe('user');
+      },
+    );
+
+    it.each(['admin', 'user'] as const)(
+      'a suspended user cannot be set to %s: 422 CANNOT_CHANGE_ROLE_SUSPENDED_USER, tokens untouched',
+      async (role) => {
+        const sa = await superAdmin();
+        const target = await createActiveUser(1);
+        await seedRefreshToken(target.id, 'tok-a');
+        await setUserStatus(target.id, 'suspended');
+        await expect(usersService.changeUserRole(sa.id, target.id, role)).rejects.toMatchObject({
+          status: 422,
+          message: 'Cannot change the role of a suspended user',
+          code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
+        });
+        expect((await getUserByEmail(target.email))!.role).toBe('user');
+        expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+      },
+    );
+
+    it('is rejected before the no-op case: a suspended user "set" to their current role', async () => {
+      const sa = await superAdmin();
+      const target = await createUserWithRole(1, 'admin');
+      await setUserStatus(target.id, 'suspended');
+      await expect(usersService.changeUserRole(sa.id, target.id, 'admin')).rejects.toMatchObject({
+        code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
+      });
+    });
+
+    it('checks the super admin rule before the non-active rule', async () => {
+      const sa = await superAdmin();
+      const other = await createUserWithRole('sa2', 'super admin');
+      await setUserStatus(other.id, 'suspended');
+      await expect(usersService.changeUserRole(sa.id, other.id, 'user')).rejects.toMatchObject({
+        code: 'SUPER_ADMIN_IMMUTABLE',
+      });
+    });
+  });
+
+  describe('no-op requests', () => {
+    it('promoting an admin to admin returns it unchanged: same updated_at, no revocation', async () => {
+      const sa = await superAdmin();
+      const target = await createUserWithRole(1, 'admin');
+      await seedRefreshToken(target.id, 'tok-a');
+      const before = (await getUserByEmail(target.email))!;
+
+      const result = await usersService.changeUserRole(sa.id, target.id, 'admin');
+      expect(result.role).toBe('admin');
+      expect(result.updated_at).toEqual(before.updated_at);
+      expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
+      expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+    });
+
+    it('demoting a user to user returns it unchanged: same updated_at, no revocation', async () => {
+      const sa = await superAdmin();
+      const target = await createActiveUser(1);
+      await seedRefreshToken(target.id, 'tok-a');
+      const before = (await getUserByEmail(target.email))!;
+
+      const result = await usersService.changeUserRole(sa.id, target.id, 'user');
+      expect(result.role).toBe('user');
+      expect(result.updated_at).toEqual(before.updated_at);
+      expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
+      expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+    });
   });
 });

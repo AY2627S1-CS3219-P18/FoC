@@ -5,6 +5,11 @@
  *        instructions.md Stage 9.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added changeUserRole as specified in instructions.md Stage 10.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as tokenQueries from '../db/queries/tokens.queries.js';
@@ -70,6 +75,55 @@ export async function changeUserStatus(
     if (status === 'suspended') {
       await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
     }
+
+    return toPublicUser(updated);
+  });
+}
+
+export async function changeUserRole(
+  requesterId: string,
+  targetId: string,
+  newRole: 'admin' | 'user',
+): Promise<PublicUser> {
+  if (targetId === requesterId) {
+    throw new AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE');
+  }
+
+  return withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(targetId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    if (locked.role === 'super admin') {
+      throw new AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE');
+    }
+
+    // Only an active target's role can change. Checked before the no-op case.
+    if (locked.status === 'pending') {
+      throw new AppError(
+        422,
+        'Cannot change the role of a pending user',
+        'CANNOT_CHANGE_ROLE_PENDING_USER',
+      );
+    }
+    if (locked.status === 'suspended') {
+      throw new AppError(
+        422,
+        'Cannot change the role of a suspended user',
+        'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
+      );
+    }
+
+    // Already has the requested role: success, no write and no token revocation.
+    if (locked.role === newRole) {
+      return toPublicUser(locked);
+    }
+
+    const updated = await userQueries.updateUserRole(locked.id, newRole, client);
+
+    // Same transaction as the role change, so the old role cannot be extended by refreshing.
+    await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
 
     return toPublicUser(updated);
   });
