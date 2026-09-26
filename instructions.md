@@ -625,7 +625,7 @@ router.post("/register", authController.register);
 
 #### Verification
 
-- `POST /auth/register` with valid body → 201, user appears in DB with hashed password
+- `POST /auth/register` with valid body → 201, user appears in DB with hashed password (superseded by stage 5d: reponse is `201_OTP_SENT`, account starts `pending`)
 - `POST /auth/register` with duplicate username → 409 USERNAME_TAKEN
 - `POST /auth/register` with duplicate email → 409 EMAIL_TAKEN
 - `POST /auth/register` with weak password → 400 VALIDATION_ERROR
@@ -1645,6 +1645,15 @@ checks between `refresh` and `reset-password`, stale-pending-user cleanup with
 role-claim freshness after promotion, and the "confirm this is intended, not a
 bug" notes (e.g. non-consuming `verify-otp` for forgot-password being
 re-submittable, an old access token surviving a password reset).
+
+### Stage 7 changes to reverse or review before deployment
+
+Changes made for the test suite that affect how the service is run. The first two must be undone before any real deployment.
+
+- **`compose.yaml`, `user-db` `ports: - "5434:5432"` (REVERSE):** publishes the database on the host so Vitest can reach it. Remove the `ports:` block (and its TEMPORARY comment) before deploying, so the database is only reachable inside the compose network.
+- **`user_service_test` database on the `user-db` instance (REVIEW):** `tests/setup/globalSetup.ts` drops and recreates it on every test run. It refuses to touch any database whose name does not end in `_test`. Do not run the suite against a deployed database, and drop `user_service_test` if it exists there.
+- **`.env.test` (no action):** committed, dummy values only. It must never hold real credentials.
+- **`app.ts` / `server.ts` split (KEEP):** `app.ts` now only builds and exports the Express app. `src/server.ts` runs the super admin bootstrap and calls `listen()`. The `start` and `dev` scripts in `package.json` and the prod `CMD` in `Dockerfile` (`node dist/server.js`) were updated to match. This is not meant to be reversed.
 
 ### Deliverables
 

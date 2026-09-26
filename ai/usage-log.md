@@ -597,3 +597,64 @@ Stage 7 (`GET /users/me` and later) is not in `instructions.md`; the team needs 
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-26 — Stage 7: Comprehensive Test Suite (Stages 1-6)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 7: Comprehensive Test Suite" including the team's answers to the ambiguity list (Test stack, Infrastructure, Mocking policy, Manual-only verification bullets, Temporary protected route, Concurrency test parameters), plus the Verification bullets of Stages 1-6
+
+**Prompts (exact):**
+
+> read through instructions.md and the code base to understnad what's going on
+
+> give me any questions you have before starting stag 7
+
+> 1. for traceability table, you can just wait until we're done with all the testing, then ask me about it again. for ambiguity list, this is the ambiguity check!
+> 2. yes, split it into an app export
+>    i have inserted the answers for 1-13 in instructions.md.
+> 3. accept underscore.
+> 4. that's correct, verify shouldn't check a user's status.
+
+> 1. okay feel free to make these changes
+> 2. let's go with (a). for this (and for any other changes you make that affect deployment later), include a note in instructions.md to reverse those changes later on.
+
+**Key responses:**
+Produced the ambiguity list before writing any tests and waited for the team's answers. Then implemented the decided setup: split `app.ts` into a pure `app` export plus `server.ts` (bootstrap, then listen) and updated the `start`/`dev` scripts and the prod `CMD`; published `user-db` on host port 5434 (temporary, with a reverse-before-deploy note in `instructions.md`); added `vitest.config.ts` (sequential files), a global setup that drops and recreates `user_service_test` from `init.sql`, per-file setup (`.env.test`, throwaway RS256 keys, mocked `sendOtpEmail`), and SQL/email/fixture helpers. Wrote 407 tests in 15 files under `user-service/tests/`, mirroring `src/`, with a separate `concurrency/` folder. Deterministic lock-interleaving tests hold a row lock, start the request, change state, then commit. No application logic was changed and no test asserts deferred features (NFR1, NFR2, rate limiting). Traceability table not written yet, as instructed.
+Verification actually run: the full suite (407 passed), `eslint .` and `tsc --noEmit` for the tests were clean. Docker was not running, so the suite ran against a temporary local PostgreSQL 14 on port 5434, not the project's Postgres 16 container. Mutation check: temporarily removing `SKIP LOCKED`, the revoke-all in reset-password, and the login post-lock password re-check each made tests fail; the source was restored afterwards. `npm run build`, the Docker build, and `docker compose up` were not run.
+Committed separately on `main` at the user's request: the user's own `instructions.md` edits.
+
+**Files:**
+
+- `user-service/src/app.ts` (modified)
+- `user-service/src/server.ts` (created)
+- `user-service/package.json` (modified: scripts, devDependencies supertest, @types/supertest, dotenv; no header possible)
+- `user-service/package-lock.json` (modified; no header possible)
+- `user-service/Dockerfile` (modified)
+- `compose.yaml` (modified)
+- `user-service/vitest.config.ts` (created)
+- `user-service/.env.test` (created)
+- `user-service/tests/tsconfig.json` (created; no header, JSON)
+- `user-service/tests/setup/globalSetup.ts`, `user-service/tests/setup/setupFiles.ts` (created)
+- `user-service/tests/helpers/constants.ts`, `db.ts`, `email.ts`, `fixtures.ts`, `keys.ts` (created)
+- `user-service/tests/utils/hash.test.ts`, `otp.test.ts`, `jwt.test.ts` (created)
+- `user-service/tests/middleware/authenticate.test.ts` (created)
+- `user-service/tests/config.test.ts` (created)
+- `user-service/tests/db/queries/users.queries.test.ts`, `otp.queries.test.ts`, `tokens.queries.test.ts` (created)
+- `user-service/tests/services/email.service.test.ts`, `otp.service.test.ts`, `auth.service.test.ts`, `bootstrap.service.test.ts` (created)
+- `user-service/tests/controllers/auth.controller.test.ts` (created)
+- `user-service/tests/concurrency/races.concurrency.test.ts`, `lock-recheck.concurrency.test.ts` (created)
+- `instructions.md` (modified: added "Stage 7 changes to reverse or review before deployment")
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- The Stage 7 "co-locate tests next to the source" bullet conflicts with the team's answer to keep tests in `user-service/tests/`; the answer was followed, with a tree mirroring `src/`.
+- Stage 4b describes register returning `201 REGISTER_SUCCESS`; tests assert the current `201 OTP_SENT` from Stage 5d.
+- Traceability table (`tests/TRACEABILITY.md`) is still to be written; the team asked to be asked again once testing is done.
+- The temporary `5434:5432` port mapping in `compose.yaml` must be removed before deployment (see `instructions.md`).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
