@@ -27,16 +27,32 @@
  *        requestOtp-result switch into a shared helper reused by all three (no behavior change).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added initiatePasswordChange and confirmPasswordChange as specified in
+ *        instructions.md Stage 12e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
 import * as otpQueries from '../db/queries/otp.queries.js';
+import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
-import { EMAIL_REGEX, USERNAME_MESSAGE, USERNAME_REGEX } from './auth.service.js';
+import {
+  EMAIL_REGEX,
+  OTP_REGEX,
+  PASSWORD_MESSAGE,
+  PASSWORD_REGEX,
+  USERNAME_MESSAGE,
+  USERNAME_REGEX,
+} from './auth.service.js';
 import { checkOtp, requestOtp, type RequestOtpResult } from './otp.service.js';
 import { toPublicUser, type PublicUser } from './users.service.js';
+
+const BCRYPT_WORK_FACTOR = 10;
 
 function isPgUniqueViolation(err: unknown): err is { code: string; constraint?: string } {
   return (
@@ -283,4 +299,95 @@ export async function resendChangePasswordOtp(userId: string): Promise<void> {
     );
     throwOnUnsentOtp(result);
   });
+}
+
+// newPassword is validated here but never written anywhere — it is discarded once this
+// call returns. confirmPasswordChange re-supplies and applies it.
+export async function initiatePasswordChange(
+  userId: string,
+  { currentPassword, newPassword }: { currentPassword: string; newPassword: string },
+): Promise<void> {
+  if (!PASSWORD_REGEX.test(newPassword)) {
+    throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
+  }
+
+  // Unlocked read first: bcrypt is slow, so verify before taking the row lock.
+  const user = await userQueries.findById(userId);
+  if (!user) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  const passwordMatches = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!passwordMatches) {
+    throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+  }
+  const sameAsCurrent = await bcrypt.compare(newPassword, user.password_hash);
+  if (sameAsCurrent) {
+    throw new AppError(
+      400,
+      'New password must be different from your current password',
+      'PASSWORD_UNCHANGED',
+    );
+  }
+
+  await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    // Re-verify against the locked row: the pre-lock read can be stale.
+    const stillMatches = await bcrypt.compare(currentPassword, locked.password_hash);
+    if (!stillMatches) {
+      throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+    }
+
+    const result = await requestOtp(
+      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+      client,
+    );
+    throwOnUnsentOtp(result);
+  });
+}
+
+export async function confirmPasswordChange(
+  userId: string,
+  { otp, newPassword }: { otp: string; newPassword: string },
+): Promise<void> {
+  if (!PASSWORD_REGEX.test(newPassword)) {
+    throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
+  }
+  if (!OTP_REGEX.test(otp)) {
+    throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
+  }
+
+  const result = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    // Re-checked here in case the password changed between initiate and confirm.
+    const sameAsCurrent = await bcrypt.compare(newPassword, locked.password_hash);
+    if (sameAsCurrent) {
+      throw new AppError(
+        400,
+        'New password must be different from your current password',
+        'PASSWORD_UNCHANGED',
+      );
+    }
+
+    const check = await checkOtp({ userId, purpose: 'Change Password', otp }, client);
+    if (check.ok) {
+      const passwordHash = await bcrypt.hash(newPassword, BCRYPT_WORK_FACTOR);
+      await userQueries.updatePasswordHash(locked.id, passwordHash, client);
+      // Same transaction as the password change, so no old session outlives it.
+      await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
+    }
+    return check;
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
 }

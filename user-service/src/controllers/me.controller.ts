@@ -25,6 +25,12 @@
  * Scope: Added verifyOtp and resendOtp as specified in instructions.md Stage 12d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added changePassword and confirmPasswordChange as specified in
+ *        instructions.md Stage 12e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -140,5 +146,46 @@ export const resendOtp = asyncHandler(async (req, res) => {
   res.status(200).json({
     message: 'A new verification code has been sent to your email',
     code: 'OTP_SENT',
+  });
+});
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string({
+      required_error: 'Current password is required',
+      invalid_type_error: 'Current password must be a string',
+    }),
+    newPassword: z.string({
+      required_error: 'New password is required',
+      invalid_type_error: 'New password must be a string',
+    }),
+  })
+  .strict();
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+  await meService.initiatePasswordChange(req.user!.user_id, { currentPassword, newPassword });
+  res.status(200).json({ message: 'Verification code sent to your email', code: 'OTP_SENT' });
+});
+
+const confirmPasswordChangeSchema = z
+  .object({
+    otp: z.string({
+      required_error: 'OTP is required',
+      invalid_type_error: 'OTP must be a string',
+    }),
+    newPassword: z.string({
+      required_error: 'New password is required',
+      invalid_type_error: 'New password must be a string',
+    }),
+  })
+  .strict();
+
+export const confirmPasswordChange = asyncHandler(async (req, res) => {
+  const { otp, newPassword } = confirmPasswordChangeSchema.parse(req.body);
+  await meService.confirmPasswordChange(req.user!.user_id, { otp, newPassword });
+  res.status(200).json({
+    message: 'Password changed successfully. Please log in again on other devices.',
+    code: 'PASSWORD_CHANGE_SUCCESS',
   });
 });

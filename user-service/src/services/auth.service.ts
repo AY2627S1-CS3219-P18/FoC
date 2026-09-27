@@ -28,6 +28,8 @@
 // Author review:
 // 27/09/2026: Stage 12b - exported USERNAME_REGEX, EMAIL_REGEX, USERNAME_MESSAGE for reuse in me.service.ts
 // Author review:
+// 27/09/2026: Stage 12e - exported OTP_REGEX for reuse in me.service.ts
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -50,7 +52,7 @@ export const USERNAME_MESSAGE =
 export const PASSWORD_MESSAGE =
   'Password must contain at least 8 characters, with at least one uppercase, one lowercase, one digit and one special character. ';
 
-const OTP_REGEX = /^\d{6}$/;
+export const OTP_REGEX = /^\d{6}$/;
 
 const BCRYPT_WORK_FACTOR = 10;
 

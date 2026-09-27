@@ -25,6 +25,12 @@
  * Scope: Added POST /verify-otp and POST /resend-otp as specified in instructions.md Stage 12d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added PUT /password and POST /confirm-password-change as specified in
+ *        instructions.md Stage 12e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -39,5 +45,7 @@ router.put('/username', authenticate, meController.changeUsername);
 router.put('/email', authenticate, meController.changeEmail);
 router.post('/verify-otp', authenticate, meController.verifyOtp);
 router.post('/resend-otp', authenticate, meController.resendOtp);
+router.put('/password', authenticate, meController.changePassword);
+router.post('/confirm-password-change', authenticate, meController.confirmPasswordChange);
 
 export default router;
