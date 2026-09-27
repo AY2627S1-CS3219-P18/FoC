@@ -36,10 +36,9 @@ describe('fallbacks', () => {
   const app = appWith(() => Promise.resolve([]));
 
   it('404 JSON for unknown routes', async () => {
-    await request(app).get('/nope').expect(404, {
-      error: 'Not Found',
-      path: '/nope',
-    });
+    await request(app)
+      .get('/nope')
+      .expect(404, { message: 'Not found: GET /nope' });
   });
 
   it('400 JSON for malformed request bodies', async () => {
@@ -48,6 +47,6 @@ describe('fallbacks', () => {
       .set('Content-Type', 'application/json')
       .send('{bad json')
       .expect(400)
-      .expect((res) => expect(res.body.error).toBeTypeOf('string'));
+      .expect((res) => expect(res.body.message).toBeTypeOf('string'));
   });
 });
