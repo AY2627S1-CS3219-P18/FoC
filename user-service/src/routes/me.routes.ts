@@ -5,6 +5,11 @@
  *        instructions.md Stage 11.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added GET / as specified in instructions.md Stage 12a.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -13,6 +18,7 @@ import { authenticate } from '../middleware/authenticate.js';
 
 const router = Router();
 
+router.get('/', authenticate, meController.getProfile);
 router.put('/active-view', authenticate, meController.updateActiveView);
 
 export default router;

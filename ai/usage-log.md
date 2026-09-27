@@ -1069,3 +1069,43 @@ Verification actually run: `tsc --noEmit` for `tests/tsconfig.json` and `eslint 
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 12a: GET /users/me
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 12: Profile Management" design-decisions table (`GET /users/me` response row) and "Stage 12a: `GET /users/me`" section (`getOwnProfile`, `getProfile`, route, Verification bullets).
+
+**Prompts (exact):**
+
+> read through instructions.md and the code base and understand what's going on. you will be implementing stage 12. don't do any coding first.
+
+> you know the git workflow?
+
+> right after the PR, pause first, let me merge the PR, then you move on to the next stage.
+>
+> yes, let's split by sub-stage.
+
+**Key responses:**
+Branched `feat/stage-12a-get-profile` from `main` (up to date, `instructions.md`'s Stage 12 section already committed at `c1779ee`). Implemented exactly the 12a spec:
+
+- `me.service.ts`: `getOwnProfile(userId)` — `findById`, `404 USER_NOT_FOUND` if none, returns `{ username, email }` only (not the `toPublicUser` shape used by `changeActiveView`).
+- `me.controller.ts`: `getProfile`, `asyncHandler`, no request body, calls `meService.getOwnProfile(req.user!.user_id)`, returns `200` with the object directly.
+- `me.routes.ts`: `router.get('/', authenticate, meController.getProfile)`, added above the existing `active-view` route.
+
+Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json`, and `eslint .`, all clean. While verifying manually against the running container, found the container's image predated the Stage 7 fix that moved the server entry point to `server.ts` — the on-disk `package.json`/`Dockerfile` were already correct, but the image hadn't been rebuilt since, so it was running `tsx src/app.ts` (which only exports the app and never calls `.listen()`), silently exiting with code 0 on every reload. Rebuilt with `docker compose build user-service && docker compose up -d user-service`, which fixed it; not a Stage 12 code change. Root `.env` was also missing `CREDIT_DB_*`/other newer variables compose now interpolates (added from `.env.example`'s defaults, local-only, gitignored, not committed) so `docker compose` commands would run at all. Logged in as the seeded super admin and confirmed: `GET /users/me` with a valid token → `200 {"username":"superadmin","email":"superadmin@foc.com"}`, no other fields; without an `Authorization` header → `401 {"code":"UNAUTHORIZED"}`. Also noticed `POST /auth/login`'s response is missing `activeView` in this dev DB — traced to the same known gap already logged in Stage 11 (`active_view` column never migrated into the persistent dev volume, since `init.sql` only runs on a fresh one); unrelated to Stage 12a and not changed here.
+
+**Files:**
+
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — the 12a spec was unambiguous. The stale-container and missing dev-DB-column issues above are pre-existing environment gaps, not spec deviations.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
