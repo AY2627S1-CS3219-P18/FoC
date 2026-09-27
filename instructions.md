@@ -2074,3 +2074,289 @@ documenting somewhere, note it in your unclear-points list rather than encoding 
 
 1. The test file(s) for Stage 11, placed to mirror the source tree per Stage 7's convention
    (e.g. `tests/controllers/me.controller.test.ts`, `tests/services/me.service.test.ts`)
+
+## Stage 12: Profile Management (View, Change Username / Email / Password)
+
+> **Scope**: `GET /users/me`, `PUT /users/me/username`, `PUT /users/me/email`, `PUT /users/me/password`, `POST /users/me/confirm-password-change`, plus two new authenticated OTP routes: `POST /users/me/verify-otp`, `POST /users/me/resend-otp`. `/auth/verify-otp` and `/auth/resend-otp` are untouched — still public, still only `registration` | `forgot_password`.
+>
+> Backlog refs: F4.1, F4.2, F4.3, F4.4.
+
+### Design decisions (already made, do not change)
+
+| Rule                                         | Value                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /users/me` response                     | `{ username, email }` only                                                                                                                                                                                                                                                           |
+| Username change                              | `PUT /users/me/username` — no password re-entry, no OTP                                                                                                                                                                                                                              |
+| Username validation                          | Same format rule as registration (min 3, max 255, no spaces/special chars). Same as current → `409 USERNAME_UNCHANGED`. Taken by another account → `409 USERNAME_TAKEN` (reuses registration's code)                                                                                 |
+| Email change — API-facing purpose            | `change_email` → DB enum `'Change Email'`                                                                                                                                                                                                                                            |
+| Email change flow                            | One-step, like registration: `PUT /users/me/email` (current password + newEmail) issues an OTP to the NEW email, stored as `users_otps.new_email`; `POST /users/me/verify-otp {purpose: change_email}` finalizes directly, writing `users.email`                                     |
+| Email validation                             | Same format rule as registration. Same as current → `409 EMAIL_UNCHANGED`. Taken by another account → `409 EMAIL_TAKEN`                                                                                                                                                              |
+| Old email stays authoritative until verified | F4.2.6 — `users.email` untouched until the OTP is verified                                                                                                                                                                                                                           |
+| Password change — API-facing purpose         | `change_password` → DB enum `'Change Password'`                                                                                                                                                                                                                                      |
+| Password change flow                         | Two calls, nothing pending stored server-side: `PUT /users/me/password` (current password + newPassword — validated, NOT persisted) issues an OTP to the CURRENT/registered email; `POST /users/me/confirm-password-change {otp, newPassword}` re-supplies and applies `newPassword` |
+| New password validation                      | Same complexity rule as registration. Identical to current password → `400 PASSWORD_UNCHANGED`                                                                                                                                                                                       |
+| Password re-entry check (both flows)         | `bcrypt.compare` against the current password hash — verified on an unlocked read first (bcrypt is slow), then re-verified against the locked row inside the transaction, same race-safety pattern as `login`                                                                        |
+| Successful password change side-effect       | Revoke ALL of that user's refresh tokens in the same transaction (F4.3.4)                                                                                                                                                                                                            |
+| Successful email/username change side-effect | None                                                                                                                                                                                                                                                                                 |
+| Route split for OTP endpoints                | `/auth/verify-otp` / `/auth/resend-otp` stay PUBLIC, purposes `registration` \| `forgot_password` only. Two NEW, AUTHENTICATED routes: `POST /users/me/verify-otp` (purpose `change_email` only) and `POST /users/me/resend-otp` (purposes `change_email`, `change_password`)        |
+| Why password-change has no verify-otp entry  | Its OTP is checked and consumed only inside `confirm-password-change` — `/users/me/verify-otp`'s purpose enum has just `change_email` for now                                                                                                                                        |
+| Resending a change-email OTP                 | `/users/me/resend-otp {purpose: change_email}` resends to the SAME pending `new_email`, read off the latest OTP row — the client does not repeat it                                                                                                                                  |
+| Locking                                      | `withTransaction` + `lockUserById`, same pattern as every other state-changing operation                                                                                                                                                                                             |
+| Concurrent duplicate username/email          | Same `23505` → mapped-error pattern as registration                                                                                                                                                                                                                                  |
+| Service file location                        | All new functions live in `src/services/me.service.ts` (created in Stage 11) — not `auth.service.ts` or `users.service.ts`                                                                                                                                                           |
+
+No changes to already-implemented code are needed for this stage — everything below is additions only.
+
+---
+
+### Stage 12a: `GET /users/me`
+
+#### Add to `src/services/me.service.ts`
+
+`getOwnProfile(userId)`:
+
+- `findById(userId)`. If none → `AppError(404, 'User not found', 'USER_NOT_FOUND')`
+- Return `{ username: user.username, email: user.email }` — nothing else, not just `password_hash` stripped
+
+#### Add to `src/controllers/me.controller.ts`
+
+`getProfile` — `asyncHandler`, calls `meService.getOwnProfile(req.user.user_id)`, returns `200` with the object directly (not wrapped in `{ user: ... }`).
+
+#### Add to `src/routes/me.routes.ts`
+
+```ts
+router.get("/", authenticate, meController.getProfile);
+```
+
+#### Verification
+
+- `GET /users/me` while authenticated → `200`, `{ username, email }`, no other fields
+- `GET /users/me` with no `Authorization` header → `401 UNAUTHORIZED`
+
+---
+
+### Stage 12b: Change Username
+
+#### Add to `src/db/queries/users.queries.ts`
+
+`updateUsername(userId, username, db)` — `UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *`
+
+#### Add to `src/services/me.service.ts`
+
+`changeUsername(userId, newUsername)`:
+
+- Validate format (same rule/message as registration's username) → `400 VALIDATION_ERROR`
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. If `newUsername === locked.username` → `AppError(409, 'New username must be different from your current username', 'USERNAME_UNCHANGED')`
+3. `existing = findByUsername(newUsername, client)`. If `existing && existing.id !== userId` → `AppError(409, 'Username already in use', 'USERNAME_TAKEN')`
+4. `updateUsername(locked.id, newUsername, client)` — wrap in try/catch for `23505` → same `USERNAME_TAKEN` mapping as registration (covers the concurrent race)
+5. Return `{ username: updated.username, email: updated.email }`
+
+#### Add to `src/controllers/me.controller.ts`
+
+`changeUsername` — Zod (`.strict()`): `newUsername` required "New username is required", type "New username must be a string", lowercased-only (not trimmed, same as registration's username field). Calls `meService.changeUsername()`, returns `200` with the returned profile object.
+
+#### Add to `src/routes/me.routes.ts`
+
+```ts
+router.put("/username", authenticate, meController.changeUsername);
+```
+
+#### Verification
+
+- Valid new username → `200`, `{ username: <new>, email }`, DB row updated
+- Same as current username → `409 USERNAME_UNCHANGED`
+- Username belonging to another account → `409 USERNAME_TAKEN`
+- Invalid format (too short / spaces / special chars) → `400 VALIDATION_ERROR`
+- Missing/extra/wrong-type fields → standard `400 VALIDATION_ERROR` pattern
+- No `Authorization` header → `401 UNAUTHORIZED`
+- Two concurrent `PUT /users/me/username` requests from two different accounts both targeting the same new username → exactly one `200`, the other `409 USERNAME_TAKEN`, never `500`
+
+---
+
+### Stage 12c: Change Email — Initiate
+
+#### Update `src/services/email.service.ts`
+
+Add a `Change Email` entry to the purpose map: subject `"Confirm your new FoC email address"`, same body shape as the others.
+
+#### Add to `src/services/me.service.ts`
+
+`initiateEmailChange(userId, { currentPassword, newEmail })`:
+
+- Validate `newEmail` format (same rule as registration) → `400 VALIDATION_ERROR`
+- Unlocked read: `user = findById(userId)`. `bcrypt.compare(currentPassword, user.password_hash)`; mismatch → `AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD')`
+- If `newEmail === user.email` → `AppError(409, 'New email must be different from your current email', 'EMAIL_UNCHANGED')`
+- `existing = findByEmail(newEmail)`. If `existing && existing.id !== userId` → `AppError(409, 'Email already in use', 'EMAIL_TAKEN')`
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. Re-verify `currentPassword` against `locked.password_hash` (race-safety) → `401 INVALID_PASSWORD` on mismatch
+3. Re-check `newEmail` against `locked.email` and re-query `findByEmail(newEmail, client)` for the same two conditions (closes the gap between the unlocked read and the lock)
+4. `requestOtp({ userId, email: locked.email, purpose: 'Change Email', newEmail }, client)`
+5. Map the result the same way `forgotPassword` does: `sent` → success; `throttled` (cooldown/limit) → `429 OTP_RESEND_COOLDOWN` / `429 OTP_RESEND_LIMIT`; `EMAIL_SEND_FAILED` propagates as `503`
+
+#### Add to `src/controllers/me.controller.ts`
+
+`changeEmail` (`PUT /users/me/email`) — Zod (`.strict()`): `currentPassword` required "Current password is required"/string; `newEmail` uses the shared `emailField`. Returns `200` with `{ message: 'Verification code sent to your new email', code: 'OTP_SENT' }`.
+
+#### Add to `src/routes/me.routes.ts`
+
+```ts
+router.put("/email", authenticate, meController.changeEmail);
+```
+
+#### Verification
+
+- Correct current password + valid new unused email → `200 OTP_SENT`, `users_otps` row with `purpose = 'Change Email'`, `new_email` set, dev console/inbox shows the OTP
+- Wrong current password → `401 INVALID_PASSWORD`, no OTP row created
+- `newEmail` same as current → `409 EMAIL_UNCHANGED`
+- `newEmail` already registered to another account → `409 EMAIL_TAKEN`, no OTP row created
+- Immediately repeating the request → `429 OTP_RESEND_COOLDOWN` with `Retry-After`
+- After the resend limit (backdate `created_at`) → `429 OTP_RESEND_LIMIT`
+- SMTP send forced to fail → `503 EMAIL_SEND_FAILED`, rolled back cleanly
+- No `Authorization` header → `401 UNAUTHORIZED`
+
+---
+
+### Stage 12d: `/users/me/verify-otp` and `/users/me/resend-otp`
+
+#### Add to `src/db/queries/users.queries.ts`
+
+`updateEmail(userId, email, db)` — `UPDATE users SET email = $2, updated_at = NOW() WHERE id = $1 RETURNING *`
+
+#### Add to `src/services/me.service.ts`
+
+`verifyEmailChangeOtp(userId, otp)`:
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. `pending = findLatestOtp(userId, 'Change Email', client)`. If none → `AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`
+3. `checkOtp({ userId, purpose: 'Change Email', otp }, client)` — default consuming
+4. If `{ ok: true }`: `updateEmail(locked.id, pending.new_email, client)`, wrapped in try/catch for `23505` → `AppError(409, 'Email already in use', 'EMAIL_TAKEN')` (someone else took it in the meantime — the whole transaction, including the OTP consumption, rolls back, so the OTP is still usable if the user picks a different email)
+5. Commit; if `{ ok: false }` → `400 INVALID_OTP`
+
+`resendChangeEmailOtp(userId)`:
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. `pending = findLatestOtp(userId, 'Change Email', client)`. If none, or `consumed_at` is set → `AppError(400, 'No pending email change found', 'NO_PENDING_EMAIL_CHANGE')`
+3. `requestOtp({ userId, email: locked.email, purpose: 'Change Email', newEmail: pending.new_email }, client)`
+4. Map result same as Stage 12c (cooldown/limit/sent/email-fail)
+
+`resendChangePasswordOtp(userId)`:
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. `pending = findLatestOtp(userId, 'Change Password', client)`. If none or `consumed_at` is set → `AppError(400, 'No pending password change found', 'NO_PENDING_PASSWORD_CHANGE')`
+3. `requestOtp({ userId, email: locked.email, purpose: 'Change Password' }, client)`
+4. Map result same as above
+
+#### Add to `src/controllers/me.controller.ts`
+
+- `verifyOtp` — Zod (`.strict()`): `otp` required/string; `purpose` enum `['change_email']` only, "Invalid purpose" for anything else. Dispatches (currently only one case) to `verifyEmailChangeOtp`. Returns `200` with `{ message: 'Email updated successfully', code: 'EMAIL_CHANGE_SUCCESS' }`.
+- `resendOtp` — Zod (`.strict()`): `purpose` enum `['change_email', 'change_password']`. Dispatches to `resendChangeEmailOtp` or `resendChangePasswordOtp`. Both return `200` with `{ message: 'A new verification code has been sent to your email', code: 'OTP_SENT' }`.
+- Both read the user id from `req.user.user_id` — neither accepts an `email` field.
+
+#### Add to `src/routes/me.routes.ts`
+
+```ts
+router.post("/verify-otp", authenticate, meController.verifyOtp);
+router.post("/resend-otp", authenticate, meController.resendOtp);
+```
+
+#### Verification
+
+- Correct OTP for a pending email change → `200 EMAIL_CHANGE_SUCCESS`, `users.email` updated, OTP row `consumed_at` set
+- Wrong OTP → `400 INVALID_OTP`, `attempts_count` incremented and persisted
+- 5 wrong OTPs → `429 OTP_ATTEMPTS_EXCEEDED`, email unchanged
+- Expired OTP with correct code → `400 OTP_EXPIRED`
+- `purpose: 'change_password'` sent to `/users/me/verify-otp` → `400 VALIDATION_ERROR`, `"Invalid purpose"`
+- Someone else registers the pending `new_email` first, then the original user submits the correct OTP → `409 EMAIL_TAKEN`, OTP still valid afterward (not consumed)
+- Resend for change_email → `200 OTP_SENT`, same `new_email` reused, previous OTP row's `consumed_at` set
+- Resend for change_email with no pending change → `400 NO_PENDING_EMAIL_CHANGE`
+- Resend for change_password with no pending change → `400 NO_PENDING_PASSWORD_CHANGE`
+- Both routes with no `Authorization` header → `401 UNAUTHORIZED`
+- `POST /auth/verify-otp` and `POST /auth/resend-otp` (the original public ones) still reject `change_email`/`change_password` as an invalid purpose — confirms the two purpose sets stayed separate
+
+---
+
+### Stage 12e: Change Password — Initiate + Confirm
+
+#### Add to `src/services/me.service.ts`
+
+`initiatePasswordChange(userId, { currentPassword, newPassword })`:
+
+- Validate `newPassword` complexity (registration rule) → `400 VALIDATION_ERROR`
+- Unlocked read: `user = findById(userId)`. `bcrypt.compare(currentPassword, user.password_hash)`; mismatch → `401 INVALID_PASSWORD`
+- `bcrypt.compare(newPassword, user.password_hash)` — if true → `AppError(400, 'New password must be different from your current password', 'PASSWORD_UNCHANGED')`
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. Re-verify `currentPassword` against `locked.password_hash` → `401 INVALID_PASSWORD` on mismatch
+3. `requestOtp({ userId, email: locked.email, purpose: 'Change Password' }, client)`
+4. Map result (cooldown/limit/sent/email-fail), same pattern as 12c
+
+`newPassword` is validated here but never written anywhere — it's discarded once this call returns.
+
+`confirmPasswordChange(userId, { otp, newPassword })`:
+
+- Validate `newPassword` complexity → `400 VALIDATION_ERROR`
+- Validate `otp` matches `^\d{6}$` → `400 VALIDATION_ERROR`, `"OTP must be a 6-digit code"`
+
+Inside `withTransaction`:
+
+1. `locked = lockUserById(userId, client)`. If null → `404 USER_NOT_FOUND`
+2. `bcrypt.compare(newPassword, locked.password_hash)` — if true → `400 PASSWORD_UNCHANGED` (re-checked here in case the password changed between initiate and confirm)
+3. `checkOtp({ userId, purpose: 'Change Password', otp }, client)` — default consuming
+4. If `{ ok: true }`: hash `newPassword` (bcrypt, work factor 10), `updatePasswordHash(locked.id, hash, client)`, `revokeAllRefreshTokensForUser(locked.id, client)`
+5. Commit; if `{ ok: false }` → `400 INVALID_OTP`
+
+#### Add to `src/controllers/me.controller.ts`
+
+- `changePassword` (`PUT /users/me/password`) — Zod (`.strict()`): `currentPassword`, `newPassword` required/string, same message style as `reset-password`. Returns `200` with `{ message: 'Verification code sent to your email', code: 'OTP_SENT' }`.
+- `confirmPasswordChange` (`POST /users/me/confirm-password-change`) — Zod (`.strict()`): `otp`, `newPassword` required/string. Returns `200` with `{ message: 'Password changed successfully. Please log in again on other devices.', code: 'PASSWORD_CHANGE_SUCCESS' }`.
+
+#### Add to `src/routes/me.routes.ts`
+
+```ts
+router.put("/password", authenticate, meController.changePassword);
+router.post(
+  "/confirm-password-change",
+  authenticate,
+  meController.confirmPasswordChange,
+);
+```
+
+#### Verification
+
+Happy path:
+
+- Correct current password + valid new password → `200 OTP_SENT` → `confirm-password-change` with correct OTP → `200 PASSWORD_CHANGE_SUCCESS`, hash updated, all refresh tokens revoked
+- Login with new password → `200`; login with old password → `401 INVALID_CREDENTIALS`
+- A previously-issued access token stays valid until it naturally expires (only refresh tokens revoked)
+
+Validation / errors:
+
+- Wrong current password at initiate → `401 INVALID_PASSWORD`, no OTP sent
+- `newPassword` same as current at initiate → `400 PASSWORD_UNCHANGED`
+- Weak `newPassword` at either step → `400 VALIDATION_ERROR`
+- Wrong OTP at confirm → `400 INVALID_OTP`, attempt persisted
+- 5 wrong OTPs → `429 OTP_ATTEMPTS_EXCEEDED`, password unchanged
+- Expired OTP → `400 OTP_EXPIRED`
+- Re-submitting an already-consumed OTP → `400 INVALID_OTP`
+- `confirm-password-change` with a different `newPassword` than what was validated at initiate → succeeds with whatever was sent to confirm (confirms initiate's validation was advisory/early-feedback only, not authoritative — note this is intended, not a bug)
+- No `Authorization` header on either route → `401 UNAUTHORIZED`
+
+Concurrency:
+
+- Two concurrent `confirm-password-change` calls with the correct OTP → exactly one `200`, the other `400 INVALID_OTP`, password changed once
+- Running `POST /auth/login` with the OLD password in a loop while the reset completes → no non-revoked refresh token survives from an old-password login after the change commits
