@@ -1221,3 +1221,39 @@ None — the 12d spec was unambiguous.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 12e: Change Password — Initiate + Confirm
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 12: Profile Management" design-decisions table (password-change flow: two calls, nothing pending stored server-side; new-password validation; password re-entry check pattern; successful-change side effect) and "Stage 12e: Change Password — Initiate + Confirm" section (`initiatePasswordChange`, `confirmPasswordChange`, controllers, routes, Verification bullets). This completes Stage 12.
+
+**Prompts (exact):**
+
+> let's go with e
+
+**Key responses:**
+Branched `feat/stage-12e-change-password` from `main` (up to date, Stage 12d merged). Implemented exactly the 12e spec:
+
+- `auth.service.ts`: exported the existing `OTP_REGEX` (previously module-private), alongside the already-exported `PASSWORD_REGEX`/`PASSWORD_MESSAGE`, for reuse in `me.service.ts` — no behavior change.
+- `me.service.ts`: `initiatePasswordChange(userId, { currentPassword, newPassword })` — `newPassword` complexity check, unlocked `findById` + `bcrypt.compare` for the current password (bcrypt is slow, verified before locking) and for same-as-current (`400 PASSWORD_UNCHANGED`), then inside `withTransaction`: `lockUserById`, re-verify the current password against the locked row, `requestOtp({ purpose: 'Change Password' }, client)` using the same `throwOnUnsentOtp` helper Stage 12d factored out. `newPassword` is validated but never persisted here, exactly as the spec states. `confirmPasswordChange(userId, { otp, newPassword })` — `newPassword` complexity and `OTP_REGEX` format checks, then inside `withTransaction`: `lockUserById`, re-check same-as-current against the freshly locked row (spec: "in case the password changed between initiate and confirm"), `checkOtp` (default consuming), and on `{ ok: true }` hashes the new password, `updatePasswordHash`, and `revokeAllRefreshTokensForUser` in the same transaction; on `{ ok: false }`, throws `400 INVALID_OTP` after the transaction commits (same pattern as `resetPassword` in `auth.service.ts`, so the incremented attempt count persists).
+- `me.controller.ts`: `changePassword` (`PUT /users/me/password`) and `confirmPasswordChange` (`POST /users/me/confirm-password-change`), both `.strict()` Zod schemas with required/string messages matching `resetPasswordSchema`'s style (`currentPassword` follows the "Current password is required" style Stage 12c introduced). Returns match the spec's exact message/code pairs.
+- `me.routes.ts`: `router.put('/password', authenticate, meController.changePassword)` and `router.post('/confirm-password-change', authenticate, meController.confirmPasswordChange)`.
+
+Verification actually run: `tsc --noEmit` for `src` and `tests/tsconfig.json`, and `eslint .`, all clean. Manually verified end-to-end against the live container using a freshly registered test account (`pwtest1`, not the seeded super admin, to avoid any risk to the shared dev credentials): wrong current password at initiate → `401 INVALID_PASSWORD`; same-as-current `newPassword` at initiate → `400 PASSWORD_UNCHANGED`; weak `newPassword` at either step → `400 VALIDATION_ERROR`; happy path → `200 OTP_SENT` then `200 PASSWORD_CHANGE_SUCCESS`; login with the new password → `200`, with the old password → `401 INVALID_CREDENTIALS`; confirmed in the DB that the pre-change refresh tokens were revoked while a token issued by the post-change login stayed valid; wrong OTP → `400 INVALID_OTP`; 5 wrong attempts then a 6th → `429 OTP_ATTEMPTS_EXCEEDED`, password unchanged; OTP with `expires_at` backdated → `400 OTP_EXPIRED`; re-submitting an already-consumed OTP with a fresh `newPassword` (to isolate it from the `PASSWORD_UNCHANGED` check) → `400 INVALID_OTP`; confirming with a different `newPassword` than what was sent to initiate → succeeded with the confirm-step value, login with it worked, confirming initiate's validation is advisory only, per the spec's explicit note that this is intended; no `Authorization` header on either route → `401`; two concurrent `confirm-password-change` calls with the same correct OTP → exactly one `200`, the other `400`, password changed exactly once, no `500`s — run twice: with an identical `newPassword` in both requests, the loser got `400 PASSWORD_UNCHANGED` (its own pre-lock validation ran against the row after the winner's commit already matched it) rather than the `INVALID_OTP` the Verification bullet's wording assumes; with two different `newPassword` values, the loser did get `400 INVALID_OTP` as literally stated. Both are correct, non-`500`, exactly-once-success outcomes and a direct, spec-ordered consequence (the same-as-current check runs before `checkOtp`), not a bug — noted here rather than treated as a deviation.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified: exported `OTP_REGEX`, no behavior change)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None as spec ambiguities — see the concurrency observation above (informational, not a deviation).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
