@@ -964,3 +964,65 @@ Verification actually run: full suite 524 passed (19 files), `eslint .`, `tsc --
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 11: Requester/Courier Toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 11: Requester/Courier Toggle" (design decisions table, `init.sql`, `updateActiveView` / `changeActiveView` / `updateActiveView` controller and route specs, the `login` change and Verification bullets). The section is in the team's working copy of `instructions.md` and is committed with this change.
+
+**Prompts (exact):**
+
+> before you start anything, go to a new branch from main.
+> after you PR, wait for further instructions.
+>
+> go ahed and do 11
+
+> yes, it should be 403 and 400 for regular user and admin respectively. whwat changes are needed?
+
+> 1. go ahead and make the change
+> 2. is everything else standardised to using underscores?
+
+> let's go to snake caes then
+
+**Key responses:**
+Pulled `main` (Stage 10 already merged) and branched to `feat/stage-11-active-view`. Implemented `PUT /users/me/active-view` behind `authenticate` only:
+
+- `init.sql`: `active_view_enum` (`requester`, `courier`) with the same safe-creation pattern as the other enums, and `ALTER TABLE users ADD COLUMN IF NOT EXISTS active_view ... NOT NULL DEFAULT 'requester'`.
+- `users.queries.ts`: `active_view` added to `UserRow`; `updateActiveView` (`UPDATE ... RETURNING *`, returns `null` when no row).
+- `me.service.ts`: `changeActiveView(userId, activeView)`, a plain single-row update with no lock or transaction; `404 USER_NOT_FOUND` if no row; `password_hash` stripped. `toPublicUser` in `users.service.ts` was exported for reuse.
+- `me.controller.ts`: `updateActiveView` with a `.strict()` Zod body schema and the specified messages; the user id comes only from `req.user.user_id`.
+- `me.routes.ts`, and `app.ts` mounts `meRouter` at `/users/me` before `usersRouter`.
+- `auth.service.ts`: `login` returns `activeView` in the `user` object, read from the row already locked in the login transaction.
+
+No new test cases were added (the stage has no Tests section and the standing rule is not to add tests unless asked). Four existing tests asserted exact key sets and were updated for the new field: the two `login` user-object assertions (`auth.service.test.ts`, `auth.controller.test.ts`) and the two `listUsers` key lists (`users.service.test.ts`, `users.controller.test.ts`).
+
+Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json` and `eslint .` were clean. The full suite passed 524 of 524 on the final run. Two earlier full runs each had one different test fail, once with a register-normalisation assertion and once with an `ECONNRESET` in a supertest call; neither reproduced on the next run, and they were not investigated further. A throwaway supertest script (deleted afterwards, not committed) exercised the Stage 11 bullets against the test DB: `courier` returns 200 and updates the column, the same value again returns 200, no header returns 401, a bad enum, missing field, wrong type and extra field return 400, login returns `activeView`, and three concurrent calls all returned 200.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/me.service.ts` (created)
+- `user-service/src/controllers/me.controller.ts` (created)
+- `user-service/src/routes/me.routes.ts` (created)
+- `user-service/src/app.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified: `toPublicUser` exported)
+- `user-service/tests/services/auth.service.test.ts` (modified: fixture)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified: fixture)
+- `user-service/tests/services/users.service.test.ts` (modified: fixture)
+- `user-service/tests/controllers/users.controller.test.ts` (modified: fixture)
+- `instructions.md` (Stage 11 section added by the team; not edited by the agent)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- **`/users/me` check, resolved.** The Verification bullet originally expected `404` for a request to `/users/me`. Raised with the team: `meRouter` has no `GET` route, so `GET /users/me` always falls through to `usersRouter`'s `GET /:id` with `id = 'me'`, regardless of mount order — a regular user gets `403 FORBIDDEN` from `authorize('admin')`, an admin gets `400 VALIDATION_ERROR` (`"Invalid user ID"`) from the UUID check. The team confirmed 403/400 is correct and reworded the bullet in `instructions.md` accordingly; no code change was needed. The mount order itself was already correct, since it only needs to route `PUT /users/me/active-view` to `meRouter` first.
+- **Response key name, resolved.** `PUT /users/me/active-view`'s response returns `active_view` (the same "DB row minus `password_hash`" shape as `GET /users/:id`), not `activeView` as the Verification bullet's original example showed. Raised with the team, who confirmed snake_case, matching the rest of the `/users` family; `login`'s `activeView` stays the deliberate one-off named explicitly by the Stage 11 spec. `instructions.md` was reworded to match; no code change was needed.
+- `init.sql` only applies to a fresh DB volume. The dev database needs `docker compose down -v` (dev data only) or a manual `ALTER TABLE` (with `CREATE TYPE active_view_enum` first) against the running container. The test DB is recreated from `init.sql` on each run, so it is unaffected.
+
+**What I kept/changed/rejected:**
+Accepted all changes.

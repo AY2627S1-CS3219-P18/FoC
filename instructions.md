@@ -1744,23 +1744,23 @@ case. Do not modify application code to make a test pass.
 
 ### Design decisions (already made, do not change)
 
-| Rule                               | Value                                                                                                                                                                                                                                                                      |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /users` response shape        | `{ users: [...] }` (wrapped, not a bare array)                                                                                                                                                                                                                             |
-| Fields returned per user           | Every column except `password_hash` — `id, username, email, status, role, created_at, updated_at`                                                                                                                                                                          |
-| Pending users                      | `GET /users` and `GET /users/:id` both return users **regardless of status, including `pending`**. The `status` field in the response is how a caller tells a pending (unverified) registration apart from a real account — no separate flag needed.                       |
-| `GET /users/:id` — not found       | `404` with `{ message: 'User not found', code: 'USER_NOT_FOUND' }`                                                                                                                                                                                                         |
-| `GET /users/:id` — malformed `:id` | `400` with message `"Invalid user ID"`, code `VALIDATION_ERROR` — enforced via a Zod `.uuid()` check on `req.params.id` at the controller (same convention as every other validation in this codebase), before any DB call                                                 |
-| `PUT /users/:id/status` body       | `{ status: 'active' \| 'suspended' }`                                                                                                                                                                                                                                      |
-| Suspend side-effect                | Revokes **all** of the target user's refresh tokens in the same transaction (already required by the general rule from Stage 4: "anything that... suspends a user... must revoke ALL that user's refresh tokens in the SAME transaction as the change")                    |
-| Unsuspend side-effect              | None beyond the status flip — no tokens to revoke, there's nothing live to reactivate                                                                                                                                                                                      |
-| Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                                             |
-| Target role restriction            | An `admin` caller may only suspend/unsuspend a target with `role = 'user'`. A `super admin` caller may suspend/unsuspend a `user` or `admin` target, but not another `super admin`.                                                                                        |
-| Error codes for role restrictions  | Any caller targeting a `super admin` (including a super admin targeting one) → `403 SUPER_ADMIN_IMMUTABLE`. An `admin` caller targeting an `admin` → `403 FORBIDDEN`.                                                                                                      |
-| Pending target                     | The status of a `pending` user cannot be changed through this endpoint, to either `suspended` or `active`. A pending account only becomes active through OTP verification. Responds `422 CANNOT_CHANGE_STATUS_PENDING_USER`, message `'Cannot change the status of a pending user'`, for either target status.                                      |
-| No-op requests                     | If the target is already in the requested status, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation                                                                                               |
-| Service file location              | `listUsers`, `getUserById`, `changeUserStatus` (and Stage 10's `changeUserRole`) live in a new `src/services/users.service.ts`, not `auth.service.ts` — matching how `otp.service.ts` and `email.service.ts` were already split out from `auth.service.ts`                 |
-| Naming (query vs. service)         | The query function stays `updateUserStatus` (matches the SQL operation). The service function that calls it is `changeUserStatus`, to avoid two different-layer functions sharing one name (same split for Stage 10's `updateUserRole` query vs. `changeUserRole` service) |
+| Rule                               | Value                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /users` response shape        | `{ users: [...] }` (wrapped, not a bare array)                                                                                                                                                                                                                                                                 |
+| Fields returned per user           | Every column except `password_hash` — `id, username, email, status, role, created_at, updated_at`                                                                                                                                                                                                              |
+| Pending users                      | `GET /users` and `GET /users/:id` both return users **regardless of status, including `pending`**. The `status` field in the response is how a caller tells a pending (unverified) registration apart from a real account — no separate flag needed.                                                           |
+| `GET /users/:id` — not found       | `404` with `{ message: 'User not found', code: 'USER_NOT_FOUND' }`                                                                                                                                                                                                                                             |
+| `GET /users/:id` — malformed `:id` | `400` with message `"Invalid user ID"`, code `VALIDATION_ERROR` — enforced via a Zod `.uuid()` check on `req.params.id` at the controller (same convention as every other validation in this codebase), before any DB call                                                                                     |
+| `PUT /users/:id/status` body       | `{ status: 'active' \| 'suspended' }`                                                                                                                                                                                                                                                                          |
+| Suspend side-effect                | Revokes **all** of the target user's refresh tokens in the same transaction (already required by the general rule from Stage 4: "anything that... suspends a user... must revoke ALL that user's refresh tokens in the SAME transaction as the change")                                                        |
+| Unsuspend side-effect              | None beyond the status flip — no tokens to revoke, there's nothing live to reactivate                                                                                                                                                                                                                          |
+| Locking                            | `withTransaction` + `lockUserById` + re-check-after-lock, same pattern as every other state-changing operation in this service                                                                                                                                                                                 |
+| Target role restriction            | An `admin` caller may only suspend/unsuspend a target with `role = 'user'`. A `super admin` caller may suspend/unsuspend a `user` or `admin` target, but not another `super admin`.                                                                                                                            |
+| Error codes for role restrictions  | Any caller targeting a `super admin` (including a super admin targeting one) → `403 SUPER_ADMIN_IMMUTABLE`. An `admin` caller targeting an `admin` → `403 FORBIDDEN`.                                                                                                                                          |
+| Pending target                     | The status of a `pending` user cannot be changed through this endpoint, to either `suspended` or `active`. A pending account only becomes active through OTP verification. Responds `422 CANNOT_CHANGE_STATUS_PENDING_USER`, message `'Cannot change the status of a pending user'`, for either target status. |
+| No-op requests                     | If the target is already in the requested status, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation                                                                                                                                   |
+| Service file location              | `listUsers`, `getUserById`, `changeUserStatus` (and Stage 10's `changeUserRole`) live in a new `src/services/users.service.ts`, not `auth.service.ts` — matching how `otp.service.ts` and `email.service.ts` were already split out from `auth.service.ts`                                                     |
+| Naming (query vs. service)         | The query function stays `updateUserStatus` (matches the SQL operation). The service function that calls it is `changeUserStatus`, to avoid two different-layer functions sharing one name (same split for Stage 10's `updateUserRole` query vs. `changeUserRole` service)                                     |
 
 ### Add to `src/db/queries/users.queries.ts`
 
@@ -1857,17 +1857,17 @@ Do not modify application code to make a test pass.
 
 ### Design decisions (already made, do not change)
 
-| Rule                     | Value                                                                                                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint)                                      |
-| Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                                                                  |
-| Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)                                                |
+| Rule                     | Value                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Body                     | `{ role: 'admin' \| 'user' }` — `super admin` is never a valid value here (it's assigned only by bootstrap, never by this endpoint)                                                                                                                                                                                     |
+| Self-targeting           | Rejected — a super admin cannot change their own role via this endpoint                                                                                                                                                                                                                                                 |
+| Target is a super admin  | Rejected — a super admin account can never be modified through this endpoint (there is exactly one, created by bootstrap)                                                                                                                                                                                               |
 | Target is not active     | Rejected — the role of a `pending` or `suspended` user cannot be changed; only an `active` target is allowed. `pending` → `422 CANNOT_CHANGE_ROLE_PENDING_USER` (`'Cannot change the role of a pending user'`); `suspended` → `422 CANNOT_CHANGE_ROLE_SUSPENDED_USER` (`'Cannot change the role of a suspended user'`). |
-| Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)                                                   |
-| No-op requests           | If the target already has the requested role, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation |
-| Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                                                                 |
-| `:id` validation         | Same as Stage 9 — Zod `.uuid()` at the controller: `400 VALIDATION_ERROR` for a malformed UUID, `404 USER_NOT_FOUND` for a well-formed one that doesn't exist            |
-| Service/query naming     | Query function `updateUserRole` (in `users.queries.ts`); service function `changeUserRole` (in `users.service.ts`) — same split as Stage 9's status functions            |
+| Refresh-token revocation | A successful role change revokes **all** of the target user's refresh tokens in the same transaction (same as suspend)                                                                                                                                                                                                  |
+| No-op requests           | If the target already has the requested role, this is a success, not an error: return `200` with the unchanged user, and skip both the DB write and the token revocation                                                                                                                                                |
+| Locking                  | `withTransaction` + `lockUserById` + re-check-after-lock                                                                                                                                                                                                                                                                |
+| `:id` validation         | Same as Stage 9 — Zod `.uuid()` at the controller: `400 VALIDATION_ERROR` for a malformed UUID, `404 USER_NOT_FOUND` for a well-formed one that doesn't exist                                                                                                                                                           |
+| Service/query naming     | Query function `updateUserRole` (in `users.queries.ts`); service function `changeUserRole` (in `users.service.ts`) — same split as Stage 9's status functions                                                                                                                                                           |
 
 ### Add to `src/db/queries/users.queries.ts`
 
@@ -1886,7 +1886,7 @@ Inside `withTransaction`:
 3. Non-active target: the role of a non-active user cannot be changed.
    - If `locked.status === 'pending'` → `AppError(422, 'Cannot change the role of a pending user', 'CANNOT_CHANGE_ROLE_PENDING_USER')`
    - If `locked.status === 'suspended'` → `AppError(422, 'Cannot change the role of a suspended user', 'CANNOT_CHANGE_ROLE_SUSPENDED_USER')`
-   This is checked before the no-op case, so a non-active user is rejected even if `newRole` equals their current role.
+     This is checked before the no-op case, so a non-active user is rejected even if `newRole` equals their current role.
 4. No-op check: if `locked.role === newRole` → return `locked` (minus `password_hash`) as-is, no write, no revocation
 5. `updateUserRole(locked.id, newRole, client)`
 6. `revokeAllRefreshTokensForUser(locked.id, client)`
@@ -1931,3 +1931,103 @@ router.put(
 Write the Vitest tests for this stage, following the Stage 7 ground rules, real-Postgres
 approach and layout (with the concurrent-role case in `tests/concurrency/`). Every bullet under
 Verification above is a required test case. Do not modify application code to make a test pass.
+
+# Stage 11: Requester/Courier Toggle
+
+> **Scope**: `PUT /users/me/active-view`. Requires `authenticate` only — any logged-in user can toggle their own view; no role restriction, since F5.2.1 already establishes every user can act as both requester and courier without restriction.
+>
+> Backlog refs: F5.2.2.
+
+### Design decisions (already made, do not change)
+
+| Rule                        | Value                                                                                                                                                                                                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enum values                 | `'requester'` \| `'courier'`                                                                                                                                                                                                                                          |
+| Default                     | `'requester'` — for both new users (schema default) and existing rows (migration backfill)                                                                                                                                                                            |
+| Column                      | `active_view` on the `users` table, new `active_view_enum` type                                                                                                                                                                                                       |
+| Route location              | New `src/routes/me.routes.ts`, mounted at `/users/me`                                                                                                                                                                                                                 |
+| Controller/service location | New `src/controllers/me.controller.ts` and `src/services/me.service.ts` — self-service concerns, kept separate from admin's `users.controller.ts` / `users.service.ts`. Stage 12's profile endpoints (view/change own username, email, password) will also live here. |
+| Endpoint shape              | One endpoint only: `PUT /users/me/active-view`. No separate `GET` — the frontend gets the current value from the `user` object already returned by `login` (this stage adds `activeView` to that object)                                                              |
+| Locking                     | None needed — this is a single-column update with no dependent side effects (no token revocation, no other rows affected), so a plain conditional `UPDATE` is enough; it doesn't need `withTransaction` + `lockUserById` the way suspend/role-change do               |
+| Authorization scope         | No cross-service exposure — `activeView` doesn't gate what a user can do (F5.2.1 already allows all actions to all users), so it isn't added to the JWT claims or to `GET /auth/verify`. It's a display preference only the owning user's own frontend ever reads.    |
+
+### Update `src/db/init.sql`
+
+Add a new enum, using the same safe-creation pattern as the existing enums:
+
+```sql
+DO $$ BEGIN
+  CREATE TYPE active_view_enum AS ENUM ('requester', 'courier');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+```
+
+Add the column to the `users` table:
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active_view active_view_enum NOT NULL DEFAULT 'requester';
+```
+
+`init.sql` only applies to a fresh DB volume — if you're adding this to an existing dev database, either reset with `docker compose down -v` (dev data only, same as the Stage 5a pattern) or run the `ALTER TABLE` manually against the running container. Remind me which applies when you report back.
+
+### Update `src/db/queries/users.queries.ts`
+
+- `updateActiveView(userId, activeView, db)` — `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING *`
+
+### Create `src/services/me.service.ts`
+
+Implement `changeActiveView(userId, activeView)`:
+
+- `updateActiveView(userId, activeView)` — no lock, no transaction, no existing-value check (unlike Stage 9/10's status/role changes, there's no "invalid transition" here — a user can always freely switch between the two values, and there's no side effect to make atomic with the write)
+- If the query returns no row (user was deleted concurrently — unlikely but possible), throw `AppError(404, 'User not found', 'USER_NOT_FOUND')`
+- Strip `password_hash`, return the rest
+
+### Create `src/controllers/me.controller.ts`
+
+Implement `updateActiveView`:
+
+- `asyncHandler`-wrapped
+- Validate body with Zod (`.strict()`, custom messages matching your existing style): `activeView` required → `"Active view is required"`, type → `"Active view must be a string"`, invalid enum value → `"Active view must be 'requester' or 'courier'"`
+- Read the caller's own ID off `req.user.user_id` (never take an ID from the request body — this endpoint only ever modifies the caller's own row)
+- Call `meService.changeActiveView(req.user.user_id, activeView)`
+- Return `200` with the updated user object
+
+### Create `src/routes/me.routes.ts`
+
+```ts
+router.put("/active-view", authenticate, meController.updateActiveView);
+```
+
+### Update `app.ts`
+
+Mount `meRouter` at `/users/me` **before** `usersRouter` at `/users`:
+
+```ts
+app.use("/users/me", meRouter);
+app.use("/users", usersRouter);
+```
+
+This order is required — if `usersRouter` (with its `GET /:id` route from Stage 9) is registered first, a request to `/users/me` would be matched by `/:id` with `id = 'me'`, fail the UUID validation, and never reach `meRouter` at all.
+
+---
+
+## Change to already-implemented code
+
+| #   | File                                     | Change                                                                                                                           | Where specified         |
+| --- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1   | `src/services/auth.service.ts` (`login`) | Add `activeView` to the returned `user` object: `{ id, username, email, role, activeView }`. No other change to `login`'s logic. | Stage 4c (return shape) |
+
+### Verification
+
+- `PUT /users/me/active-view {activeView: 'courier'}` while authenticated → `200`, updated user object returned with `active_view: 'courier'` (same DB-row shape as `GET /users/:id`, snake_case — not `activeView`, which is only `login`'s response shape), `active_view` column updated in DB
+- `PUT /users/me/active-view {activeView: 'requester'}` on a user already set to `'requester'` → `200`, unchanged (this doesn't need a special no-op branch like Stage 9/10 — an unconditional `UPDATE` to the same value is harmless and still returns `200` correctly)
+- `PUT /users/me/active-view` with no `Authorization` header → `401 UNAUTHORIZED`
+- `PUT /users/me/active-view {activeView: 'admin'}` (not a valid enum value) → `400 VALIDATION_ERROR`, `"Active view must be 'requester' or 'courier'"`
+- Missing `activeView` field → `400 VALIDATION_ERROR`, `"Active view is required"`
+- `activeView: 123` (wrong type) → `400 VALIDATION_ERROR`, `"Active view must be a string"`
+- Extra field in the body → `400 VALIDATION_ERROR`, `"Request contains unexpected fields"`
+- A newly registered-and-verified user, before ever calling this endpoint → their `active_view` is `'requester'` by default (schema default, not a manual insert)
+- `POST /auth/login` response now includes `activeView` in the `user` object, reflecting whatever was last set (or the default, if never changed)
+- Request to `/users/me` (no further path segment) → `meRouter` has no `GET` route, so this falls through to `usersRouter`'s `GET /:id` with `id = 'me'`, which is expected and not a mount-order bug: no token → `401 UNAUTHORIZED`; regular user → `403 FORBIDDEN` (blocked by `authorize('admin')`); admin → `400 VALIDATION_ERROR`, `"Invalid user ID"` (the UUID check rejects `'me'`). `PUT /users/me/active-view` still reaches `meRouter`, because it is mounted first — that's what the mount order actually guards.
+- Two concurrent `PUT /users/me/active-view` calls with different values from the same user → no deadlock (there's no lock to deadlock on), last write wins, no `500`

@@ -4,6 +4,8 @@
 --    Author review: No changes needed. 
 --  2026-09-25: Stage 5a - added 'pending' to status_enum
 --    Author review:
+--  2026-09-27: Stage 11 - added active_view_enum and users.active_view
+--    Author review:
 
 DO $$ BEGIN
   CREATE TYPE status_enum AS ENUM ('pending', 'active', 'suspended');
@@ -23,6 +25,12 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  CREATE TYPE active_view_enum AS ENUM ('requester', 'courier');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username VARCHAR(255) NOT NULL UNIQUE,
@@ -33,6 +41,8 @@ CREATE TABLE IF NOT EXISTS users (
   status status_enum NOT NULL DEFAULT 'active',
   role role_enum NOT NULL DEFAULT 'user'
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active_view active_view_enum NOT NULL DEFAULT 'requester';
 
 CREATE TABLE IF NOT EXISTS users_otps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

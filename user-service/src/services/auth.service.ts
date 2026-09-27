@@ -24,6 +24,8 @@
 // Author review:
 // 25/09/2026: Stage 6e - resendForgotPasswordOtp
 // Author review:
+// 27/09/2026: Stage 11 - login returns activeView
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -133,7 +135,7 @@ export async function login(
 ): Promise<{
   accessToken: string;
   refreshToken: string;
-  user: { id: string; username: string; email: string; role: string };
+  user: { id: string; username: string; email: string; role: string; activeView: string };
 }> {
   const user =
     (await userQueries.findByUsername(identifier)) ?? (await userQueries.findByEmail(identifier));
@@ -160,7 +162,7 @@ export async function login(
 
   // The password was verified before locking (bcrypt is slow). Lock the user and re-check,
   // so a reset or suspend that committed in between cannot be followed by a new refresh token.
-  const role = await withTransaction(async (client) => {
+  const { role, activeView } = await withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(user.id, client);
     if (!locked || locked.password_hash !== user.password_hash) {
       throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
@@ -179,7 +181,7 @@ export async function login(
       },
       client,
     );
-    return locked.role;
+    return { role: locked.role, activeView: locked.active_view };
   });
 
   const accessToken = signAccessToken({ userId: user.id, role });
@@ -187,7 +189,7 @@ export async function login(
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { id: user.id, username: user.username, email: user.email, role },
+    user: { id: user.id, username: user.username, email: user.email, role, activeView },
   };
 }
 

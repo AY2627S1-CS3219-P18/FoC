@@ -10,6 +10,11 @@
  * Scope: Added changeUserRole as specified in instructions.md Stage 10.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Exported toPublicUser so me.service.ts can reuse it (Stage 11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as tokenQueries from '../db/queries/tokens.queries.js';
@@ -21,7 +26,7 @@ import { AppError } from '../utils/AppError.js';
 export type PublicUser = Omit<UserRow, 'password_hash'>;
 
 // password_hash must never leave the service layer.
-function toPublicUser(row: UserRow): PublicUser {
+export function toPublicUser(row: UserRow): PublicUser {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { password_hash, ...rest } = row;
   return rest;
