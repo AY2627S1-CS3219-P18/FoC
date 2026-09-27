@@ -1026,3 +1026,46 @@ Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 11b: Test Suite — Requester/Courier Toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code (tests)
+**Governing decision:** `instructions.md` "Stage 11b: Test Suite — Requester/Courier Toggle" (scope, ground rules inherited from Stage 7, "What to test" list, and "One thing NOT to test here"), plus the user's resolution of two points raised before writing anything: the concurrent-toggle case goes in `tests/concurrency/`, consistent with Stages 9-10, despite Stage 11b's Deliverables section naming only controller/service files; and the `tests/TRACEABILITY.md` deliverable is skipped (the file was never created in Stage 7 and updating it is out of scope here).
+
+**Prompts (exact):**
+
+> right, is the code from stage 11 pulled in also?
+
+> is 11b clear?
+
+> 1. consistent with all the previous stages
+> 2. ignore the TRACEABILITY part
+
+**Key responses:**
+Branched `feat/stage-11b-active-view-tests` from `main` (which already had Stage 11 merged). Wrote the Stage 11 test suite, following Stage 7's ground rules, real-Postgres approach and layout:
+
+- `tests/services/me.service.test.ts`: `changeActiveView` toggling to `courier` and back to `requester`, the "same value it already has" case returning normally (no no-op branch exists), the full response shape (snake_case, `password_hash` stripped), and `404 USER_NOT_FOUND` for a nonexistent id.
+- `tests/controllers/me.controller.test.ts`: HTTP tests for `PUT /users/me/active-view` — the two successful toggles, the same-value case, no-`Authorization` 401, the three body-validation 400s (invalid enum, missing field, wrong type) and the extra-field 400, a newly-activated user defaulting to `requester`, and `POST /auth/login`'s response carrying the current `activeView`.
+- `tests/concurrency/me.concurrency.test.ts`: concurrent `PUT /users/me/active-view` calls with different values on the same user, over `LOOP_ITERATIONS` iterations of `CONCURRENT_REQUESTS` requests each (the suite's existing shared constants) — asserts no `500`, all `200`, and a valid final value, since there is no lock here to serialize on.
+
+Per Stage 11b's explicit carve-out, no test asserts `GET /users/me`'s current fallthrough to `usersRouter`'s `GET /:id` — that's a known, temporary gap Stage 12 closes.
+
+Verification actually run: `tsc --noEmit` for `tests/tsconfig.json` and `eslint .` were clean. The full suite passed 540 of 540 on a clean run. One run had a single unrelated failure in the pre-existing `tests/concurrency/races.concurrency.test.ts` (a Stage 7 file, not touched here); it passed both alone and on the next full run, so it was treated as a timing flake and not investigated further.
+
+**Files:**
+
+- `user-service/tests/services/me.service.test.ts` (created)
+- `user-service/tests/controllers/me.controller.test.ts` (created)
+- `user-service/tests/concurrency/me.concurrency.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- Two points were raised and resolved before writing any tests (see Governing decision and Prompts above): concurrency-test placement, and skipping `TRACEABILITY.md`. Both are recorded above rather than decided unilaterally.
+- No implementation code was changed to make a test pass; all tests passed against the existing Stage 11 code.
+
+**What I kept/changed/rejected:**
+Accepted all changes.

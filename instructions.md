@@ -2031,3 +2031,46 @@ This order is required — if `usersRouter` (with its `GET /:id` route from Stag
 - `POST /auth/login` response now includes `activeView` in the `user` object, reflecting whatever was last set (or the default, if never changed)
 - Request to `/users/me` (no further path segment) → `meRouter` has no `GET` route, so this falls through to `usersRouter`'s `GET /:id` with `id = 'me'`, which is expected and not a mount-order bug: no token → `401 UNAUTHORIZED`; regular user → `403 FORBIDDEN` (blocked by `authorize('admin')`); admin → `400 VALIDATION_ERROR`, `"Invalid user ID"` (the UUID check rejects `'me'`). `PUT /users/me/active-view` still reaches `meRouter`, because it is mounted first — that's what the mount order actually guards.
 - Two concurrent `PUT /users/me/active-view` calls with different values from the same user → no deadlock (there's no lock to deadlock on), last write wins, no `500`
+
+## Stage 11b: Test Suite — Requester/Courier Toggle
+
+> **Scope**: Vitest tests for Stage 11 only (`PUT /users/me/active-view`, the `activeView`
+> addition to `login`'s response, and the `active_view` column/enum).
+
+Follow the same ground rules, test stack, and mocking policy established in Stage 7 (read the
+current codebase first, not just this file; do not invent behavior for anything unclear — list
+it and ask instead of guessing; do not modify application code to make a test pass; use the
+real test Postgres instance for anything involving the DB, mocked `pg` only for pure logic with
+no DB/transaction involved).
+
+### What to test
+
+Treat every bullet in Stage 11's own **Verification** section as a required test case:
+
+- Successful toggle to `'courier'` and to `'requester'`, confirming both the response body and
+  the `active_view` column in the DB
+- The "set to the same value it already has" case — confirm this returns `200` normally, since
+  Stage 11 deliberately has no no-op short-circuit (unlike Stage 9/10's status/role changes)
+- Missing `Authorization` header → `401`
+- Invalid enum value, missing field, wrong type, and unrecognized extra field → the four
+  `400 VALIDATION_ERROR` cases, each with its exact message
+- A newly registered-and-activated user defaults to `'requester'` without ever calling this
+  endpoint
+- `POST /auth/login`'s response now includes `activeView` in the `user` object
+- Two concurrent `PUT /users/me/active-view` calls with different values from the same user →
+  no deadlock, no `500` (there's no lock here, so this is really just confirming the endpoint
+  doesn't blow up under concurrent writes, not testing any serialization guarantee)
+
+### One thing NOT to test here
+
+Do not write a test asserting what `GET /users/me` currently does (falling through to
+`usersRouter`'s `GET /:id`, producing `403` for a regular user or `400` for an admin). That
+behavior is a known, temporary gap that Stage 12 closes by giving `meRouter` its own route for
+the bare path — a test asserting today's fallthrough would immediately become false, and
+contradict Stage 12's own tests, the moment that stage lands. If you think this gap needs
+documenting somewhere, note it in your unclear-points list rather than encoding it as a test.
+
+### Deliverables
+
+1. The test file(s) for Stage 11, placed to mirror the source tree per Stage 7's convention
+   (e.g. `tests/controllers/me.controller.test.ts`, `tests/services/me.service.test.ts`)
