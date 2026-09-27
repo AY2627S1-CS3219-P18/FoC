@@ -52,7 +52,8 @@ export const createOrder = async (
   ) {
     errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
   }
-  // Optional fields: only validated when present.
+
+  // optional fields
   if (requestPayload.completeBy != null) {
     if (!isIsoDateString(requestPayload.completeBy)) {
       errors.push(ErrorCode.INVALID_COMPLETE_BY);
@@ -72,8 +73,7 @@ export const createOrder = async (
     return { ok: false, errors };
   }
 
-  // F9.1.2 (approach A): reserve credits first; only create the request
-  // once credit-service has confirmed the reservation.
+  // use temporary stub for credit reservation
   const reservation = await credits
     .reserve({ requesterId, amount: requestPayload.credits })
     .catch((err: unknown): ReserveResult => {
@@ -108,12 +108,11 @@ export const createOrder = async (
       },
     });
   } catch (err) {
-    // Compensate: don't leave credits held for a request that doesn't exist.
     await credits.release(reservation.reservationId).catch((releaseErr) => {
       console.error(
         `Failed to release reservation ${reservation.reservationId}:`,
         releaseErr,
-      );
+      ); // TODO(team): consider retrying release if it fails, or logging to a monitoring system
     });
     throw err;
   }
