@@ -5,6 +5,11 @@
  *        instructions.md Stage 11.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added getProfile as specified in instructions.md Stage 12a.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -30,4 +35,9 @@ export const updateActiveView = asyncHandler(async (req, res) => {
   // authenticate has run, so req.user is set. The id never comes from the body.
   const user = await meService.changeActiveView(req.user!.user_id, activeView);
   res.status(200).json(user);
+});
+
+export const getProfile = asyncHandler(async (req, res) => {
+  const profile = await meService.getOwnProfile(req.user!.user_id);
+  res.status(200).json(profile);
 });
