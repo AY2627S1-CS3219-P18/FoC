@@ -1,0 +1,1030 @@
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-5), date: 2026-09-25
+Scope: Formatted the team-supplied Supplier Service architecture, data entities, API operation inventory, Mermaid diagrams, and factual requirement-traceability notes. No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope: 2026-09-25 update — recorded the team-supplied endpoint contracts, status codes, query pagination, role model, soft-delete workflow, and concrete table fields; added further factual gap notes.
+Author review:
+Scope: 2026-09-26 update — filled the supplied traceability items with fixed pagination, search/sort behavior, auth-provider ownership, visibility rules, derived open state, API envelopes, and request examples.
+Author review:
+Scope: 2026-09-26 update — recorded multipart photo management, Google OAuth, assumed downstream entrypoints, normalized faculty/location tables, and concrete MySQL DDL.
+Author review:
+Scope: 2026-09-27 update — aligned authentication with the repository's User Service RS256 JWT contract; replaced photo mapping with one-to-many storage, added photo-dirty ordering semantics, `updatedOn`, and lookup metadata.
+Author review:
+Scope: 2026-09-27 update — recorded separate lazy-loaded reference endpoints, the fixed error envelope, fixed query controls, Singapore time and overnight-hour behavior, placeholder resolution, and MySQL-first photo deletion ordering.
+Author review:
+Scope: 2026-09-27 update — opened reference endpoints to all roles, added a status-code mapping template, and recorded the Redis-backed worker and retry flow for photo and downstream workflows.
+Author review:
+Scope: 2026-09-27 update — recorded the team-supplied optimistic-concurrency version column, hours/photo uniqueness constraints, SGT-only timestamps, super_admin/admin capability note, lookup-table management endpoints, idempotency and rate-limiting rules, signed photo URLs, same-origin deployment, and `/api/v1` versioning.
+Author review:
+Scope: 2026-09-27 update — recorded the team-supplied immediate-response contract after job enqueue, the generic Redis job payload and exponential-backoff retry policy, the dead-letter-jobs table, the finalized `Idempotency-Key` header name, the 24-hour signed photo URL duration, and the continued deferral of downstream Order/Message Service contracts.
+Author review:
+-->
+
+# Supplier Service Architecture
+
+## 1. Purpose and scope
+
+The Supplier Service owns the supplier information used by FoC. Its backend is an independent
+service exposed through APIs, while the responsive supplier-management UI consumes those APIs as
+an SPA. The service supports supplier viewing for users and supplier management for administrators.
+
+This document records the architecture and design considerations supplied for the service. Where
+the supplied plan does not define a concrete route, field constraint, or integration contract, the
+item is called out as unspecified rather than being decided here.
+
+## 2. Architectural overview
+
+The service uses four tiers:
+
+1. **Presentation layer** — the HTTP-facing controller and the client-side SPA view.
+2. **Business layer** — core supplier logic, functions, and workflows.
+3. **Persistence layer** — the abstraction between business logic and the database.
+4. **Database layer** — the relational MySQL database that stores supplier records.
+
+```mermaid
+flowchart TB
+    V[Client-side SPA View]
+    C[Presentation Controller]
+    B[Business Layer<br/>supplier logic, functions, workflows]
+    P[Persistence Layer<br/>database abstraction]
+    D[(MySQL Database)]
+
+    V <-->|HTTP requests and responses| C
+    C --> B
+    B --> P
+    P --> D
+```
+
+The tiered breakdown separates responsibilities so that the layers remain less coupled and can be
+maintained or replaced independently. It also provides a strict interface through which database
+access is mediated by the persistence layer, supporting database security. The layers can be
+developed in parallel in principle, although this implementation is being developed by one person.
+
+### Layer responsibilities
+
+| Layer | Responsibility | Does not own |
+| --- | --- | --- |
+| Presentation | Receives HTTP requests, exposes the service interface, and returns responses to the SPA | Core supplier rules or direct database access |
+| Business | Applies supplier-management logic, functions, and workflows | HTTP rendering or SQL/database details |
+| Persistence | Translates business operations into database operations and hides storage details | User-facing UI behavior or business workflow ownership |
+| Database | Persists structured supplier data and relationships | HTTP, UI, or application workflow behavior |
+
+## 3. Presentation layer: WebMVC for the SPA
+
+The presentation layer follows an MVC model adapted for a single-page application:
+
+- **View:** the client-side SPA renders supplier lists, supplier details, and management screens.
+- **Controller:** the server-side HTTP controller receives requests from the View and bridges them
+  to the business layer.
+- **Model:** the server-side supplier data and the business-layer representation used to satisfy
+  View requests.
+
+The View communicates with the Controller over HTTP. The Controller does not expose the database
+directly; it invokes the business layer, which uses the persistence layer to access the Model's
+stored data.
+
+The SPA and the Supplier Service API are served from the same origin, so cross-origin resource
+sharing (CORS) configuration between the View and the Controller is not required.
+
+```mermaid
+sequenceDiagram
+    participant V as SPA View
+    participant C as HTTP Controller
+    participant B as Business Layer
+    participant P as Persistence Layer
+    participant DB as MySQL
+
+    V->>C: HTTP request
+    C->>B: Supplier operation
+    B->>P: Persistence operation
+    P->>DB: Query or mutation
+    DB-->>P: Stored result
+    P-->>B: Persistence result
+    B-->>C: Business result
+    C-->>V: HTTP response
+```
+
+The UI is therefore an API consumer rather than a source of supplier data. Supplier records must
+be retrieved and modified through the running Supplier Service.
+
+## 4. Business layer
+
+The business layer contains the core supplier-management logic, functions, and workflows. It is the
+boundary at which supplier operations are interpreted independently of the UI and database
+implementation.
+
+The documented operation groups are:
+
+- retrieving paginated supplier summaries for the user-facing dashboard, using filter, sort, and
+  search parameters;
+- retrieving detailed information for one supplier;
+- creating a supplier;
+- editing a supplier;
+- soft-deleting a supplier;
+- retrieving paginated supplier summaries for the administrator dashboard, including active,
+  deleted, and open-state information; and
+- retrieving full supplier information for the administrator dashboard.
+
+List queries use the supplied filter, sort, and search parameters and query 50 supplier entries at a
+time. The user-facing summary representation excludes the description and full opening-hours data.
+The detailed representation includes them. The administrator representations include active,
+deleted, open-state, creation date, and creator information as specified below.
+
+## 5. Persistence layer
+
+The persistence layer is the abstraction between the business layer and MySQL. Business operations
+should depend on persistence operations rather than on database-specific details. This keeps the
+business layer independent of storage implementation details and confines database interaction to
+the persistence boundary.
+
+```mermaid
+flowchart LR
+    API[API / Controller]
+    BL[Business workflows]
+    PL[Persistence interface]
+    SQL[MySQL implementation]
+    DB[(Supplier database)]
+
+    API --> BL --> PL --> SQL --> DB
+```
+
+## 6. Database layer
+
+### 6.1 Database choice
+
+The database layer uses a relational database, specifically MySQL.
+
+The stated reasons are:
+
+- supplier fields are fixed and highly structured;
+- the data model contains explicit relationships between suppliers, locations, categories, hours,
+  and photos;
+- there is little benefit in using a NoSQL solution for this structured data; and
+- supplier data is expected to be changed infrequently and read mostly, so a lightweight MySQL
+  solution is preferred over a more robust database intended for complex query support such as
+  PostgreSQL.
+
+### 6.2 Supplier data model
+
+The planned schema is decomposed into a supplier table, lookup/detail tables, and relationship
+tables:
+
+| Table | Purpose | Supplied data |
+| --- | --- | --- |
+| `supplier` | Core supplier record and status/audit metadata | `supplier_id`, `supplier_name`, `supplier_type`, `supplier_desc`, `location_id`, `is_active`, `is_deleted`, derived `is_open`, `created_on`, `created_by`, `updated_on`, `version` |
+| `supplier_locations` | Supplier location metadata | Autoincrement `location_id`, text `location`, `faculty_id`, integer `level` |
+| `faculties` | Faculty lookup values | Autoincrement `faculty_id`, text `faculty` |
+| `supplier_categories` | Category values | Autoincrement `category_id`, text `category_type` |
+| `supplier_category_map` | Many-to-many supplier/category relationship | `supplier_id` and `category_id` forming a composite key |
+| `supplier_hours` | Operating-hours data, one row per supplier per day of week | `entry_id`, `supplier_id`, integer `day_of_week` from 0–6 (unique per supplier), `open_time`, `close_time` |
+| `supplier_photos` | Supplier photo references and display order | Autoincrement `photo_id`, `supplier_id`, text `photo_location`, numerical `display_order` (unique per supplier) |
+| `dead_letter_jobs` | Redis background jobs that exhausted their retries | Autoincrement `id`, `job_id`, `task_name`, `payload`, `error_trace`, `failed_at`, `status` (defaults to `UNRESOLVED`) |
+
+The supplier type is either **Store** or **Facility**. A supplier may have multiple categories. The
+supplier's location includes a faculty value as a subcategory of location.
+
+```mermaid
+erDiagram
+    SUPPLIER {
+        supplier_id identifier
+        supplier_name text
+        supplier_type Store_or_Facility
+        supplier_desc text
+        location_id identifier
+        is_active boolean
+        is_deleted boolean
+        is_open derived_boolean
+        created_on datetime
+        created_by identifier
+        updated_on datetime
+        version integer
+    }
+
+    SUPPLIER_LOCATIONS {
+        location_id autoincrement
+        location text
+        faculty_id identifier
+        level integer
+    }
+
+    FACULTIES {
+        faculty_id autoincrement
+        faculty text
+    }
+
+    SUPPLIER_CATEGORIES {
+        category_id autoincrement
+        category_type text
+    }
+
+    SUPPLIER_CATEGORY_MAP {
+        supplier_id identifier
+        category_id identifier
+    }
+
+    SUPPLIER_HOURS {
+        entry_id autoincrement
+        supplier_id identifier
+        day_of_week integer_0_to_6
+        open_time time
+        close_time time
+    }
+
+    SUPPLIER_PHOTOS {
+        photo_id autoincrement
+        supplier_id identifier
+        photo_location text
+        display_order integer
+    }
+
+    SUPPLIER }o--|| SUPPLIER_LOCATIONS : located_at
+    FACULTIES ||--o{ SUPPLIER_LOCATIONS : classifies
+    SUPPLIER ||--o{ SUPPLIER_CATEGORY_MAP : maps
+    SUPPLIER_CATEGORIES ||--o{ SUPPLIER_CATEGORY_MAP : contains
+    SUPPLIER ||--o{ SUPPLIER_HOURS : has
+    SUPPLIER ||--o{ SUPPLIER_PHOTOS : has
+```
+
+The supplier status fields have the following meanings:
+
+- `is_active` controls whether a supplier result is shown;
+- `is_deleted` records that a supplier has been soft-deleted;
+- `is_open` is calculated for list and detail responses from the current time and opening hours;
+  and
+- `version` is an optimistic-concurrency counter. Every update to a supplier record includes the
+  version it was read at; the persistence layer matches on `supplier_id` and `version` together
+  and increments `version` on success. If no row matches (because another update already advanced
+  the version), the edit is treated as a concurrent-edit conflict and rejected with
+  `409 Conflict` rather than silently overwriting the newer record.
+
+`supplier_hours` has at most one row per `supplier_id`/`day_of_week` pair — a supplier cannot have
+two separate hours entries for the same day. `supplier_photos` has at most one row per
+`supplier_id`/`display_order` pair — two photos belonging to the same supplier cannot share a
+display position.
+
+For a Facility, `open_time` is set to `00:00` and `close_time` is set to `23:59` (or equivalent
+database time values) to represent 24-hour availability. Store schedules use the day-of-week and
+opening and closing time fields. The database maps `day_of_week` values from `0` to `6`, with `0`
+representing Sunday. The API's `openingHours` objects use the corresponding `day`, `open`, and
+`close` fields.
+
+The service calculates `is_open` by comparing the current day and time with the supplier's
+opening-hours records using Singapore time (UTC+8); it is not treated as an independent stored
+status value. For overnight Store intervals where the opening time is later than the closing time,
+the calculation treats the interval as continuing into the following day.
+
+All datetime values recorded or computed by the Supplier Service — `created_on`, `updated_on`, and
+`is_open` — use Singapore time (UTC+8) exclusively; no other timezone is supported.
+
+The identifier fields and relationship links in the diagram express the entities needed for
+retrieval and mapping. The supplied plan does not define the exact SQL types beyond the stated
+text, time, integer, and autoincrement descriptions; it also does not define nullability,
+indexes, or referential-action rules.
+
+### 6.3 Metadata storage and querying
+
+Supplier metadata is distributed according to its responsibility:
+
+- name, type, description, active state, deleted state, `createdOn`, `createdBy`, and `updatedOn`
+  are held by the core supplier record;
+- location, faculty, and level are held by the location record;
+- categories are held as category values and supplier-to-category mappings;
+- opening-hours data is held in the hours record; and
+- photos are stored as text links to the dedicated storage location.
+
+Photos are associated with suppliers through the `supplier_id` stored directly in `supplier_photos`.
+A supplier may have one or more photo rows, each with a `display_order` value and a provider-backed
+`photo_location` reference. The `photo_location` value returned by the API is a signed URL issued
+by the cloud storage provider, valid for 24 hours, rather than a permanent public link; a client
+must re-fetch the supplier record to obtain a fresh URL once the previous one expires.
+The storage provider's deletion and availability behavior is outside this service architecture.
+
+The API representations expose only the level of metadata needed by each consumer. List queries
+accept `page`, `limit`, `search`, `location_id`, `category_id`, and `sortOrder` and query a fixed 50
+entries at a time. Search performs case-insensitive text matching against supplier name, location,
+and category; `supplier_desc` is intentionally excluded from search because the description is not
+displayed in list results. Sorting is alphabetical by supplier name, with `sortOrder` limited to
+`A-Z` and `Z-A`. User-facing summary queries omit descriptions and full opening-hours data, while
+detail queries include them. Administrator queries additionally expose status and creation metadata
+required by the administrator dashboard.
+
+### 6.4 MySQL schema
+
+The following is the concrete relational schema for the Supplier Service. `is_open` is deliberately
+not a physical column because it is calculated from `supplier_hours` at query time. The `createdBy`
+value is stored as an identity reference supplied by the authentication system; it is not a
+cross-service database foreign key. `version` is an optimistic-concurrency counter used to detect
+concurrent edits; it is not exposed as an API field.
+
+```sql
+CREATE TABLE faculties (
+    faculty_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    faculty VARCHAR(255) NOT NULL,
+    PRIMARY KEY (faculty_id),
+    UNIQUE KEY uq_faculties_faculty (faculty)
+);
+
+CREATE TABLE supplier_locations (
+    location_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    location VARCHAR(255) NOT NULL,
+    faculty_id BIGINT UNSIGNED NOT NULL,
+    level INT NOT NULL,
+    PRIMARY KEY (location_id),
+    UNIQUE KEY uq_supplier_locations (location, faculty_id, level),
+    CONSTRAINT fk_supplier_locations_faculty
+        FOREIGN KEY (faculty_id) REFERENCES faculties (faculty_id)
+);
+
+CREATE TABLE supplier (
+    supplier_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    supplier_name VARCHAR(255) NOT NULL,
+    supplier_type ENUM('Store', 'Facility') NOT NULL,
+    supplier_desc TEXT NULL,
+    location_id BIGINT UNSIGNED NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(255) NOT NULL,
+    updated_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (supplier_id),
+    KEY idx_supplier_location (location_id),
+    KEY idx_supplier_visibility (is_active, is_deleted),
+    CONSTRAINT fk_supplier_location
+        FOREIGN KEY (location_id) REFERENCES supplier_locations (location_id)
+);
+
+CREATE TABLE supplier_categories (
+    category_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    category_type VARCHAR(100) NOT NULL,
+    PRIMARY KEY (category_id),
+    UNIQUE KEY uq_supplier_categories_type (category_type)
+);
+
+CREATE TABLE supplier_category_map (
+    supplier_id BIGINT UNSIGNED NOT NULL,
+    category_id BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (supplier_id, category_id),
+    CONSTRAINT fk_supplier_category_map_supplier
+        FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id),
+    CONSTRAINT fk_supplier_category_map_category
+        FOREIGN KEY (category_id) REFERENCES supplier_categories (category_id)
+);
+
+CREATE TABLE supplier_hours (
+    entry_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    supplier_id BIGINT UNSIGNED NOT NULL,
+    day_of_week TINYINT UNSIGNED NOT NULL,
+    open_time TIME NOT NULL,
+    close_time TIME NOT NULL,
+    PRIMARY KEY (entry_id),
+    UNIQUE KEY uq_supplier_hours_day (supplier_id, day_of_week),
+    CONSTRAINT chk_supplier_hours_day CHECK (day_of_week BETWEEN 0 AND 6),
+    CONSTRAINT fk_supplier_hours_supplier
+        FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id)
+);
+
+CREATE TABLE supplier_photos (
+    photo_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    supplier_id BIGINT UNSIGNED NOT NULL,
+    photo_location VARCHAR(2048) NOT NULL,
+    display_order INT UNSIGNED NOT NULL,
+    PRIMARY KEY (photo_id),
+    UNIQUE KEY uq_supplier_photos_order (supplier_id, display_order),
+    CONSTRAINT fk_supplier_photos_supplier
+        FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id)
+);
+
+CREATE TABLE dead_letter_jobs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_id VARCHAR(255) NOT NULL,
+    task_name VARCHAR(255) NOT NULL,
+    payload JSON NOT NULL,
+    error_trace TEXT NOT NULL,
+    failed_at DATETIME NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'UNRESOLVED',
+    PRIMARY KEY (id),
+    KEY idx_dead_letter_jobs_status (status)
+);
+```
+
+The schema-level relationships are:
+
+- each supplier references one location row;
+- each location row references one faculty row;
+- supplier categories are many-to-many through `supplier_category_map`;
+- supplier hours belong to a supplier and are keyed by `entry_id`, with at most one row per
+  `supplier_id`/`day_of_week` pair;
+- supplier photos are one-to-many through `supplier_photos.supplier_id`, with display order stored
+  on each photo row and unique per `supplier_id`/`display_order` pair; and
+- `supplier.version` is incremented on every successful update and used to detect concurrent edits;
+  and
+- `dead_letter_jobs` is a standalone record of Redis background jobs that exhausted their retries;
+  it has no foreign key to `supplier` since `payload` identifies whatever record the job concerned.
+
+JPEG/PNG validation, the 5 MB per-image limit, and the maximum of 10 photos per supplier are
+application-level upload constraints rather than database column constraints.
+
+## 7. API operation inventory
+
+The following are the planned API interfaces. The UI is locked behind authentication. The Supplier
+Service consumes the existing User Service authentication contract:
+
+- access tokens are RS256 JWTs containing the user subject and role;
+- the User Service exposes `GET /auth/verify`, which returns
+  `{ "user_id": "...", "role": "..." }` for a valid bearer token; and
+- the accepted application roles are `user`, `admin`, and `super_admin`.
+
+Any OAuth or other upstream login mechanism is an authentication concern outside the Supplier
+Service. Supplier Service authorization uses the authenticated identity and role supplied by the
+User Service contract.
+
+`admin` and `super_admin` currently have identical capabilities within the Supplier Service.
+`super_admin` additionally carries admin-management capabilities that belong to the User Service
+and are outside the Supplier Service boundary.
+
+All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
+
+| Consumer and accepted roles | Endpoint | Request | Response |
+| --- | --- | --- | --- |
+| User dashboard — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | `metadata`: `totalRecords`, `currPage`, `limit`, `totalPages`; `data`: `id`, `name`, `type`, `location`, `faculty`, `level`, `categories`, `photos`, `isOpen` |
+| User detailed view — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/:id` | Supplier identifier in the path | User summary fields plus `desc`, `openingHours` |
+| Admin dashboard — `admin`, `super_admin` | `GET /api/v1/admin/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | User summary fields plus `isActive` and `isDeleted` |
+| Admin detailed view — `admin`, `super_admin` | `GET /api/v1/admin/suppliers/:id` | Supplier identifier in the path | User detailed fields plus `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, and `version` |
+| Location reference options — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/reference/location` | No request body | `locations`: location and faculty text plus `location_id` and `faculty_id` |
+| Category reference options — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/reference/categories` | No request body | `categories`: category text plus `category_id` |
+| Faculty management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/faculties` | JSON body: `faculty` | Created faculty: `faculty_id`, `faculty` |
+| Faculty management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/faculties/:id` | JSON body: `faculty` | Updated faculty: `faculty_id`, `faculty` |
+| Faculty management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/faculties/:id` | Faculty identifier in the path | Deletion response |
+| Location management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/locations` | JSON body: `location`, `faculty_id`, `level` | Created location: `location_id`, `location`, `faculty_id`, `level` |
+| Location management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/locations/:id` | JSON body: any of `location`, `faculty_id`, `level` | Updated location record |
+| Location management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/locations/:id` | Location identifier in the path | Deletion response |
+| Category management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/categories` | JSON body: `category_type` | Created category: `category_id`, `category_type` |
+| Category management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/categories/:id` | JSON body: `category_type` | Updated category record |
+| Category management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
+| Admin create — `admin`, `super_admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references |
+| Admin edit — `admin`, `super_admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
+| Admin soft delete — `admin`, `super_admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
+
+Management endpoints for `faculties`, `supplier_locations`, and `supplier_categories` follow the
+same request/response shape as their corresponding lookup tables (§6.2, §6.4) and are restricted to
+`admin` and `super_admin`, unlike the read-only reference endpoints above which are open to all
+roles.
+
+```mermaid
+flowchart TD
+    U[Authenticated user] --> US[User-facing supplier summary/detail operations]
+    A[Authenticated administrator] --> AS[Administrator summary/full operations]
+    A --> M[Create, edit, delete operations]
+    US --> S[Supplier Service]
+    AS --> S
+    M --> S
+    S --> P[Persistence layer]
+    P --> DB[(MySQL)]
+```
+
+Modification requests use the authenticated identity and role result supplied by the authentication
+provider. Unauthenticated requests are not accepted by the locked UI, and non-administrative
+requests must not modify persistent supplier state.
+
+User-facing list and detail operations exclude suppliers where `is_deleted` is true or `is_active`
+is false. Administrator list and detail operations include suppliers regardless of those two
+visibility flags.
+
+### 7.1 Status codes
+
+The API status-code set is:
+
+| Status | Meaning |
+| --- | --- |
+| `200 OK` | Successful request |
+| `201 Created` | Successful supplier creation |
+| `204 No Content` | Server has successfully processed a client's request, but there is intentionally no data or message body to send back in the response |
+| `400 Bad Request` | Request is malformed |
+| `401 Unauthorized` | Bearer token is missing or invalid according to the User Service authentication contract |
+| `403 Forbidden` | Identity is authenticated but is not permitted to perform the operation |
+| `404 Not Found` | Referenced supplier or resource does not exist |
+| `409 Conflict` | A supplier edit's submitted `version` no longer matches the stored record (concurrent-edit conflict), or a `POST` idempotency key matches a request still being processed |
+| `422 Unprocessable Entity` | Request structure is understood but its values fail validation |
+| `429 Too Many Requests` | Client has exceeded the rate limit |
+| `500 Internal Server Error` | Photo storage or compensating database workflow failed |
+
+All error responses use the same envelope:
+
+```json
+{
+  "status_code": 422,
+  "error": "Unprocessable Entity",
+  "message": "One or more supplier fields failed validation.",
+  "timestamp": "2026-09-27T10:00:00+08:00",
+  "details": [
+    {
+      "field": "supplier_name",
+      "location": "body",
+      "message": "Supplier name is required."
+    }
+  ]
+}
+```
+
+The `details` collection identifies the field and request location associated with each error.
+
+#### 7.1.1 Status-code mapping template
+
+The following template records the literal meaning of each available status code while leaving the
+project-specific endpoint mapping for the team to complete:
+
+| Condition to classify | Candidate endpoint(s) | Status code | Literal status meaning | Project-specific mapping / notes |
+| --- | --- | --- | --- | --- |
+| Request completes successfully without creating a resource | `GET /api/v1/suppliers` `GET /api/v1/suppliers/reference/location` `GET /api/v1/suppliers/reference/categories` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `200 OK` | Request succeeded | Used for reads, updates, and soft-deletes. Response body returns payload lists, single records, or update confirmations. Note: Alternatively, DELETE can return 204 No Content if no response body is sent. |
+| Supplier is created successfully | `POST /api/v1/admin/suppliers` | `201 Created` | Resource was created successfully | Returns the newly generated supplier ID, creation metadata, and an array of photo_ids and photo binaries |
+| Bearer token is missing, malformed, expired, or invalid | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `401 Unauthorized` | Authentication is required or failed | User Service Contract: Triggered if Authorization header is missing or local RS256 signature verification fails. Matches the internal `user-service` validation exception envelope perfectly. |
+| Authenticated role is not permitted to use the endpoint | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `403 Forbidden` | Authenticated identity is not authorized for this operation | Triggered when a valid JWT is verified, but the embedded role claim payload reads `user` instead of `admin` or `super_admin` |
+| Request syntax, structure, or encoding is malformed | All API Endpoints | `400 Bad Request` | Request cannot be processed as a well-formed request | Triggered by corrupt data like bad multipart/form-data boundaries, malformed JSON strings in openingHours/photo_sort_order, or missing body content etc. |
+| Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, limit over 50, invalid location_id, or mismatched file placeholders, etc. Returns the standardized details error array. |
+| Requested supplier or reference resource does not exist | `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `404 Not Found` | Referenced resource cannot be found | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database. |
+| Submitted `version` does not match the supplier's current stored version | `PUT /api/v1/admin/suppliers/:id` | `409 Conflict` | Request conflicts with the current state of the resource | Optimistic-concurrency conflict: another edit already advanced `version`. The client should re-fetch the record and retry. |
+| `POST` retried with an `Idempotency-Key` that is still being processed | `POST /api/v1/admin/suppliers` | `409 Conflict` | Request conflicts with the current state of the resource | Idempotency-key replay while the original request has not yet completed. A replay after completion instead returns the original cached response. |
+| Client has exceeded the rate limit | All API Endpoints | `429 Too Many Requests` | Too many requests in a given time window | Fixed at 30 requests/minute/IP. |
+| Unhandled service, database, storage, or job-queue failure | All API Endpoints | `500 Internal Server Error` | Server failed while processing the request | The client receives an immediate 500 error error response code. |
+
+For each row, the team can complete the endpoint list, trigger condition, response `message`, and
+whether `details` contains a field name, request location, resource identifier, downstream service,
+or job identifier. The template does not select a mapping for the team.
+
+### 7.2 Querying 50 entries at a time
+
+The list endpoints accept filter, sort, and search parameters and query exactly 50 entries at a
+time. The `limit` value is fixed and is not user-modifiable. Sorting is fixed to alphabetical
+supplier-name order, and filtering uses IDs obtained from the separate reference endpoints. The
+query parameters are:
+
+| Parameter | Purpose |
+| --- | --- |
+| `page` | Requested result page |
+| `limit` | Fixed page size of 50 entries; not user-modifiable |
+| `search` | Case-insensitive text matching against supplier name, location, or category |
+| `location_id` | Location filter using an ID from `/api/v1/suppliers/reference/location` |
+| `category_id` | Category filter using an ID from `/api/v1/suppliers/reference/categories` |
+| `sortOrder` | Fixed alphabetical supplier-name order: `A-Z` or `Z-A` |
+
+The response metadata supports pagination through `totalRecords`, `currPage`, `limit`, and
+`totalPages`.
+
+### 7.3 Request and response envelopes
+
+The following structures use the field names supplied for the API contract. `SupplierSummary` is
+the common user-facing list shape:
+
+```json
+{
+  "id": 101,
+  "name": "Campus Store",
+  "type": "Store",
+  "location": "Central Library",
+  "faculty": "Computing",
+  "level": 1,
+  "categories": ["Food", "Drinks"],
+  "photos": [
+    {
+      "photoId": 201,
+      "photoLocation": "https://storage.example/suppliers/101/201.png",
+      "displayOrder": 1
+    }
+  ],
+  "isOpen": true
+}
+```
+
+`GET /api/v1/suppliers` returns the paginated envelope:
+
+```json
+{
+  "metadata": {
+    "totalRecords": 125,
+    "currPage": 1,
+    "limit": 50,
+    "totalPages": 3
+  },
+  "data": [
+    {
+      "id": 101,
+      "name": "Campus Store",
+      "type": "Store",
+      "location": "Central Library",
+      "faculty": "Computing",
+      "level": 1,
+      "categories": ["Food", "Drinks"],
+      "photos": [
+        {
+          "photoId": 201,
+          "photoLocation": "https://storage.example/suppliers/101/201.png",
+          "displayOrder": 1
+        }
+      ],
+      "isOpen": true
+    }
+  ]
+}
+```
+
+`GET /api/v1/admin/suppliers` uses the same envelope and adds `isActive` and `isDeleted` to each
+data item.
+
+`GET /api/v1/suppliers/:id` returns one detailed supplier:
+
+```json
+{
+  "id": 101,
+  "name": "Campus Store",
+  "type": "Store",
+  "location": "Central Library",
+  "faculty": "Computing",
+  "level": 1,
+  "categories": ["Food", "Drinks"],
+  "photos": [
+    {
+      "photoId": 201,
+      "photoLocation": "https://storage.example/suppliers/101/201.png",
+      "displayOrder": 1
+    }
+  ],
+  "isOpen": true,
+  "desc": "A campus convenience store.",
+  "openingHours": [
+    {
+      "day": 1,
+      "open": "09:00",
+      "close": "18:00"
+    }
+  ]
+}
+```
+
+`GET /api/v1/admin/suppliers/:id` uses the detailed shape and adds `isActive`, `isDeleted`,
+`createdOn`, `createdBy`, `updatedOn`, and `version`. The admin UI needs `version` to submit
+subsequent edits (§7.5).
+
+The reference endpoints are independent so clients can lazy-load the two option sets separately. The
+admin add-supplier workflow calls both endpoints, while a user-oriented filter may call only the
+reference endpoint it needs:
+
+```json
+GET /api/v1/suppliers/reference/location
+{
+  "locations": [
+    {
+      "location_id": 4,
+      "location": "Central Library",
+      "faculty_id": 2,
+      "faculty": "Computing"
+    }
+  ]
+}
+```
+
+```json
+GET /api/v1/suppliers/reference/categories
+{
+  "categories": [
+    {
+      "category_id": 2,
+      "category": "Food"
+    }
+  ]
+}
+```
+
+The admin create and edit requests use `multipart/form-data`, carrying supplier fields and uploaded
+photo files in the same request. Server-managed fields, including `id`, `isOpen`, `isActive`,
+`isDeleted`, `createdOn`, `createdBy`, and `updatedOn`, are not included in create or edit request bodies. The
+delete request takes only the supplier identifier in the path.
+
+`version` is the one exception: it is server-managed on create (initialised without client input)
+but must be echoed back by the client on every `PUT` edit, since it is how the server detects
+concurrent edits (§7.5).
+
+### 7.4 API call examples
+
+The following route-level examples show the expected independent API calls. Each request carries
+the authenticated User Service access token because the UI and Supplier Service interface are
+authenticated.
+
+```http
+GET /api/v1/suppliers?page=1&limit=50&search=store&location_id=4&category_id=2&sortOrder=A-Z HTTP/1.1
+Authorization: Bearer <access-token>
+```
+
+```http
+GET /api/v1/suppliers/101 HTTP/1.1
+Authorization: Bearer <access-token>
+```
+
+```http
+GET /api/v1/admin/suppliers?page=1&limit=50&search=store&location_id=4&category_id=2&sortOrder=Z-A HTTP/1.1
+Authorization: Bearer <access-token>
+```
+
+```http
+POST /api/v1/admin/suppliers HTTP/1.1
+Authorization: Bearer <access-token>
+Content-Type: multipart/form-data; boundary=<boundary>
+
+Supplier form fields:
+  name=Campus Store
+  type=Store
+  location_id=4
+  category_id=[2, 3]
+  desc=A campus convenience store.
+  openingHours=[{"day":1,"open":"09:00","close":"18:00"}]
+
+Photo form files:
+  photos[]=campus-store-front.png
+  photos[]=campus-store-counter.jpg
+```
+> Note: `isOpen` is a computed value for frontend display. It is not stored.
+
+```http
+PUT /api/v1/admin/suppliers/101 HTTP/1.1
+Authorization: Bearer <access-token>
+Content-Type: multipart/form-data; boundary=<boundary>
+
+Updated supplier fields:
+  version=3
+  desc=Updated campus convenience store description.
+  isPhotoDirty=true
+  photo_ids=[201,placeholder-1]
+  placeholder_ids=[placeholder-1]
+
+Photo form files:
+  photos[]=updated-campus-store-front.png
+```
+
+```http
+DELETE /api/v1/admin/suppliers/101 HTTP/1.1
+Authorization: Bearer <access-token>
+```
+
+### 7.5 Idempotency, concurrency control, and rate limiting
+
+`PUT` and `DELETE` are idempotent by design and need no special handling: repeated identical `PUT`
+requests converge on the same final state, and a repeated `DELETE` after a successful delete simply
+returns `404 Not Found` rather than an error.
+
+`POST /api/v1/admin/suppliers` uses the idempotency-key pattern: the client generates a UUID and
+sends it as an `Idempotency-Key` request header. The key and the eventual response are cached in
+Redis. A retry
+with the same key while the original request is still being processed is rejected with
+`409 Conflict`; a retry with the same key after the original request has completed returns the
+cached response directly instead of reprocessing the request.
+
+Concurrent edits to the same supplier are detected using the `supplier.version` column (§6.2,
+§6.4): `PUT /api/v1/admin/suppliers/:id` must submit the `version` the client last read. If the
+stored `version` has since advanced, the update matches no row, is not applied, and the API returns
+`409 Conflict` rather than overwriting the newer record.
+
+All Supplier Service endpoints are rate-limited to 30 requests per minute per client IP. Requests
+beyond this limit receive `429 Too Many Requests`.
+
+Health-check endpoints are deferred and out of scope for this revision of the service architecture.
+
+## 8. End-to-end request flow
+
+```mermaid
+sequenceDiagram
+    participant User as Authenticated client
+    participant UI as Supplier SPA
+    participant API as Supplier Service API
+    participant Auth as User Service authentication contract
+    participant Logic as Business layer
+    participant Store as Persistence layer
+    participant DB as MySQL
+
+    User->>UI: Open supplier dashboard or admin screen
+    UI->>API: Request supplier data
+    API->>Auth: Verify bearer token identity and role context
+    Auth-->>API: Identity and role result
+    API->>Logic: Run permitted supplier operation
+    Logic->>Store: Read or write supplier data
+    Store->>DB: Execute database operation
+    DB-->>Store: Database result
+    Store-->>Logic: Persistence result
+    Logic-->>API: Supplier response
+    API-->>UI: HTTP response
+    UI-->>User: Render live supplier data
+```
+
+The Supplier Service remains usable through its APIs without the UI being present. The UI is a
+consumer of the same API operations that can be exercised independently. All UI components are
+dynamic so that the supplier-management experience can adapt to different viewport sizes.
+
+### 8.1 Soft-delete workflow
+
+Deleting a supplier is a soft delete implemented by updating the supplier's `is_deleted` field.
+Past records and requests that have already been picked up remain unchanged. For requests that have
+not yet been collected, the Supplier Service submits a downstream workflow job. A background worker
+uses the job queue to interact with the Order Service's delete API and then the Message Service's
+messaging API to send a message to the request poster. The same worker/job-queue mechanism is
+intended to support the broader supplier-suspension, order-cancellation, and user-notification flow.
+
+The client receives its response immediately once the supplier's `is_deleted` update commits and the
+Redis job is successfully enqueued; the response does not wait for the background worker to finish
+the downstream workflow.
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin client
+    participant Supplier as Supplier Service
+    participant DB as MySQL
+    participant Redis as Redis job queue
+    participant Worker as Background worker
+    participant Order as Order Service
+    participant Message as Message Service
+
+    Admin->>Supplier: DELETE /api/v1/admin/suppliers/:id
+    Supplier->>DB: Update supplier.is_deleted
+    Supplier->>Redis: Enqueue suspension workflow job {id, task_name, payload}
+    Supplier-->>Admin: Immediate response after enqueue succeeds
+    Redis->>Worker: Deliver workflow job
+    Worker->>Order: Delete requests not yet collected
+    Worker->>Message: Message affected request poster
+    alt Job still fails after 5 retries (exponential backoff)
+        Worker->>DB: Insert dead_letter_jobs row (status UNRESOLVED)
+    end
+```
+
+Every Redis job uses the same generic payload shape: `id` (the job's identifier), `task_name` (which
+worker handler processes it), and `payload` (the data that handler needs, derived directly from the
+already-decided database schema — for example a photo-deletion job's `payload` carries the
+`photo_id`/`photo_location` to remove). Job retries use exponential backoff with a maximum of 5
+attempts. If the job still fails after retries are exhausted, a row is inserted into
+`dead_letter_jobs` (§6.2, §6.4) recording the job's `job_id`, `task_name`, `payload`, the last
+retry's `error_trace`, `failed_at`, and a `status` defaulted to `UNRESOLVED`; this table is the
+mechanism for visibility into failed jobs.
+
+The concrete request contracts for the Order Service's delete API and the Message Service's
+messaging API remain deferred and mocked until those services are built; this is an explicit,
+continued deferral rather than an oversight.
+
+### 8.2 Photo upload workflow
+
+Admin create and edit requests carry supplier fields and uploaded JPEG/PNG files together as
+`multipart/form-data`. Each image is limited to 5 MB, with a maximum of 10 images associated with a
+supplier. Photo storage has its own authentication boundary, and only authenticated administrators
+may update supplier photos through the Supplier Service.
+
+The Supplier Service exposes a provider-agnostic storage interface. The deployment provider remains
+undecided between AWS S3 and Google Cloud Storage; business and persistence logic do not depend on
+either provider's SDK or API. The `photoLocation` values returned to clients are signed URLs issued
+by the storage provider, valid for 24 hours, not permanent public links (§6.3).
+
+```mermaid
+flowchart LR
+    Logic[Supplier business logic]
+    Port[Photo storage interface]
+    S3[AWS S3 provider]
+    GCS[Google Cloud Storage provider]
+
+    Logic --> Port
+    Port -. deployment option .-> S3
+    Port -. deployment option .-> GCS
+```
+
+For an edit, `isPhotoDirty` indicates whether the photo collection needs processing. If it is true,
+the request includes an ordered `photo_ids` array. Existing photo IDs identify retained photos;
+randomly generated placeholder IDs identify newly uploaded binary files, and `placeholder_ids`
+identifies those new files. The backend resolves the placeholders by their index positions and
+replaces them with the persisted photo IDs. The specific identity of a new binary is immaterial as
+long as the association is one-to-one.
+
+The upload, database update, and cloud-object cleanup use a saga-style compensating workflow:
+
+1. Authenticate the administrator and validate the supplier fields and photo limits.
+2. Upload any new photo binaries through the storage interface. If an upload fails, abort the
+   supplier database save and return `500 Internal Server Error`.
+3. In a MySQL transaction, validate the submitted `version` against the stored value (§7.5), apply
+   supplier edits, delete excluded photo rows, append new photo rows, reorder `display_order`, and
+   update `updatedOn` and `version`.
+4. If the MySQL transaction fails, roll it back, clean up the newly uploaded cloud objects, and
+   return `500 Internal Server Error`. Existing cloud objects have not yet been deleted.
+5. After the MySQL transaction commits, enqueue a cloud-object deletion job in Redis for excluded
+   photos. Cloud-object deletion is therefore performed after the MySQL edits and deletions are
+   complete.
+6. Return the response to the client immediately once the job is successfully enqueued, without
+   waiting for the background worker to finish deleting the excluded cloud objects.
+7. A background worker processes the deletion job and retries failed cloud deletions using
+   exponential backoff, up to a maximum of 5 attempts. If a deletion still fails after retries are
+   exhausted, the worker inserts a `dead_letter_jobs` row (§6.2, §6.4, §8.1) for manual follow-up.
+
+```mermaid
+sequenceDiagram
+    participant Admin as Authenticated administrator
+    participant API as Supplier Service API
+    participant Storage as Photo storage
+    participant DB as MySQL
+    participant Redis as Redis job queue
+    participant Worker as Background worker
+
+    Admin->>API: multipart create/edit with supplier fields and photos
+    API->>Storage: Authenticate and upload new JPEG/PNG files
+    alt Upload fails
+        Storage-->>API: Failure
+        API-->>Admin: 500 Internal Server Error
+    else Upload succeeds
+        Storage-->>API: Photo locations
+        API->>DB: Apply edits and photo rows in transaction
+        alt Database save fails
+            DB-->>API: Failure
+            API->>Storage: Cleanup newly uploaded photos
+            API-->>Admin: 500 Internal Server Error
+        else Database save succeeds
+            DB-->>API: Committed supplier and photo rows
+            API->>Redis: Enqueue excluded-photo deletion job {id, task_name, payload}
+            API-->>Admin: Immediate response after enqueue succeeds, with photo references
+            Redis->>Worker: Deliver deletion job
+            Worker->>Storage: Delete excluded cloud objects
+            Worker->>Storage: Retry failed deletions (exponential backoff, max 5 attempts)
+            alt Still fails after retries exhausted
+                Worker->>DB: Insert dead_letter_jobs row (status UNRESOLVED)
+            end
+        end
+    end
+```
+
+The storage provider's deletion behavior and availability behavior are outside the Supplier Service
+architecture. The provider itself remains undecided; the service architecture records the storage
+boundary, photo reference, authentication boundary, Redis job-queue handoff, retry responsibility,
+and compensation behavior.
+
+## 9. Requirement traceability notes and unresolved items
+
+These are factual observations about the supplied plan and the requirement context. They are not
+additional design decisions.
+
+1. The endpoint paths, verbs, query parameters, response metadata, response fields, status codes,
+   fixed error envelope, list/detail examples, reference-option responses, and multipart photo
+   inputs are now recorded. The concurrency-conflict and idempotency-conflict `409` conditions and
+   the `429` rate-limit condition are now mapped (§7.1.1); the exact `message`/`details` content for
+   the remaining `400`, `401`, `403`, `404`, and `422` conditions per endpoint remains to be
+   specified.
+2. The page size is fixed at 50 entries, and `sortOrder` is fixed to alphabetical `A-Z` or `Z-A`.
+   The location and category filters use IDs obtained from the separate lazy-loaded reference
+   endpoints. Invalid user-selected filter values are therefore not expected in normal UI use.
+3. Identity and role verification use the User Service's RS256 JWT and `/auth/verify` contract.
+   The upstream OAuth provider and token lifecycle remain outside the Supplier Service boundary.
+4. User and administrator visibility rules are defined by `is_deleted` and `is_active`; `isOpen` is
+   derived from opening hours using Singapore time (UTC+8), including overnight intervals.
+5. Soft deletion preserves past records and requests already picked up. For requests not yet
+   collected, the Supplier Service queues a background workflow that assumes an Order Service delete
+   entrypoint and a future Message Service `sendMsg` entrypoint. Their concrete request contracts
+   remain intentionally deferred and mocked until those services are built. Redis job payloads,
+   retry limits, and dead-letter behavior are now recorded (see item 17).
+6. The concrete MySQL tables, foreign keys, indexes, uniqueness constraints, `updatedOn`, and direct
+   one-to-many photo relationship are recorded. Seed contents for faculties, locations, categories,
+   and levels will be supplied by the mock database.
+7. Photo management now covers multipart admin uploads, JPEG/PNG validation, 5 MB per-image limit,
+   10-image maximum, provider-agnostic storage, randomly generated placeholder IDs, ordered photo
+   resolution, MySQL-first edits, and a Redis-backed worker that deletes cloud objects after the
+   MySQL transaction commits and retries failed deletions. The concrete provider remains undecided
+   between AWS S3 and Google Cloud Storage.
+8. Job execution failure is now specified: exponential-backoff retries up to 5 attempts, then a
+   `dead_letter_jobs` row for visibility (see item 17). Enqueue-time failure (Redis itself being
+   unavailable when the API tries to submit the job) still falls under the generic
+   `500 Internal Server Error` mapping (§7.1.1) rather than a dedicated reconciliation behavior.
+9. Responsive behavior is a React presentation implementation concern rather than a service
+   architecture decision. The UI will use responsive React layout principles; detailed viewport
+   acceptance states can be verified during UI implementation.
+10. Request and response envelope examples are now included. A live API-call transcript and
+    executable independent API demonstration are still needed for the requirement's verification
+    evidence.
+11. Optimistic concurrency, hours/photo uniqueness, and timezone are now recorded: `supplier.version`
+    guards concurrent edits and yields `409 Conflict` on a stale update; `supplier_hours` and
+    `supplier_photos` each enforce at most one row per supplier per day-of-week/display-order; and
+    all Supplier Service timestamps (`created_on`, `updated_on`, `is_open`) use Singapore time
+    (UTC+8) exclusively.
+12. `admin` and `super_admin` currently share identical Supplier Service capabilities; `super_admin`'s
+    additional admin-management capability belongs to the User Service and is outside this
+    service's scope.
+13. Lookup-table management (create/edit/delete) for `faculties`, `supplier_locations`, and
+    `supplier_categories` is now included in the API operation inventory, restricted to `admin` and
+    `super_admin`, alongside the existing all-role read-only reference endpoints.
+14. `PUT` and `DELETE` are idempotent by design. `POST /api/v1/admin/suppliers` uses a client-supplied
+    `Idempotency-Key` header cached in Redis, returning `409 Conflict` on a still-in-flight replay or
+    the cached response on a replay after completion. The header name is finalized.
+15. Cross-cutting API policies are now recorded: all endpoints are versioned under `/api/v1`,
+    rate-limited to 30 requests/minute/IP (`429 Too Many Requests`), and served from the same origin
+    as the SPA (no CORS configuration required). Health-check endpoints are explicitly deferred and
+    out of scope for this revision.
+16. `photo_location`/`photoLocation` values are now specified as provider-issued signed URLs, valid
+    for 24 hours, rather than permanent public links.
+17. The Redis job contract is now recorded: every job uses a generic `{id, task_name, payload}`
+    shape derived from the already-decided database schema; retries use exponential backoff with a
+    maximum of 5 attempts; a job that still fails after retries are exhausted is written to the new
+    `dead_letter_jobs` table (§6.2, §6.4) for visibility. The client receives its API response
+    immediately once the relevant database write and Redis enqueue succeed, without waiting for the
+    background worker to finish (§8.1, §8.2). The Order Service and Message Service request
+    contracts remain an explicit, continued deferral until those services are built.
+
+These items should remain visible for team review before the service contracts and implementation
+are treated as complete.
