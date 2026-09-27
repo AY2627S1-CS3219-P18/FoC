@@ -10,6 +10,7 @@ import express, { type Express } from 'express';
 import type { PrismaClient } from './db/prisma.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { healthRouter } from './routes/health.routes.js';
+import { requestsRouter } from './routes/requests.routes.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -25,7 +26,7 @@ export function createApp({ prisma }: AppDeps): Express {
   app.use(express.json());
 
   app.use('/health', healthRouter(prisma));
-  // TODO(team): mount order routes here, e.g. app.use('/orders', ordersRouter(prisma));
+  app.use('/requests', requestsRouter(prisma));
 
   app.use(notFound);
   app.use(errorHandler);
