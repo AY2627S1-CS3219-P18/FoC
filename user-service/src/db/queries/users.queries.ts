@@ -16,6 +16,8 @@
 // Author review:
 // 27/09/2026: Stage 12b - updateUsername
 // Author review:
+// 27/09/2026: Stage 12d - updateEmail
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -210,6 +212,18 @@ export async function updateUsername(
   const result = await db.query<UserRow>(
     `UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [userId, username],
+  );
+  return result.rows[0]!;
+}
+
+export async function updateEmail(
+  userId: string,
+  email: string,
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET email = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, email],
   );
   return result.rows[0]!;
 }

@@ -1185,3 +1185,39 @@ None — the 12c spec was unambiguous.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 12d: /users/me/verify-otp and /users/me/resend-otp
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 12: Profile Management" design-decisions table (route split for OTP endpoints, why password-change has no verify-otp entry, resending a change-email OTP) and "Stage 12d" section (`updateEmail`, `verifyEmailChangeOtp`, `resendChangeEmailOtp`, `resendChangePasswordOtp`, controllers, routes, Verification bullets).
+
+**Prompts (exact):**
+
+> go
+
+**Key responses:**
+Branched `feat/stage-12d-me-otp-routes` from `main` (up to date, Stage 12c merged; also picked up an unrelated order-service change from a teammate's earlier merge). Implemented exactly the 12d spec:
+
+- `users.queries.ts`: `updateEmail(userId, email, db)` — `UPDATE ... SET email = $2, updated_at = NOW() WHERE id = $1 RETURNING *`.
+- `me.service.ts`: `verifyEmailChangeOtp(userId, otp)` — locks the user row, reads the pending `Change Email` OTP row for its `new_email`, calls the existing `checkOtp` (default consuming), and on a correct guess calls `updateEmail` wrapped in try/catch for Postgres `23505` mapped to `409 EMAIL_TAKEN` — per the spec, that throw propagates out of `withTransaction` and rolls back the whole transaction including the OTP consumption, so the OTP stays usable for a different email (verified manually, see below). `resendChangeEmailOtp` and `resendChangePasswordOtp` each lock the user, require an unconsumed pending OTP row for their purpose (else `400 NO_PENDING_EMAIL_CHANGE`/`NO_PENDING_PASSWORD_CHANGE`), then call `requestOtp` with the same cooldown/limit/sent mapping as Stage 12c. Factored that mapping (previously inlined once in `initiateEmailChange`) into a shared `throwOnUnsentOtp` helper now used by all three call sites, since Stage 12d needed the identical block twice more — a same-file DRY refactor, no behavior change, covered by the same manual re-verification of Stage 12c's cases below.
+- `me.controller.ts`: `verifyOtp` — `.strict()` Zod schema, `purpose` enum `['change_email']` only ("Invalid purpose" otherwise per the spec), returns `200 EMAIL_CHANGE_SUCCESS`. `resendOtp` — `purpose` enum `['change_email', 'change_password']`, dispatches to the matching service function, returns `200 OTP_SENT`. Both read the user id only from `req.user.user_id`; neither schema accepts an `email` field. A local `mePurposeErrorMap`/schema pair, kept separate from `auth.controller.ts`'s public `/auth/verify-otp`/`/auth/resend-otp` purpose sets, per the spec's explicit "the two purpose sets stay separate."
+- `me.routes.ts`: `router.post('/verify-otp', authenticate, meController.verifyOtp)` and `router.post('/resend-otp', authenticate, meController.resendOtp)`.
+
+Verification actually run: `tsc --noEmit` for `src` and `tests/tsconfig.json`, and `eslint .`, all clean. Manually verified against the live container with the seeded super admin (and, for the race case, a second freshly-registered account): full initiate → verify happy path (`200 EMAIL_CHANGE_SUCCESS`, email updated, reverted afterward); wrong purpose on `/users/me/verify-otp` → `400` "Invalid purpose"; wrong OTP → `400 INVALID_OTP`; 5 wrong attempts then a 6th → `429 OTP_ATTEMPTS_EXCEEDED`, email unchanged; OTP with `expires_at` backdated → `400 OTP_EXPIRED`; resend for `change_email` → `200 OTP_SENT`, confirmed in the DB that the new row carries the same `new_email` and the old row's `consumed_at` is now set; resend with no pending change, for both `change_email` and `change_password` → `400 NO_PENDING_EMAIL_CHANGE`/`NO_PENDING_PASSWORD_CHANGE`; both routes with no `Authorization` header → `401`; the public `/auth/verify-otp` and `/auth/resend-otp` both still reject `change_email`/`change_password` as an invalid purpose, confirming the two purpose sets stayed separate; and the specified race — registered a second account that took superadmin's pending `new_email` first, then superadmin submitted the correct OTP → `409 EMAIL_TAKEN`, and a DB check confirmed the OTP row's `consumed_at` was still null (the transaction rollback restored it) and superadmin's email was unchanged. Testing needed the DB cooldown/created_at backdated a few times (the same OTP-resend cooldown from Stage 12c applies to every initiate/resend on this purpose) — noted here since it is not itself a Stage 12d behavior, just a side effect of reusing the same superadmin account across sub-stage testing. Test OTP rows and the decoy registered account were left in the dev DB afterward, matching how earlier stages left their test accounts (`testuser99`, etc.) in place.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — the 12d spec was unambiguous.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
