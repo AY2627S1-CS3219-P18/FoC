@@ -9,13 +9,15 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 
 export const notFound: RequestHandler = (req, res) => {
-  res.status(404).json({ error: 'Not Found', path: req.originalUrl });
+  res
+    .status(404)
+    .json({ message: `Not found: ${req.method} ${req.originalUrl}` });
 };
 
 /**
  * Last-resort handler. Express 5 forwards rejected promises from async route
  * handlers here automatically, so no try/catch wrapper is needed in routes.
- * TODO(team): agree on the API's error response shape.
+ * All error responses use the same `{ message }` shape as the controllers.
  */
 export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   if (res.headersSent) {
@@ -29,6 +31,6 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
       : 500;
   if (status >= 500) console.error(err);
   res.status(status).json({
-    error: status >= 500 ? 'Internal Server Error' : String(err.message),
+    message: status >= 500 ? 'Internal server error.' : String(err.message),
   });
 };

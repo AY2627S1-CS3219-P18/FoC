@@ -8,6 +8,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { createApp } from './app.js';
+import { createStubCreditsClient } from './clients/credits.client.js';
 import { loadEnv, type Env } from './config/env.js';
 import { createPrismaClient } from './db/prisma.js';
 
@@ -22,7 +23,10 @@ try {
   process.exit(1);
 }
 const prisma = createPrismaClient(env.DATABASE_URL);
-const app = createApp({ prisma });
+// TODO(team): swap for the real credit-service client when it exists.
+const credits = createStubCreditsClient();
+console.warn('Using STUB credits client: every reservation is approved.');
+const app = createApp({ prisma, credits });
 
 const server = app.listen(env.PORT, (err) => {
   if (err) throw err;
