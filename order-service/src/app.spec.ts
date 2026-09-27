@@ -8,11 +8,12 @@
 
 import request from 'supertest';
 import { createApp } from './app.js';
+import { createStubCreditsClient } from './clients/credits.client.js';
 import type { PrismaClient } from './db/prisma.js';
 
 function appWith(queryRaw: () => Promise<unknown>) {
   const prisma = { $queryRaw: queryRaw } as unknown as PrismaClient;
-  return createApp({ prisma });
+  return createApp({ prisma, credits: createStubCreditsClient() });
 }
 
 describe('GET /health', () => {

@@ -13,9 +13,9 @@ const ALLOWED_TRANSITIONS: Record<
   Partial<Record<RequestStatus, readonly ActorRole[]>>
 > = {
   open: { accepted: ['other'], expired: ['system'], cancelled: ['requester'] },
-  accepted: { picked_up: ['courier'], cancelled: ['requester', 'courier'] },
-  picked_up: { delivered: ['courier'], cancelled: ['requester', 'courier'] },
-  delivered: { completed: ['requester'] },
+  accepted: { picked_up: ['courier'], cancelled: ['requester'] },
+  picked_up: { delivered: ['courier'], cancelled: ['requester'] },
+  delivered: { completed: ['requester', 'system'] },
   completed: {},
   expired: {},
   cancelled: {},
@@ -30,16 +30,28 @@ export function roleOf(order: OrderRequest, actorId: ActorId): ActorRole {
 
 export type TransitionCheck =
   | { ok: true }
-  | { ok: false; error: ErrorCode.INVALID_TRANSITION | ErrorCode.FORBIDDEN };
+  | {
+      ok: false;
+      error:
+        | ErrorCode.INVALID_TRANSITION
+        | ErrorCode.FORBIDDEN
+        | ErrorCode.DEADLINE_NOT_REACHED;
+    };
 
 export function checkTransition(
   order: OrderRequest,
   to: RequestStatus,
   actorId: ActorId,
+  now: Date = new Date(),
 ): TransitionCheck {
   const allowedRoles = ALLOWED_TRANSITIONS[order.status][to];
   if (!allowedRoles) return { ok: false, error: ErrorCode.INVALID_TRANSITION };
   if (!allowedRoles.includes(roleOf(order, actorId)))
     return { ok: false, error: ErrorCode.FORBIDDEN };
+
+  if (to === 'cancelled' && order.status !== 'open') {
+    if (!order.completeBy || now < order.completeBy)
+      return { ok: false, error: ErrorCode.DEADLINE_NOT_REACHED };
+  }
   return { ok: true };
 }

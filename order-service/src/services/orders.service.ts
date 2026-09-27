@@ -1,3 +1,7 @@
+import type {
+  CreditsClient,
+  ReserveResult,
+} from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import type {
   OrderRequest,
@@ -17,8 +21,10 @@ export type CreateOrderResult =
 
 export const createOrder = async (
   prisma: PrismaClient,
+  credits: CreditsClient,
   requesterId: string,
   requestPayload: CreateOrderPayload,
+  now: Date = new Date(),
 ): Promise<CreateOrderResult> => {
   const errors: ErrorCode[] = [];
 
@@ -47,11 +53,13 @@ export const createOrder = async (
     errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
   }
   // Optional fields: only validated when present.
-  if (
-    requestPayload.completeBy != null &&
-    !isIsoDateString(requestPayload.completeBy)
-  ) {
-    errors.push(ErrorCode.INVALID_COMPLETE_BY);
+  if (requestPayload.completeBy != null) {
+    if (!isIsoDateString(requestPayload.completeBy)) {
+      errors.push(ErrorCode.INVALID_COMPLETE_BY);
+    } else if (Date.parse(requestPayload.completeBy) <= now.getTime()) {
+      // F9.1.1: complete-by must be later than the current time
+      errors.push(ErrorCode.COMPLETE_BY_IN_PAST);
+    }
   }
   if (
     requestPayload.additionalDetails != null &&
@@ -64,20 +72,51 @@ export const createOrder = async (
     return { ok: false, errors };
   }
 
+  // F9.1.2 (approach A): reserve credits first; only create the request
+  // once credit-service has confirmed the reservation.
+  const reservation = await credits
+    .reserve({ requesterId, amount: requestPayload.credits })
+    .catch((err: unknown): ReserveResult => {
+      console.error('Credit reservation failed:', err);
+      return { ok: false, reason: 'UNAVAILABLE' };
+    });
+  if (!reservation.ok) {
+    return {
+      ok: false,
+      errors: [
+        reservation.reason === 'INSUFFICIENT_CREDITS'
+          ? ErrorCode.INSUFFICIENT_CREDITS
+          : ErrorCode.CREDIT_SERVICE_UNAVAILABLE,
+      ],
+    };
+  }
+
   console.log('CREATING REQUEST');
-  const order = await prisma.orderRequest.create({
-    data: {
-      requesterId,
-      supplierId: requestPayload.supplierId,
-      description: requestPayload.description,
-      deliveryLocation: requestPayload.deliveryLocation,
-      credits: requestPayload.credits,
-      completeBy: requestPayload.completeBy
-        ? new Date(requestPayload.completeBy)
-        : null,
-      additionalDetails: requestPayload.additionalDetails ?? null,
-    },
-  });
+  let order: OrderRequest;
+  try {
+    order = await prisma.orderRequest.create({
+      data: {
+        requesterId,
+        supplierId: requestPayload.supplierId,
+        description: requestPayload.description,
+        deliveryLocation: requestPayload.deliveryLocation,
+        credits: requestPayload.credits,
+        completeBy: requestPayload.completeBy
+          ? new Date(requestPayload.completeBy)
+          : null,
+        additionalDetails: requestPayload.additionalDetails ?? null,
+      },
+    });
+  } catch (err) {
+    // Compensate: don't leave credits held for a request that doesn't exist.
+    await credits.release(reservation.reservationId).catch((releaseErr) => {
+      console.error(
+        `Failed to release reservation ${reservation.reservationId}:`,
+        releaseErr,
+      );
+    });
+    throw err;
+  }
   return { ok: true, order };
 };
 
@@ -89,13 +128,14 @@ export const transitionOrder = async (
   orderId: string,
   to: RequestStatus,
   actorId: ActorId,
+  now: Date = new Date(),
 ): Promise<TransitionResult> => {
   const order = await prisma.orderRequest.findUnique({
     where: { id: orderId },
   });
   if (!order) return { ok: false, error: ErrorCode.ORDER_NOT_FOUND };
 
-  const check = checkTransition(order, to, actorId);
+  const check = checkTransition(order, to, actorId, now);
   if (!check.ok) return check;
 
   // use versioning to prevent data race by updating only on row with same version as found order
@@ -104,8 +144,8 @@ export const transitionOrder = async (
     data: {
       status: to,
       version: { increment: 1 },
-      ...(to === 'accepted' && { courierId: actorId, acceptedAt: new Date() }),
-      ...(to === 'delivered' && { deliveredAt: new Date() }),
+      ...(to === 'accepted' && { courierId: actorId, acceptedAt: now }),
+      ...(to === 'delivered' && { deliveredAt: now }),
     },
   });
   if (count === 0) return { ok: false, error: ErrorCode.ORDER_CONFLICT };

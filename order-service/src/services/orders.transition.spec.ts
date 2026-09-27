@@ -97,6 +97,25 @@ describe('transitionOrder', () => {
     });
   });
 
+  it('F17.2: refuses to cancel an ongoing request before complete-by, without writing', async () => {
+    const { prisma, orderRequest } = fakePrisma({
+      status: 'accepted',
+      requesterId: REQUESTER,
+      courierId: COURIER,
+      completeBy: new Date('2026-09-27T14:00:00.000Z'),
+    });
+    await expect(
+      transitionOrder(
+        prisma,
+        ORDER_ID,
+        'cancelled',
+        REQUESTER,
+        new Date('2026-09-27T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.DEADLINE_NOT_REACHED });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
   it('returns ORDER_CONFLICT when someone else wrote first (0 rows updated)', async () => {
     const { prisma, orderRequest } = fakePrisma(openOrder, { updatedRows: 0 });
     await expect(

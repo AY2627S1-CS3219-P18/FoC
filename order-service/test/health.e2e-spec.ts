@@ -9,13 +9,14 @@
 import { config as loadDotenv } from 'dotenv';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
+import { createStubCreditsClient } from '../src/clients/credits.client.js';
 import { loadEnv } from '../src/config/env.js';
 import { createPrismaClient } from '../src/db/prisma.js';
 
 // Requires a reachable Postgres at DATABASE_URL (e.g. `docker compose up -d order-db`).
 loadDotenv({ quiet: true });
 const prisma = createPrismaClient(loadEnv().DATABASE_URL);
-const app = createApp({ prisma });
+const app = createApp({ prisma, credits: createStubCreditsClient() });
 
 afterAll(async () => {
   await prisma.$disconnect();

@@ -14,6 +14,10 @@ export enum ErrorCode {
   INVALID_TRANSITION = 'INVALID_TRANSITION',
   FORBIDDEN = 'FORBIDDEN',
   ORDER_CONFLICT = 'ORDER_CONFLICT',
+  COMPLETE_BY_IN_PAST = 'COMPLETE_BY_IN_PAST',
+  DEADLINE_NOT_REACHED = 'DEADLINE_NOT_REACHED',
+  INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
+  CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
 }
 
 export const ErrorMessage: Record<ErrorCode, string> = {
@@ -37,4 +41,11 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.FORBIDDEN]: 'You are not allowed to perform this action.',
   [ErrorCode.ORDER_CONFLICT]:
     'This order was changed by someone else. Refresh and try again.',
+  [ErrorCode.COMPLETE_BY_IN_PAST]: 'Complete-by time must be in the future.',
+  [ErrorCode.DEADLINE_NOT_REACHED]:
+    'An ongoing request can only be cancelled after its complete-by time has passed.',
+  [ErrorCode.INSUFFICIENT_CREDITS]:
+    'You do not have enough credits for this request.',
+  [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:
+    'Credits could not be reserved right now. Please try again.',
 };
