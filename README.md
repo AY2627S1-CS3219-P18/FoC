@@ -99,3 +99,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-27 | user-service | Stage 11b: Test Suite — Requester/Courier Toggle                                 | Vitest tests for PUT /users/me/active-view, login's activeView, and concurrency          |
 | 2026-09-27 | user-service | Stage 12a: GET /users/me                                                         | View-own-profile endpoint returning username and email only                              |
 | 2026-09-27 | user-service | Stage 12b: Change Username                                                       | PUT /users/me/username with format, unchanged, taken, and race handling                  |
+| 2026-09-27 | user-service | Stage 12c: Change Email — Initiate                                               | PUT /users/me/email sends an OTP to the new email; old email stays authoritative         |

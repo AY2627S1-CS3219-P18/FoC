@@ -1147,3 +1147,41 @@ None — the 12b spec was unambiguous.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 12c: Change Email — Initiate
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 12: Profile Management" design-decisions table (email-change rows: purpose, one-step flow, old-email-authoritative-until-verified) and "Stage 12c: Change Email — Initiate" section (`initiateEmailChange`, controller, route, Verification bullets).
+
+**Prompts (exact):**
+
+> go for it
+
+**Key responses:**
+Branched `feat/stage-12c-change-email-initiate` from `main` (up to date, Stage 12b merged). Implemented exactly the 12c spec:
+
+- `email.service.ts`: added a `Change Email` entry to `PURPOSE_COPY` — subject "Confirm your new FoC email address", same body shape as the other two templates.
+- `me.service.ts`: `initiateEmailChange(userId, { currentPassword, newEmail })` — format check against `EMAIL_REGEX` (now exported from `auth.service.ts`, same as `USERNAME_REGEX` in Stage 12b), unlocked `findById` + `bcrypt.compare` (bcrypt is slow, verified before locking), `EMAIL_UNCHANGED`/`EMAIL_TAKEN` checks, then inside `withTransaction`: `lockUserById`, re-verify the password against the locked row, re-check `EMAIL_UNCHANGED`/`EMAIL_TAKEN` against the locked row and a fresh `findByEmail` (closes the gap between the unlocked read and the lock), then `requestOtp({ purpose: 'Change Email', newEmail }, client)` with the exact same result mapping `forgotPassword` uses (`sent` success, `throttled` → `429` cooldown/limit, `no-user`/`not-verified` handled for exhaustiveness though unreachable here); `EMAIL_SEND_FAILED` propagates as `503` automatically since `issueOtp` throws it directly.
+- `auth.controller.ts`: exported the existing `emailField` (previously module-private) so `me.controller.ts` can reuse it verbatim, per the spec's "`newEmail` uses the shared `emailField`" — unlike Stage 12b's `newUsername`, which the spec gave its own distinct messages for.
+- `me.controller.ts`: `changeEmail`, `.strict()` Zod schema (`currentPassword` required/string, `newEmail` = shared `emailField`), returns `200 OTP_SENT`.
+- `me.routes.ts`: `router.put('/email', authenticate, meController.changeEmail)`.
+
+Verification actually run: `tsc --noEmit` for `src` and `tests/tsconfig.json`, and `eslint .`, all clean. Manually verified against the live container with the seeded super admin: correct password + valid unused new email → `200 OTP_SENT`, confirmed a `users_otps` row with `purpose = 'Change Email'` and `new_email` set, and the OTP itself in the dev-fallback console log; wrong current password → `401 INVALID_PASSWORD`; new email same as current → `409 EMAIL_UNCHANGED`; new email already registered (`testuser99@example.com`) → `409 EMAIL_TAKEN`; immediate repeat → `429 OTP_RESEND_COOLDOWN` with a `Retry-After` header; six requests with OTP rows backdated between each (to clear the cooldown) → the sixth returned `429 OTP_RESEND_LIMIT`, "Maximum OTP resends reached. Please try again in about an hour."; malformed email → `400 VALIDATION_ERROR`; missing `currentPassword` → `400` "Current password is required"; extra field → `400` "Request contains unexpected fields"; no `Authorization` header → `401`. Did not force an SMTP failure to check `EMAIL_SEND_FAILED` → `503` directly (would need reconfiguring and restarting the container); that code path is unchanged from `forgotPassword`, which already exercises it. Test `users_otps` rows were deleted afterward and the super admin's email was confirmed unchanged.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified: exported `emailField`, no behavior change)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — the 12c spec was unambiguous.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
