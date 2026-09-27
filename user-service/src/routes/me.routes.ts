@@ -10,6 +10,11 @@
  * Scope: Added GET / as specified in instructions.md Stage 12a.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added PUT /username as specified in instructions.md Stage 12b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -20,5 +25,6 @@ const router = Router();
 
 router.get('/', authenticate, meController.getProfile);
 router.put('/active-view', authenticate, meController.updateActiveView);
+router.put('/username', authenticate, meController.changeUsername);
 
 export default router;

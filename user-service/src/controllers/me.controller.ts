@@ -10,6 +10,11 @@
  * Scope: Added getProfile as specified in instructions.md Stage 12a.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added changeUsername as specified in instructions.md Stage 12b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -39,5 +44,22 @@ export const updateActiveView = asyncHandler(async (req, res) => {
 
 export const getProfile = asyncHandler(async (req, res) => {
   const profile = await meService.getOwnProfile(req.user!.user_id);
+  res.status(200).json(profile);
+});
+
+// Lowercased only, not trimmed — same normalisation as registration's username field,
+// but with this endpoint's own required/type messages.
+const newUsernameField = z
+  .string({
+    required_error: 'New username is required',
+    invalid_type_error: 'New username must be a string',
+  })
+  .toLowerCase();
+
+const changeUsernameSchema = z.object({ newUsername: newUsernameField }).strict();
+
+export const changeUsername = asyncHandler(async (req, res) => {
+  const { newUsername } = changeUsernameSchema.parse(req.body);
+  const profile = await meService.changeUsername(req.user!.user_id, newUsername);
   res.status(200).json(profile);
 });
