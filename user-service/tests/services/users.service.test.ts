@@ -10,6 +10,11 @@
  * Scope: Added tests for changeUserRole, covering the Stage 10 Verification bullets.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Updated the expected keys for the new active_view column (Stage 11); no new test cases.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
@@ -42,7 +47,7 @@ describe('listUsers', () => {
     for (const u of users) {
       expect(u).not.toHaveProperty('password_hash');
       expect(Object.keys(u).sort()).toEqual(
-        ['created_at', 'email', 'id', 'role', 'status', 'updated_at', 'username'].sort(),
+        ['active_view', 'created_at', 'email', 'id', 'role', 'status', 'updated_at', 'username'].sort(),
       );
     }
   });

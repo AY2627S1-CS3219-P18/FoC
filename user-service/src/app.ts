@@ -10,11 +10,14 @@
 // Author review:
 // 27/09/2026: Stage 9 - mount users router at /users
 // Author review: New
+// 27/09/2026: Stage 11 - mount me router at /users/me, before the users router
+// Author review:
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { ZodError } from 'zod';
 import authRouter from './routes/auth.routes.js';
+import meRouter from './routes/me.routes.js';
 import usersRouter from './routes/users.routes.js';
 import { AppError } from './utils/AppError.js';
 
@@ -29,6 +32,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/auth', authRouter);
+// Must precede usersRouter, or its '/:id' route would capture 'me'.
+app.use('/users/me', meRouter);
 app.use('/users', usersRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - HTTP-level tests for every auth route (supertest + real test DB)
 // Author review:
+// 27/09/2026: Stage 11 - updated fixtures for the new activeView field
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -350,6 +352,7 @@ describe('POST /auth/login', () => {
         username: 'user1',
         email: 'user1@example.com',
         role: 'user',
+        activeView: 'requester',
       });
       expect(cookieValue(res, 'refreshToken')).toMatch(/^[0-9a-f]{64}$/);
     });

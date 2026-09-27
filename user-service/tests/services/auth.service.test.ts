@@ -2,6 +2,8 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - service-level tests for each exported auth.service function
 // Author review:
+// 27/09/2026: Stage 11 - updated fixtures for the new activeView field
+// Author review:
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
@@ -150,6 +152,7 @@ describe('login', () => {
       username: 'user1',
       email: 'user1@example.com',
       role: 'user',
+      activeView: 'requester',
     });
     expect(result.refreshToken).toMatch(/^[0-9a-f]{64}$/);
   });
