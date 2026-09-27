@@ -14,6 +14,8 @@
 // Author review:
 // 27/09/2026: Stage 11 - active_view on UserRow, updateActiveView
 // Author review:
+// 27/09/2026: Stage 12b - updateUsername
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -196,6 +198,18 @@ export async function updateUserRole(
   const result = await db.query<UserRow>(
     `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [userId, role],
+  );
+  return result.rows[0]!;
+}
+
+export async function updateUsername(
+  userId: string,
+  username: string,
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, username],
   );
   return result.rows[0]!;
 }

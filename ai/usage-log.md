@@ -1109,3 +1109,41 @@ None — the 12a spec was unambiguous. The stale-container and missing dev-DB-co
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-09-27 — Stage 12b: Change Username
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 12: Profile Management" design-decisions table (username-change rows) and "Stage 12b: Change Username" section (`updateUsername`, `changeUsername`, controller, route, Verification bullets).
+
+**Prompts (exact):**
+
+> go ahead
+
+**Key responses:**
+Branched `feat/stage-12b-change-username` from `main` (up to date, Stage 12a merged). Implemented exactly the 12b spec:
+
+- `users.queries.ts`: `updateUsername(userId, username, db)` — `UPDATE ... SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *`.
+- `auth.service.ts`: exported `USERNAME_REGEX`, `EMAIL_REGEX`, `PASSWORD_REGEX`, and a new `USERNAME_MESSAGE` constant (previously an inline string in `register`), so `me.service.ts` can reuse the exact registration format rule/message per the spec ("Same format rule as registration") instead of duplicating it; `register`'s behavior is unchanged, it now reads the same constant. `EMAIL_REGEX` was also exported ahead of Stage 12c, which needs it for the same reason.
+- `me.service.ts`: `changeUsername(userId, newUsername)` — format check against `USERNAME_REGEX`, then inside `withTransaction`: `lockUserById` (404 if none), same-as-current check (409 `USERNAME_UNCHANGED`), `findByUsername` taken-by-another check (409 `USERNAME_TAKEN`), `updateUsername` wrapped in try/catch for Postgres `23505` mapped to the same `USERNAME_TAKEN` (covers the concurrent race), returns `{ username, email }`.
+- `me.controller.ts`: `changeUsername`, `.strict()` Zod schema with `newUsername` lowercased-only (not trimmed) and this endpoint's own required/type messages ("New username is required"/"New username must be a string") — distinct from `auth.controller.ts`'s `usernameField`, which has registration's own messages; the spec calls for the same normalisation but endpoint-specific text, unlike Stage 12c's `newEmail` which the spec says to build directly from the shared `emailField`.
+- `me.routes.ts`: `router.put('/username', authenticate, meController.changeUsername)`.
+
+Verification actually run: `tsc --noEmit` for `src` and `tests/tsconfig.json`, and `eslint .`, all clean. Manually verified against the rebuilt container (still healthy from Stage 12a) with the seeded super admin and a freshly registered second user (`testuser99`): same-username → `409 USERNAME_UNCHANGED`; valid rename → `200`, confirmed via a follow-up `GET /users/me` and reverted afterward; missing field → `400` "New username is required"; wrong type → `400` "New username must be a string"; extra field → `400` "Request contains unexpected fields"; too-short and spaced usernames → `400` with the registration format message; no `Authorization` header → `401`; second account attempting the first account's username → `409 USERNAME_TAKEN`; two concurrent `PUT /users/me/username` calls from the two accounts targeting the same new, unused username → exactly one `200`, the other `409 USERNAME_TAKEN`, no `500`s (exercises the `23505` catch path).
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified: exported regex/message constants, no behavior change)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — the 12b spec was unambiguous.
+
+**What I kept/changed/rejected:**
+Accepted all changes.

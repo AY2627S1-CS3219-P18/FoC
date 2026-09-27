@@ -26,6 +26,8 @@
 // Author review:
 // 27/09/2026: Stage 11 - login returns activeView
 // Author review:
+// 27/09/2026: Stage 12b - exported USERNAME_REGEX, EMAIL_REGEX, USERNAME_MESSAGE for reuse in me.service.ts
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -39,11 +41,13 @@ import { signAccessToken } from '../utils/jwt.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
 
-const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
+export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
-const PASSWORD_MESSAGE =
+export const USERNAME_MESSAGE =
+  'Username must contain between 3 and 255 chars and have no spaces or special characters.';
+export const PASSWORD_MESSAGE =
   'Password must contain at least 8 characters, with at least one uppercase, one lowercase, one digit and one special character. ';
 
 const OTP_REGEX = /^\d{6}$/;
@@ -69,11 +73,7 @@ export async function register({
   password: string;
 }): Promise<void> {
   if (!USERNAME_REGEX.test(username)) {
-    throw new AppError(
-      400,
-      'Username must contain between 3 and 255 chars and have no spaces or special characters.',
-      'VALIDATION_ERROR',
-    );
+    throw new AppError(400, USERNAME_MESSAGE, 'VALIDATION_ERROR');
   }
 
   if (!EMAIL_REGEX.test(email)) {
