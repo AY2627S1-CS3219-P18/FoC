@@ -20,14 +20,22 @@
  * Scope: Added initiateEmailChange as specified in instructions.md Stage 12c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added verifyEmailChangeOtp, resendChangeEmailOtp and resendChangePasswordOtp as
+ *        specified in instructions.md Stage 12d. Factored initiateEmailChange's inline
+ *        requestOtp-result switch into a shared helper reused by all three (no behavior change).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
+import * as otpQueries from '../db/queries/otp.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { EMAIL_REGEX, USERNAME_MESSAGE, USERNAME_REGEX } from './auth.service.js';
-import { requestOtp } from './otp.service.js';
+import { checkOtp, requestOtp, type RequestOtpResult } from './otp.service.js';
 import { toPublicUser, type PublicUser } from './users.service.js';
 
 function isPgUniqueViolation(err: unknown): err is { code: string; constraint?: string } {
@@ -37,6 +45,38 @@ function isPgUniqueViolation(err: unknown): err is { code: string; constraint?: 
     'code' in err &&
     (err as { code?: unknown }).code === '23505'
   );
+}
+
+// Shared by initiateEmailChange, resendChangeEmailOtp and resendChangePasswordOtp.
+// no-user/not-verified cannot occur at any of these call sites, since each already holds
+// the user row locked and active, but the switch stays exhaustive.
+function throwOnUnsentOtp(result: RequestOtpResult): void {
+  switch (result.status) {
+    case 'sent':
+      return;
+    case 'throttled':
+      if (result.reason === 'cooldown') {
+        throw new AppError(
+          429,
+          'Please wait before requesting another OTP',
+          'OTP_RESEND_COOLDOWN',
+          result.retryAfterSeconds,
+        );
+      }
+      throw new AppError(
+        429,
+        'Maximum OTP resends reached. Please try again in about an hour.',
+        'OTP_RESEND_LIMIT',
+      );
+    case 'no-user':
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    case 'not-verified':
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+  }
 }
 
 // A plain single-row UPDATE: no lock or transaction, since there is no transition rule and no
@@ -160,34 +200,87 @@ export async function initiateEmailChange(
       { userId: locked.id, email: locked.email, purpose: 'Change Email', newEmail },
       client,
     );
+    throwOnUnsentOtp(result);
+  });
+}
 
-    // Same mapping as forgotPassword; no-user/not-verified cannot occur here since the
-    // user row is already locked and active, but the switch stays exhaustive.
-    switch (result.status) {
-      case 'sent':
-        return;
-      case 'throttled':
-        if (result.reason === 'cooldown') {
-          throw new AppError(
-            429,
-            'Please wait before requesting another OTP',
-            'OTP_RESEND_COOLDOWN',
-            result.retryAfterSeconds,
-          );
-        }
-        throw new AppError(
-          429,
-          'Maximum OTP resends reached. Please try again in about an hour.',
-          'OTP_RESEND_LIMIT',
-        );
-      case 'no-user':
-        throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
-      case 'not-verified':
-        throw new AppError(
-          403,
-          'Account not verified. Please finish registration first.',
-          'ACCOUNT_NOT_VERIFIED',
-        );
+// The OTP row's new_email is always set for a Change Email purpose: initiateEmailChange is
+// the only writer, and it always passes newEmail.
+export async function verifyEmailChangeOtp(userId: string, otp: string): Promise<void> {
+  const result = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
+
+    const pending = await otpQueries.findLatestOtp(userId, 'Change Email', client);
+    if (!pending) {
+      throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    }
+
+    const check = await checkOtp({ userId, purpose: 'Change Email', otp }, client);
+    if (check.ok) {
+      try {
+        await userQueries.updateEmail(locked.id, pending.new_email!, client);
+      } catch (err) {
+        if (isPgUniqueViolation(err) && (err.constraint ?? '').includes('email')) {
+          // Someone else took the address in the meantime. The whole transaction, including
+          // the OTP consumption above, rolls back, so the OTP stays usable for another email.
+          throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
+        }
+        throw err;
+      }
+    }
+    return check;
+  });
+
+  // Thrown only after commit so the incremented attempt count is persisted.
+  if (!result.ok) {
+    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+  }
+}
+
+export async function resendChangeEmailOtp(userId: string): Promise<void> {
+  await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    const pending = await otpQueries.findLatestOtp(userId, 'Change Email', client);
+    if (!pending || pending.consumed_at) {
+      throw new AppError(400, 'No pending email change found', 'NO_PENDING_EMAIL_CHANGE');
+    }
+
+    const result = await requestOtp(
+      {
+        userId: locked.id,
+        email: locked.email,
+        purpose: 'Change Email',
+        newEmail: pending.new_email!,
+      },
+      client,
+    );
+    throwOnUnsentOtp(result);
+  });
+}
+
+export async function resendChangePasswordOtp(userId: string): Promise<void> {
+  await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    const pending = await otpQueries.findLatestOtp(userId, 'Change Password', client);
+    if (!pending || pending.consumed_at) {
+      throw new AppError(400, 'No pending password change found', 'NO_PENDING_PASSWORD_CHANGE');
+    }
+
+    const result = await requestOtp(
+      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+      client,
+    );
+    throwOnUnsentOtp(result);
   });
 }

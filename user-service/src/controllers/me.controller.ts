@@ -20,6 +20,11 @@
  * Scope: Added changeEmail as specified in instructions.md Stage 12c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added verifyOtp and resendOtp as specified in instructions.md Stage 12d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -86,4 +91,54 @@ export const changeEmail = asyncHandler(async (req, res) => {
   res
     .status(200)
     .json({ message: 'Verification code sent to your new email', code: 'OTP_SENT' });
+});
+
+// This route's own purpose set, kept separate from auth.controller.ts's — /auth/verify-otp
+// and /auth/resend-otp stay public and only ever accept registration | forgot_password.
+const mePurposeErrorMap: z.ZodErrorMap = (issue) => {
+  if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
+  if (issue.code === 'invalid_type' && issue.received === 'undefined') {
+    return { message: 'Purpose is required' };
+  }
+  return { message: 'Purpose must be a string' };
+};
+
+const meVerifyOtpSchema = z
+  .object({
+    otp: z.string({
+      required_error: 'OTP is required',
+      invalid_type_error: 'OTP must be a string',
+    }),
+    // Only change_email has a verify step today; change_password is checked and consumed
+    // only inside confirm-password-change (Stage 12e).
+    purpose: z.enum(['change_email'], { errorMap: mePurposeErrorMap }),
+  })
+  .strict();
+
+export const verifyOtp = asyncHandler(async (req, res) => {
+  const { otp } = meVerifyOtpSchema.parse(req.body);
+  await meService.verifyEmailChangeOtp(req.user!.user_id, otp);
+  res.status(200).json({ message: 'Email updated successfully', code: 'EMAIL_CHANGE_SUCCESS' });
+});
+
+const meResendOtpSchema = z
+  .object({
+    purpose: z.enum(['change_email', 'change_password'], { errorMap: mePurposeErrorMap }),
+  })
+  .strict();
+
+export const resendOtp = asyncHandler(async (req, res) => {
+  const { purpose } = meResendOtpSchema.parse(req.body);
+  switch (purpose) {
+    case 'change_email':
+      await meService.resendChangeEmailOtp(req.user!.user_id);
+      break;
+    case 'change_password':
+      await meService.resendChangePasswordOtp(req.user!.user_id);
+      break;
+  }
+  res.status(200).json({
+    message: 'A new verification code has been sent to your email',
+    code: 'OTP_SENT',
+  });
 });
