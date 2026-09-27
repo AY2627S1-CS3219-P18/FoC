@@ -15,9 +15,15 @@
  * Scope: Added changeUsername as specified in instructions.md Stage 12b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
+ * Scope: Added changeEmail as specified in instructions.md Stage 12c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
+import { emailField } from './auth.controller.js';
 import * as meService from '../services/me.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -62,4 +68,22 @@ export const changeUsername = asyncHandler(async (req, res) => {
   const { newUsername } = changeUsernameSchema.parse(req.body);
   const profile = await meService.changeUsername(req.user!.user_id, newUsername);
   res.status(200).json(profile);
+});
+
+const changeEmailSchema = z
+  .object({
+    currentPassword: z.string({
+      required_error: 'Current password is required',
+      invalid_type_error: 'Current password must be a string',
+    }),
+    newEmail: emailField,
+  })
+  .strict();
+
+export const changeEmail = asyncHandler(async (req, res) => {
+  const { currentPassword, newEmail } = changeEmailSchema.parse(req.body);
+  await meService.initiateEmailChange(req.user!.user_id, { currentPassword, newEmail });
+  res
+    .status(200)
+    .json({ message: 'Verification code sent to your new email', code: 'OTP_SENT' });
 });

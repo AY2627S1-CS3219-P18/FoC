@@ -22,6 +22,8 @@
 // Author review:
 // 25/09/2026: Stage 6e - resend-otp accepts forgot_password purpose
 // Author review:
+// 27/09/2026: Stage 12c - exported emailField for reuse in me.controller.ts
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -31,7 +33,9 @@ import { REFRESH_COOKIE_OPTIONS } from '../utils/cookies.js';
 import { verifyAccessToken } from '../utils/jwt.js';
 
 // Emails are matched case-sensitively in the DB, so normalise them once here.
-const emailField = z
+// Exported so other controllers (e.g. me.controller.ts) reuse the same normalisation
+// and messages instead of redefining the field.
+export const emailField = z
   .string({
     required_error: 'Email is required',
     invalid_type_error: 'Email must be a string',
