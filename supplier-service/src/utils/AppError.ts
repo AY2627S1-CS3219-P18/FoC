@@ -27,8 +27,6 @@ export class AppError extends Error {
     this.statusCode = statusCode;
     this.error = error;
     if (options?.details !== undefined) this.details = options.details;
-    if (options?.retryAfterSeconds !== undefined) {
-      this.retryAfterSeconds = options.retryAfterSeconds;
-    }
+    if (options?.retryAfterSeconds !== undefined) this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
