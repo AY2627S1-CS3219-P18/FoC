@@ -1839,3 +1839,65 @@ None remaining — the mismatch was surfaced as a stop-and-ask item and the team
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-28 — Supplier Service: Phase 1 Supplier Read APIs Implementation Plan
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceSpec.md` ("Phase 1 — Supplier Read APIs"), `supplier-service/SupplierServiceArchitecture.md` (§4, §5, §6.2, §6.3, §7 endpoint table, §7.2, §7.3), `supplier-service/AGENTS.md` ("Tech stack").
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 1
+
+**Key responses:**
+Used the writing-plans skill to write `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`: nine TDD tasks implementing only the four requester-mode read endpoints (list, detail, location reference, category reference) as controller → business service → `SupplierRepository` interface → MySQL implementation, plus the `is_open` calculation and request validation. Noted that only Phase 0 Tasks 1–2 exist on disk, so Phase 0 must finish first. Did not decide points the documents leave open; listed eight under "Points to confirm with the team" (notably: F7.1.2's open-status filter has no query parameter in §7.2, so none was added; `limit` handling; defaults/edge cases; `photoLocation` signing; Facility/close-time `isOpen` boundaries). No code was written or run in this session.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Eight open points, listed in the plan's "Points to confirm with the team" section; the F7.1.2 open-status filter gap and the `limit` behaviour need a team decision before Task 3.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-29 — Supplier Service: Phase 0 Tasks 6–11 Implementation
+
+**Tool:** Claude Code (model: claude-sonnet-5), with subagents (claude-sonnet-5)
+**Mode:** generate | debug | docs
+**Scope:** Implementation code | Boilerplate | Debugging | Refactor/Docs
+**Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (Tasks 6–11), `supplier-service/SupplierServiceArchitecture.md` (§3, §7 intro, §7.1, §7.5), `supplier-service/SupplierServiceSpec.md` ("Phase 0 — Foundations").
+
+**Prompts (exact):**
+> Continue to implement @docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md with subagents.
+> State:
+> Tasks 1–5: implemented; Task 5 timestamp test passes.
+> Task 6: implemented and its 4 tests passed, but cannot commit due .git/index.lock permission denial.
+> Tasks 7–11: not started.
+> MySQL/Redis smoke checks were unavailable earlier; code-level reviews passed where completed.
+
+**Key responses:**
+Committed Task 6 (errorHandler; 4 tests re-run and passing; no index.lock present this session). Dispatched subagents for Task 7 (rate limiter), Task 8 (auth middleware), Tasks 9–10 (role guard, app wiring), each test-first. Departures from the plan snippets: `app.set('trust proxy', true)` in the rate-limit test so the X-Forwarded-For case is meaningful; authenticate.ts types the fetch result as `Awaited<ReturnType<typeof fetch>>` and uses bare `catch {` (plan version had a type error and an unused variable); added `vitest.config.ts` supplying test env values from `.env.example` (config.ts exits on missing env) — a test-tooling addition not in the plan; changed the `ioredis` import in `src/redis/client.ts` to the named `Redis` export to fix TS2351. Wrote `supplier-service/README.md`. Full suite: 8 files / 26 tests passed; `tsc --noEmit` clean after the ioredis fix; eslint clean on src. No per-task spec/quality reviewer subagents were run for Tasks 7–10; the controller reviewed the reports only. MySQL migration (Task 3 Step 4) and Redis PING (Task 4 Step 2) were not run this session. Task 1 plan says `vitest ^1.6.0` but the working-tree package.json (uncommitted) has `^5.0.2` and a reformatted layout — left uncommitted for the team.
+
+**Files:**
+- `supplier-service/src/middleware/errorHandler.ts`, `errorHandler.test.ts` (created, committed)
+- `supplier-service/src/middleware/rateLimit.ts`, `rateLimit.test.ts` (created)
+- `supplier-service/src/middleware/authenticate.ts`, `authenticate.test.ts` (created)
+- `supplier-service/src/types/express.d.ts` (created)
+- `supplier-service/vitest.config.ts` (created)
+- `supplier-service/src/middleware/requireRole.ts`, `requireRole.test.ts` (created)
+- `supplier-service/src/app.ts`, `app.integration.test.ts` (created)
+- `supplier-service/src/redis/client.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Confirm the `vitest.config.ts` test-env addition and the `vitest ^5.0.2` / package.json reformat in the working tree. Confirm smoke checks against real MySQL/Redis before relying on Tasks 3–4.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
