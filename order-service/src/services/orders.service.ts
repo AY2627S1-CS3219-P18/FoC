@@ -119,6 +119,24 @@ export const createOrder = async (
   return { ok: true, order };
 };
 
+export const getOrders = async (
+  prisma: PrismaClient,
+  statusFilter: RequestStatus | undefined,
+) => {
+  try {
+    return await prisma.orderRequest.findMany({
+      where: statusFilter
+        ? {
+            status: statusFilter,
+          }
+        : undefined,
+    });
+  } catch (error) {
+    // TODO: retry and log
+    throw error;
+  }
+};
+
 export type TransitionResult =
   { ok: true; order: OrderRequest } | { ok: false; error: ErrorCode };
 
