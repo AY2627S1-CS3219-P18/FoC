@@ -25,6 +25,10 @@ Scope: 2026-09-28 update — recorded the team-supplied resolution that recreati
 Author review:
 Scope: 2026-09-28 update — recorded the team-supplied decision that photos submitted on the reactivation path replace the reactivated supplier's existing photo rows entirely.
 Author review:
+Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super admin` (space)
+       throughout, per the team's resolution of a naming mismatch discovered against the User
+       Service's actual `role_enum`/`GET /auth/verify` after merging `main` into `supplier-service`.
+Author review:
 -->
 
 # Supplier Service Architecture
@@ -462,42 +466,42 @@ Service consumes the existing User Service authentication contract:
 - access tokens are RS256 JWTs containing the user subject and role;
 - the User Service exposes `GET /auth/verify`, which returns
   `{ "user_id": "...", "role": "..." }` for a valid bearer token; and
-- the accepted application roles are `user`, `admin`, and `super_admin`.
+- the accepted application roles are `user`, `admin`, and `super admin`.
 
 Any OAuth or other upstream login mechanism is an authentication concern outside the Supplier
 Service. Supplier Service authorization uses the authenticated identity and role supplied by the
 User Service contract.
 
-`admin` and `super_admin` currently have identical capabilities within the Supplier Service.
-`super_admin` additionally carries admin-management capabilities that belong to the User Service
+`admin` and `super admin` currently have identical capabilities within the Supplier Service.
+`super admin` additionally carries admin-management capabilities that belong to the User Service
 and are outside the Supplier Service boundary.
 
 All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
 
 | Consumer and accepted roles | Endpoint | Request | Response |
 | --- | --- | --- | --- |
-| User dashboard — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | `metadata`: `totalRecords`, `currPage`, `limit`, `totalPages`; `data`: `id`, `name`, `type`, `location`, `faculty`, `level`, `categories`, `photos`, `isOpen` |
-| User detailed view — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/:id` | Supplier identifier in the path | User summary fields plus `desc`, `openingHours` |
-| Admin dashboard — `admin`, `super_admin` | `GET /api/v1/admin/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | User summary fields plus `isActive` and `isDeleted` |
-| Admin detailed view — `admin`, `super_admin` | `GET /api/v1/admin/suppliers/:id` | Supplier identifier in the path | User detailed fields plus `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, and `version` |
-| Location reference options — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/reference/location` | No request body | `locations`: location and faculty text plus `location_id` and `faculty_id` |
-| Category reference options — `user`, `admin`, `super_admin` | `GET /api/v1/suppliers/reference/categories` | No request body | `categories`: category text plus `category_id` |
-| Faculty management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/faculties` | JSON body: `faculty` | Created faculty: `faculty_id`, `faculty` |
-| Faculty management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/faculties/:id` | JSON body: `faculty` | Updated faculty: `faculty_id`, `faculty` |
-| Faculty management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/faculties/:id` | Faculty identifier in the path | Deletion response |
-| Location management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/locations` | JSON body: `location`, `faculty_id`, `level` | Created location: `location_id`, `location`, `faculty_id`, `level` |
-| Location management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/locations/:id` | JSON body: any of `location`, `faculty_id`, `level` | Updated location record |
-| Location management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/locations/:id` | Location identifier in the path | Deletion response |
-| Category management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/categories` | JSON body: `category_type` | Created category: `category_id`, `category_type` |
-| Category management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/categories/:id` | JSON body: `category_type` | Updated category record |
-| Category management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
-| Admin create — `admin`, `super_admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references, or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated (§6.2) |
-| Admin edit — `admin`, `super_admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
-| Admin soft delete — `admin`, `super_admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
+| User dashboard — `user`, `admin`, `super admin` | `GET /api/v1/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | `metadata`: `totalRecords`, `currPage`, `limit`, `totalPages`; `data`: `id`, `name`, `type`, `location`, `faculty`, `level`, `categories`, `photos`, `isOpen` |
+| User detailed view — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/:id` | Supplier identifier in the path | User summary fields plus `desc`, `openingHours` |
+| Admin dashboard — `admin`, `super admin` | `GET /api/v1/admin/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | User summary fields plus `isActive` and `isDeleted` |
+| Admin detailed view — `admin`, `super admin` | `GET /api/v1/admin/suppliers/:id` | Supplier identifier in the path | User detailed fields plus `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, and `version` |
+| Location reference options — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/reference/location` | No request body | `locations`: location and faculty text plus `location_id` and `faculty_id` |
+| Category reference options — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/reference/categories` | No request body | `categories`: category text plus `category_id` |
+| Faculty management (create) — `admin`, `super admin` | `POST /api/v1/admin/reference/faculties` | JSON body: `faculty` | Created faculty: `faculty_id`, `faculty` |
+| Faculty management (edit) — `admin`, `super admin` | `PUT /api/v1/admin/reference/faculties/:id` | JSON body: `faculty` | Updated faculty: `faculty_id`, `faculty` |
+| Faculty management (delete) — `admin`, `super admin` | `DELETE /api/v1/admin/reference/faculties/:id` | Faculty identifier in the path | Deletion response |
+| Location management (create) — `admin`, `super admin` | `POST /api/v1/admin/reference/locations` | JSON body: `location`, `faculty_id`, `level` | Created location: `location_id`, `location`, `faculty_id`, `level` |
+| Location management (edit) — `admin`, `super admin` | `PUT /api/v1/admin/reference/locations/:id` | JSON body: any of `location`, `faculty_id`, `level` | Updated location record |
+| Location management (delete) — `admin`, `super admin` | `DELETE /api/v1/admin/reference/locations/:id` | Location identifier in the path | Deletion response |
+| Category management (create) — `admin`, `super admin` | `POST /api/v1/admin/reference/categories` | JSON body: `category_type` | Created category: `category_id`, `category_type` |
+| Category management (edit) — `admin`, `super admin` | `PUT /api/v1/admin/reference/categories/:id` | JSON body: `category_type` | Updated category record |
+| Category management (delete) — `admin`, `super admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
+| Admin create — `admin`, `super admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references, or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated (§6.2) |
+| Admin edit — `admin`, `super admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
+| Admin soft delete — `admin`, `super admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
 
 Management endpoints for `faculties`, `supplier_locations`, and `supplier_categories` follow the
 same request/response shape as their corresponding lookup tables (§6.2, §6.4) and are restricted to
-`admin` and `super_admin`, unlike the read-only reference endpoints above which are open to all
+`admin` and `super admin`, unlike the read-only reference endpoints above which are open to all
 roles.
 
 ```mermaid
@@ -568,7 +572,7 @@ project-specific endpoint mapping for the team to complete:
 | Request completes successfully without creating a resource | `GET /api/v1/suppliers` `GET /api/v1/suppliers/reference/location` `GET /api/v1/suppliers/reference/categories` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `200 OK` | Request succeeded | Used for reads, updates, and soft-deletes. Response body returns payload lists, single records, or update confirmations. Note: Alternatively, DELETE can return 204 No Content if no response body is sent. |
 | Supplier is created successfully | `POST /api/v1/admin/suppliers` | `201 Created` | Resource was created successfully | Returns the newly generated supplier ID, creation metadata, and an array of photo_ids and photo binaries |
 | Bearer token is missing, malformed, expired, or invalid | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `401 Unauthorized` | Authentication is required or failed | User Service Contract: Triggered if Authorization header is missing or local RS256 signature verification fails. Matches the internal `user-service` validation exception envelope perfectly. |
-| Authenticated role is not permitted to use the endpoint | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `403 Forbidden` | Authenticated identity is not authorized for this operation | Triggered when a valid JWT is verified, but the embedded role claim payload reads `user` instead of `admin` or `super_admin` |
+| Authenticated role is not permitted to use the endpoint | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `403 Forbidden` | Authenticated identity is not authorized for this operation | Triggered when a valid JWT is verified, but the embedded role claim payload reads `user` instead of `admin` or `super admin` |
 | Request syntax, structure, or encoding is malformed | All API Endpoints | `400 Bad Request` | Request cannot be processed as a well-formed request | Triggered by corrupt data like bad multipart/form-data boundaries, malformed JSON strings in openingHours/photo_sort_order, or missing body content etc. |
 | Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, limit over 50, invalid location_id, or mismatched file placeholders, etc. Returns the standardized details error array. |
 | Requested supplier or reference resource does not exist | `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `404 Not Found` | Referenced resource cannot be found | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database. |
@@ -1031,12 +1035,12 @@ additional design decisions.
     `supplier_photos` each enforce at most one row per supplier per day-of-week/display-order; and
     all Supplier Service timestamps (`created_on`, `updated_on`, `is_open`) use Singapore time
     (UTC+8) exclusively.
-12. `admin` and `super_admin` currently share identical Supplier Service capabilities; `super_admin`'s
+12. `admin` and `super admin` currently share identical Supplier Service capabilities; `super admin`'s
     additional admin-management capability belongs to the User Service and is outside this
     service's scope.
 13. Lookup-table management (create/edit/delete) for `faculties`, `supplier_locations`, and
     `supplier_categories` is now included in the API operation inventory, restricted to `admin` and
-    `super_admin`, alongside the existing all-role read-only reference endpoints.
+    `super admin`, alongside the existing all-role read-only reference endpoints.
 14. `PUT` and `DELETE` are idempotent by design. `POST /api/v1/admin/suppliers` uses a client-supplied
     `Idempotency-Key` header cached in Redis, returning `409 Conflict` on a still-in-flight replay or
     the cached response on a replay after completion. The header name is finalized.
@@ -1071,6 +1075,12 @@ additional design decisions.
     (`DELETE`) only ever sets `is_deleted` — it does not also need to set `is_active`, since either
     flag alone already hides a supplier from user-facing results (§7 body text after the endpoint
     table).
+19. The `super_admin` role literal used throughout this document (§7 and elsewhere) has been
+    corrected to `super admin` (with a space), matching the literal string actually used by the
+    User Service's `role_enum` and returned by its `GET /auth/verify` (`user-service/src/db/init.sql`,
+    `user-service/src/controllers/auth.controller.ts`). This was discovered as a cross-service naming
+    mismatch after merging `main`'s user-service work into the `supplier-service` branch; the team
+    resolved it by adopting the User Service's existing string rather than changing the User Service.
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

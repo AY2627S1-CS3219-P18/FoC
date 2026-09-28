@@ -1811,3 +1811,32 @@ None — the user supplied the stack directly; the agent only recorded and cross
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-28 — Supplier Service: `super admin` Role Literal Reconciled After Merging main
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug | docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** User-supplied resolution ("follow super admin with space"), given directly in chat, of a cross-service naming mismatch the agent surfaced after merging `main` into `supplier-service`.
+
+**Prompts (exact):**
+> does the additions in user-service change anything I have planned and speced?
+
+> follow super admin with space
+
+**Key responses:**
+While reviewing what `main`'s user-service additions changed for the Supplier Service, found that `SupplierServiceArchitecture.md` and `SupplierServiceSpec.md` (and the Phase 0 plan built from them) assumed the literal role string `super_admin`, but the merged user-service code actually defines `role_enum AS ENUM ('user', 'admin', 'super admin')` (with a space) and returns that same string verbatim from `GET /auth/verify`. Flagged this as a blocking cross-service mismatch rather than deciding it, since fixing it either way is a naming decision for the team. The user chose to adopt the User Service's existing `super admin` string. Replaced `super_admin` with `super admin` throughout the body text of both documents (26 + 2 occurrences), left prior dated disclosure-header entries untouched, added a new §9 traceability item (19) in the architecture doc recording the correction and its cause, and updated the Phase 0 plan's Task 9 test/comment and self-review notes to match. Task 8's tests were unaffected (they only use `'admin'`).
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None remaining — the mismatch was surfaced as a stop-and-ask item and the team resolved it directly.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

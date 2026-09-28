@@ -20,6 +20,10 @@ Scope: 2026-09-28 update — recorded the team-supplied decision that reactivati
        replace the existing supplier's photo rows; no open questions remain from this line of
        clarification.
 Author review:
+Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super admin` (space) per
+       the team's resolution of a naming mismatch against the User Service's actual `role_enum`/
+       `GET /auth/verify`, discovered after merging `main` into `supplier-service`.
+Author review:
 -->
 
 # Supplier Service Implementation Spec
@@ -74,7 +78,7 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
   reject unauthenticated requests. This is the core of NFR6.1 (#60) — "every modification request
   shall undergo token verification; non-administrative requests shall be rejected without
   modifying persistent state."
-- Role-guard middleware for `user` / `admin` / `super_admin` per endpoint (§7's per-endpoint role
+- Role-guard middleware for `user` / `admin` / `super admin` per endpoint (§7's per-endpoint role
   column).
 - Global error handler emitting the fixed error envelope (§7.1: `status_code`, `error`, `message`,
   `timestamp`, `details`) for `400`/`401`/`403`/`404`/`409`/`422`/`429`/`500`.
@@ -162,7 +166,7 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
 - `GET /api/v1/admin/suppliers` and `GET /api/v1/admin/suppliers/:id` — same shape as Phase 1 plus
   `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, `version`; no visibility filtering
   (admins see everything) (§7).
-- Lookup-table management endpoints (admin/super_admin only), mirroring the read-only reference
+- Lookup-table management endpoints (admin/super admin only), mirroring the read-only reference
   endpoints: `POST`/`PUT`/`DELETE` for `/api/v1/admin/reference/faculties`, `.../locations`,
   `.../categories` (§7 table). These exist so an admin can create suppliers against real
   location/category IDs rather than only pre-seeded ones.
