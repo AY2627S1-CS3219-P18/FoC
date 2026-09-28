@@ -19,6 +19,12 @@ Scope: 2026-09-27 update — recorded the team-supplied optimistic-concurrency v
 Author review:
 Scope: 2026-09-27 update — recorded the team-supplied immediate-response contract after job enqueue, the generic Redis job payload and exponential-backoff retry policy, the dead-letter-jobs table, the finalized `Idempotency-Key` header name, the 24-hour signed photo URL duration, and the continued deferral of downstream Order/Message Service contracts.
 Author review:
+Scope: 2026-09-28 update — recorded the team-supplied API-gateway explanation for same-origin deployment, the supplier name/type/location uniqueness constraint, confirmation of `supplier_id` as a stable cross-service reference, and clarification that `is_active` toggling is independent of soft-delete (`is_deleted`).
+Author review:
+Scope: 2026-09-28 update — recorded the team-supplied resolution that recreating a soft-deleted supplier's exact name/type/location reverses the soft delete and applies the create request as an update instead of inserting a new row.
+Author review:
+Scope: 2026-09-28 update — recorded the team-supplied decision that photos submitted on the reactivation path replace the reactivated supplier's existing photo rows entirely.
+Author review:
 -->
 
 # Supplier Service Architecture
@@ -84,8 +90,9 @@ The View communicates with the Controller over HTTP. The Controller does not exp
 directly; it invokes the business layer, which uses the persistence layer to access the Model's
 stored data.
 
-The SPA and the Supplier Service API are served from the same origin, so cross-origin resource
-sharing (CORS) configuration between the View and the Controller is not required.
+A single API gateway fronts all FoC services, so the SPA and the Supplier Service API are reached
+through that shared origin; cross-origin resource sharing (CORS) configuration between the View and
+the Controller is therefore not required.
 
 ```mermaid
 sequenceDiagram
@@ -248,8 +255,10 @@ erDiagram
 
 The supplier status fields have the following meanings:
 
-- `is_active` controls whether a supplier result is shown;
-- `is_deleted` records that a supplier has been soft-deleted;
+- `is_active` is an independent visibility toggle set directly by an admin edit; it is unrelated to
+  `is_deleted` and is not touched by the soft-delete (`DELETE`) operation;
+- `is_deleted` records that a supplier has been soft-deleted via `DELETE`; a soft-deleted supplier is
+  hidden regardless of its `is_active` value, so soft-delete has no need to also update `is_active`;
 - `is_open` is calculated for list and detail responses from the current time and opening hours;
   and
 - `version` is an optimistic-concurrency counter. Every update to a supplier record includes the
@@ -262,6 +271,22 @@ The supplier status fields have the following meanings:
 two separate hours entries for the same day. `supplier_photos` has at most one row per
 `supplier_id`/`display_order` pair — two photos belonging to the same supplier cannot share a
 display position.
+
+`supplier_name`, `supplier_type`, and `location_id` together must be unique across `supplier`,
+including soft-deleted rows: the database-level `UNIQUE` constraint on
+`supplier(supplier_name, supplier_type, location_id)` applies regardless of `is_deleted`. Because of
+this, `POST /api/v1/admin/suppliers` branches on the application-level pre-check result:
+
+- no existing row matches the submitted name/type/location — insert a new supplier row as normal;
+- an existing row matches and is *not* soft-deleted — reject as a duplicate (F8.2.2, `422`);
+- an existing row matches and *is* soft-deleted — reverse the soft delete (`is_deleted = FALSE`) on
+  that existing row and apply the submitted fields to it as an update, rather than inserting a new
+  row. This reuses the existing `supplier_id`, preserves any history tied to it, and keeps the
+  `UNIQUE` constraint satisfied without needing to exclude soft-deleted rows from it.
+
+On this reactivation-as-update path, any newly submitted photos replace the reactivated supplier's
+existing photo rows entirely (the prior photo rows are deleted and the submitted ones inserted in
+their place) rather than being appended alongside them.
 
 For a Facility, `open_time` is set to `00:00` and `close_time` is set to `23:59` (or equivalent
 database time values) to represent 24-hour availability. Store schedules use the day-of-week and
@@ -349,6 +374,7 @@ CREATE TABLE supplier (
     updated_on DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     version BIGINT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (supplier_id),
+    UNIQUE KEY uq_supplier_name_type_location (supplier_name, supplier_type, location_id),
     KEY idx_supplier_location (location_id),
     KEY idx_supplier_visibility (is_active, is_deleted),
     CONSTRAINT fk_supplier_location
@@ -412,6 +438,8 @@ CREATE TABLE dead_letter_jobs (
 The schema-level relationships are:
 
 - each supplier references one location row;
+- `supplier_name`, `supplier_type`, and `location_id` together must be unique across `supplier`
+  (§6.2);
 - each location row references one faculty row;
 - supplier categories are many-to-many through `supplier_category_map`;
 - supplier hours belong to a supplier and are keyed by `entry_id`, with at most one row per
@@ -463,7 +491,7 @@ All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
 | Category management (create) — `admin`, `super_admin` | `POST /api/v1/admin/reference/categories` | JSON body: `category_type` | Created category: `category_id`, `category_type` |
 | Category management (edit) — `admin`, `super_admin` | `PUT /api/v1/admin/reference/categories/:id` | JSON body: `category_type` | Updated category record |
 | Category management (delete) — `admin`, `super_admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
-| Admin create — `admin`, `super_admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references |
+| Admin create — `admin`, `super_admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references, or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated (§6.2) |
 | Admin edit — `admin`, `super_admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
 | Admin soft delete — `admin`, `super_admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
 
@@ -1013,9 +1041,9 @@ additional design decisions.
     `Idempotency-Key` header cached in Redis, returning `409 Conflict` on a still-in-flight replay or
     the cached response on a replay after completion. The header name is finalized.
 15. Cross-cutting API policies are now recorded: all endpoints are versioned under `/api/v1`,
-    rate-limited to 30 requests/minute/IP (`429 Too Many Requests`), and served from the same origin
-    as the SPA (no CORS configuration required). Health-check endpoints are explicitly deferred and
-    out of scope for this revision.
+    rate-limited to 30 requests/minute/IP (`429 Too Many Requests`), and reached through the same
+    origin as the SPA via a single API gateway fronting all FoC services (no CORS configuration
+    required). Health-check endpoints are explicitly deferred and out of scope for this revision.
 16. `photo_location`/`photoLocation` values are now specified as provider-issued signed URLs, valid
     for 24 hours, rather than permanent public links.
 17. The Redis job contract is now recorded: every job uses a generic `{id, task_name, payload}`
@@ -1025,6 +1053,24 @@ additional design decisions.
     immediately once the relevant database write and Redis enqueue succeed, without waiting for the
     background worker to finish (§8.1, §8.2). The Order Service and Message Service request
     contracts remain an explicit, continued deferral until those services are built.
+18. Same-origin deployment is now explained: a single API gateway fronts all FoC services, so the
+    SPA and the Supplier Service API share an origin without needing CORS configuration.
+    `supplier_name`/`supplier_type`/`location_id` uniqueness is now recorded, enforced by both an
+    application-level pre-check and a database `UNIQUE` constraint (§6.2, §6.4) that applies across
+    all rows, including soft-deleted ones. Recreating a supplier identical to a previously
+    soft-deleted one is now resolved: `POST /api/v1/admin/suppliers` reverses the soft delete on the
+    matching row and applies the submitted fields to it as an update, rather than inserting a new
+    row — this is expected to be a rare case, and it keeps the `UNIQUE` constraint satisfied without
+    needing to exclude soft-deleted rows from it (§6.2). On that reactivation path, newly submitted
+    photos replace the reactivated supplier's existing photo rows entirely rather than being
+    appended alongside them. `supplier_id` is confirmed as a stable cross-service foreign reference,
+    satisfying
+    F8.3.2's historical-record preservation without any Supplier Service change. `is_active` and
+    `is_deleted` are confirmed as independent flags: `is_active` is a separate admin-editable
+    visibility toggle (already settable via the generic `PUT` edit endpoint, §7), and soft-delete
+    (`DELETE`) only ever sets `is_deleted` — it does not also need to set `is_active`, since either
+    flag alone already hides a supplier from user-facing results (§7 body text after the endpoint
+    table).
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

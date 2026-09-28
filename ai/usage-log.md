@@ -646,3 +646,138 @@ I kept all changes
 
 **Author review:**
 Additions were all based on content I provided. Reviewed.
+
+## 2026-09-27 — Supplier Service: Phased Implementation Spec
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Mode:** generate | docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` (already team-reviewed and committed) and the existing Supplier Service GitHub issues (#40–#46, #60, #61) in `AY2627S1-CS3219-P18/FoC`, tracing back to `docs/FoC-ProductBacklog.md`.
+
+**Prompts (exact):**
+> i've commited the docs. Start specing out the supplier service. Given this is a large service, the specs may be broken up into different phases. The product backlog's supplier service features are associated with open issues within github, so they should be used to guide the sectioning of tasks where appropriate (especially after the foundations are laid out)
+
+**Key responses:**
+Read `docs/FoC-ProductBacklog.md`'s Supplier Service section and fetched the corresponding GitHub issues (`gh issue view` for #40–#46, #60, #61) to confirm their exact scope/requirement text. Created `supplier-service/SupplierServiceSpec.md`, organizing the already-decided architecture into six phases: Phase 0 (foundations — schema migrations, auth/role middleware, error envelope, rate limiting; no dedicated issue, prerequisite for all others), Phase 1 (supplier read APIs — #40/#41/#42), Phase 2 (admin visibility, lookup-table management, and creation — #43/#44), Phase 3 (admin update — #45), Phase 4 (soft-delete and downstream Redis workflow — #46), and Phase 5 (cross-cutting hardening/verification — #60/#61). Each phase cites the exact architecture section(s) it implements and quotes the backlog requirement IDs it satisfies; no new architecture, schema, or API decisions were introduced. Phase ordering is stated explicitly as technical build-dependency order, not a sprint-priority decision, since reordering the backlog is outside what the agent may do. Flagged three open questions the spec surfaced but did not resolve: (1) whether F8.2.2's duplicate-supplier check needs a schema-level `UNIQUE` constraint or an application-level check, (2) whether the Order Service's historical-record preservation (F8.3.2) needs confirmation from that service's owner, and (3) an apparent mismatch between the backlog's F8.4.1 wording ("toggling active status") and the architecture's actual soft-delete implementation (`is_deleted`, a separate flag from `is_active`).
+
+**Files:**
+- `supplier-service/SupplierServiceSpec.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+See the three open questions above (also recorded in the spec's closing section). No architecture, schema, or prioritization decisions were made by the agent; phase order reflects only technical dependency, and the team's existing backlog priorities/issue numbers were used as-is.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-28 — Supplier Service: API Gateway, Uniqueness Constraint, and Open-Question Resolutions
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Mode:** generate | docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** User-supplied API-gateway/CORS explanation and answers to the spec's three open questions, given directly in chat.
+
+**Prompts (exact):**
+> fold into the spec on CORS that a single API gateway will be used to access all the services, hence the single-origin. For the open questions:
+>
+> 1. an application-level pre check with be done first, but backend will also verify that the supplier name, type and location fields together form a unique set
+> 2. yes, confirm supplier_id as stable foreign reference
+> 3. toggling active status is meant to purely updates the is_active field that controls visibility and is unrelated to is_deleted. (but if an item is soft deleted, it is also no longer visible and theres no need for the is_active state to be uppdated)
+
+**Key responses:**
+Updated both `supplier-service/SupplierServiceArchitecture.md` and `supplier-service/SupplierServiceSpec.md`. In the architecture doc: explained the same-origin/no-CORS deployment as a consequence of a single API gateway fronting all FoC services (§3, §9 item 15); added a `UNIQUE` constraint on `supplier(supplier_name, supplier_type, location_id)` to the data model (§6.2) and DDL (§6.4), enforced by both an application-level pre-check and the database constraint; clarified that `is_active` and `is_deleted` are independent flags — `is_active` is a separate admin-editable visibility toggle already settable via the generic `PUT` edit endpoint, and soft-delete (`DELETE`) only sets `is_deleted` since either flag alone hides a supplier (§6.2); and added §9 item 18 recording all of this, including a flagged edge case the team's answer didn't address: the `UNIQUE` constraint as given applies even to soft-deleted rows, which would block recreating a supplier with the same name/type/location as a previously soft-deleted one, contradicting F8.2.2's "if an *active* supplier ... exists" wording. In the spec: updated Phase 0 (API gateway), resolved Phase 2/3/4's flagged open questions accordingly, and updated the closing "Summary of open questions" section to mark three items resolved and add the new soft-deleted-row uniqueness question in their place.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Whether the new `UNIQUE` constraint on `supplier(supplier_name, supplier_type, location_id)` should exclude soft-deleted rows (so a supplier can be recreated after a prior soft-delete), or whether such a recreation should instead reactivate the existing soft-deleted row, was not addressed by the team's answer and remains open (architecture §9 item 18, spec closing section item 4).
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+Additions were all based on content I provided. Reviewed.
+
+## 2026-09-28 — Supplier Service: Soft-Delete Recreation Resolved as Reactivation
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Mode:** generate | docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** User-supplied resolution for the soft-deleted-row uniqueness question, given directly in chat.
+
+**Prompts (exact):**
+> in the unlikely scenario that the exact same supplier that was deleted is re-added, the soft-delete is reversed and the addition serves as an update of fields instead. This preserves the uniqueness
+
+**Key responses:**
+Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, the admin-create row in §7's endpoint table, §9 item 18) and `supplier-service/SupplierServiceSpec.md` (Phase 2, closing "Summary of open questions") to record that `POST /api/v1/admin/suppliers` now branches on the pre-check result: no match inserts normally; a match against a non-deleted supplier is rejected (F8.2.2, unchanged); a match against a soft-deleted supplier instead reverses that row's `is_deleted` flag and applies the submitted fields to it as an update, reusing the existing `supplier_id` rather than inserting a new row. This resolves the previously flagged uniqueness-constraint/soft-delete conflict without needing a partial or filtered `UNIQUE` index. Narrowed the remaining open item to one the team's answer didn't cover: whether photos submitted on the reactivating request should replace or append to the reactivated supplier's existing photo rows.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Photo handling on the reactivation path (replace vs. append existing photo rows) remains open — the team's answer addressed the field-update/reactivation behavior but not photos specifically.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-28 — Supplier Service: Reactivation Photo Handling Resolved
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Mode:** generate | docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** User-supplied resolution for the last open item (reactivation-path photo handling), given directly in chat.
+
+**Prompts (exact):**
+> replace existing photos on reactivation
+
+**Key responses:**
+Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, §9 item 18) and `supplier-service/SupplierServiceSpec.md` (Phase 2, closing "Summary of open questions") to record that when `POST /api/v1/admin/suppliers` reactivates a soft-deleted supplier (per the prior session's resolution), any newly submitted photos replace that supplier's existing photo rows entirely rather than being appended alongside them. This was the last open item raised across the completeness review, architecture, and spec sessions; the closing summary in the spec now states no open questions remain from this line of clarification.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-28 — Supplier Service: Tech Stack Recorded in AGENTS.md
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** User-supplied tech stack (TypeScript, Node.js, Express.js, MySQL, Redis), given directly in chat.
+
+**Prompts (exact):**
+> Fold into the folder level agents.md the tech stack for this service.: TypeScript, Node.js, express.js, MySQL, Redis etc and make necessary changes to the spec or plans
+
+**Key responses:**
+Created `supplier-service/AGENTS.md` (previously an empty placeholder file) recording the team-supplied tech stack — TypeScript, Node.js, Express.js, MySQL, Redis — as a service-specific addendum to the root `AGENTS.md`, consistent with the existing four-tier design in `SupplierServiceArchitecture.md` (§2, §6.1). Updated `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md`'s header "Tech Stack" line, its "Library choices requiring team confirmation" section, its self-review notes, and Task 11's log-entry template to cite `supplier-service/AGENTS.md` as the now-confirmed source for the top-level stack, narrowing the still-open deviation to just the specific MySQL/Redis client packages (`mysql2`, `ioredis`), which the user did not name. No requirements, architecture, schema, or API decisions were made by the AI tool beyond transcribing what the user supplied.
+
+**Files:**
+- `supplier-service/AGENTS.md` (created/modified)
+- `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None — the user supplied the stack directly; the agent only recorded and cross-referenced it.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
