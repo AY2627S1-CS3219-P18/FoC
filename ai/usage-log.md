@@ -742,7 +742,6 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
----
 
 ## 2026-09-26 — Recess iteration: Credit Service verification run
 
