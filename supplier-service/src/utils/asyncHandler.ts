@@ -5,10 +5,10 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
-import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 
 export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
-): RequestHandler {
+): (req: Request, res: Response, next: NextFunction) => void {
   return (req, res, next) => fn(req, res, next).catch(next);
 }
