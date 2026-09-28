@@ -6,13 +6,19 @@
 // Author review:
 // 25/09/2026: Stage 4e - super admin bootstrap on startup
 // Author review:
+// 26/09/2026: Stage 7 - split into a pure app export; bootstrap and listen moved to server.ts
+// Author review:
+// 27/09/2026: Stage 9 - mount users router at /users
+// Author review: New
+// 27/09/2026: Stage 11 - mount me router at /users/me, before the users router
+// Author review:
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { ZodError } from 'zod';
-import { config } from './config.js';
 import authRouter from './routes/auth.routes.js';
-import { bootstrapSuperAdmin } from './services/bootstrap.service.js';
+import meRouter from './routes/me.routes.js';
+import usersRouter from './routes/users.routes.js';
 import { AppError } from './utils/AppError.js';
 
 const app = express();
@@ -26,6 +32,9 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/auth', authRouter);
+// Must precede usersRouter, or its '/:id' route would capture 'me'.
+app.use('/users/me', meRouter);
+app.use('/users', usersRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {
@@ -52,12 +61,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
   console.error(err);
   res.status(500).json({ message: 'Internal server error', code: 'INTERNAL_ERROR' });
-});
-
-await bootstrapSuperAdmin();
-
-app.listen(config.server.port, () => {
-  console.log(`user-service listening on port ${config.server.port}`);
 });
 
 export default app;

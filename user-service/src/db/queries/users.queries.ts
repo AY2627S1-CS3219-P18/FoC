@@ -6,6 +6,18 @@
 // Author review:
 // 25/09/2026: Stage 5a - optional db param, status param, lock/activate/stale-cleanup queries
 // Author review:
+// 25/09/2026: Stage 6d - updatePasswordHash
+// Author review:
+// 27/09/2026: Stage 9 - listAllUsers, updateUserStatus
+// Author review:
+// 27/09/2026: Stage 10 - updateUserRole
+// Author review:
+// 27/09/2026: Stage 11 - active_view on UserRow, updateActiveView
+// Author review:
+// 27/09/2026: Stage 12b - updateUsername
+// Author review:
+// 27/09/2026: Stage 12d - updateEmail
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -19,6 +31,7 @@ export interface UserRow {
   updated_at: Date;
   status: "pending" | "active" | "suspended";
   role: "user" | "admin" | "super admin";
+  active_view: "requester" | "courier";
 }
 
 export async function createUser(
@@ -94,12 +107,15 @@ export async function createSuperAdmin(
     passwordHash: string;
   },
   db: Queryable = pool,
-): Promise<UserRow> {
+): Promise<UserRow | null> {
   const result = await db.query<UserRow>(
-    `INSERT INTO users (username, email, password_hash, status, role) VALUES ($1, $2, $3, 'active', 'super admin') RETURNING *`,
-    [username, email, passwordHash],
-  );
-  return result.rows[0]!;
+  `INSERT INTO users (username, email, password_hash, status, role)
+   VALUES ($1, $2, $3, 'active', 'super admin')
+   ON CONFLICT DO NOTHING
+   RETURNING *`,
+  [username, email, passwordHash],
+);
+  return result.rows[0] ?? null;
 }
 
 export async function lockUserById(
@@ -124,18 +140,102 @@ export async function activateUser(
   return (result.rowCount ?? 0) > 0;
 }
 
+
 export async function deleteStalePendingUsers(
   { username, email }: { username: string; email: string },
   db: Queryable = pool,
 ): Promise<void> {
   await db.query(
     `DELETE FROM users
-     WHERE status = 'pending'
-       AND (username = $1 OR email = $2)
-       AND NOT EXISTS (
-         SELECT 1 FROM users_otps o
-         WHERE o.user_id = users.id AND o.expires_at > NOW()
-       )`,
+     WHERE id IN (
+       SELECT id FROM users
+       WHERE status = 'pending'
+         AND (username = $1 OR email = $2)
+         AND NOT EXISTS (
+           SELECT 1 FROM users_otps o
+           WHERE o.user_id = users.id AND o.expires_at > NOW()
+         )
+       FOR UPDATE SKIP LOCKED
+     )`,
     [username, email],
   );
+}
+
+export async function updatePasswordHash(
+  userId: string,
+  passwordHash: string,
+  db: Queryable = pool,
+): Promise<void> {
+  await db.query(
+    `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
+    [userId, passwordHash],
+  );
+}
+
+export async function listAllUsers(db: Queryable = pool): Promise<UserRow[]> {
+  const result = await db.query<UserRow>(
+    `SELECT * FROM users ORDER BY created_at DESC`,
+  );
+  return result.rows;
+}
+
+export async function updateUserStatus(
+  userId: string,
+  status: "active" | "suspended",
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, status],
+  );
+  return result.rows[0]!;
+}
+
+// Call inside a transaction, against a row already locked with lockUserById.
+export async function updateUserRole(
+  userId: string,
+  role: "admin" | "user",
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, role],
+  );
+  return result.rows[0]!;
+}
+
+export async function updateUsername(
+  userId: string,
+  username: string,
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, username],
+  );
+  return result.rows[0]!;
+}
+
+export async function updateEmail(
+  userId: string,
+  email: string,
+  db: Queryable = pool,
+): Promise<UserRow> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET email = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, email],
+  );
+  return result.rows[0]!;
+}
+
+export async function updateActiveView(
+  userId: string,
+  activeView: "requester" | "courier",
+  db: Queryable = pool,
+): Promise<UserRow | null> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, activeView],
+  );
+  return result.rows[0] ?? null;
 }

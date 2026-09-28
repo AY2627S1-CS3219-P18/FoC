@@ -2,6 +2,10 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 5b - email service
 // Author review:
+// 25/09/2026: Stage 6 pre-work - Forgot Password email template
+// Author review:
+// 27/09/2026: Stage 12c - Change Email template
+// Author review:
 
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
@@ -10,6 +14,14 @@ const PURPOSE_COPY: Record<string, { subject: string; intro: string }> = {
   Registration: {
     subject: "Your FoC verification code",
     intro: "Use the code below to finish creating your FoC account.",
+  },
+  "Forgot Password": {
+    subject: "Your FoC password reset code",
+    intro: "Use the code below to reset your FoC password.",
+  },
+  "Change Email": {
+    subject: "Confirm your new FoC email address",
+    intro: "Use the code below to confirm your new FoC email address.",
   },
 };
 

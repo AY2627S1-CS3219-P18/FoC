@@ -12,5 +12,35 @@ datasource db {
   provider = "postgresql"
 }
 
-// TODO(team): define the order domain models here, then run
-//   npm run db:migrate -- --name <migration_name>
+enum RequestStatus {
+  open
+  accepted
+  picked_up
+  delivered
+  completed
+  cancelled
+  expired
+}
+
+model OrderRequest {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  requesterId       String        @db.Uuid
+  supplierId        String        @db.Uuid
+  description       String
+  deliveryLocation  String
+  credits           Int
+  completeBy        DateTime?     @db.Timestamptz(3) // null = no deadline
+  additionalDetails String?
+  courierId         String?       @db.Uuid
+  status            RequestStatus @default(open)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  acceptedAt        DateTime?     @db.Timestamptz(3)
+  deliveredAt       DateTime?     @db.Timestamptz(3)
+  version           Int           @default(0)
+
+  @@index([status, createdAt])
+  @@index([requesterId])
+  @@index([courierId])
+  @@map("requests")
+}

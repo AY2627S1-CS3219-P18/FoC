@@ -4,6 +4,8 @@
 //    Author review: No changes needed.
 //  2026-09-25: Stage 5a - OTP config, SMTP optional in development
 //    Author review:
+//  2026-09-25: Stage 6 pre-work - add OTP resend window config
+//    Author review:
 
 import { z } from "zod";
 
@@ -36,6 +38,7 @@ const envSchema = z
     OTP_TTL_MINUTES: z.coerce.number().int().positive(),
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
     OTP_MAX_RESENDS: z.coerce.number().int().positive(),
+    OTP_RESEND_WINDOW_MINUTES: z.coerce.number().int().positive(),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -97,6 +100,7 @@ export const config = {
     ttlMinutes: env.OTP_TTL_MINUTES,
     resendCooldownSeconds: env.OTP_RESEND_COOLDOWN_SECONDS,
     maxResends: env.OTP_MAX_RESENDS,
+    resendWindowMinutes: env.OTP_RESEND_WINDOW_MINUTES,
   },
   superAdmin: {
     username: env.SUPER_ADMIN_USERNAME,

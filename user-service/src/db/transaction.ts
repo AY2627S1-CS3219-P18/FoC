@@ -12,15 +12,22 @@ export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
+  let discardClient = false;
   try {
     await client.query("BEGIN");
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
   } catch (err) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      // The connection is unusable; keep the original error and drop the connection.
+      discardClient = true;
+      console.error("ROLLBACK failed:", rollbackErr);
+    }
     throw err;
   } finally {
-    client.release();
+    client.release(discardClient);
   }
 }

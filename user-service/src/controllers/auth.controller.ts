@@ -12,6 +12,18 @@
 // Author review:
 // 25/09/2026: Stage 5e - verifyOtp and resendOtp controllers
 // Author review:
+// 25/09/2026: Stage 5 - normalise email and username (lowercase) at the request boundary
+// Author review:
+// 25/09/2026: Stage 6b - forgotPassword controller
+// Author review:
+// 25/09/2026: Stage 6c - verify-otp accepts forgot_password purpose
+// Author review:
+// 25/09/2026: Stage 6d - resetPassword controller
+// Author review:
+// 25/09/2026: Stage 6e - resend-otp accepts forgot_password purpose
+// Author review:
+// 27/09/2026: Stage 12c - exported emailField for reuse in me.controller.ts
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -20,16 +32,30 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { REFRESH_COOKIE_OPTIONS } from '../utils/cookies.js';
 import { verifyAccessToken } from '../utils/jwt.js';
 
+// Emails are matched case-sensitively in the DB, so normalise them once here.
+// Exported so other controllers (e.g. me.controller.ts) reuse the same normalisation
+// and messages instead of redefining the field.
+export const emailField = z
+  .string({
+    required_error: 'Email is required',
+    invalid_type_error: 'Email must be a string',
+  })
+  .trim()
+  .toLowerCase();
+
+// Usernames are matched case-insensitively too. Not trimmed, so leading/trailing
+// spaces still fail the service's "no spaces" rule.
+const usernameField = z
+  .string({
+    required_error: 'Username is required',
+    invalid_type_error: 'Username must be a string',
+  })
+  .toLowerCase();
+
 const registerSchema = z
   .object({
-    username: z.string({
-      required_error: 'Username is required',
-      invalid_type_error: 'Username must be a string',
-    }),
-    email: z.string({
-      required_error: 'Email is required',
-      invalid_type_error: 'Email must be a string',
-    }),
+    username: usernameField,
+    email: emailField,
     password: z.string({
       required_error: 'Password is required',
       invalid_type_error: 'Password must be a string',
@@ -45,10 +71,14 @@ export const register = asyncHandler(async (req, res) => {
 
 const loginSchema = z
   .object({
-    identifier: z.string({
-      required_error: 'Username/Email is required',
-      invalid_type_error: 'Username/Email must be a string',
-    }),
+    // Both usernames and emails are stored lowercase, so match on the lowercase form.
+    identifier: z
+      .string({
+        required_error: 'Username/Email is required',
+        invalid_type_error: 'Username/Email must be a string',
+      })
+      .trim()
+      .toLowerCase(),
     password: z.string({
       required_error: 'Password is required',
       invalid_type_error: 'Password must be a string',
@@ -111,21 +141,22 @@ export const verify = asyncHandler(async (req, res) => {
 });
 
 // API-facing purpose -> DB enum value. Extend here in later stages.
-const PURPOSE_MAP = { registration: 'Registration' } as const;
+const PURPOSE_MAP = { registration: 'Registration', forgot_password: 'Forgot Password' } as const;
 
-const purposeSchema = z.enum(['registration'], {
-  errorMap: (issue) => {
-    if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
-    if (issue.code === 'invalid_type' && issue.received === 'undefined') {
-      return { message: 'Purpose is required' };
-    }
-    return { message: 'Purpose must be a string' };
-  },
+const purposeErrorMap: z.ZodErrorMap = (issue) => {
+  if (issue.code === 'invalid_enum_value') return { message: 'Invalid purpose' };
+  if (issue.code === 'invalid_type' && issue.received === 'undefined') {
+    return { message: 'Purpose is required' };
+  }
+  return { message: 'Purpose must be a string' };
+};
+
+// Each endpoint lists the purposes it supports.
+const verifyPurposeSchema = z.enum(['registration', 'forgot_password'], {
+  errorMap: purposeErrorMap,
 });
-
-const emailField = z.string({
-  required_error: 'Email is required',
-  invalid_type_error: 'Email must be a string',
+const resendPurposeSchema = z.enum(['registration', 'forgot_password'], {
+  errorMap: purposeErrorMap,
 });
 
 const verifyOtpSchema = z
@@ -135,23 +166,30 @@ const verifyOtpSchema = z
       required_error: 'OTP is required',
       invalid_type_error: 'OTP must be a string',
     }),
-    purpose: purposeSchema,
+    purpose: verifyPurposeSchema,
   })
   .strict();
 
-const resendOtpSchema = z.object({ email: emailField, purpose: purposeSchema }).strict();
+const resendOtpSchema = z.object({ email: emailField, purpose: resendPurposeSchema }).strict();
 
 export const verifyOtp = asyncHandler(async (req, res) => {
   const { email, otp, purpose } = verifyOtpSchema.parse(req.body);
   switch (PURPOSE_MAP[purpose]) {
     case 'Registration':
       await authService.verifyRegistrationOtp({ email, otp });
-      break;
+      res.status(200).json({
+        message: 'Registration complete. You can now log in.',
+        code: 'REGISTER_SUCCESS',
+      });
+      return;
+    case 'Forgot Password':
+      await authService.verifyForgotPasswordOtp({ email, otp });
+      res.status(200).json({
+        message: 'Code verified. You can now set a new password.',
+        code: 'OTP_VERIFIED',
+      });
+      return;
   }
-  res.status(200).json({
-    message: 'Registration complete. You can now log in.',
-    code: 'REGISTER_SUCCESS',
-  });
 });
 
 export const resendOtp = asyncHandler(async (req, res) => {
@@ -160,9 +198,43 @@ export const resendOtp = asyncHandler(async (req, res) => {
     case 'Registration':
       await authService.resendRegistrationOtp({ email });
       break;
+    case 'Forgot Password':
+      await authService.resendForgotPasswordOtp({ email });
+      break;
   }
   res.status(200).json({
     message: 'A new verification code has been sent to your email',
     code: 'OTP_SENT',
+  });
+});
+
+const forgotPasswordSchema = z.object({ email: emailField }).strict();
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = forgotPasswordSchema.parse(req.body);
+  await authService.forgotPassword({ email });
+  res.status(200).json({ message: 'A reset code has been sent to your email', code: 'OTP_SENT' });
+});
+
+const resetPasswordSchema = z
+  .object({
+    email: emailField,
+    otp: z.string({
+      required_error: 'OTP is required',
+      invalid_type_error: 'OTP must be a string',
+    }),
+    newPassword: z.string({
+      required_error: 'New password is required',
+      invalid_type_error: 'New password must be a string',
+    }),
+  })
+  .strict();
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { email, otp, newPassword } = resetPasswordSchema.parse(req.body);
+  await authService.resetPassword({ email, otp, newPassword });
+  res.status(200).json({
+    message: 'Password reset successful. Please log in with your new password.',
+    code: 'PASSWORD_RESET_SUCCESS',
   });
 });
