@@ -153,7 +153,77 @@ services:
       retries: 5
       start_period: 15s
 
+  # ---- supplier-service ---------------------------------------------------
+  # AI Assistance Disclosure:
+  # Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
+  # Scope: Added supplier-db, supplier-redis, and supplier-service compose services, mirroring the
+  #        credit-service block, using the already-decided MySQL/Redis stack
+  #        (supplier-service/AGENTS.md) and the env vars already recorded in
+  #        supplier-service/.env.example. No requirements, architecture, schema, or API decisions
+  #        were made by the AI tool. Host ports were picked as the next free values after the
+  #        existing order/user/credit services (service 3004, DB 5436) since MySQL's default 3306 and
+  #        order-service's already-claimed 3002 were both taken.
+  #     Author review: Congchen
+  supplier-db:
+    image: mysql:8
+    container_name: foc-supplier-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SUPPLIER_DB_PASSWORD:?set SUPPLIER_DB_PASSWORD in .env}
+      MYSQL_DATABASE: supplier_service
+    ports:
+      - "${SUPPLIER_DB_PORT:-5436}:3306"
+    volumes:
+      - supplier-db-data:/var/lib/mysql
+      - ./supplier-service/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  supplier-redis:
+    image: redis:7-alpine
+    container_name: foc-supplier-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  supplier-service:
+    build:
+      context: ./supplier-service
+      target: dev
+    container_name: foc-supplier-service
+    restart: unless-stopped
+    # supplier-service/src/config.ts validates these at startup and exits if any is missing.
+    # No healthcheck: the service has no /health route yet (SupplierServiceArchitecture.md §7.5:
+    # health-check endpoints are explicitly deferred).
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DB_HOST: supplier-db
+      DB_PORT: 3306
+      DB_NAME: supplier_service
+      DB_USER: root
+      DB_PASSWORD: ${SUPPLIER_DB_PASSWORD}
+      REDIS_HOST: supplier-redis
+      REDIS_PORT: 6379
+      USER_SERVICE_URL: http://user-service:3001
+    ports:
+      - "${SUPPLIER_SERVICE_PORT:-3004}:3002"
+    volumes:
+      - ./supplier-service/src:/app/src
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+      supplier-redis:
+        condition: service_healthy
+
 volumes:
   order-db-data:
   user-db-data:
   credit-db-data:
+  supplier-db-data:
