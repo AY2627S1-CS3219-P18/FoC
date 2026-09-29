@@ -6,6 +6,10 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): changed the ioredis import to the named
  *        `Redis` export to fix a TS2351 under NodeNext; no other change.
  * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): set `lazyConnect: true` so importing the app
+ *        in tests does not open a Redis connection (Phase 2 plan Task 1). No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Redis } from "ioredis";
@@ -15,6 +19,7 @@ import { config } from "../config.js";
 const redis = new Redis({
   host: config.redis.host,
   port: config.redis.port,
+  lazyConnect: true,
 });
 
 export default redis;
