@@ -5,7 +5,7 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): changed the ioredis import to the named
  *        `Redis` export to fix a TS2351 under NodeNext; no other change.
- * Author review:
+ * Author review: Congchen
  */
 
 import { Redis } from "ioredis";

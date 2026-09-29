@@ -3,7 +3,7 @@
  * Tool: Codex (model: gpt-5.6-luna), date: 2026-09-28
  * Scope: Generated Phase0 Task6 tests for supplier error response envelopes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';

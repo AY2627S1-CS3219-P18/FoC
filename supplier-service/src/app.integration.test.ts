@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
  * Scope: Generated integration tests for the Phase 0 middleware chain from the Phase 0 plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

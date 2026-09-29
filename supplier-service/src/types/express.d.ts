@@ -4,7 +4,7 @@
  * Scope: Generated Express Request type augmentation adding req.user ({ user_id, role }) for the
  *        auth middleware. No requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
- * Author review:
+ * Author review: Congchen
  */
 declare global {
   namespace Express {

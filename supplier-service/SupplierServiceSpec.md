@@ -24,6 +24,11 @@ Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super
        the team's resolution of a naming mismatch against the User Service's actual `role_enum`/
        `GET /auth/verify`, discovered after merging `main` into `supplier-service`.
 Author review:
+Scope: 2026-09-29 update — reflected the team's recorded Phase 1 decisions (see
+       SupplierServiceArchitecture.md §9 item 20) in the Phase 1 scope: the `isOpen` filter, the
+       enforced `limit`, the `A-Z` default, and the `00:00`–`23:59` all-day check. Tool: Claude Code
+       (model: claude-sonnet-5). No decisions were made by the AI tool.
+Author review:
 -->
 
 # Supplier Service Implementation Spec
@@ -120,12 +125,13 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
 
 - Business-layer persistence functions to read supplier rows joined with location/faculty/category/
   hours/photo data (§6.2).
-- `GET /api/v1/suppliers` — paginated (50/page), search (name/location/category, case-insensitive,
-  `supplier_desc` intentionally excluded), filter by `location_id`/`category_id`, sort `A-Z`/`Z-A`
-  (§7.2); response uses the `SupplierSummary` envelope (§7.3).
+- `GET /api/v1/suppliers` — paginated (50/page, any other `limit` rejected), search
+  (name/location/category, case-insensitive, `supplier_desc` intentionally excluded), filter by
+  `location_id`/`category_id`/`isOpen`, sort `A-Z`/`Z-A` defaulting to `A-Z` (§7.2); response uses the `SupplierSummary` envelope (§7.3).
 - `GET /api/v1/suppliers/:id` — detail view adding `desc` and `openingHours` (§7.3).
 - `is_open` computation: current day/time vs. `supplier_hours`, Singapore time (UTC+8), overnight
-  intervals continuing into the next day, Facility rows fixed at `00:00`–`23:59` (§6.2).
+  intervals continuing into the next day, an hours entry of `00:00`–`23:59` (the 24-hour convention, e.g. Facilities) is open for any time of
+  that day via a dedicated check (§6.2).
 - `GET /api/v1/suppliers/reference/location` and `GET /api/v1/suppliers/reference/categories` —
   needed by the requester-mode filter UI (§7.3).
 - Visibility rule: exclude suppliers where `is_deleted` is true or `is_active` is false (§7 body

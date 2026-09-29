@@ -1901,3 +1901,40 @@ Confirm the `vitest.config.ts` test-env addition and the `vitest ^5.0.2` / packa
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-29 — Supplier Service: Phase 1 Team Decisions Recorded and Plan Amended
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs | refactor
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** The team's answers given directly in chat (quoted below) to the eight points raised in the Phase 1 plan; recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 20.
+
+**Prompts (exact):**
+> phase 0 has completed.
+> Record all decision changes in the architecture document. Amend the plan if needed:
+>
+> 1. add isOpen as a possible parameter for the filter.
+> 2. the limit of 50 is always applied. there is no entrypoint for anyone to modify this. as such if it is modified, throwing in error is warranted
+> 3. accept sortorder default A-Z, page past last page returns 200 with no content
+> 4. accept 404 return for unknown supplier by id
+> 5. a timing of 0000-2359 is meant to represent 24h facilities/stores. Include an a dedicated if check that returns isOpen = True for any time
+> 6. do not even allow any shope to start and end at the same time. If the intention is 24h, provide error message that states to input 0000-2359
+> 7. Acknowledge 24h TTL for signed URLs are not available / comfirmed yet
+> 8. yes. category text refers to the category value
+
+**Key responses:**
+Transcribed the eight team decisions into `SupplierServiceArchitecture.md` (§6.2, §6.3, §7 table, §7.1, §7.1.1, §7.2, §7.3, §9 item 20) and the Phase 1 scope in `SupplierServiceSpec.md`, without adding rationale. Amended `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`: added the `isOpen` filter (validation, repository `findAllVisible`, in-memory filter-then-page in the service), removed the Facility special case in favour of the dedicated `00:00`–`23:59` check, and aligned the plan with the merged Phase 0 code (`pool` named export, block-comment headers, `vitest.config.ts` env). Two wording choices were not stated by the team and are flagged in the plan for confirmation: `isOpen` takes `true`/`false`, and the `isOpen` filter is paged in memory. No application code was written or run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Four remaining points listed in the plan's "Team decisions" section: `isOpen` value format, how the `isOpen` filter paginates, a Facility with no hours rows, and defensive handling of zero-length rows.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

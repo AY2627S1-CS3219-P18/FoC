@@ -3,7 +3,7 @@
  * Tool: Codex (model: gpt-5.6-luna), date: 2026-09-28
  * Scope: Transcribed the team-provided Phase 0 Task 3 supplier schema DDL verbatim.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 
 CREATE TABLE IF NOT EXISTS faculties (faculty_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, faculty VARCHAR(255) NOT NULL, PRIMARY KEY (faculty_id), UNIQUE KEY uq_faculties_faculty (faculty));

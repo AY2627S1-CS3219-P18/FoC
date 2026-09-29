@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
  * Scope: Generated unit tests for the 30 req/min/IP rate limiter (SupplierServiceSpec.md, "Phase 0 — Foundations").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import express from 'express';
 import request from 'supertest';

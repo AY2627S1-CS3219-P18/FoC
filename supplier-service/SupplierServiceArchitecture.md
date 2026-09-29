@@ -29,6 +29,14 @@ Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super
        throughout, per the team's resolution of a naming mismatch discovered against the User
        Service's actual `role_enum`/`GET /auth/verify` after merging `main` into `supplier-service`.
 Author review:
+Scope: 2026-09-29 update — recorded the team's Phase 1 decisions: an `isOpen` list filter, an
+       always-enforced fixed `limit` of 50 (any other value is an error), the `sortOrder` default and
+       past-last-page behavior, `404` for an unknown supplier id, the `00:00`–`23:59` 24-hour
+       convention with its dedicated `is_open` check, rejection of equal open/close times, the
+       unconfirmed status of the 24-hour signed-URL validity, and the reference category key. Tool:
+       Claude Code (model: claude-sonnet-5). No decisions were made by the AI tool; each was supplied
+       by the team in chat.
+Author review:
 -->
 
 # Supplier Service Architecture
@@ -292,15 +300,22 @@ On this reactivation-as-update path, any newly submitted photos replace the reac
 existing photo rows entirely (the prior photo rows are deleted and the submitted ones inserted in
 their place) rather than being appended alongside them.
 
-For a Facility, `open_time` is set to `00:00` and `close_time` is set to `23:59` (or equivalent
-database time values) to represent 24-hour availability. Store schedules use the day-of-week and
-opening and closing time fields. The database maps `day_of_week` values from `0` to `6`, with `0`
+A `close_time` of `23:59` together with an `open_time` of `00:00` is the convention for 24-hour
+availability, for Facilities and Stores alike. For a Facility, `open_time` is set to `00:00` and
+`close_time` is set to `23:59` (or equivalent database time values). Store schedules use the
+day-of-week and opening and closing time fields.
+
+An hours entry must not have `open_time` equal to `close_time`. Creation and edit requests containing
+such an entry are rejected with `422 Unprocessable Entity`, and the error `message` states that a
+24-hour schedule must be entered as `00:00`–`23:59`. The database maps `day_of_week` values from `0` to `6`, with `0`
 representing Sunday. The API's `openingHours` objects use the corresponding `day`, `open`, and
 `close` fields.
 
 The service calculates `is_open` by comparing the current day and time with the supplier's
 opening-hours records using Singapore time (UTC+8); it is not treated as an independent stored
-status value. For overnight Store intervals where the opening time is later than the closing time,
+status value. The calculation contains a dedicated check: if the supplier has an hours entry for the
+current day (Singapore time) of `00:00`–`23:59`, `is_open` is `true` for any time of that day. For
+overnight Store intervals where the opening time is later than the closing time,
 the calculation treats the interval as continuing into the following day.
 
 All datetime values recorded or computed by the Supplier Service — `created_on`, `updated_on`, and
@@ -327,11 +342,15 @@ A supplier may have one or more photo rows, each with a `display_order` value an
 `photo_location` reference. The `photo_location` value returned by the API is a signed URL issued
 by the cloud storage provider, valid for 24 hours, rather than a permanent public link; a client
 must re-fetch the supplier record to obtain a fresh URL once the previous one expires.
+The 24-hour validity is not yet available or confirmed: the storage provider is still undecided (§9
+item 7), so until one is chosen and its signing behavior verified, the 24-hour duration is a planned
+target rather than a confirmed property, and the service returns the stored `photo_location` value
+as it is.
 The storage provider's deletion and availability behavior is outside this service architecture.
 
 The API representations expose only the level of metadata needed by each consumer. List queries
-accept `page`, `limit`, `search`, `location_id`, `category_id`, and `sortOrder` and query a fixed 50
-entries at a time. Search performs case-insensitive text matching against supplier name, location,
+accept `page`, `limit`, `search`, `location_id`, `category_id`, `isOpen`, and `sortOrder` and query a
+fixed 50 entries at a time. Search performs case-insensitive text matching against supplier name, location,
 and category; `supplier_desc` is intentionally excluded from search because the description is not
 displayed in list results. Sorting is alphabetical by supplier name, with `sortOrder` limited to
 `A-Z` and `Z-A`. User-facing summary queries omit descriptions and full opening-hours data, while
@@ -480,9 +499,9 @@ All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
 
 | Consumer and accepted roles | Endpoint | Request | Response |
 | --- | --- | --- | --- |
-| User dashboard — `user`, `admin`, `super admin` | `GET /api/v1/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | `metadata`: `totalRecords`, `currPage`, `limit`, `totalPages`; `data`: `id`, `name`, `type`, `location`, `faculty`, `level`, `categories`, `photos`, `isOpen` |
+| User dashboard — `user`, `admin`, `super admin` | `GET /api/v1/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `isOpen`, `sortOrder` | `metadata`: `totalRecords`, `currPage`, `limit`, `totalPages`; `data`: `id`, `name`, `type`, `location`, `faculty`, `level`, `categories`, `photos`, `isOpen` |
 | User detailed view — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/:id` | Supplier identifier in the path | User summary fields plus `desc`, `openingHours` |
-| Admin dashboard — `admin`, `super admin` | `GET /api/v1/admin/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `sortOrder` | User summary fields plus `isActive` and `isDeleted` |
+| Admin dashboard — `admin`, `super admin` | `GET /api/v1/admin/suppliers` | Query parameters: `page`, `limit=50`, `search`, `location_id`, `category_id`, `isOpen`, `sortOrder` | User summary fields plus `isActive` and `isDeleted` |
 | Admin detailed view — `admin`, `super admin` | `GET /api/v1/admin/suppliers/:id` | Supplier identifier in the path | User detailed fields plus `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, and `version` |
 | Location reference options — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/reference/location` | No request body | `locations`: location and faculty text plus `location_id` and `faculty_id` |
 | Category reference options — `user`, `admin`, `super admin` | `GET /api/v1/suppliers/reference/categories` | No request body | `categories`: category text plus `category_id` |
@@ -536,7 +555,7 @@ The API status-code set is:
 | `400 Bad Request` | Request is malformed |
 | `401 Unauthorized` | Bearer token is missing or invalid according to the User Service authentication contract |
 | `403 Forbidden` | Identity is authenticated but is not permitted to perform the operation |
-| `404 Not Found` | Referenced supplier or resource does not exist |
+| `404 Not Found` | Referenced supplier or resource does not exist; on the user-facing detail route this includes a supplier that is soft-deleted or inactive (§7) |
 | `409 Conflict` | A supplier edit's submitted `version` no longer matches the stored record (concurrent-edit conflict), or a `POST` idempotency key matches a request still being processed |
 | `422 Unprocessable Entity` | Request structure is understood but its values fail validation |
 | `429 Too Many Requests` | Client has exceeded the rate limit |
@@ -574,8 +593,8 @@ project-specific endpoint mapping for the team to complete:
 | Bearer token is missing, malformed, expired, or invalid | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `401 Unauthorized` | Authentication is required or failed | User Service Contract: Triggered if Authorization header is missing or local RS256 signature verification fails. Matches the internal `user-service` validation exception envelope perfectly. |
 | Authenticated role is not permitted to use the endpoint | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `403 Forbidden` | Authenticated identity is not authorized for this operation | Triggered when a valid JWT is verified, but the embedded role claim payload reads `user` instead of `admin` or `super admin` |
 | Request syntax, structure, or encoding is malformed | All API Endpoints | `400 Bad Request` | Request cannot be processed as a well-formed request | Triggered by corrupt data like bad multipart/form-data boundaries, malformed JSON strings in openingHours/photo_sort_order, or missing body content etc. |
-| Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, limit over 50, invalid location_id, or mismatched file placeholders, etc. Returns the standardized details error array. |
-| Requested supplier or reference resource does not exist | `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `404 Not Found` | Referenced resource cannot be found | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database. |
+| Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, any `limit` other than 50, invalid location_id, an opening-hours entry whose open and close times are equal (message states that 24 hours must be entered as `00:00`–`23:59`), or mismatched file placeholders, etc. Returns the standardized details error array. |
+| Requested supplier or reference resource does not exist | `GET /api/v1/suppliers/:id` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `404 Not Found` | Referenced resource cannot be found | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database. |
 | Submitted `version` does not match the supplier's current stored version | `PUT /api/v1/admin/suppliers/:id` | `409 Conflict` | Request conflicts with the current state of the resource | Optimistic-concurrency conflict: another edit already advanced `version`. The client should re-fetch the record and retry. |
 | `POST` retried with an `Idempotency-Key` that is still being processed | `POST /api/v1/admin/suppliers` | `409 Conflict` | Request conflicts with the current state of the resource | Idempotency-key replay while the original request has not yet completed. A replay after completion instead returns the original cached response. |
 | Client has exceeded the rate limit | All API Endpoints | `429 Too Many Requests` | Too many requests in a given time window | Fixed at 30 requests/minute/IP. |
@@ -588,7 +607,9 @@ or job identifier. The template does not select a mapping for the team.
 ### 7.2 Querying 50 entries at a time
 
 The list endpoints accept filter, sort, and search parameters and query exactly 50 entries at a
-time. The `limit` value is fixed and is not user-modifiable. Sorting is fixed to alphabetical
+time. The `limit` value is fixed at 50 and is always applied; no client-facing control modifies it,
+so a request that supplies any `limit` other than 50 is rejected with `422 Unprocessable Entity`.
+Sorting is fixed to alphabetical
 supplier-name order, and filtering uses IDs obtained from the separate reference endpoints. The
 query parameters are:
 
@@ -599,10 +620,12 @@ query parameters are:
 | `search` | Case-insensitive text matching against supplier name, location, or category |
 | `location_id` | Location filter using an ID from `/api/v1/suppliers/reference/location` |
 | `category_id` | Category filter using an ID from `/api/v1/suppliers/reference/categories` |
-| `sortOrder` | Fixed alphabetical supplier-name order: `A-Z` or `Z-A` |
+| `isOpen` | Optional open-state filter: `true` returns only suppliers currently open, `false` only suppliers currently closed, computed as in §6.2; omitted means no open-state filtering |
+| `sortOrder` | Fixed alphabetical supplier-name order: `A-Z` or `Z-A`; defaults to `A-Z` when omitted |
 
 The response metadata supports pagination through `totalRecords`, `currPage`, `limit`, and
-`totalPages`.
+`totalPages`. A `page` beyond the last page is not an error: the response is `200 OK` with an empty
+`data` array.
 
 ### 7.3 Request and response envelopes
 
@@ -697,6 +720,9 @@ data item.
 `GET /api/v1/admin/suppliers/:id` uses the detailed shape and adds `isActive`, `isDeleted`,
 `createdOn`, `createdBy`, `updatedOn`, and `version`. The admin UI needs `version` to submit
 subsequent edits (§7.5).
+
+In the category reference response, `category` is the category value (the stored `category_type`
+text), keyed `category` as in the example below.
 
 The reference endpoints are independent so clients can lazy-load the two option sets separately. The
 admin add-supplier workflow calls both endpoints, while a user-oriented filter may call only the
@@ -1081,6 +1107,15 @@ additional design decisions.
     `user-service/src/controllers/auth.controller.ts`). This was discovered as a cross-service naming
     mismatch after merging `main`'s user-service work into the `supplier-service` branch; the team
     resolved it by adopting the User Service's existing string rather than changing the User Service.
+20. Phase 1 decisions recorded (2026-09-29): (a) `isOpen` is an additional optional list filter
+    (§7, §7.2); (b) `limit` is always 50 and any other supplied value is a `422` (§7.2); (c)
+    `sortOrder` defaults to `A-Z` and a `page` past the last page returns `200` with empty `data`
+    (§7.2); (d) the user-facing `GET /api/v1/suppliers/:id` returns `404` for an unknown supplier
+    (§7.1, §7.1.1); (e) `00:00`–`23:59` denotes 24-hour operation and `is_open` has a dedicated check
+    returning `true` for it (§6.2); (f) equal open and close times are rejected with `422` and a
+    message directing 24-hour schedules to `00:00`–`23:59` (§6.2, §7.1.1); (g) the 24-hour signed-URL
+    validity in item 16 is not yet available or confirmed, pending the storage-provider decision
+    (§6.3, item 7); (h) `category` in the category reference response is the category value (§7.3).
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

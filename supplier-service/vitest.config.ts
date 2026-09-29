@@ -4,7 +4,7 @@
  * Scope: Generated Vitest config that supplies the environment variables src/config.ts requires,
  *        using the values from .env.example, so tests can import config. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { defineConfig } from 'vitest/config';
 

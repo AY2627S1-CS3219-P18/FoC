@@ -4,7 +4,7 @@
  * Scope: Generated unit tests for the authenticate middleware (missing/non-Bearer header, invalid
  *        token, valid token, User Service unreachable). No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import express from 'express';
 import request from 'supertest';

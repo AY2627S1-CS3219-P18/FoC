@@ -6,7 +6,7 @@
  *        to req.user; missing/non-Bearer header, non-2xx from verify, or malformed body -> 401
  *        (§7.1); unreachable User Service -> 500 (§7.1 unhandled failure row). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config.js';

@@ -121,3 +121,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-28 | supplier-service | Supplier Service: `super admin` Role Literal Reconciled After Merging main | Fixed a role-string mismatch with user-service's actual `role_enum`; docs and plan now use `super admin` (space) |
 | 2026-09-28 | supplier-service | Supplier Service: Phase 1 Supplier Read APIs Implementation Plan | Wrote the Phase 1 read-endpoint implementation plan; open points flagged for the team |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 0 Tasks 6–11 Implementation | Implemented error/rate-limit/auth/role middleware, app wiring, and README for Phase 0 |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 1 Team Decisions Recorded and Plan Amended | Recorded eight team decisions in the architecture and amended the Phase 1 plan |

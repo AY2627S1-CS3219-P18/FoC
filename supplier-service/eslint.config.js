@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Codex (model: gpt-5.6-luna), date: 2026-09-28
  * Scope: Phase 0 Task 1 project scaffold configuration; no decisions made.
- * Author review:
+ * Author review: Congchen
  */
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';

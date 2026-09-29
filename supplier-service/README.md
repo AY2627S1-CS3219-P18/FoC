@@ -4,7 +4,7 @@ Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
 Scope: Documented the Phase 0 scaffold's setup/run instructions (SupplierServiceSpec.md, "Phase 0 —
        Foundations"). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
-Author review:
+Author review: Congchen
 -->
 
 # Supplier Service

@@ -4,7 +4,7 @@
  * Scope: Generated the role-guard middleware implementing the per-endpoint role column from
  *        SupplierServiceArchitecture.md §7 (user, admin, super admin). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/AppError.js';

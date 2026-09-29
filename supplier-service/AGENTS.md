@@ -3,7 +3,7 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-28
 Scope: Recorded the team-supplied Supplier Service tech stack. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 -->
 
 # AGENTS.md — supplier-service

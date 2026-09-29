@@ -3,7 +3,7 @@
  * Tool: Codex (model: gpt-5.6-luna), date: 2026-09-28
  * Scope: Generated Phase0 Task5 SGT timestamp utility.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
 

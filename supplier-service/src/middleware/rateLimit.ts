@@ -5,7 +5,7 @@
  *        Implements the fixed 30-requests-per-minute-per-IP limit from SupplierServiceArchitecture.md
  *        §7.5 as an in-memory counter (no new library dependency introduced for this). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/AppError.js';
