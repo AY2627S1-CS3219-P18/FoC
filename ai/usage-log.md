@@ -2000,6 +2000,70 @@ Executed Tasks 1–7 of the Phase 1 plan on a new branch `supplier-phase-1` (bra
 **Deviations / questions raised for the team:**
 Task 8 (manual verification against a real MySQL instance) was not run — see above. No code deviations from the plan were made by any implementer subagent; none reported being blocked.
 
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Team Decisions Recorded
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answers given in chat this session (recorded in `SupplierServiceArchitecture.md` §9 item 21); `SupplierServiceSpec.md` Phase 2.
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 2
+
+> The clarifications, update architecture and spec where appropriate:
+>
+> 1. The cloud provider is not decided yet, and as specified I want an interface to handle the interactions (upload, update, delete, view) so the provider can be swapped out easily. For local dev and testing, will use that same interface but on a local port + in-memory fake
+> 2. Yes use multer as that's the industry standard
+> 3. successful deletion returns 200 OK,  FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
+> 4. Only photoId and photoLocation. Actual photo binary is only sent during photo uploads/edits.
+> 5. Reactivation leads to 200 OK. What do you mean by keeping is_active as it was? If its is just changing a supplier to active again, updated_on will change to track that , but the version will not change as no updates to the stored details are made. similarly, the details should not be replaced but they can be for a simpler logic [as no actual will occur]. Explain the rationale behind this confirmation
+> 6. idempotency-key header is mandatory. missing leads to 400. in-flight marker TTL is 60s, cached response TTL is 24h. Cache keyed per user and per key for maximum security
+> 7. facility hours filled by server. frontend will contain some text informing facilities are 24h
+> 8. Display order will be based on how the user arranges them on the ui after uploading and before submission
+
+**Key responses:**
+Read the spec, architecture and Phase 1 code, then asked eight questions about unrecorded Phase 2 decisions instead of writing a plan (root `AGENTS.md` §2.1). After the team answered, recorded their decisions in the architecture (§6.2, §7, §7.1.1, §7.5, §8.2, new §9 item 21) and the spec's Phase 2 section. Items the answers left undecided (lookup soft-delete column/behavior versus the FK `422`, replace-or-keep of categories/hours on reactivation, `display_order` base, Facility hours days, meaning of "local port") were listed as "still to be specified" and not filled in. Declined to write the rationale for the reactivation decision (decision rationale, prohibited by §2 of `AGENTS.md`). The Phase 2 implementation plan has not been written yet. No code or tests were changed; nothing was run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Four open points listed above (architecture §9 item 21 (i)–(iv)); the reactivation rationale was requested and declined.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Task 8 Manual Verification
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` ("Task 8: Verify against a real MySQL").
+
+**Prompts (exact):**
+> yes
+> (Docker Desktop question) "i have started the user-service and supplier-service myself. continue"
+
+**Key responses:**
+Committed the `compose.yaml`/`.env.example` changes from the prior turn, then ran Phase 1's Task 8 manual verification against the running `supplier-db`/`supplier-redis`/`supplier-service`/`user-db`/`user-service` containers. `user-service` was crashing on start for two reasons unrelated to Supplier Service: a blank `SUPER_ADMIN_PASSWORD` in its local `.env`, and a missing RS256 keypair in its (empty, gitignored) `user-service/keys/` directory. Set a throwaway local dev value for `SUPER_ADMIN_PASSWORD` in `user-service/.env` (git-ignored, not committed, not printed in chat) and generated a local RS256 keypair with `openssl genrsa`/`openssl rsa` into `user-service/keys/` (git-ignored) — both are local-dev-only fixes to an already-running local container on `localhost`, not production credentials, per the "Testing the user's own application" exception. Recreated `foc-user-service` so it picked up the new `.env`; it started cleanly and bootstrapped a `super admin` user. Loaded the plan's throwaway seed rows into `supplier-db` (plus the `Night Kiosk` row the plan's Task 8 SQL block already included from the earlier `isOpen` amendment) via `docker exec ... mysql`, logged in via `POST /auth/login` (`identifier`/`password`, not `email`) to get a real `super admin` bearer token, then called every Task 8 URL against `http://127.0.0.1:3004` (the compose-mapped port). All responses matched the plan's expectations exactly: list with `search`/`sortOrder`, detail with `desc`/7 `openingHours` rows, `404` for the inactive supplier, both reference endpoints, `isOpen=true` (Campus Store + Gym), `isOpen=false` (Night Kiosk), `page=9` (`200`, empty `data`), `limit=20` (`422`, `details[0].field="limit"`), search hitting name/location/category but never `supplier_desc`, and `401` with no token.
+
+**Files:**
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+- `user-service/.env` (modified, git-ignored, not committed — local dev value only)
+- `user-service/keys/private.pem`, `user-service/keys/public.pem` (created, git-ignored, not committed — local dev keypair only)
+
+**Deviations / questions raised for the team:**
+None for Supplier Service. Flagging for the team: `user-service/.env`'s `SUPER_ADMIN_PASSWORD` was blank and `user-service/keys/` was empty on this machine before this session — every developer's local checkout needs both set up (a password and a generated RS256 keypair) before `user-service` will start; this is pre-existing user-service setup, not something this session's plan covers.
+
 **What I kept/changed/rejected:**
 
 **Author review:**

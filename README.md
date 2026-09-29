@@ -124,3 +124,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Team Decisions Recorded and Plan Amended | Recorded eight team decisions in the architecture and amended the Phase 1 plan |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Plan's Four Remaining Points Confirmed | Team confirmed isOpen format, in-memory paging, Facility default, and zero-length row handling |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Supplier Read APIs Implementation | Implemented Tasks 1-7 (types through app wiring); 101/101 tests passing; Task 8 manual DB check still open |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Team Decisions Recorded | Recorded team Phase 2 decisions in architecture and spec; four points still open |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 1 Task 8 Manual Verification | Ran the live MySQL/user-service verification; all endpoint checks matched expectations |
