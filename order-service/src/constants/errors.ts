@@ -18,6 +18,7 @@ export enum ErrorCode {
   DEADLINE_NOT_REACHED = 'DEADLINE_NOT_REACHED',
   INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
   CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
+  INVALID_STATUS = 'INVALID_STATUS',
 }
 
 export const ErrorMessage: Record<ErrorCode, string> = {
@@ -48,4 +49,5 @@ export const ErrorMessage: Record<ErrorCode, string> = {
     'You do not have enough credits for this request.',
   [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:
     'Credits could not be reserved right now. Please try again.',
+  [ErrorCode.INVALID_STATUS]: 'Status provided is invalid.',
 };

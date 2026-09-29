@@ -304,6 +304,64 @@ None
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+## 2026-09-28 — order-service: Prisma Order Seed Fixtures
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate
+**Scope:** Boilerplate
+**Governing decision:** Existing `order-service/prisma/schema.prisma` model and `order-service/AGENTS.md` implementation-only rules.
+
+**Prompts (exact):**
+
+> help me create a seed.ts inside prisma/ with dummy data of orders for testing. include multiple orders of different statuses and different locations and different numbers of credits offered.
+
+**Key responses:**
+Added `order-service/prisma/seed.ts` with nine deterministic order fixtures covering all seven request statuses, varied campus locations, and credit amounts from 2 to 15. The script deletes only those fixed fixture IDs before inserting, loads `DATABASE_URL` through dotenv, uses the existing Prisma PostgreSQL adapter, and disconnects in a `finally` block. Focused TypeScript validation passed with the service's installed compiler; no database seed run was performed.
+
+**Files:**
+
+- `order-service/prisma/seed.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+
+## 2026-09-29 — order-service: getOrders Service and Controller Tests
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `order-service` service/controller behavior and `order-service/AGENTS.md` implementation-only rules.
+
+**Prompts (exact):**
+
+> could you add tests here for getOrders in orders service and getOrders in orders controller respectively? make sure to cover a variety of different orders (differennt statuses, different requests, invalid status filter, etc.) and remember to update the ai usage log
+
+**Key responses:**
+Added service tests covering unfiltered mixed orders, multiple valid status filters, no matches, and database errors. Added controller tests covering mixed results, valid filters, invalid status rejection, empty results, and database errors. The invalid-status test exposed that the controller sent a 400 response but continued into the service call, so the handler now returns immediately. Focused validation passed: 39 tests in the two edited spec files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+
 ## 2026-09-25 — Stage 6 pre-work #4: Forgot Password email template
 
 **Tool:** Claude Code (model: claude-sonnet-5)

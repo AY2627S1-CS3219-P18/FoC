@@ -5,6 +5,8 @@
  *        F9.1.2 reserve-then-create flow.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-09-29): Added getOrders unit tests for unfiltered and status-filtered queries.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -14,7 +16,7 @@ import type {
 import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
 import type { CreateOrderPayload } from '../types/orders.js';
-import { createOrder } from './orders.service.js';
+import { createOrder, getOrders } from './orders.service.js';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
 const LATER = '2026-09-27T14:00:00.000Z';
@@ -254,5 +256,60 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
     });
     deps.credits.release.mockRejectedValue(new Error('credit-service down'));
     await expect(run(valid, deps)).rejects.toThrow('db down');
+  });
+});
+
+describe('getOrders', () => {
+  const orders = [
+    { id: 'open-1', status: 'open', description: 'Chicken rice' },
+    { id: 'accepted-1', status: 'accepted', description: 'Coffee' },
+    { id: 'delivered-1', status: 'delivered', description: 'Textbooks' },
+  ];
+
+  function prismaWithFindMany() {
+    const findMany = vi.fn();
+    const prisma = {
+      orderRequest: { findMany },
+    } as unknown as PrismaClient;
+    return { findMany, prisma };
+  }
+
+  it('returns all orders when no status filter is provided', async () => {
+    const { findMany, prisma } = prismaWithFindMany();
+    findMany.mockResolvedValue(orders);
+
+    await expect(getOrders(prisma, undefined)).resolves.toEqual(orders);
+    expect(findMany).toHaveBeenCalledWith({ where: undefined });
+  });
+
+  it.each([
+    ['open', [orders[0]]],
+    ['accepted', [orders[1]]],
+    ['delivered', [orders[2]]],
+  ] as const)(
+    'passes the %s status filter to Prisma',
+    async (status, result) => {
+      const { findMany, prisma } = prismaWithFindMany();
+      findMany.mockResolvedValue(result);
+
+      await expect(getOrders(prisma, status)).resolves.toEqual(result);
+      expect(findMany).toHaveBeenCalledWith({ where: { status } });
+    },
+  );
+
+  it('returns an empty list when no orders match the status filter', async () => {
+    const { findMany, prisma } = prismaWithFindMany();
+    findMany.mockResolvedValue([]);
+
+    await expect(getOrders(prisma, 'cancelled')).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({ where: { status: 'cancelled' } });
+  });
+
+  it('propagates database errors', async () => {
+    const { findMany, prisma } = prismaWithFindMany();
+    const error = new Error('db down');
+    findMany.mockRejectedValue(error);
+
+    await expect(getOrders(prisma, undefined)).rejects.toBe(error);
   });
 });
