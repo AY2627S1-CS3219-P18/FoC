@@ -1,6 +1,6 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Tool: Claude Code (model: claude-haiku-4-5-20251001), date: 2026-09-30
  * Scope: Outbox task builders and task→queue routing (Phase 4 plan Task 1). The queue keys, task
  *        names and payload shapes are the recorded/team-supplied values. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
