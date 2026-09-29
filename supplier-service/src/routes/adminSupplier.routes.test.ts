@@ -5,16 +5,22 @@
  *        role restriction, filter pass-through and error mapping. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added POST create tests and the new
+ *        dependency shape per Phase 2 plan Task 8. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
+import type { SupplierCreationService } from '../business/supplierCreationService.js';
 import type { SupplierService } from '../business/supplierService.js';
+import type { BeginResult, IdempotencyStore } from '../idempotency/idempotencyStore.js';
 import { errorHandler } from '../middleware/errorHandler.js';
 import { AppError } from '../utils/AppError.js';
 import { createAdminSupplierRouter } from './adminSupplier.routes.js';
 
-function buildApp(overrides: Record<string, unknown> = {}) {
+function buildApp(overrides: Record<string, unknown> = {}, begin: BeginResult = 'started') {
   const service = {
     listAdminSuppliers: vi.fn().mockResolvedValue({
       metadata: { totalRecords: 0, currPage: 1, limit: 50, totalPages: 0 },
@@ -23,15 +29,30 @@ function buildApp(overrides: Record<string, unknown> = {}) {
     getAdminSupplier: vi.fn().mockResolvedValue({ id: 101, version: 2 }),
     ...overrides,
   };
+  const creation = {
+    createSupplier: vi.fn().mockResolvedValue({ statusCode: 201, body: { id: 101, photos: [] } }),
+  };
+  const idempotency = {
+    begin: vi.fn().mockResolvedValue(begin),
+    complete: vi.fn().mockResolvedValue(undefined),
+    abandon: vi.fn().mockResolvedValue(undefined),
+  };
   const app = express();
   app.use((req, _res, next) => {
     const role = req.headers['x-test-role'];
     if (typeof role === 'string') req.user = { user_id: 'u-1', role };
     next();
   });
-  app.use('/api/v1/admin/suppliers', createAdminSupplierRouter(service as unknown as SupplierService));
+  app.use(
+    '/api/v1/admin/suppliers',
+    createAdminSupplierRouter({
+      reader: service as unknown as SupplierService,
+      creation: creation as unknown as SupplierCreationService,
+      idempotency: idempotency as unknown as IdempotencyStore,
+    }),
+  );
   app.use(errorHandler);
-  return { app, service };
+  return { app, service, creation, idempotency };
 }
 
 describe.each(['admin', 'super admin'])('role %s', (role) => {
@@ -85,5 +106,81 @@ describe('list validation and filters', () => {
     });
     const res = await request(app).get('/api/v1/admin/suppliers/999').set('x-test-role', 'admin');
     expect(res.status).toBe(404);
+  });
+});
+
+const KEY = '9b2f5a80-4c1e-4f70-9d7e-2f3a1c6b8e11';
+const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+const post = (app: express.Express, role = 'admin') =>
+  request(app)
+    .post('/api/v1/admin/suppliers')
+    .set('x-test-role', role)
+    .set('Idempotency-Key', KEY)
+    .field('name', 'Campus Store')
+    .field('type', 'Facility')
+    .field('location_id', '4');
+
+describe('POST create', () => {
+  it('creates, passes the parsed input and photos in order, and caches the response', async () => {
+    const { app, creation, idempotency } = buildApp();
+    const res = await post(app)
+      .attach('photos', png, { filename: 'a.png', contentType: 'image/png' })
+      .attach('photos', png, { filename: 'b.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(201);
+    expect(idempotency.begin).toHaveBeenCalledWith('u-1', KEY);
+    const [input, files, actor] = creation.createSupplier.mock.calls[0] as [{ name: string; type: string }, Array<{ mimeType: string }>, { userId: string }];
+    expect(input).toMatchObject({ name: 'Campus Store', type: 'Facility', locationId: 4 });
+    expect(files.map((f) => f.mimeType)).toEqual(['image/png', 'image/jpeg']);
+    expect(actor).toEqual({ userId: 'u-1' });
+    expect(idempotency.complete).toHaveBeenCalledWith('u-1', KEY, { statusCode: 201, body: { id: 101, photos: [] } });
+  });
+
+  it('returns the reactivation status from the service', async () => {
+    const { app, creation } = buildApp();
+    creation.createSupplier.mockResolvedValueOnce({ statusCode: 200, body: { id: 7 } });
+    expect((await post(app)).status).toBe(200);
+  });
+
+  it('returns 400 without an Idempotency-Key and never calls the service', async () => {
+    const { app, creation } = buildApp();
+    const res = await request(app).post('/api/v1/admin/suppliers').set('x-test-role', 'admin').field('name', 'X');
+    expect(res.status).toBe(400);
+    expect(creation.createSupplier).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 for a replay while the first request is in flight', async () => {
+    const { app, creation } = buildApp({}, 'in_flight');
+    const res = await post(app);
+    expect(res.status).toBe(409);
+    expect(creation.createSupplier).not.toHaveBeenCalled();
+  });
+
+  it('replays the cached response without calling the service again', async () => {
+    const { app, creation } = buildApp({}, { statusCode: 201, body: { id: 55 } });
+    const res = await post(app);
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ id: 55 });
+    expect(creation.createSupplier).not.toHaveBeenCalled();
+  });
+
+  it('abandons the key when validation fails so the client can retry', async () => {
+    const { app, idempotency } = buildApp();
+    const res = await request(app)
+      .post('/api/v1/admin/suppliers')
+      .set('x-test-role', 'admin')
+      .set('Idempotency-Key', KEY)
+      .field('type', 'Store');
+    expect(res.status).toBe(422);
+    expect(idempotency.abandon).toHaveBeenCalledWith('u-1', KEY);
+    expect(idempotency.complete).not.toHaveBeenCalled();
+  });
+
+  it('rejects the user role with 403 and touches neither the store nor the service', async () => {
+    const { app, creation, idempotency } = buildApp();
+    const res = await post(app, 'user');
+    expect(res.status).toBe(403);
+    expect(idempotency.begin).not.toHaveBeenCalled();
+    expect(creation.createSupplier).not.toHaveBeenCalled();
   });
 });

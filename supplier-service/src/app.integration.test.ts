@@ -7,6 +7,9 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Phase 1 route tests. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Phase 2 route tests per Phase 2
+ *        plan Task 8. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -53,6 +56,51 @@ describe('app (Phase 0 middleware chain)', () => {
     );
     const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', 'Bearer good-token');
     // limit=51 fails validation before any database access, so no MySQL is needed for this test.
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('Phase 2 routes', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const asRole = (role: string) =>
+    // A fresh Response per call: a Response body can only be read once.
+    vi.mocked(fetch).mockImplementation(
+      async () => new Response(JSON.stringify({ user_id: 'u-1', role }), { status: 200 }),
+    );
+
+  it('rejects unauthenticated admin requests with 401', async () => {
+    expect((await request(app).get('/api/v1/admin/suppliers')).status).toBe(401);
+    expect((await request(app).post('/api/v1/admin/suppliers')).status).toBe(401);
+    expect((await request(app).delete('/api/v1/admin/reference/faculties/1')).status).toBe(401);
+  });
+
+  it('rejects the user role with 403 on every Phase 2 route', async () => {
+    asRole('user');
+    const auth = { Authorization: 'Bearer t' };
+    expect((await request(app).get('/api/v1/admin/suppliers').set(auth)).status).toBe(403);
+    expect((await request(app).get('/api/v1/admin/suppliers/1').set(auth)).status).toBe(403);
+    expect((await request(app).post('/api/v1/admin/suppliers').set(auth)).status).toBe(403);
+    expect((await request(app).post('/api/v1/admin/reference/faculties').set(auth).send({ faculty: 'X' })).status).toBe(403);
+    expect((await request(app).put('/api/v1/admin/reference/locations/1').set(auth).send({ level: 1 })).status).toBe(403);
+    expect((await request(app).delete('/api/v1/admin/reference/categories/1').set(auth)).status).toBe(403);
+  });
+
+  it('returns 400 for an admin create without an Idempotency-Key', async () => {
+    asRole('admin');
+    const res = await request(app).post('/api/v1/admin/suppliers').set('Authorization', 'Bearer t');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 422 for an admin list with a bad limit', async () => {
+    asRole('super admin');
+    const res = await request(app).get('/api/v1/admin/suppliers?limit=10').set('Authorization', 'Bearer t');
     expect(res.status).toBe(422);
   });
 });
