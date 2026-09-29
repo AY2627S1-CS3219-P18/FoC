@@ -10,10 +10,14 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added findCurrent and updateSupplier (Phase 3 Task 5).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete, which writes the outbox rows in the same transaction (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { CurrentPhoto } from '../business/photoPlan.js';
 import { AppError } from '../utils/AppError.js';
+import { insertOutboxRows } from './outboxWriter.js';
 import type { NewSupplier, SupplierWriteRepository } from './supplierWriteRepository.js';
 
 function duplicate(): AppError {
@@ -244,6 +248,21 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
         if ((error as { code?: string } | null)?.code === 'ER_DUP_ENTRY') throw duplicate();
         throw error;
       }
+    },
+    async softDelete(supplierId, now, tasks) {
+      return inTransaction(async (conn) => {
+        const [result] = await conn.query<ResultSetHeader>(
+          `UPDATE supplier SET is_deleted = TRUE, updated_on = ?, version = version + 1
+           WHERE supplier_id = ? AND is_deleted = FALSE`,
+          [now, supplierId],
+        );
+        if (result.affectedRows === 0) return false;
+        const [rows] = await conn.query<RowDataPacket[]>('SELECT version FROM supplier WHERE supplier_id = ?', [supplierId]);
+        const row = rows[0];
+        if (row === undefined) throw new Error(`Supplier ${supplierId} vanished inside its own transaction.`);
+        await insertOutboxRows(conn, Number(row.version), tasks);
+        return true;
+      });
     },
   };
 }

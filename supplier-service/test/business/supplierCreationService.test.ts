@@ -11,6 +11,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): the repository fake gains findCurrent and updateSupplier so it type-checks (Phase 3 Task 5).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete: vi.fn() to the repository fake so it still satisfies the interface (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
@@ -41,6 +44,7 @@ function setup(overrides: Partial<SupplierWriteRepository> = {}) {
     reactivateSupplier: vi.fn().mockResolvedValue({ replacedPhotoLocations: [] }),
     findCurrent: vi.fn().mockResolvedValue(null),
     updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
+    softDelete: vi.fn(),
     ...overrides,
   };
   const storage = createInMemoryPhotoStorage();

@@ -14,6 +14,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added updateSupplier and findCurrent tests (Phase 3 Task 5).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete tests (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -236,5 +239,45 @@ describe('findCurrent', () => {
       photos: [{ photoId: 1, location: 'a' }],
     });
     expect(await repo.findCurrent(999)).toBeNull();
+  });
+});
+
+describe('softDelete', () => {
+  const now = '2026-09-30 10:00:00';
+  const tasks = [{ taskName: 'supplier_suspension', payload: { supplier_id: 7 } }];
+
+  it('updates the row and writes the outbox rows, stamped with the new supplier version, in one transaction', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, [{ version: 6 }], {}]);
+
+    const changed = await createMysqlSupplierWriteRepository(pool).softDelete(7, now, tasks);
+
+    expect(changed).toBe(true);
+    expect(sqls(conn)).toEqual([
+      'UPDATE supplier SET is_deleted = TRUE, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND is_deleted = FALSE',
+      'SELECT version FROM supplier WHERE supplier_id = ?',
+      'INSERT INTO outbox (task_name, payload, version) VALUES ?',
+    ]);
+    expect(conn.query.mock.calls[0]?.[1]).toEqual([now, 7]);
+    expect(conn.query.mock.calls[2]?.[1]).toEqual([[['supplier_suspension', '{"supplier_id":7}', 6]]]);
+    expect(conn.commit).toHaveBeenCalled();
+    expect(conn.release).toHaveBeenCalled();
+  });
+
+  it('rolls back, committing neither the delete nor the outbox row, when the outbox insert fails', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, [{ version: 6 }], new Error('outbox insert failed')]);
+
+    await expect(createMysqlSupplierWriteRepository(pool).softDelete(7, now, tasks)).rejects.toThrow(
+      'outbox insert failed',
+    );
+
+    expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
+  });
+
+  it('returns false and writes no outbox row when no live row matched (unknown or already deleted)', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 0 }]);
+
+    expect(await createMysqlSupplierWriteRepository(pool).softDelete(7, now, tasks)).toBe(false);
+    expect(sqls(conn)).toHaveLength(1);
   });
 });

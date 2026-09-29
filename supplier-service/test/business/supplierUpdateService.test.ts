@@ -4,6 +4,9 @@
  * Scope: Tests for the supplier update saga (Phase 3 plan Task 6).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete: vi.fn() to the repository fake so it still satisfies the interface (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentSupplier, SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
@@ -30,6 +33,7 @@ function setup(overrides: Partial<SupplierWriteRepository> = {}, queueError?: Er
     reactivateSupplier: vi.fn(),
     findCurrent: vi.fn().mockResolvedValue(current),
     updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
+    softDelete: vi.fn(),
     ...overrides,
   };
   const storage = createInMemoryPhotoStorage();

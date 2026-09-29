@@ -7,8 +7,12 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added CurrentSupplier, PhotoWrite, SupplierChange and the findCurrent/updateSupplier methods (Phase 3 Task 5).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the softDelete method (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { CurrentPhoto } from '../business/photoPlan.js';
+import type { OutboxTask } from '../queue/tasks.js';
 import type { HourInput } from '../validation/supplierInput.js';
 
 export interface NewSupplier {
@@ -80,4 +84,11 @@ export interface SupplierWriteRepository {
    * version. Returns the replaced photo locations so the cloud objects can be cleaned up later.
    */
   reactivateSupplier(supplierId: number, input: NewSupplier): Promise<{ replacedPhotoLocations: string[] }>;
+  /**
+   * Soft delete (Arch §6.2, §8.1), in one transaction: sets is_deleted, updated_on and version on a
+   * row that is not already deleted (is_active untouched) and writes `tasks` to the outbox, stamped
+   * with the new supplier version, before committing. Returns false, writing nothing, when no live
+   * row matched (unknown or already soft-deleted).
+   */
+  softDelete(supplierId: number, now: string, tasks: OutboxTask[]): Promise<boolean>;
 }
