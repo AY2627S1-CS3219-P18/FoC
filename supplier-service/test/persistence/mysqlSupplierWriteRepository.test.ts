@@ -11,6 +11,9 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added updateSupplier and findCurrent tests (Phase 3 Task 5).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -143,5 +146,95 @@ describe('lookups', () => {
     const repo = createMysqlSupplierWriteRepository(pool);
     expect(await repo.locationExists(4)).toBe(true);
     expect(await repo.locationExists(5)).toBe(false);
+  });
+});
+
+describe('updateSupplier', () => {
+  const now = '2026-09-29 10:00:00';
+
+  it('updates only the sent columns with a version-matched WHERE and bumps version', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }]);
+    const result = await createMysqlSupplierWriteRepository(pool).updateSupplier(101, { version: 3, now, name: 'New' });
+
+    expect(result).toEqual({ removedPhotos: [] });
+    expect(sqls(conn)[0]).toBe(
+      'UPDATE supplier SET supplier_name = ?, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND version = ? AND is_deleted = FALSE',
+    );
+    expect(conn.query.mock.calls[0]?.[1]).toEqual(['New', now, 101, 3]);
+    expect(conn.commit).toHaveBeenCalled();
+  });
+
+  it('rejects with 409 and rolls back when no row matches the version', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 0 }]);
+    await expect(
+      createMysqlSupplierWriteRepository(pool).updateSupplier(101, { version: 2, now, name: 'New' }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
+  });
+
+  it('replaces categories and hours when sent', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, {}, {}, {}, {}]);
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(101, {
+      version: 3,
+      now,
+      categoryIds: [2],
+      hours: [{ day: 8, open: '00:00', close: '23:59', is24h: true }],
+    });
+    const statements = sqls(conn);
+    expect(statements[1]).toBe('DELETE FROM supplier_category_map WHERE supplier_id = ?');
+    expect(conn.query.mock.calls[2]?.[1]).toEqual([[[101, 2]]]);
+    expect(statements[3]).toBe('DELETE FROM supplier_hours WHERE supplier_id = ?');
+    expect(conn.query.mock.calls[4]?.[1]).toEqual([[[101, 8, '00:00', '23:59', 1]]]);
+  });
+
+  it('deletes excluded photos, moves kept rows aside, then writes the final order', async () => {
+    const rows = [
+      { photo_id: 1, photo_location: 'a' },
+      { photo_id: 2, photo_location: 'b' },
+    ];
+    // supplier UPDATE, SELECT photos, DELETE excluded, offset UPDATE, INSERT new, UPDATE kept
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, rows, {}, {}, {}, {}]);
+    const result = await createMysqlSupplierWriteRepository(pool).updateSupplier(101, {
+      version: 3,
+      now,
+      photos: [{ kind: 'new', location: 'c' }, { kind: 'existing', photoId: 2 }],
+    });
+
+    expect(result).toEqual({ removedPhotos: [{ photoId: 1, location: 'a' }] });
+    const statements = sqls(conn);
+    expect(statements[1]).toContain('SELECT photo_id, photo_location FROM supplier_photos WHERE supplier_id = ?');
+    expect(statements[2]).toBe('DELETE FROM supplier_photos WHERE supplier_id = ? AND photo_id IN (?)');
+    expect(conn.query.mock.calls[2]?.[1]).toEqual([101, [1]]);
+    expect(statements[3]).toBe('UPDATE supplier_photos SET display_order = display_order + 1000000 WHERE supplier_id = ?');
+    expect(statements[4]).toBe('INSERT INTO supplier_photos (supplier_id, photo_location, display_order) VALUES (?, ?, ?)');
+    expect(conn.query.mock.calls[4]?.[1]).toEqual([101, 'c', 0]);
+    expect(statements[5]).toBe('UPDATE supplier_photos SET display_order = ? WHERE photo_id = ? AND supplier_id = ?');
+    expect(conn.query.mock.calls[5]?.[1]).toEqual([1, 2, 101]);
+  });
+
+  it('maps a duplicate-key error to 422', async () => {
+    const dup = Object.assign(new Error('dup'), { code: 'ER_DUP_ENTRY' });
+    const { pool } = fakePool([dup]);
+    await expect(
+      createMysqlSupplierWriteRepository(pool).updateSupplier(101, { version: 3, now, name: 'X' }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+});
+
+describe('findCurrent', () => {
+  it('returns the supplier with its photos in display order, or null', async () => {
+    const { pool, poolQuery } = fakePool([]);
+    poolQuery
+      .mockResolvedValueOnce([[{ supplier_id: 101, supplier_name: 'S', supplier_type: 'Store', location_id: 4, is_deleted: 0, version: '3' }], []])
+      .mockResolvedValueOnce([[{ photo_id: 1, photo_location: 'a' }], []])
+      .mockResolvedValueOnce([[], []]);
+    const repo = createMysqlSupplierWriteRepository(pool);
+
+    expect(await repo.findCurrent(101)).toEqual({
+      supplierId: 101, name: 'S', type: 'Store', locationId: 4, isDeleted: false, version: 3,
+      photos: [{ photoId: 1, location: 'a' }],
+    });
+    expect(await repo.findCurrent(999)).toBeNull();
   });
 });
