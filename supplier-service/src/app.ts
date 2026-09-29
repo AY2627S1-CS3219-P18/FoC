@@ -7,12 +7,19 @@
  *        routes this phase. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): mounted the Phase 1 /suppliers router on
+ *        apiV1. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
+import { createSupplierService } from './business/supplierService.js';
 import { config } from './config.js';
+import { pool } from './db/pool.js';
 import { authenticate } from './middleware/authenticate.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { createMysqlSupplierRepository } from './persistence/mysqlSupplierRepository.js';
+import { createSupplierRouter } from './routes/supplier.routes.js';
 
 const app = express();
 
@@ -22,7 +29,11 @@ app.use(createRateLimiter());
 
 const apiV1 = express.Router();
 apiV1.use(authenticate);
-// Phase 1+ mounts supplier routes on `apiV1` here.
+apiV1.use(
+  '/suppliers',
+  createSupplierRouter(createSupplierService(createMysqlSupplierRepository(pool))),
+);
+// Phase 2+ mounts /admin routes on `apiV1` here.
 app.use('/api/v1', apiV1);
 
 app.use(errorHandler);
