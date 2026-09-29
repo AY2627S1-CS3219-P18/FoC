@@ -4,6 +4,9 @@
  * Scope: Implemented the MySQL write repository (create/reactivate transactions) from the Phase 2 plan (Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29 update): Reactivation now also replaces supplier_name with the submitted spelling (Phase 2 Task 7 review fix).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { AppError } from '../utils/AppError.js';
@@ -117,9 +120,9 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
 
         await conn.query(
           `UPDATE supplier
-           SET supplier_desc = ?, is_active = TRUE, is_deleted = FALSE, updated_on = ?, version = version + 1
+           SET supplier_name = ?, supplier_desc = ?, is_active = TRUE, is_deleted = FALSE, updated_on = ?, version = version + 1
            WHERE supplier_id = ?`,
-          [input.desc, input.now, supplierId],
+          [input.name, input.desc, input.now, supplierId],
         );
         await conn.query('DELETE FROM supplier_category_map WHERE supplier_id = ?', [supplierId]);
         await conn.query('DELETE FROM supplier_hours WHERE supplier_id = ?', [supplierId]);

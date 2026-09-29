@@ -4,6 +4,9 @@
  * Scope: Wrote the tests for the MySQL write repository from the Phase 2 plan (Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29 update): Reactivation now also replaces supplier_name with the submitted spelling (Phase 2 Task 7 review fix).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -96,10 +99,11 @@ describe('reactivateSupplier', () => {
     expect(result).toEqual({ replacedPhotoLocations: ['old-1', 'old-2'] });
     const statements = sqls(conn);
     expect(statements[0]).toContain('FOR UPDATE');
+    expect(statements[2]).toContain('supplier_name = ?');
     expect(statements[2]).toContain('is_active = TRUE');
     expect(statements[2]).toContain('is_deleted = FALSE');
     expect(statements[2]).toContain('version = version + 1');
-    expect(conn.query.mock.calls[2]?.[1]).toEqual(['desc', '2026-09-29 10:00:00', 11]);
+    expect(conn.query.mock.calls[2]?.[1]).toEqual(['Campus Store', 'desc', '2026-09-29 10:00:00', 11]);
     expect(statements.slice(3, 6).every((s) => s.startsWith('DELETE FROM'))).toBe(true);
     expect(conn.commit).toHaveBeenCalled();
   });
