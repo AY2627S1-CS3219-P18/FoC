@@ -1963,3 +1963,43 @@ None.
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Supplier Read APIs Implementation
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (Tasks 1–7), transcribing `SupplierServiceSpec.md` ("Phase 1 — Supplier Read APIs") and `SupplierServiceArchitecture.md` (§4, §5, §6.2, §6.3, §7 endpoint table, §7.1, §7.2, §7.3); team decisions in §9 item 20.
+
+**Prompts (exact):**
+> in a new branch "supplier-phase-1", execute the plan subagent-driven. Forgo reviewer agents for small contained edits
+
+**Key responses:**
+Executed Tasks 1–7 of the Phase 1 plan on a new branch `supplier-phase-1` (branched from `supplier-service-phase-0`), using superpowers:subagent-driven-development: a fresh implementer subagent per task, each given the plan's exact task text (via targeted line ranges of the plan file) and told to follow it verbatim, TDD-style, and self-review before committing. Per the user's instruction, dedicated spec-compliance/code-quality reviewer subagents were skipped for every task — each is a small, fully-specified, contained edit with the code already written out in the plan — and the controller (this session) instead verified the full test suite and typecheck/lint after Task 7. Result: `src/types/supplier.ts`, `src/persistence/supplierRepository.ts` (Task 1); `src/business/isOpen.ts` (Task 2, SGT/overnight/dedicated 00:00–23:59 check); `src/validation/supplierQuery.ts` (Task 3, incl. the `isOpen` filter and fixed-`limit` validation); `src/persistence/mysqlSupplierRepository.ts` (Task 4); `src/business/supplierService.ts` (Task 5, incl. the confirmed in-memory `isOpen` pagination path); `src/controllers/supplier.controller.ts`, `src/routes/supplier.routes.ts` (Task 6); `src/app.ts`/`src/app.integration.test.ts` wiring (Task 7). Final verification: `npx vitest run` — 13 test files, 101 tests, all passing; `npx tsc --noEmit` clean; `npm run lint` clean. Task 8 (manual verification against a real MySQL instance with seed data and live HTTP calls) was **not run** in this session — it needs a running MySQL instance and a running User Service to mint a token, neither of which this session provisioned; it remains an open manual step for the team before the branch is considered fully verified end-to-end.
+
+**Files:**
+- `supplier-service/src/types/supplier.ts` (created)
+- `supplier-service/src/persistence/supplierRepository.ts` (created)
+- `supplier-service/src/business/isOpen.ts` (created)
+- `supplier-service/src/business/isOpen.test.ts` (created)
+- `supplier-service/src/validation/supplierQuery.ts` (created)
+- `supplier-service/src/validation/supplierQuery.test.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierRepository.test.ts` (created)
+- `supplier-service/src/business/supplierService.ts` (created)
+- `supplier-service/src/business/supplierService.test.ts` (created)
+- `supplier-service/src/controllers/supplier.controller.ts` (created)
+- `supplier-service/src/routes/supplier.routes.ts` (created)
+- `supplier-service/src/routes/supplier.routes.test.ts` (created)
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/app.integration.test.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Task 8 (manual verification against a real MySQL instance) was not run — see above. No code deviations from the plan were made by any implementer subagent; none reported being blocked.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
