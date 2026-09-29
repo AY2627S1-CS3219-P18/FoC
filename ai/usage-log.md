@@ -2458,3 +2458,78 @@ The two helpers were moved as well, which goes slightly beyond "test cases". A `
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-30 — Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id)
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `SupplierServiceSpec.md` "Phase 3 — Admin Update"; `SupplierServiceArchitecture.md` §6.2, §7, §7.1.1, §7.3, §7.5, §8.1, §8.2; the team's answers in chat on 2026-09-29/30; plan `docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md` (commit `7a44642`).
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 3
+
+> "PUT body fields…"="Same as create + isActive"; "Identity collisions on PUT…"="422 duplicate; deleted = 404"; "Photo wire format on PUT…"="JSON arrays, files by index"; "Phase 3 must enqueue the excluded-photo deletion job … what should Phase 3 do about the Redis job producer?"="Producer only, you supply names"
+
+> Redis list key: "queue:image:cleanup", task name="image_cleanup".
+> Readings to confirm:
+> 
+> 1. yes one redis job per photo to exclude
+> 2. explain what this case is
+> 3. yes
+> 4. what do you mean by PUT with no editable fields
+> 5. yes
+> 6. yes
+> 7. Yes, but actually now i do not need placeholders, since the cloud save will have to run first and return the actual photo_id to be saved
+> 8. what is this
+> 9. yes
+
+> new photos = "Keep placeholders"; files while not dirty = "422 reject"; version-only PUT = "422 reject"; enqueue failure = "is this purely with enqueuing the redis tasks, not the tasks failing? if yes, api returns 500, failinf the edit. If it is after a redis task has exhausted, that would be recorded in a log"
+
+> open reading:
+> follow original plan. 
+> Any other blockers? if not, we are now in a new branch "supplier-phase-3" , execute with subagent-driven developement
+
+**Key responses:**
+Asked the four design questions above (PUT body fields, identity collisions, photo wire format, Redis job producer) instead of choosing, then wrote the Phase 3 plan (`docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md`, written by the agent and committed by the team as `7a44642`). Implemented it on branch `supplier-phase-3` through subagent-driven development: one implementer subagent per task and one reviewer subagent per task (spec and quality passes combined in one reviewer), all approved. Built: a Redis job producer (`jobQueue.ts`, `photoDeletionJob.ts`); `resolveHours` and exported validation helpers in `supplierInput.ts`; the PUT field parser (`supplierUpdateInput.ts`); a pure photo plan (`photoPlan.ts`); `findCurrent` and `updateSupplier` in the write repository (version-matched `UPDATE`, `display_order` reorder via a `+1000000` offset); the `SupplierUpdateService` saga; and the controller, route and app wiring.
+Verification actually run by the controller at the end: `npx vitest run` — 28 files, 256 tests passed; `npm run build` and `npm run lint` clean; `npx tsc --noEmit` clean. Not run: the live curl/end-to-end check against MySQL, Redis and MinIO (no MySQL container was running; only Redis and MinIO). The real MySQL reorder (`+1000000` offset against `UNIQUE(supplier_id, display_order)`) is covered only by mock-based unit tests.
+
+**Files:**
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/business/photoPlan.ts` (created)
+- `supplier-service/src/business/supplierUpdateService.ts` (created)
+- `supplier-service/src/controllers/adminSupplier.controller.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierWriteRepository.ts` (modified)
+- `supplier-service/src/persistence/supplierWriteRepository.ts` (modified)
+- `supplier-service/src/queue/jobQueue.ts` (created)
+- `supplier-service/src/queue/photoDeletionJob.ts` (created)
+- `supplier-service/src/routes/adminSupplier.routes.ts` (modified)
+- `supplier-service/src/validation/supplierInput.ts` (modified)
+- `supplier-service/src/validation/supplierUpdateInput.ts` (created)
+- `supplier-service/test/business/photoPlan.test.ts` (created)
+- `supplier-service/test/business/supplierCreation.minio.test.ts` (modified)
+- `supplier-service/test/business/supplierCreationService.test.ts` (modified)
+- `supplier-service/test/business/supplierUpdateService.test.ts` (created)
+- `supplier-service/test/persistence/mysqlSupplierWriteRepository.test.ts` (modified)
+- `supplier-service/test/queue/jobQueue.test.ts` (created)
+- `supplier-service/test/routes/adminSupplier.routes.test.ts` (modified)
+- `supplier-service/test/validation/supplierInput.test.ts` (modified)
+- `supplier-service/test/validation/supplierUpdateInput.test.ts` (created)
+- `supplier-service/README.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+- No file in this change lacks a header for want of comment syntax (`package.json` was not changed).
+
+**Deviations / questions raised for the team:**
+- The repo layout changed mid-plan, so tests live in `supplier-service/test/` mirroring `src/`; the plan's paths were adapted.
+- `test/business/supplierCreation.minio.test.ts` was also edited to add the two new repository fake methods so `tsc` passes.
+- The four design questions above were asked rather than decided by the agent.
+- Reading 8 caveat: the enqueue happens after commit (Architecture §8.2), so if enqueuing fails the API returns 500 while the edit stays committed and is not rolled back. The team said to follow the original plan; worker retries and dead-letter logging are Phase 4.
+- Points flagged by reviewers for the team: `{version, photo_ids}` with `isPhotoDirty` false passes the parser as "not empty" and would only bump `version`; a partial enqueue failure leaves the remaining excluded photos' cloud objects without a cleanup job; the repository tests are mock-only.
+- One unexplained failure occurred on a single first full-suite run by an implementer subagent; it was not reproduced in 11 further full runs.
+- The plan document itself was written by the agent and committed by the team as `7a44642`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

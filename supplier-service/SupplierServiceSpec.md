@@ -58,6 +58,10 @@ Scope: 2026-09-29 update — recorded the team's confirmation that `supplier_hou
        `BOOLEAN NOT NULL DEFAULT FALSE`. Tool: Claude Code (model: claude-sonnet-5). No decisions
        were made by the AI tool.
 Author review: Congchen
+Scope: 2026-09-30 update — added a Phase 3 implementation status note (Tool: Claude Code, model:
+       claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
+       AI tool.
+Author review:
 -->
 
 # Supplier Service Implementation Spec
@@ -292,6 +296,11 @@ concurrency), §8.2 full saga (steps 1–7, including photo edit semantics).
 - `updated_on` and `version` bumped on every successful update (§6.4).
 - `is_active` toggling needs no dedicated endpoint: it is one of the generic supplier fields `PUT`
   already accepts (§7 table row), independent of `is_deleted`/soft-delete (§6.2, confirmed).
+
+- Status (done 2026-09-30): `PUT /api/v1/admin/suppliers/:id` is implemented, including the
+  photo saga and the post-commit enqueue of one excluded-photo cleanup job per photo to the Redis
+  list `queue:image:cleanup` (`task_name` `image_cleanup`). This is producer-only; the worker that
+  consumes the queue is deferred to Phase 4.
 
 ### Acceptance criteria
 
