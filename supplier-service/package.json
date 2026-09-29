@@ -7,6 +7,7 @@
     "dev": "nodemon -L --watch src --ext ts,json --exec tsx src/app.ts",
     "build": "tsc",
     "test": "vitest",
+    "test:minio": "vitest run --config vitest.minio.config.ts",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:phase2": "tsx src/db/migratePhase2.ts",
     "lint": "eslint .",
