@@ -5,7 +5,7 @@
   "scripts": {
     "start": "tsx src/app.ts",
     "dev": "nodemon -L --watch src --ext ts,json --exec tsx src/app.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest",
     "test:minio": "vitest run --config vitest.minio.config.ts",
     "migrate": "tsx src/db/migrate.ts",

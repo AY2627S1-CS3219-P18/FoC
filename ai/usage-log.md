@@ -2428,3 +2428,33 @@ Executed Tasks 1–8 of the Phase 2 plan on branch `supplier-phase-2` with super
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-30 — Supplier Service: Move Tests into a test/ Folder
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction in chat (no design decision involved).
+
+**Prompts (exact):**
+> make a new "test" folder within supplier service and add subfolders mirroring that in the src folder, and move all test cases from src into test
+
+**Key responses:**
+Moved all 26 `*.test.ts` files from `supplier-service/src/` to `supplier-service/test/`, keeping the same subfolders (`business`, `db`, `idempotency`, `middleware`, `persistence`, `routes`, `storage`, `utils`, `validation`, plus `app.integration.test.ts` at the top), using `git mv` and rewriting each file's relative imports; no test logic was changed. Also moved two test-only helpers that lived in `src/storage/` (`minioTestStorage.ts` and `inMemoryPhotoStorage.ts`) into `test/storage/` so no test code remains under `src/`. Config changes: `tsconfig.json` now includes `test/` (and no longer sets `rootDir`); a new `tsconfig.build.json` builds `src/` only and `npm run build` uses it; `vitest.config.ts` and `vitest.minio.config.ts` now look under `test/`. Verification: `npx tsc --noEmit` and `npx tsc -p tsconfig.build.json --noEmit` clean; `npx vitest run` — 24 files, 204 tests passing; `npm run test:minio` — 2 files, 8 tests passing; `npm run lint` clean. The default run count dropped from 26 files / 210 tests to 24 / 204 because the old pattern also ran two stale compiled copies of tests in `dist/` (`dist/middleware/errorHandler.test.js`, `dist/utils/time.test.js`); the new `test/**` include no longer picks them up. The Phase 2 and Phase 3 plan documents still refer to the old `src/...test.ts` paths and were not edited.
+
+**Files:**
+- `supplier-service/test/**` (26 test files and 2 helpers moved from `supplier-service/src/**`, imports updated; listed by `git log --follow`)
+- `supplier-service/tsconfig.json` (modified)
+- `supplier-service/tsconfig.build.json` (created)
+- `supplier-service/package.json` (modified; no header possible — `build` script)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/vitest.minio.config.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The two helpers were moved as well, which goes slightly beyond "test cases". A `git stash -u` used during a comparison briefly stashed the untracked `docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md`; it was restored immediately with `git stash pop` and is unchanged.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
