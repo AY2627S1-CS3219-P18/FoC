@@ -251,6 +251,8 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
   entry first, and `init.sql` has `is_24h` and the 1–8 check. Existing databases created from the
   old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows still need migrating
   (Sunday 0 becomes 7).
+- Deferred to later phases: deleting the cloud objects of photos replaced on reactivation (Phase 4
+  worker; `reactivateSupplier` already returns their locations).
 - Library: the local MinIO adapter uses the AWS S3 client (`@aws-sdk/client-s3`), chosen by the team;
   MinIO is S3-compatible.
 
