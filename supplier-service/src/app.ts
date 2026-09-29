@@ -14,16 +14,22 @@
  *        /admin/suppliers per Phase 2 plan Task 3. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): mounted the lookup router at /admin/reference per
+ *        Phase 2 plan Task 4. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
+import { createLookupService } from './business/lookupService.js';
 import { createSupplierService } from './business/supplierService.js';
 import { config } from './config.js';
 import { pool } from './db/pool.js';
 import { authenticate } from './middleware/authenticate.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { createMysqlLookupRepository } from './persistence/mysqlLookupRepository.js';
 import { createMysqlSupplierRepository } from './persistence/mysqlSupplierRepository.js';
 import { createAdminSupplierRouter } from './routes/adminSupplier.routes.js';
+import { createLookupRouter } from './routes/lookup.routes.js';
 import { createSupplierRouter } from './routes/supplier.routes.js';
 
 const app = express();
@@ -37,7 +43,8 @@ apiV1.use(authenticate);
 const supplierService = createSupplierService(createMysqlSupplierRepository(pool));
 apiV1.use('/suppliers', createSupplierRouter(supplierService));
 apiV1.use('/admin/suppliers', createAdminSupplierRouter(supplierService));
-// Task 4 mounts /admin/reference; Task 8 extends /admin/suppliers with POST.
+apiV1.use('/admin/reference', createLookupRouter(createLookupService(createMysqlLookupRepository(pool))));
+// Task 8 extends /admin/suppliers with POST.
 app.use('/api/v1', apiV1);
 
 app.use(errorHandler);
