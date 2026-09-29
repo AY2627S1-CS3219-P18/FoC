@@ -4,6 +4,10 @@
  * Scope: Generated create-request parsing and hours rules per the plan (Phase 2 Task 5).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): exported the shared validation helpers and added
+ *        resolveHours, reused by parseCreateSupplier (Phase 3 Task 2). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { z } from 'zod';
 import { AppError, type AppErrorDetail } from '../utils/AppError.js';
@@ -50,18 +54,18 @@ const hourSchema = z.object({
 
 const idListSchema = z.array(z.number().int().positive());
 
-function invalid(
+export function invalid(
   details: AppErrorDetail[],
   message = 'One or more supplier fields failed validation.',
 ): AppError {
   return new AppError(422, 'Unprocessable Entity', message, { details });
 }
 
-function fail(field: string, message: string): never {
+export function fail(field: string, message: string): never {
   throw invalid([{ field, location: 'body', message }], message);
 }
 
-function parseJson(field: string, raw: string): unknown {
+export function parseJson(field: string, raw: string): unknown {
   try {
     return JSON.parse(raw);
   } catch {
@@ -71,7 +75,7 @@ function parseJson(field: string, raw: string): unknown {
   }
 }
 
-function parseCategoryIds(raw: unknown): number[] {
+export function parseCategoryIds(raw: unknown): number[] {
   if (raw === undefined || raw === '') return [];
   const parsed = parseJson('category_id', String(raw));
   const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -128,6 +132,11 @@ function parseStoreHours(raw: unknown, is24h: boolean): HourInput[] {
   return entries.map((entry) => ({ ...entry, is24h: false }));
 }
 
+/** Hours for a supplier of the given type (Arch §6.2, §7): Facility → server-filled day 8; Store → client hours. */
+export function resolveHours(type: 'Store' | 'Facility', rawOpeningHours: unknown, is24h: boolean): HourInput[] {
+  return type === 'Facility' ? [{ ...ALWAYS_OPEN }] : parseStoreHours(rawOpeningHours, is24h);
+}
+
 /** Parses the multipart text fields of POST /api/v1/admin/suppliers (Arch §7.3, §7.4). */
 export function parseCreateSupplier(body: Record<string, unknown>): CreateSupplierInput {
   const fields = fieldsSchema.safeParse(body);
@@ -144,10 +153,7 @@ export function parseCreateSupplier(body: Record<string, unknown>): CreateSuppli
   const categoryIds = parseCategoryIds(body.category_id);
 
   // A Facility is always 24/7: the server fills in the single day-8 entry (Arch §7, §9 item 21 (g)).
-  const hours =
-    data.type === 'Facility'
-      ? [{ ...ALWAYS_OPEN }]
-      : parseStoreHours(body.openingHours, data.is24h === 'true');
+  const hours = resolveHours(data.type, body.openingHours, data.is24h === 'true');
 
   return {
     name: data.name,

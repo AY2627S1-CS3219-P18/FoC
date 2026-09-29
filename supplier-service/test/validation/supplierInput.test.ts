@@ -8,9 +8,12 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added resolveHours tests (Phase 3 Task 2).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it } from 'vitest';
-import { parseCreateSupplier } from '../../src/validation/supplierInput.js';
+import { parseCreateSupplier, resolveHours } from '../../src/validation/supplierInput.js';
 
 const store = {
   name: '  Campus Store ',
@@ -135,5 +138,23 @@ describe('parseCreateSupplier — fields', () => {
 
   it('accepts a single category id', () => {
     expect(parseCreateSupplier({ ...store, category_id: '2' }).categoryIds).toEqual([2]);
+  });
+});
+
+describe('resolveHours', () => {
+  it('returns the day-8 entry for a Facility, ignoring client hours', () => {
+    expect(resolveHours('Facility', '[{"day":1,"open":"09:00","close":"18:00"}]', false)).toEqual([
+      { day: 8, open: '00:00', close: '23:59', is24h: true },
+    ]);
+  });
+
+  it('parses Store hours', () => {
+    expect(resolveHours('Store', '[{"day":1,"open":"09:00","close":"18:00"}]', false)).toEqual([
+      { day: 1, open: '09:00', close: '18:00', is24h: false },
+    ]);
+  });
+
+  it('rejects a Store with no hours (422)', () => {
+    expect(() => resolveHours('Store', undefined, false)).toThrowError(/Operating hours are required/);
   });
 });
