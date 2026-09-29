@@ -67,6 +67,10 @@ Scope: 2026-09-29 update — recorded the team's replacement of the local MySQL 
        which is stored in `supplier_photos.photo_location`. Tool: Claude Code (model:
        claude-sonnet-5). No decisions were made by the AI tool.
 Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's confirmation that `supplier_hours.is_24h` is
+       `BOOLEAN NOT NULL DEFAULT FALSE`. Tool: Claude Code (model: claude-sonnet-5). No decisions
+       were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Architecture
@@ -1219,7 +1223,7 @@ additional design decisions.
     updated to `day_of_week` 1–7 plus the day-`8` check in `is_open` and the `is_24h` column;
     databases already created from the old `init.sql` and existing hours rows still need migrating;
     (ii) the `is_24h` column
-    definition (`BOOLEAN NOT NULL DEFAULT FALSE`) was written by analogy with `supplier.is_deleted`.
+    definition (`BOOLEAN NOT NULL DEFAULT FALSE`) is confirmed by the team.
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

@@ -54,6 +54,10 @@ Scope: 2026-09-29 update — recorded the team's choice of the AWS S3 client for
        adapter and marked the Phase 1 `day_of_week` follow-up as done. Tool: Claude Code (model:
        claude-sonnet-5). No decisions were made by the AI tool.
 Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's confirmation that `supplier_hours.is_24h` is
+       `BOOLEAN NOT NULL DEFAULT FALSE`. Tool: Claude Code (model: claude-sonnet-5). No decisions
+       were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Implementation Spec
@@ -240,16 +244,15 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
 - Schema changes (migrations, §6.4): the lookup foreign keys use `ON DELETE RESTRICT` (no lookup
   `is_deleted` column); `supplier_hours.day_of_week` becomes 1–8 (8 reserved for 24-hour operation) and
   `supplier_hours` gains `is_24h` (a supplier open 24/7). Photo `display_order` starts at 0.
+- Migration (done 2026-09-29): `npm run migrate:phase2` upgrades an existing database's
+  `supplier_hours` (adds `is_24h`, converts Sunday 0 to 7, widens the check to 1–8); it is safe to
+  re-run. New databases get the same schema from `init.sql`.
 - Phase 1 follow-up (done 2026-09-29): `is_open` now uses `day_of_week` 1–7, checks for a day-`8`
   entry first, and `init.sql` has `is_24h` and the 1–8 check. Existing databases created from the
   old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows still need migrating
   (Sunday 0 becomes 7).
 - Library: the local MinIO adapter uses the AWS S3 client (`@aws-sdk/client-s3`), chosen by the team;
   MinIO is S3-compatible.
-
-### Points that need the team's attention
-
-- The new `is_24h` column definition was written by analogy with `supplier.is_deleted`.
 
 ### Acceptance criteria
 

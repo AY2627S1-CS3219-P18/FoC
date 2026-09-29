@@ -2284,3 +2284,61 @@ Confirm the `is_24h` definition. Existing dev databases need `supplier_hours` re
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Schema Migration and Implementation Plan
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Requirements formatting
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §6.4 and §9 item 21; `supplier-service/SupplierServiceSpec.md` (Phase 2).
+
+**Prompts (exact):**
+> confirm is_24h is a boolean not null default false.
+> Continue with migration and phase 2 plan
+
+**Key responses:**
+Recorded the team's confirmation that `supplier_hours.is_24h` is `BOOLEAN NOT NULL DEFAULT FALSE` and removed the related flags from the architecture and spec. Wrote an idempotent upgrade for existing databases (`src/db/phase2Schema.ts`, runner `src/db/migratePhase2.ts`, `npm run migrate:phase2`): adds `is_24h`, drops the old 0–6 check, converts Sunday 0 to 7, adds the 1–8 check; already-upgraded databases are left unchanged. Added `ON DELETE RESTRICT` explicitly to the three lookup foreign keys in `init.sql` (MySQL's default already behaves this way; a real MySQL reports the rule as `NO ACTION`). Verification: `npx vitest run` — 14 files, 107 tests passing; `npx tsc --noEmit` and `npm run lint` clean; the upgrade was run twice against a scratch database on the dev MySQL server created from the pre-Phase 2 schema (days 0 and 1 became 7 and 1, `is_24h` added, check 1–8), then the scratch database was dropped. The real `supplier_service` database was **not** upgraded; run `npm run migrate:phase2` against it. Wrote the Phase 2 implementation plan `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (10 tasks: dependencies/config, photo storage port and S3-client adapter, admin reads, lookup management, create-request validation, idempotency, create/reactivate workflow, HTTP layer, manual verification, docs). The plan's code was not compiled or run. The plan lists 12 choices it makes that are not in the architecture (for example the lookup delete body, `201` for lookup creates, UUID-only idempotency keys, timestamps written as Singapore time by the app, no cloud cleanup of photos replaced on reactivation until Phase 4, and business-layer tests using an in-memory storage double rather than MinIO) for the team to confirm.
+
+**Files:**
+- `supplier-service/src/db/phase2Schema.ts` (created)
+- `supplier-service/src/db/phase2Schema.test.ts` (created)
+- `supplier-service/src/db/migratePhase2.ts` (created)
+- `supplier-service/src/db/init.sql` (modified)
+- `supplier-service/package.json` (modified; no header possible — added the `migrate:phase2` script)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Confirm or change the 12 choices in the plan's "Choices this plan makes" section. Run `npm run migrate:phase2` against the real dev database.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-29 — Supplier Service: Phase 2 Plan Choices Accepted, MinIO Test Scope
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answer supplied in chat; recorded in `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` ("Choices this plan makes", item 8).
+
+**Prompts (exact):**
+> accept the 12 choices except for 8 - minio should be used when testing actual cloud connection logic
+
+**Key responses:**
+Recorded acceptance of choices 1–7 and 9–12 in the Phase 2 plan. Rewrote choice 8: pure business logic keeps an in-memory storage double, while anything testing real cloud-connection logic uses the local MinIO. In the plan this became `*.minio.test.ts` files excluded from `npm test` and run with a new `npm run test:minio` (second Vitest config, so a missing MinIO fails loudly rather than being skipped): Task 2 gained six S3-adapter tests against MinIO (upload and serve, unique locations, update, delete, deleting a missing object, unreachable store) and Task 7 gained two creation-workflow tests (photos stored and kept; uploaded objects removed when the transaction fails). The plan's code was not compiled or run, and no MinIO test was executed.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
