@@ -1358,7 +1358,7 @@ The plan does not specify concrete endpoint contracts, full SQL field definition
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-26 — Supplier Service: Photo Management and Concrete Schema
@@ -1402,7 +1402,7 @@ The photo provider remains intentionally undecided. Provider-specific deletion a
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-26 — Supplier Service: Traceability Gap Resolution
@@ -1446,7 +1446,7 @@ The document does not recommend a photo-storage system or prescribe detailed res
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-25 — Supplier Service: Contract and Schema Clarifications
@@ -1491,7 +1491,7 @@ The prompt did not fully specify JWT claims, the meaning of `limit` relative to 
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Provider-Agnostic Photos and Auth Contract
@@ -1524,7 +1524,7 @@ The concrete photo-storage provider and lookup endpoint path remain team decisio
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Reference APIs and Photo Consistency Rules
@@ -1557,7 +1557,7 @@ The prompt ended mid-sentence for the operational rationale in item 6; the docum
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Redis Worker and Status Mapping Template
@@ -1586,7 +1586,7 @@ The status-code template leaves project-specific endpoint mappings and queue fai
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Completeness Review and Team-Supplied Clarifications
@@ -1641,7 +1641,7 @@ The `POST` idempotency-key header's exact name (`Idempotency-Key` was used as a 
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Async Response Timing, Redis Job Contract, and Dead-Letter Table
@@ -1673,7 +1673,7 @@ None — all previously open items from this line of questioning are now resolve
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-27 — Supplier Service: Phased Implementation Spec
@@ -1697,9 +1697,9 @@ Read `docs/FoC-ProductBacklog.md`'s Supplier Service section and fetched the cor
 **Deviations / questions raised for the team:**
 See the three open questions above (also recorded in the spec's closing section). No architecture, schema, or prioritization decisions were made by the agent; phase order reflects only technical dependency, and the team's existing backlog priorities/issue numbers were used as-is.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-28 — Supplier Service: API Gateway, Uniqueness Constraint, and Open-Question Resolutions
 
@@ -1730,7 +1730,7 @@ Whether the new `UNIQUE` constraint on `supplier(supplier_name, supplier_type, l
 **What I kept/changed/rejected:**
 I kept all changes
 
-**Author review:**
+**Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
 ## 2026-09-28 — Supplier Service: Soft-Delete Recreation Resolved as Reactivation
@@ -1755,9 +1755,9 @@ Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, the admin-crea
 **Deviations / questions raised for the team:**
 Photo handling on the reactivation path (replace vs. append existing photo rows) remains open — the team's answer addressed the field-update/reactivation behavior but not photos specifically.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-28 — Supplier Service: Reactivation Photo Handling Resolved
 
@@ -1781,9 +1781,9 @@ Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, §9 item 18) a
 **Deviations / questions raised for the team:**
 None.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-28 — Supplier Service: Tech Stack Recorded in AGENTS.md
 
@@ -1807,9 +1807,9 @@ Created `supplier-service/AGENTS.md` (previously an empty placeholder file) reco
 **Deviations / questions raised for the team:**
 None — the user supplied the stack directly; the agent only recorded and cross-referenced it.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-28 — Supplier Service: `super admin` Role Literal Reconciled After Merging main
 
@@ -1836,9 +1836,9 @@ While reviewing what `main`'s user-service additions changed for the Supplier Se
 **Deviations / questions raised for the team:**
 None remaining — the mismatch was surfaced as a stop-and-ask item and the team resolved it directly.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-28 — Supplier Service: Phase 1 Supplier Read APIs Implementation Plan
 
@@ -1861,9 +1861,9 @@ Used the writing-plans skill to write `docs/superpowers/plans/2026-09-28-supplie
 **Deviations / questions raised for the team:**
 Eight open points, listed in the plan's "Points to confirm with the team" section; the F7.1.2 open-status filter gap and the `limit` behaviour need a team decision before Task 3.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-29 — Supplier Service: Phase 0 Tasks 6–11 Implementation
 
@@ -1898,9 +1898,9 @@ Committed Task 6 (errorHandler; 4 tests re-run and passing; no index.lock presen
 **Deviations / questions raised for the team:**
 Confirm the `vitest.config.ts` test-env addition and the `vitest ^5.0.2` / package.json reformat in the working tree. Confirm smoke checks against real MySQL/Redis before relying on Tasks 3–4.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-09-29 — Supplier Service: Phase 1 Team Decisions Recorded and Plan Amended
 
@@ -1935,6 +1935,31 @@ Transcribed the eight team decisions into `SupplierServiceArchitecture.md` (§6.
 **Deviations / questions raised for the team:**
 Four remaining points listed in the plan's "Team decisions" section: `isOpen` value format, how the `isOpen` filter paginates, a Facility with no hours rows, and defensive handling of zero-length rows.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Plan's Four Remaining Points Confirmed
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The team's confirmation given directly in chat of the four implementation-level points listed in `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`'s "Team decisions" section.
+
+**Prompts (exact):**
+> confirm all 4 points
+
+**Key responses:**
+Updated the plan's "Team decisions" section to record all four points as confirmed as originally drafted: `isOpen=true|false` format; the `isOpen` filter loads all matching rows and pages in memory rather than in SQL; a Facility with no `supplier_hours` rows reports closed (not forced open); and an `open == close` row is defensively treated as closed. No code was written or changed; these were plan-level notes, not new architecture/schema/API decisions, so `SupplierServiceArchitecture.md` was not further modified.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
