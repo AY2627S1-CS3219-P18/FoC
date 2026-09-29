@@ -2,33 +2,33 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-5), date: 2026-09-25
 Scope: Formatted the team-supplied Supplier Service architecture, data entities, API operation inventory, Mermaid diagrams, and factual requirement-traceability notes. No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-09-25 update — recorded the team-supplied endpoint contracts, status codes, query pagination, role model, soft-delete workflow, and concrete table fields; added further factual gap notes.
-Author review:
+Author review: Congchen
 Scope: 2026-09-26 update — filled the supplied traceability items with fixed pagination, search/sort behavior, auth-provider ownership, visibility rules, derived open state, API envelopes, and request examples.
-Author review:
+Author review: Congchen
 Scope: 2026-09-26 update — recorded multipart photo management, Google OAuth, assumed downstream entrypoints, normalized faculty/location tables, and concrete MySQL DDL.
-Author review:
+Author review: Congchen
 Scope: 2026-09-27 update — aligned authentication with the repository's User Service RS256 JWT contract; replaced photo mapping with one-to-many storage, added photo-dirty ordering semantics, `updatedOn`, and lookup metadata.
-Author review:
+Author review: Congchen
 Scope: 2026-09-27 update — recorded separate lazy-loaded reference endpoints, the fixed error envelope, fixed query controls, Singapore time and overnight-hour behavior, placeholder resolution, and MySQL-first photo deletion ordering.
-Author review:
+Author review: Congchen
 Scope: 2026-09-27 update — opened reference endpoints to all roles, added a status-code mapping template, and recorded the Redis-backed worker and retry flow for photo and downstream workflows.
-Author review:
+Author review: Congchen
 Scope: 2026-09-27 update — recorded the team-supplied optimistic-concurrency version column, hours/photo uniqueness constraints, SGT-only timestamps, super_admin/admin capability note, lookup-table management endpoints, idempotency and rate-limiting rules, signed photo URLs, same-origin deployment, and `/api/v1` versioning.
-Author review:
+Author review: Congchen
 Scope: 2026-09-27 update — recorded the team-supplied immediate-response contract after job enqueue, the generic Redis job payload and exponential-backoff retry policy, the dead-letter-jobs table, the finalized `Idempotency-Key` header name, the 24-hour signed photo URL duration, and the continued deferral of downstream Order/Message Service contracts.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied API-gateway explanation for same-origin deployment, the supplier name/type/location uniqueness constraint, confirmation of `supplier_id` as a stable cross-service reference, and clarification that `is_active` toggling is independent of soft-delete (`is_deleted`).
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied resolution that recreating a soft-deleted supplier's exact name/type/location reverses the soft delete and applies the create request as an update instead of inserting a new row.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied decision that photos submitted on the reactivation path replace the reactivated supplier's existing photo rows entirely.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super admin` (space)
        throughout, per the team's resolution of a naming mismatch discovered against the User
        Service's actual `role_enum`/`GET /auth/verify` after merging `main` into `supplier-service`.
-Author review:
+Author review: Congchen
 Scope: 2026-09-29 update — recorded the team's Phase 1 decisions: an `isOpen` list filter, an
        always-enforced fixed `limit` of 50 (any other value is an error), the `sortOrder` default and
        past-last-page behavior, `404` for an unknown supplier id, the `00:00`–`23:59` 24-hour
@@ -36,7 +36,37 @@ Scope: 2026-09-29 update — recorded the team's Phase 1 decisions: an `isOpen` 
        unconfirmed status of the 24-hour signed-URL validity, and the reference category key. Tool:
        Claude Code (model: claude-sonnet-5). No decisions were made by the AI tool; each was supplied
        by the team in chat.
-Author review:
+Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's Phase 2 decisions: the photo-storage interface
+       operations and its local photo store (a separate MySQL instance), multer for multipart parsing, lookup-management
+       delete/error responses, the photo-only-`photoId`/`photoLocation` create response, the
+       reactivation response and `updated_on`/`version` behavior, the mandatory `Idempotency-Key`
+       rules, server-filled Facility hours, and UI-determined photo display order. Tool: Claude
+       Code (model: claude-sonnet-5). No decisions were made by the AI tool; each was supplied by
+       the team in chat. This update also added `is_24h` to `supplier_hours` and changed `day_of_week`
+       to 1–7, all as supplied by the team. Points the team has not yet finished deciding are listed
+       in §9 item 21 and were not filled in.
+Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's revised Phase 2 decisions: lookup rows are hard
+       deleted only when unreferenced (`ON DELETE RESTRICT`; this reverses the earlier lookup
+       `is_deleted` decision), reactivation sets `is_active` true, increments `version` and
+       replaces the stored fields, the reserved `day_of_week` 8 with `is_24h` for 24-hour
+       Facilities/Stores, the request-only `is24h` field, the `is_open` day-8 check, and the local
+       photo store's fields. Tool: Claude Code (model: claude-sonnet-5). No decisions were made by
+       the AI tool; each was supplied by the team in chat.
+Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's corrections: suppliers keep soft deletion and
+       reactivation; `is_24h`/day 8 records only a 24/7 supplier (a Store with 24-hour days is
+       just `00:00`–`23:59` rows); a 24/7 Store has a single day-8 entry like a Facility; and the
+       photo store holds only an autogenerated id and a local-file-path `photo_location` (no
+       `supplier_photo_id`), the id being returned and stored in the supplier database. Tool: Claude
+       Code (model: claude-sonnet-5). No decisions were made by the AI tool.
+Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's replacement of the local MySQL photo store with a
+       local MinIO instance that simulates cloud storage and returns the photo location directly,
+       which is stored in `supplier_photos.photo_location`. Tool: Claude Code (model:
+       claude-sonnet-5). No decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Architecture
@@ -196,7 +226,7 @@ tables:
 | `faculties` | Faculty lookup values | Autoincrement `faculty_id`, text `faculty` |
 | `supplier_categories` | Category values | Autoincrement `category_id`, text `category_type` |
 | `supplier_category_map` | Many-to-many supplier/category relationship | `supplier_id` and `category_id` forming a composite key |
-| `supplier_hours` | Operating-hours data, one row per supplier per day of week | `entry_id`, `supplier_id`, integer `day_of_week` from 0–6 (unique per supplier), `open_time`, `close_time` |
+| `supplier_hours` | Operating-hours data, one row per supplier per day of week | `entry_id`, `supplier_id`, integer `day_of_week` from 1–8 (1 = Monday .. 7 = Sunday, 8 = reserved for a supplier open 24 hours a day, 7 days a week; unique per supplier), `open_time`, `close_time`, `is_24h` |
 | `supplier_photos` | Supplier photo references and display order | Autoincrement `photo_id`, `supplier_id`, text `photo_location`, numerical `display_order` (unique per supplier) |
 | `dead_letter_jobs` | Redis background jobs that exhausted their retries | Autoincrement `id`, `job_id`, `task_name`, `payload`, `error_trace`, `failed_at`, `status` (defaults to `UNRESOLVED`) |
 
@@ -245,7 +275,7 @@ erDiagram
     SUPPLIER_HOURS {
         entry_id autoincrement
         supplier_id identifier
-        day_of_week integer_0_to_6
+        day_of_week integer_1_to_8
         open_time time
         close_time time
     }
@@ -268,7 +298,8 @@ erDiagram
 The supplier status fields have the following meanings:
 
 - `is_active` is an independent visibility toggle set directly by an admin edit; it is unrelated to
-  `is_deleted` and is not touched by the soft-delete (`DELETE`) operation;
+  `is_deleted` and is not touched by the soft-delete (`DELETE`) operation, but reactivating a
+  soft-deleted supplier (below) sets it back to true;
 - `is_deleted` records that a supplier has been soft-deleted via `DELETE`; a soft-deleted supplier is
   hidden regardless of its `is_active` value, so soft-delete has no need to also update `is_active`;
 - `is_open` is calculated for list and detail responses from the current time and opening hours;
@@ -298,23 +329,46 @@ this, `POST /api/v1/admin/suppliers` branches on the application-level pre-check
 
 On this reactivation-as-update path, any newly submitted photos replace the reactivated supplier's
 existing photo rows entirely (the prior photo rows are deleted and the submitted ones inserted in
-their place) rather than being appended alongside them.
+their place) rather than being appended alongside them. The reactivating `POST` returns `200 OK`.
+Reactivation sets `is_active` to true, overriding its previous value, replaces the supplier's stored
+fields with the submitted ones, and updates `updated_on` and increments `version`.
+
+The `faculties`, `supplier_locations`, and `supplier_categories` rows are hard deleted by their
+management `DELETE` endpoints (§7), but only when nothing references them. The foreign keys that
+reference them use `ON DELETE RESTRICT` (§6.4). A row referenced by any supplier, including a
+soft-deleted supplier, cannot be deleted; a faculty referenced by a location and a category
+referenced by a `supplier_category_map` row likewise cannot be deleted.
+
+`supplier_hours` carries an `is_24h` flag, which records a supplier that is open 24 hours a day,
+7 days a week. `day_of_week` runs from `1` (Monday) to `7` (Sunday), and the value `8` is reserved
+for such a supplier. A `day_of_week` of `8` is valid only together with `is_24h` true and an
+`open_time`/`close_time` of `00:00`/`23:59`, and `is_24h` is true only on a day-`8` entry; any other
+combination involving `day_of_week` `8` or `is_24h` is rejected with `422 Unprocessable Entity`. A
+Facility has exactly one hours entry, with `day_of_week` `8`, populated by the server; a Facility with
+any other `day_of_week` is rejected with `422`. A Store that is open 24/7 is recorded the same way, as
+a single day-`8` entry and nothing else. A Store that is open 24 hours on only some days of the week
+is not `is_24h`: those days are ordinary entries with `day_of_week` `1`–`7`, `is_24h` false and
+`00:00`/`23:59` (§6.2 convention below).
 
 A `close_time` of `23:59` together with an `open_time` of `00:00` is the convention for 24-hour
-availability, for Facilities and Stores alike. For a Facility, `open_time` is set to `00:00` and
-`close_time` is set to `23:59` (or equivalent database time values). Store schedules use the
-day-of-week and opening and closing time fields.
+availability, for Facilities and Stores alike. Store schedules use the day-of-week and opening and
+closing time fields.
 
 An hours entry must not have `open_time` equal to `close_time`. Creation and edit requests containing
 such an entry are rejected with `422 Unprocessable Entity`, and the error `message` states that a
-24-hour schedule must be entered as `00:00`–`23:59`. The database maps `day_of_week` values from `0` to `6`, with `0`
-representing Sunday. The API's `openingHours` objects use the corresponding `day`, `open`, and
-`close` fields.
+24-hour schedule must be entered as `00:00`–`23:59`. The API's `openingHours` objects use the
+corresponding `day`, `open`, and `close` fields, with `day` `1`–`7` for Monday–Sunday and `8` for 24-hour
+operation. Responses carry no separate 24-hour field: the frontend derives 24/7 display from
+`day` `8`, so the response shape stays the same for every supplier. A create request carries an
+`is24h` field; when it is set (a 24/7 supplier), the client sends a single `openingHours` entry of
+`{"day": 8, "open": "00:00", "close": "23:59"}` in place of the daily entries.
 
 The service calculates `is_open` by comparing the current day and time with the supplier's
 opening-hours records using Singapore time (UTC+8); it is not treated as an independent stored
-status value. The calculation contains a dedicated check: if the supplier has an hours entry for the
-current day (Singapore time) of `00:00`–`23:59`, `is_open` is `true` for any time of that day. For
+status value. The calculation first checks for an hours entry with `day_of_week` `8`, and if one
+exists `is_open` is `true` at all times. The calculation also contains a dedicated check: if the
+supplier has an hours entry for the current day (Singapore time) of `00:00`–`23:59`, `is_open` is
+`true` for any time of that day. For
 overnight Store intervals where the opening time is later than the closing time,
 the calculation treats the interval as continuing into the following day.
 
@@ -381,7 +435,7 @@ CREATE TABLE supplier_locations (
     PRIMARY KEY (location_id),
     UNIQUE KEY uq_supplier_locations (location, faculty_id, level),
     CONSTRAINT fk_supplier_locations_faculty
-        FOREIGN KEY (faculty_id) REFERENCES faculties (faculty_id)
+        FOREIGN KEY (faculty_id) REFERENCES faculties (faculty_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE supplier (
@@ -401,7 +455,7 @@ CREATE TABLE supplier (
     KEY idx_supplier_location (location_id),
     KEY idx_supplier_visibility (is_active, is_deleted),
     CONSTRAINT fk_supplier_location
-        FOREIGN KEY (location_id) REFERENCES supplier_locations (location_id)
+        FOREIGN KEY (location_id) REFERENCES supplier_locations (location_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE supplier_categories (
@@ -418,7 +472,7 @@ CREATE TABLE supplier_category_map (
     CONSTRAINT fk_supplier_category_map_supplier
         FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id),
     CONSTRAINT fk_supplier_category_map_category
-        FOREIGN KEY (category_id) REFERENCES supplier_categories (category_id)
+        FOREIGN KEY (category_id) REFERENCES supplier_categories (category_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE supplier_hours (
@@ -427,9 +481,10 @@ CREATE TABLE supplier_hours (
     day_of_week TINYINT UNSIGNED NOT NULL,
     open_time TIME NOT NULL,
     close_time TIME NOT NULL,
+    is_24h BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (entry_id),
     UNIQUE KEY uq_supplier_hours_day (supplier_id, day_of_week),
-    CONSTRAINT chk_supplier_hours_day CHECK (day_of_week BETWEEN 0 AND 6),
+    CONSTRAINT chk_supplier_hours_day CHECK (day_of_week BETWEEN 1 AND 8),
     CONSTRAINT fk_supplier_hours_supplier
         FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id)
 );
@@ -514,14 +569,23 @@ All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
 | Category management (create) — `admin`, `super admin` | `POST /api/v1/admin/reference/categories` | JSON body: `category_type` | Created category: `category_id`, `category_type` |
 | Category management (edit) — `admin`, `super admin` | `PUT /api/v1/admin/reference/categories/:id` | JSON body: `category_type` | Updated category record |
 | Category management (delete) — `admin`, `super admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
-| Admin create — `admin`, `super admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references, or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated (§6.2) |
+| Admin create — `admin`, `super admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references (`photoId` and `photoLocation` only; no photo binaries), or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated, returned with `200 OK` (§6.2) |
 | Admin edit — `admin`, `super admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
 | Admin soft delete — `admin`, `super admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
 
 Management endpoints for `faculties`, `supplier_locations`, and `supplier_categories` follow the
 same request/response shape as their corresponding lookup tables (§6.2, §6.4) and are restricted to
 `admin` and `super admin`, unlike the read-only reference endpoints above which are open to all
-roles.
+roles. A successful lookup `DELETE` returns `200 OK`. A lookup `DELETE` blocked by a foreign-key
+reference, and a lookup `POST`/`PUT` that violates a `UNIQUE` key, are validation failures and return
+`422 Unprocessable Entity`. A lookup `DELETE` of an id that does not exist returns `404 Not Found`.
+Lookup-table deletes are hard deletes and are permitted only when the row is unreferenced (§6.2).
+
+Admin create/edit requests parse `multipart/form-data` with `multer`. On create, a Facility's
+opening hours are not supplied by the client: the server fills in the single 24-hour entry
+(`day` `8`, `00:00`–`23:59`, §6.2), and the frontend informs the admin that Facilities are 24-hour.
+Store creation requires client-supplied opening hours (F8.2.1), or the `is24h` field with the
+day-`8` entry for a 24/7 Store (§6.2).
 
 ```mermaid
 flowchart TD
@@ -588,12 +652,12 @@ project-specific endpoint mapping for the team to complete:
 
 | Condition to classify | Candidate endpoint(s) | Status code | Literal status meaning | Project-specific mapping / notes |
 | --- | --- | --- | --- | --- |
-| Request completes successfully without creating a resource | `GET /api/v1/suppliers` `GET /api/v1/suppliers/reference/location` `GET /api/v1/suppliers/reference/categories` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `200 OK` | Request succeeded | Used for reads, updates, and soft-deletes. Response body returns payload lists, single records, or update confirmations. Note: Alternatively, DELETE can return 204 No Content if no response body is sent. |
-| Supplier is created successfully | `POST /api/v1/admin/suppliers` | `201 Created` | Resource was created successfully | Returns the newly generated supplier ID, creation metadata, and an array of photo_ids and photo binaries |
+| Request completes successfully without creating a resource | `GET /api/v1/suppliers` `GET /api/v1/suppliers/reference/location` `GET /api/v1/suppliers/reference/categories` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `200 OK` | Request succeeded | Used for reads, updates, soft-deletes, lookup-table deletes, and a `POST /api/v1/admin/suppliers` that reactivates a soft-deleted supplier (§6.2). Response body returns payload lists, single records, or update confirmations. Note: Alternatively, DELETE can return 204 No Content if no response body is sent. |
+| Supplier is created successfully | `POST /api/v1/admin/suppliers` | `201 Created` | Resource was created successfully | Returns the newly generated supplier ID, creation metadata, and an array of photo references (`photoId`, `photoLocation`); photo binaries are only sent by the client during uploads/edits, never returned |
 | Bearer token is missing, malformed, expired, or invalid | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `401 Unauthorized` | Authentication is required or failed | User Service Contract: Triggered if Authorization header is missing or local RS256 signature verification fails. Matches the internal `user-service` validation exception envelope perfectly. |
 | Authenticated role is not permitted to use the endpoint | `GET /api/v1/suppliers` `GET /api/v1/admin/suppliers/:id` `POST /api/v1/admin/suppliers` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `403 Forbidden` | Authenticated identity is not authorized for this operation | Triggered when a valid JWT is verified, but the embedded role claim payload reads `user` instead of `admin` or `super admin` |
-| Request syntax, structure, or encoding is malformed | All API Endpoints | `400 Bad Request` | Request cannot be processed as a well-formed request | Triggered by corrupt data like bad multipart/form-data boundaries, malformed JSON strings in openingHours/photo_sort_order, or missing body content etc. |
-| Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, any `limit` other than 50, invalid location_id, an opening-hours entry whose open and close times are equal (message states that 24 hours must be entered as `00:00`–`23:59`), or mismatched file placeholders, etc. Returns the standardized details error array. |
+| Request syntax, structure, or encoding is malformed | All API Endpoints | `400 Bad Request` | Request cannot be processed as a well-formed request | Triggered by corrupt data like bad multipart/form-data boundaries, malformed JSON strings in openingHours/photo_sort_order, or missing body content, or a `POST /api/v1/admin/suppliers` with no `Idempotency-Key` header, etc. |
+| Request is well-formed but a field or value fails validation | All API Endpoints | `422 Unprocessable Entity` | Request is understood but semantically invalid | Business Tier Errors: Triggered by photo sizes over 5MB, any `limit` other than 50, invalid location_id, an opening-hours entry whose open and close times are equal (message states that 24 hours must be entered as `00:00`–`23:59`), or mismatched file placeholders, or a lookup-table foreign-key or `UNIQUE` violation, etc. Returns the standardized details error array. |
 | Requested supplier or reference resource does not exist | `GET /api/v1/suppliers/:id` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id` | `404 Not Found` | Referenced resource cannot be found | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database. |
 | Submitted `version` does not match the supplier's current stored version | `PUT /api/v1/admin/suppliers/:id` | `409 Conflict` | Request conflicts with the current state of the resource | Optimistic-concurrency conflict: another edit already advanced `version`. The client should re-fetch the record and retry. |
 | `POST` retried with an `Idempotency-Key` that is still being processed | `POST /api/v1/admin/suppliers` | `409 Conflict` | Request conflicts with the current state of the resource | Idempotency-key replay while the original request has not yet completed. A replay after completion instead returns the original cached response. |
@@ -831,8 +895,10 @@ requests converge on the same final state, and a repeated `DELETE` after a succe
 returns `404 Not Found` rather than an error.
 
 `POST /api/v1/admin/suppliers` uses the idempotency-key pattern: the client generates a UUID and
-sends it as an `Idempotency-Key` request header. The key and the eventual response are cached in
-Redis. A retry
+sends it as an `Idempotency-Key` request header. The header is mandatory; a `POST` without it is
+rejected with `400 Bad Request`. The key and the eventual response are cached in Redis, keyed per
+authenticated user and per key. The in-flight marker expires after 60 seconds and the cached
+completed response after 24 hours. A retry
 with the same key while the original request is still being processed is rejected with
 `409 Conflict`; a retry with the same key after the original request has completed returns the
 cached response directly instead of reprocessing the request.
@@ -934,7 +1000,14 @@ may update supplier photos through the Supplier Service.
 
 The Supplier Service exposes a provider-agnostic storage interface. The deployment provider remains
 undecided between AWS S3 and Google Cloud Storage; business and persistence logic do not depend on
-either provider's SDK or API. The `photoLocation` values returned to clients are signed URLs issued
+either provider's SDK or API. The interface covers the operations upload, update, delete, and view,
+so a provider can be swapped without touching business or persistence logic. Local development and
+testing use the same interface backed by a local MinIO instance that simulates the cloud
+object storage. MinIO returns the photo's location directly, and that location is what the supplier
+MySQL database stores in `supplier_photos.photo_location`. Unit tests use this local MinIO store.
+A new
+supplier's photo `display_order` follows the order in which the admin arranged the photos in the UI
+before submission, and starts at 0. The `photoLocation` values returned to clients are signed URLs issued
 by the storage provider, valid for 24 hours, not permanent public links (§6.3).
 
 ```mermaid
@@ -1116,6 +1189,37 @@ additional design decisions.
     message directing 24-hour schedules to `00:00`–`23:59` (§6.2, §7.1.1); (g) the 24-hour signed-URL
     validity in item 16 is not yet available or confirmed, pending the storage-provider decision
     (§6.3, item 7); (h) `category` in the category reference response is the category value (§7.3).
+
+21. Phase 2 decisions recorded (2026-09-29): (a) the storage interface exposes upload, update,
+    delete, and view; for local testing and unit tests a local MinIO instance simulates the cloud
+    object storage behind it. MinIO returns the photo's location directly and that location is stored
+    in `supplier_photos.photo_location`; there is no separate photo id stored on the storage side
+    (§8.2); (b)
+    `multer` parses multipart requests (§7); (c) a successful lookup `DELETE` is `200 OK`, an unknown
+    id is `404`, and lookup foreign-key and `UNIQUE` violations are `422` (§7, §7.1.1); (d) the
+    create response returns photos as `photoId`/`photoLocation` only (§7, §7.1.1); (e) a reactivating
+    `POST` returns `200 OK`, sets `is_active` true (overriding the old value), replaces the stored
+    fields with the submitted ones, and changes `updated_on` and `version`; suppliers keep soft
+    deletion and reactivation (§6.2, §7); (f) `Idempotency-Key` is mandatory (`400` if absent),
+    cached per user and key, with a 60 s in-flight TTL and a 24 h completed-response TTL (§7.5); (g)
+    Facility hours are filled in by the server (§7); (h) photo `display_order` follows the admin's UI
+    arrangement and starts at 0 (§8.2); (i) lookup deletes are hard and allowed only for
+    unreferenced rows, using `ON DELETE RESTRICT`; references from soft-deleted suppliers count.
+    This reverses the earlier decision to soft-delete lookups, so the lookup tables have no
+    `is_deleted` column (§6.2, §6.4); (j) `supplier_hours.day_of_week` is 1 (Monday) to 7 (Sunday)
+    plus a reserved `8`, and `supplier_hours` gains `is_24h`, which records a supplier open 24/7:
+    `8` is valid only with `is_24h` true and `00:00`–`23:59`, and `is_24h` is true only on day `8`; a
+    Facility and a 24/7 Store each have a single day-`8` entry and nothing else; a Store open 24
+    hours on only some days simply has `00:00`–`23:59` entries on those days with `is_24h` false;
+    anything else involving day `8`, or a Facility with another day, is `422` (§6.2, §6.4); (k)
+    `is_open` checks for a day-`8` entry first and returns `true` (§6.2); (l) responses carry no
+    `is24h` field, the frontend derives 24/7 from `day` `8`, and a create request carries `is24h`
+    with a single day-`8` entry in `openingHours` (§6.2, §7).
+    **Points that need the team's attention:** (i) the Phase 1 read code and `init.sql` were
+    updated to `day_of_week` 1–7 plus the day-`8` check in `is_open` and the `is_24h` column;
+    databases already created from the old `init.sql` and existing hours rows still need migrating;
+    (ii) the `is_24h` column
+    definition (`BOOLEAN NOT NULL DEFAULT FALSE`) was written by analogy with `supplier.is_deleted`.
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

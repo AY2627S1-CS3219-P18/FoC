@@ -5,7 +5,11 @@
  *        SupplierServiceArchitecture.md §5 and SupplierServiceSpec.md Phase 0/1. Read operations
  *        only; the visibility rule (§7) is part of every query. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): updated the `dayOfWeek` comment to the
+ *        1–7 plus reserved-8 convention (SupplierServiceArchitecture.md §6.2). No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 export interface SupplierRow {
@@ -25,7 +29,7 @@ export interface CategoryLinkRow {
 
 export interface HourRow {
   supplierId: number;
-  dayOfWeek: number; // 0 = Sunday .. 6 = Saturday (§6.2)
+  dayOfWeek: number; // 1 = Monday .. 7 = Sunday; 8 = open 24/7 (§6.2)
   open: string; // 'HH:MM'
   close: string; // 'HH:MM'
 }

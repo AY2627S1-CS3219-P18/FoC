@@ -126,3 +126,9 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Supplier Read APIs Implementation | Implemented Tasks 1-7 (types through app wiring); 101/101 tests passing; Task 8 manual DB check still open |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Team Decisions Recorded | Recorded team Phase 2 decisions in architecture and spec; four points still open |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Task 8 Manual Verification | Ran the live MySQL/user-service verification; all endpoint checks matched expectations |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Team Decisions Recorded (architecture and spec) | Recorded team Phase 2 answers and schema changes in architecture and spec; plan not written |
+| 2026-09-29 | supplier-service | Supplier Service: Soft Delete Reversed, Facility Hours Entry and Photo Store Recorded | Reverted soft delete to hard delete across docs, backlog and code; recorded day 8 and photo-store fields |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Revised Team Decisions Recorded and Photo-Store Compose File | Recorded revised Phase 2 decisions in docs; added standalone photo-store MySQL compose file |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Corrections (soft delete kept, 24/7 hours, photo store ids) | Kept supplier soft delete, refined 24/7 hours and photo-store ids in docs |
+| 2026-09-29 | supplier-service | Supplier Service: Local Photo Store Switched from MySQL to MinIO | Recorded MinIO as local photo store; replaced the compose file and README section |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 1 Hours Update (days 1–7 plus reserved 8) and S3 Client Choice | Updated is_open and hours schema to days 1-8; recorded AWS S3 client for MinIO |

@@ -4,7 +4,11 @@
  * Scope: Unit tests for the is_open rules in SupplierServiceArchitecture.md §6.2, including the
  *        dedicated 00:00-23:59 check. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): updated for days 1 = Monday .. 7 = Sunday
+ *        and added tests for the reserved day 8 (open 24/7). No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import { describe, expect, it } from 'vitest';
 import { computeIsOpen } from './isOpen.js';
@@ -66,6 +70,25 @@ describe('computeIsOpen', () => {
   it('wraps an overnight Saturday interval into Sunday', () => {
     const satNight = [{ dayOfWeek: 6, open: '22:00', close: '02:00' }];
     expect(computeIsOpen(satNight, at('2026-09-26T17:00:00Z'))).toBe(true); // Sun 01:00
+  });
+
+  it('treats day 7 as Sunday and no longer accepts day 0', () => {
+    const sun = [{ dayOfWeek: 7, open: '09:00', close: '18:00' }];
+    expect(computeIsOpen(sun, at('2026-09-27T02:00:00Z'))).toBe(true); // Sun 10:00 SGT
+    const legacySun = [{ dayOfWeek: 0, open: '09:00', close: '18:00' }];
+    expect(computeIsOpen(legacySun, at('2026-09-27T02:00:00Z'))).toBe(false);
+  });
+
+  it('wraps an overnight Sunday interval into Monday', () => {
+    const sunNight = [{ dayOfWeek: 7, open: '22:00', close: '02:00' }];
+    expect(computeIsOpen(sunNight, at('2026-09-27T17:00:00Z'))).toBe(true); // Mon 01:00 SGT
+  });
+
+  it('is always open when the supplier has a day-8 entry', () => {
+    const always = [{ dayOfWeek: 8, open: '00:00', close: '23:59' }];
+    expect(computeIsOpen(always, at('2026-09-27T16:00:00Z'))).toBe(true); // Mon 00:00 SGT
+    expect(computeIsOpen(always, at('2026-09-30T05:00:00Z'))).toBe(true); // Wed 13:00 SGT
+    expect(computeIsOpen(always, at('2026-10-03T15:59:00Z'))).toBe(true); // Sat 23:59 SGT
   });
 
   it('never counts a zero-length interval as open', () => {
