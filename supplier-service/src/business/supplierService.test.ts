@@ -6,10 +6,14 @@
  *        §6.2, §7.2, §7.3. No requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added admin list/detail tests per
+ *        Phase 2 plan Task 3. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../utils/AppError.js';
-import type { SupplierRepository, SupplierRow } from '../persistence/supplierRepository.js';
+import type { AdminSupplierRow, SupplierRepository, SupplierRow } from '../persistence/supplierRepository.js';
 import { createSupplierService } from './supplierService.js';
 
 const MONDAY_10AM_SGT = new Date('2026-09-28T02:00:00Z');
@@ -42,11 +46,25 @@ const kiosk: SupplierRow = {
   level: 1,
 }; // no hours rows: never open
 
+const adminStore: AdminSupplierRow = {
+  ...store,
+  isActive: false,
+  isDeleted: true,
+  createdOn: '2026-09-01T09:00:00+08:00',
+  createdBy: 'u-1',
+  updatedOn: '2026-09-02T10:30:00+08:00',
+  version: 3,
+};
+const adminFacility: AdminSupplierRow = { ...facility, isActive: true, isDeleted: false, createdOn: '2026-09-01T09:00:00+08:00', createdBy: 'u-1', updatedOn: '2026-09-01T09:00:00+08:00', version: 0 };
+
 function fakeRepo(overrides: Partial<SupplierRepository> = {}): SupplierRepository {
   return {
     findVisiblePage: vi.fn().mockResolvedValue({ rows: [store, facility], total: 125 }),
     findAllVisible: vi.fn().mockResolvedValue([store, facility, kiosk]),
     findVisibleById: vi.fn().mockResolvedValue(store),
+    findAdminPage: vi.fn().mockResolvedValue({ rows: [adminStore], total: 1 }),
+    findAllAdmin: vi.fn().mockResolvedValue([adminStore, adminFacility]),
+    findAdminById: vi.fn().mockResolvedValue(adminStore),
     findCategoryLinks: vi.fn().mockResolvedValue([
       { supplierId: 1, category: 'Drinks' },
       { supplierId: 1, category: 'Food' },
@@ -225,5 +243,48 @@ describe('reference options', () => {
     expect(await service(repo).listCategories()).toEqual({
       categories: [{ category_id: 2, category: 'Food' }],
     });
+  });
+});
+
+describe('admin reads', () => {
+  it('lists with status fields and no visibility filtering', async () => {
+    const repo = fakeRepo();
+    const service = createSupplierService(repo, () => MONDAY_10AM_SGT);
+    const result = await service.listAdminSuppliers({ page: 1, sortOrder: 'A-Z' });
+
+    expect(repo.findAdminPage).toHaveBeenCalledWith({ sortOrder: 'A-Z', limit: 50, offset: 0 });
+    expect(result.data[0]).toMatchObject({ id: 1, isActive: false, isDeleted: true });
+    expect(result.metadata).toEqual({ totalRecords: 1, currPage: 1, limit: 50, totalPages: 1 });
+  });
+
+  it('applies the isOpen filter over all admin rows before paging', async () => {
+    const repo = fakeRepo();
+    const service = createSupplierService(repo, () => MONDAY_10AM_SGT);
+    const result = await service.listAdminSuppliers({ page: 1, isOpen: true, sortOrder: 'A-Z' });
+
+    expect(repo.findAllAdmin).toHaveBeenCalled();
+    expect(result.data.every((item) => item.isOpen)).toBe(true);
+  });
+
+  it('returns the admin detail with audit fields and version', async () => {
+    const service = createSupplierService(fakeRepo(), () => MONDAY_10AM_SGT);
+    const detail = await service.getAdminSupplier(1);
+
+    expect(detail).toMatchObject({
+      id: 1,
+      desc: 'A campus convenience store.',
+      isActive: false,
+      isDeleted: true,
+      createdOn: '2026-09-01T09:00:00+08:00',
+      createdBy: 'u-1',
+      updatedOn: '2026-09-02T10:30:00+08:00',
+      version: 3,
+    });
+    expect(detail.openingHours.length).toBeGreaterThan(0);
+  });
+
+  it('throws 404 for an unknown admin id', async () => {
+    const repo = fakeRepo({ findAdminById: vi.fn().mockResolvedValue(null) });
+    await expect(createSupplierService(repo).getAdminSupplier(99)).rejects.toMatchObject({ statusCode: 404 });
   });
 });

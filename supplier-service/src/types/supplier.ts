@@ -5,6 +5,10 @@
  *        (SupplierSummary, paginated envelope, detailed supplier, reference options). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Paginated<T> and the admin
+ *        response types per Phase 2 plan Task 3 (Arch §7). No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export interface PhotoDto {
@@ -36,14 +40,30 @@ export interface SupplierDetail extends SupplierSummary {
   openingHours: OpeningHourDto[];
 }
 
-export interface PaginatedSuppliers {
+export interface Paginated<T> {
   metadata: {
     totalRecords: number;
     currPage: number;
     limit: number;
     totalPages: number;
   };
-  data: SupplierSummary[];
+  data: T[];
+}
+
+export type PaginatedSuppliers = Paginated<SupplierSummary>;
+
+export interface AdminSupplierSummary extends SupplierSummary {
+  isActive: boolean;
+  isDeleted: boolean;
+}
+
+export interface AdminSupplierDetail extends SupplierDetail {
+  isActive: boolean;
+  isDeleted: boolean;
+  createdOn: string;
+  createdBy: string;
+  updatedOn: string;
+  version: number;
 }
 
 export interface LocationOption {

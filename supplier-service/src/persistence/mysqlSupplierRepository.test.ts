@@ -5,6 +5,10 @@
  *        check the visibility rule (§7), search/filter/sort/paging (§7.2, §6.3) and row mapping. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added tests for the admin read queries
+ *        per Phase 2 plan Task 3. No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -206,5 +210,59 @@ describe('reference lookups', () => {
     expect(await createMysqlSupplierRepository(pool).listCategories()).toEqual([
       { categoryId: 2, category: 'Food' },
     ]);
+  });
+});
+
+describe('admin reads', () => {
+  const adminRow = {
+    supplier_id: 9,
+    supplier_name: 'Old Kiosk',
+    supplier_type: 'Store',
+    supplier_desc: null,
+    location: 'Central Library',
+    faculty: 'Computing',
+    level: 1,
+    is_active: 0,
+    is_deleted: 1,
+    created_on: '2026-09-01T09:00:00+08:00',
+    created_by: 'u-1',
+    updated_on: '2026-09-02T10:30:00+08:00',
+    version: 3,
+  };
+
+  it('findAdminPage applies no visibility filter and maps status fields', async () => {
+    const { pool, query } = fakePool([{ total: 1 }], [adminRow]);
+    const result = await createMysqlSupplierRepository(pool).findAdminPage({ ...baseFilter });
+
+    expect(result.total).toBe(1);
+    expect(result.rows[0]).toMatchObject({
+      supplierId: 9,
+      isActive: false,
+      isDeleted: true,
+      createdOn: '2026-09-01T09:00:00+08:00',
+      createdBy: 'u-1',
+      updatedOn: '2026-09-02T10:30:00+08:00',
+      version: 3,
+    });
+    for (const call of query.mock.calls) {
+      expect(call[0]).not.toContain('is_deleted = FALSE');
+      expect(call[0]).not.toContain('is_active = TRUE');
+    }
+  });
+
+  it('findAdminById returns a deleted or inactive supplier, and null when missing', async () => {
+    const found = fakePool([adminRow]);
+    expect(await createMysqlSupplierRepository(found.pool).findAdminById(9)).toMatchObject({ isDeleted: true });
+    expect(found.query.mock.calls[0]?.[0]).not.toContain('is_deleted = FALSE');
+
+    const missing = fakePool([]);
+    expect(await createMysqlSupplierRepository(missing.pool).findAdminById(9)).toBeNull();
+  });
+
+  it('findAllAdmin returns every matching row without paging', async () => {
+    const { pool, query } = fakePool([adminRow]);
+    const rows = await createMysqlSupplierRepository(pool).findAllAdmin({ sortOrder: 'Z-A' });
+    expect(rows).toHaveLength(1);
+    expect(String(query.mock.calls[0]?.[0])).not.toContain('LIMIT');
   });
 });

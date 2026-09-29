@@ -10,6 +10,10 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): mounted the Phase 1 /suppliers router on
  *        apiV1. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): mounted the admin supplier router at
+ *        /admin/suppliers per Phase 2 plan Task 3. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createSupplierService } from './business/supplierService.js';
@@ -19,6 +23,7 @@ import { authenticate } from './middleware/authenticate.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { createMysqlSupplierRepository } from './persistence/mysqlSupplierRepository.js';
+import { createAdminSupplierRouter } from './routes/adminSupplier.routes.js';
 import { createSupplierRouter } from './routes/supplier.routes.js';
 
 const app = express();
@@ -29,11 +34,10 @@ app.use(createRateLimiter());
 
 const apiV1 = express.Router();
 apiV1.use(authenticate);
-apiV1.use(
-  '/suppliers',
-  createSupplierRouter(createSupplierService(createMysqlSupplierRepository(pool))),
-);
-// Phase 2+ mounts /admin routes on `apiV1` here.
+const supplierService = createSupplierService(createMysqlSupplierRepository(pool));
+apiV1.use('/suppliers', createSupplierRouter(supplierService));
+apiV1.use('/admin/suppliers', createAdminSupplierRouter(supplierService));
+// Task 4 mounts /admin/reference; Task 8 extends /admin/suppliers with POST.
 app.use('/api/v1', apiV1);
 
 app.use(errorHandler);

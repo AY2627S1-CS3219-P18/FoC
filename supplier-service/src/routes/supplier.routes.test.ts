@@ -5,6 +5,10 @@
  *        §7.1, §7.2): role acceptance, validation errors, 404 mapping, and static-before-:id route
  *        order. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added the two admin methods to the fake
+ *        service so it still matches the SupplierService type (Phase 2 plan Task 3). No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
@@ -21,6 +25,8 @@ function fakeService(): { [K in keyof SupplierService]: ReturnType<typeof vi.fn>
       data: [],
     }),
     getSupplier: vi.fn().mockResolvedValue({ id: 101 }),
+    listAdminSuppliers: vi.fn(),
+    getAdminSupplier: vi.fn(),
     listLocations: vi.fn().mockResolvedValue({ locations: [] }),
     listCategories: vi.fn().mockResolvedValue({ categories: [] }),
   };
