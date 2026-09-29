@@ -25,10 +25,14 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): created the write repository and photo storage once and wired the update service per Phase 3 plan Task 7. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): wired the supplier deletion service into the admin supplier router per Phase 4 plan Task 6. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
 import { createSupplierCreationService } from './business/supplierCreationService.js';
+import { createSupplierDeletionService } from './business/supplierDeletionService.js';
 import { createSupplierService } from './business/supplierService.js';
 import { createSupplierUpdateService } from './business/supplierUpdateService.js';
 import { config } from './config.js';
@@ -76,6 +80,7 @@ apiV1.use(
     reader: supplierService,
     creation: supplierCreation,
     update: supplierUpdate,
+    deletion: createSupplierDeletionService({ repo: writeRepository }),
     idempotency: createRedisIdempotencyStore(redis),
   }),
 );
