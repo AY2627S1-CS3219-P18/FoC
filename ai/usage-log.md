@@ -2533,3 +2533,135 @@ Verification actually run by the controller at the end: `npx vitest run` — 28 
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-09-30 — Phase 4: Admin soft-delete, transactional outbox and downstream worker
+
+**Tool:** Claude Code (model: claude-sonnet-5-5; the Task 1 implementer subagent was claude-haiku-4-5-20251001)
+**Mode:** generate, debug (review-driven fixes), docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** `SupplierServiceSpec.md` "Phase 4 — Admin Soft-Delete and Downstream Workflow"; `SupplierServiceArchitecture.md` §7, §7.5, §8.1, §8.2; the team's answers in chat on 2026-09-30 (quoted below); plan `docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md`.
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 4
+
+> Q: Arch §7 only says "Soft-deletion response". What should DELETE /api/v1/admin/suppliers/:id return on success? (Unknown or already-deleted supplier → 404 per §7.5.)  A: 200 + small JSON body
+> Q: What queue key, task_name and payload should the suspension workflow job use (Phase 3 fixed queue:image:cleanup / image_cleanup for photos)? And should one job do both the Order delete and the Message notify?  A: One job: queue:supplier:suspension
+> Q: Where does the worker run, and what are the exponential-backoff timings (max 5 attempts is already decided)?  A: separate entrypoint. backoff timngs set at 5s, 25s, 125s, 625s
+> Q: Order/Message contracts are deferred and mocked (§9 item 17). What should the mocks be, given no request contract is recorded?  A: Ports + logging mocks
+
+> Readings to confirm:
+>
+> 1. just standardise to id in all api responses
+> 2. deletion will bump updated_on and version too
+> 3. explain again
+> 4. retries should not happen within the worker itself. a queue will be maintained with timestamps to signal when the task should be tried again, freeing the worker for other tasks. Use the BullMQ library for this
+> 5. bad jobs are logged to the dead letter directly
+> 6.  yes. standard shutdown signals apply. allow last job to finish
+> 7. yes. confirm idempotency with current API configurations as well
+>
+> Open items:
+>
+> * reactivation logic specified: the record is first returned to a is_deleted = false and is_active = true state. Then changes, if any, to the details and images will be handled with the typical edit supplier cycle
+> * Add in the dedicated container config that runs the workers , even for development
+
+> For reading 3, change the logic to commit only after redis enqueue is attempted. this allows for redis enqueue issues to be captured and prevent the deletion from happening so the user can retry
+> Similarly for reactivation failures, the edit is attempted before the flag is commited. 
+> photo store endpoint: using docker's host.docker.internal:9000 for internal development should mitigate this issue
+
+> commit/enqueue issue update:
+>
+> * apply the transactional outbox pattern: when the commit is made, also commit to a dedicated outbox table with a version number and the whole api package. A scheduled cron job will run every second to check for items in the outbox table. If there is anything, the package will be retreived and used to enqueue a task into the bullmq queue. When the task is successfully enqueued, the entry will be deleted from the outbox table
+
+> Q: What should the outbox table look like? ... A: autoincrement id (for worker to know order, and for deletion), task type (the redis task name, so it can be added easily), payload (original content) and version (version 1 processed before 2)
+> Q: What does the outbox row's "version number" mean?  A: the supplier version. So that multiple tasks for the same supplier will be guaranteed to be executed in the intended order
+> Q: Which enqueues go through the outbox?  A: All of them (Recommended)
+> Q: What runs the every-second relay, and where?  A: BullMQ job scheduler in the worker (Recommended)
+
+> bullMQ can be made to run jobs in the order of the version right
+> col types confirm
+> queue key confirm
+
+> we are now in new branch supplier-phase 4. 
+> stick with enqueue order only. subagent driven development.
+
+The plan and the implementation were then executed by subagents (one implementer subagent per plan task, followed by a spec-compliance reviewer and a code-quality reviewer subagent), driven by a controller session, on branch `supplier-phase-4`.
+
+**Key responses:**
+Asked the team the design questions above (delete response, suspension job identity, worker placement and retry timings, mocks, outbox table, version meaning, outbox scope, scheduler) and did not decide them. Raised readings to confirm (the version stored per outbox row, relay ordering, job id and duplicates, unroutable rows, relay queue key, the effect of the outbox on Redis outages, reactivation behaviour, queue key mapping, retention, compose settings, existing databases); the team answered them (including "stick with enqueue order only", and the column types and queue key confirmations). The plan `docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md` was written by the agent and committed by the team as `194854b`.
+
+Built: `DELETE /api/v1/admin/suppliers/:id` (200 `{ id, isDeleted: true }`, 404 for an unknown or already deleted supplier), with the soft delete and its `supplier_suspension` outbox row in one transaction; the `outbox` table, repository and transactional writer; excluded-photo cleanup tasks from `PUT` and reactivation written to the outbox in the write transaction; the BullMQ producer adapter, retry policy (5 attempts, delays 5 s / 25 s / 125 s / 625 s) and queue key mapping; the outbox relay with its every-second BullMQ job scheduler; the worker process (`src/worker/main.ts`, `npm run worker`) with handlers, mock Order/Message clients (`MOCK_DOWNSTREAM_FAILURE`), job processor with dead-lettering, and graceful shutdown; the reworked reactivation through the edit cycle in one transaction; and the `supplier-worker` compose service with `PHOTO_STORE_ENDPOINT` set to `http://host.docker.internal:9000`. Docs (`README.md`, `SupplierServiceSpec.md`, `SupplierServiceArchitecture.md`) were updated to record the team's decisions and the behaviour.
+
+Review process: each task had a spec-compliance review and a code-quality review by separate subagents; findings were fixed in follow-up commits, including (`0a575a2`, `b024769`, `f3097c2`, `b5c4a2e`, `b5e8511`, `c1500b0`, `b427dfe`). The Task 1 implementer was Claude Haiku 4.5; its headers were corrected in `0a575a2`. All other subagents and the controller were Claude Sonnet 5.5.
+
+Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx tsc --noEmit` clean; `npm run lint` clean; `npm run build` succeeded; `npm run test:minio` 2 files / 9 tests passed (MinIO running); `docker compose config --quiet` clean; `docker compose build supplier-worker` succeeded. Manual live check (plan Task 16, 2026-09-30) against real MySQL 8, Redis, MinIO and the API/worker containers, with a local stub standing in for the User Service `GET /auth/verify` (no real credentials used). Steps 1-8 passed: delete path (200 `{id,isDeleted:true}`, outbox drained in about 0.3 s, the worker logged the two mock lines, repeat DELETE 404 with no outbox row, `user` role 403); Redis outage (DELETE still 200, one outbox row with the supplier's new version, drained after Redis restarted, connection errors logged, no crash); worker down (rows drained ordered by version then id, MinIO objects removed); delayed retry (attempt gaps 5 s, 25 s, 125 s, 625 s, worker not blocked, exactly one `dead_letter_jobs` row with job id `outbox-<id>` and status `UNRESOLVED`); bad rows (unknown `task_name` dead-lettered by the relay and removed; invalid payload dead-lettered once without retry); reactivation (200, flags restored, version +1, old photo objects removed; no-photos case leaves photos untouched; with MinIO stopped the POST returned 500 and the supplier stayed soft-deleted and unchanged, and a retry with the same `Idempotency-Key` then returned 200). Step 9 (shutdown), worker idle: `docker stop` completed in about 3 s with the log lines "Received SIGINT; taking no new jobs..." and "supplier-service worker stopped", exit code 143. Not tested: stopping the worker during an in-flight job (the mock handlers finish in about a millisecond).
+
+**Files:**
+- `compose.yaml` (modified)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/package.json` (modified; cannot carry a header)
+- `supplier-service/package-lock.json` (modified; cannot carry a header)
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/business/supplierCreationService.ts` (modified)
+- `supplier-service/src/business/supplierDeletionService.ts` (created)
+- `supplier-service/src/business/supplierUpdateService.ts` (modified)
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/controllers/adminSupplier.controller.ts` (modified)
+- `supplier-service/src/db/init.sql` (modified)
+- `supplier-service/src/persistence/deadLetterRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlDeadLetterRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlOutboxRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierWriteRepository.ts` (modified)
+- `supplier-service/src/persistence/outboxRepository.ts` (created)
+- `supplier-service/src/persistence/outboxWriter.ts` (created)
+- `supplier-service/src/persistence/supplierWriteRepository.ts` (modified)
+- `supplier-service/src/queue/bullQueue.ts` (created)
+- `supplier-service/src/queue/jobQueue.ts` (modified)
+- `supplier-service/src/queue/photoDeletionJob.ts` (modified)
+- `supplier-service/src/queue/tasks.ts` (created)
+- `supplier-service/src/routes/adminSupplier.routes.ts` (modified)
+- `supplier-service/src/worker/downstream.ts` (created)
+- `supplier-service/src/worker/handlers.ts` (created)
+- `supplier-service/src/worker/jobProcessor.ts` (created)
+- `supplier-service/src/worker/main.ts` (created)
+- `supplier-service/src/worker/outboxRelay.ts` (created)
+- `supplier-service/src/worker/startRelay.ts` (created)
+- `supplier-service/src/worker/startWorkers.ts` (created)
+- `supplier-service/test/business/supplierCreation.minio.test.ts` (modified)
+- `supplier-service/test/business/supplierCreationService.test.ts` (modified)
+- `supplier-service/test/business/supplierDeletionService.test.ts` (created)
+- `supplier-service/test/business/supplierUpdateService.test.ts` (modified)
+- `supplier-service/test/persistence/mysqlDeadLetterRepository.test.ts` (created)
+- `supplier-service/test/persistence/mysqlOutboxRepository.test.ts` (created)
+- `supplier-service/test/persistence/mysqlSupplierWriteRepository.test.ts` (modified)
+- `supplier-service/test/persistence/outboxWriter.test.ts` (created)
+- `supplier-service/test/queue/bullQueue.test.ts` (created)
+- `supplier-service/test/queue/jobQueue.test.ts` (deleted)
+- `supplier-service/test/queue/tasks.test.ts` (created)
+- `supplier-service/test/routes/adminSupplier.routes.test.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorage.minio.test.ts` (modified)
+- `supplier-service/test/worker/downstream.test.ts` (created)
+- `supplier-service/test/worker/handlers.test.ts` (created)
+- `supplier-service/test/worker/jobProcessor.test.ts` (created)
+- `supplier-service/test/worker/outboxRelay.test.ts` (created)
+- `supplier-service/test/worker/startRelay.test.ts` (created)
+- `supplier-service/README.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- Questions asked and answered by the team rather than decided by the agent: delete response, suspension job identity, worker placement and retry timings, mock shape, outbox table shape, meaning of the outbox `version`, which enqueues use the outbox, relay scheduler, column types, queue key.
+- `bullmq` 6.3.10 was installed with `npm install --force`: a pre-existing peer-dependency conflict between vitest 5.0.2 and `@types/node ^20` makes a plain `npm install` or `npm ci` fail on the branch. The Docker build of `supplier-worker` nevertheless succeeded.
+- A development database created before Phase 2 also needed `npm run migrate:phase2` (in addition to `npm run migrate`) before supplier creation worked.
+- Shutdown: under `docker stop` the worker log showed SIGINT, not SIGTERM, although the `--signal SIGTERM` nodemon flag was added; the graceful path ran. Stopping during an in-flight job was not tested.
+- Execution order: the relay guarantees enqueue order only (decided by the team, 2026-09-30); a job waiting for a delayed retry lets later jobs run first, and the two task queues run independently.
+- The mock Order and Message clients only log; their idempotency limits are not those of real services, which have no contract yet.
+- Development data stored with a `http://localhost:9000` photo location prefix cannot be deleted by the worker (it is dead-lettered).
+- Two existing behaviours were observed and not changed: the create endpoint answers 500 "Supplier could not be saved." and logs nothing when the schema is out of date; the API logs ioredis "Unhandled error event" lines while Redis is down.
+- MinIO and Redis containers were restarted during the manual tests and left healthy.
+- The plan file itself was committed by the team as `194854b`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

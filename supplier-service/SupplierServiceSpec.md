@@ -62,6 +62,12 @@ Scope: 2026-09-30 update — added a Phase 3 implementation status note (Tool: C
        claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
        AI tool.
 Author review:
+Scope: 2026-09-30 update — recorded the Phase 4 status note and the team's Phase 4 decisions of
+       2026-09-30 in the Phase 4 scope; replaced the reactivation photo wording and the deferred
+       photo-cleanup bullet in the Phase 2 scope and the enqueue status note in the Phase 3 scope.
+       Tool: Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API
+       decisions were made by the AI tool; the change records the team's decisions of 2026-09-30.
+Author review:
 -->
 
 # Supplier Service Implementation Spec
@@ -220,10 +226,10 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
   - No matching row → insert as normal.
   - Matching row, not soft-deleted → reject with `422 Unprocessable Entity` (F8.2.2).
   - Matching row, soft-deleted → reverse the soft delete on that row and apply the submitted fields
-    to it as an update, reusing the existing `supplier_id` instead of inserting a new row; any
-    submitted photos replace that supplier's existing photo rows entirely rather than being
-    appended alongside them (§6.2). The response is `200 OK`; `is_active` is set to true, the stored
-    fields are replaced by the submitted ones, and `updated_on` and `version` change (§6.2).
+    to it as an update, reusing the existing `supplier_id` instead of inserting a new row (§6.2).
+    The submitted details and photos are applied through the edit cycle, and `is_deleted = false` and
+    `is_active = true` are restored in the same transaction (Phase 4). The response is `200 OK`, and
+    `updated_on` and `version` change (§6.2).
 - Request handling and responses (§7, §7.1.1, §7.5, §8.2):
   - `multer` parses the multipart body.
   - The create response returns photos as `photoId`/`photoLocation` only.
@@ -255,8 +261,6 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
   entry first, and `init.sql` has `is_24h` and the 1–8 check. Existing databases created from the
   old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows still need migrating
   (Sunday 0 becomes 7).
-- Deferred to later phases: deleting the cloud objects of photos replaced on reactivation (Phase 4
-  worker; `reactivateSupplier` already returns their locations).
 - Library: the local MinIO adapter uses the AWS S3 client (`@aws-sdk/client-s3`), chosen by the team;
   MinIO is S3-compatible.
 
@@ -298,9 +302,8 @@ concurrency), §8.2 full saga (steps 1–7, including photo edit semantics).
   already accepts (§7 table row), independent of `is_deleted`/soft-delete (§6.2, confirmed).
 
 - Status (done 2026-09-30): `PUT /api/v1/admin/suppliers/:id` is implemented, including the
-  photo saga and the post-commit enqueue of one excluded-photo cleanup job per photo to the Redis
-  list `queue:image:cleanup` (`task_name` `image_cleanup`). This is producer-only; the worker that
-  consumes the queue is deferred to Phase 4.
+  photo saga. One excluded-photo cleanup task (`task_name` `image_cleanup`) per excluded photo is
+  written to the `outbox` table in the update transaction (Phase 4) and processed by the worker.
 
 ### Acceptance criteria
 
@@ -325,13 +328,43 @@ workflow), §7.5/§8.1/§8.2 (Redis job contract, retries, dead-letter).
 
 ### Scope
 
-- `DELETE /api/v1/admin/suppliers/:id` — sets `is_deleted`, returns immediately once the DB write
-  and Redis enqueue succeed (§8.1).
-- Background worker consuming the generic `{id, task_name, payload}` job shape, calling the
-  (mocked, per §9 item 17) Order Service delete entrypoint and Message Service notify entrypoint,
-  with exponential-backoff retries (max 5) and a `dead_letter_jobs` row on exhaustion (§8.1).
-- Same worker/queue mechanism reused for the excluded-photo cloud-object deletion job from Phase 3
-  (§8.2), since both are already specified against the same generic job contract.
+- `DELETE /api/v1/admin/suppliers/:id` — sets `is_deleted` (`is_active` untouched) and bumps
+  `updated_on` and `version`. It responds `200` with `{ id, isDeleted: true }`, and `404` for an
+  unknown or already deleted supplier. The delete and its outbox row commit in one transaction
+  (§8.1). All API responses use `id`.
+- Transactional outbox: table `outbox (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, task_name
+  VARCHAR(255) NOT NULL, payload JSON NOT NULL, version BIGINT UNSIGNED NOT NULL)`, where `version`
+  is the supplier version. All background tasks (the suspension job, and the excluded-photo cleanup
+  from `PUT` and reactivation) are written to it inside the write transaction. A relay, driven by a
+  BullMQ job scheduler every second in the worker, reads rows ordered by `version` then `id`, adds
+  each to BullMQ (job id `outbox-<outbox id>`, job name = `task_name`, data = `payload`) and deletes
+  the row once it has been added. Ordering is enqueue order only (decided by the team, 2026-09-30).
+- Suspension job `supplier_suspension` on queue key `queue:supplier:suspension`, payload
+  `{supplier_id}`: one job calls the (mocked, per §9 item 17) Order Service delete and then the
+  (mocked) Message Service notify.
+- Background worker as a separate process and container (`npm run worker`, compose service
+  `supplier-worker`); standard shutdown signals apply and the active job is allowed to finish.
+  Retries are BullMQ delayed jobs, max 5 attempts, delays 5 s / 25 s / 125 s / 625 s. A bad job or an
+  outbox row with no queue goes straight to `dead_letter_jobs` (§8.1).
+- Queue keys map to BullMQ as prefix + name split at the last colon (`queue:supplier:suspension` is
+  prefix `queue:supplier`, name `suspension`; `queue:image:cleanup` is `queue:image` / `cleanup`;
+  relay queue `queue:outbox:relay`).
+- Same worker mechanism handles the excluded-photo cloud-object deletion job from Phase 3 (§8.2).
+- Reactivation of a soft-deleted supplier applies the submitted details and photos through the edit
+  cycle and restores `is_deleted = false` and `is_active = true` in the same transaction. New photos
+  replace the existing ones; no photos submitted leaves them; `version` is bumped once.
+- `PHOTO_STORE_ENDPOINT` is `http://host.docker.internal:9000` in development and is the same string
+  in the API and the worker.
+- Status (done 2026-09-30): the delete endpoint, the `outbox` table and writer, the relay, the
+  BullMQ worker with mock Order/Message clients and dead-lettering, the reworked reactivation and
+  the `supplier-worker` compose service are implemented. Verified: `npx vitest run` (38 files, 343
+  tests), `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run test:minio` (2 files, 9
+  tests), `docker compose config --quiet` and `docker compose build supplier-worker` passed. Run by
+  hand on 2026-09-30 against MySQL 8, Redis, MinIO and the API/worker containers (a local stub stood
+  in for the User Service `GET /auth/verify`): delete, Redis outage, worker down, delayed retry,
+  bad rows and reactivation behaved as described above; with the worker idle, `docker stop`
+  completed in about 3 s with the graceful-shutdown log lines. Not verified: stopping the worker
+  during an in-flight job.
 
 ### Acceptance criteria
 
