@@ -8,6 +8,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): the update saga no longer enqueues jobs; excluded-photo cleanup tasks go to the outbox in the update transaction (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the reactivation mode option (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { PhotoWrite, SupplierChange, SupplierWriteRepository } from '../persistence/supplierWriteRepository.js';
 import { buildPhotoCleanupTask } from '../queue/tasks.js';
@@ -41,9 +44,20 @@ export function createSupplierUpdateService({ repo, storage, reader, clock = () 
   }
 
   return {
-    async updateSupplier(supplierId: number, input: UpdateSupplierInput, files: PhotoFile[]): Promise<UpdateResult> {
+    async updateSupplier(
+      supplierId: number,
+      input: UpdateSupplierInput,
+      files: PhotoFile[],
+      options: { reactivate?: boolean } = {},
+    ): Promise<UpdateResult> {
       const current = await repo.findCurrent(supplierId);
-      if (current === null || current.isDeleted) throw new AppError(404, 'Not Found', 'Supplier not found.');
+      if (current === null) throw new AppError(404, 'Not Found', 'Supplier not found.');
+      if (options.reactivate === true) {
+        // Reactivation edits a soft-deleted row; a live row means someone else got there first.
+        if (!current.isDeleted) throw invalid('name', 'A supplier with the same name, type and location already exists.');
+      } else if (current.isDeleted) {
+        throw new AppError(404, 'Not Found', 'Supplier not found.');
+      }
       if (input.version !== current.version) {
         throw new AppError(409, 'Conflict', 'The supplier was modified by someone else. Re-fetch it and retry.');
       }
@@ -65,6 +79,7 @@ export function createSupplierUpdateService({ repo, storage, reader, clock = () 
       }
 
       const change: SupplierChange = { version: input.version, now: sgtDatetime(clock()) };
+      if (options.reactivate === true) change.reactivate = true;
       if (input.name !== undefined) change.name = input.name;
       if (input.type !== undefined) change.type = input.type;
       if (input.desc !== undefined) change.desc = input.desc;

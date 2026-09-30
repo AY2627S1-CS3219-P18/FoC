@@ -20,6 +20,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added updateSupplier outbox-row tests (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): replaced the reactivateSupplier tests with updateSupplier reactivation-mode tests (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -98,36 +101,45 @@ describe('insertSupplier', () => {
   });
 });
 
-describe('reactivateSupplier', () => {
-  it('locks the row, clears the soft delete, bumps version and replaces children', async () => {
-    const { pool, conn } = fakePool([
-      [{ is_deleted: 1 }], // SELECT ... FOR UPDATE
-      [{ photo_location: 'old-1' }, { photo_location: 'old-2' }], // old photos
-      {}, // UPDATE supplier
-      {}, {}, {}, // DELETE map, hours, photos
-      {}, {}, {}, // INSERT map, hours, photos
-    ]);
+describe('updateSupplier in reactivation mode', () => {
+  const now = '2026-09-30 10:00:00';
 
-    const result = await createMysqlSupplierWriteRepository(pool).reactivateSupplier(11, input);
+  it('matches a soft-deleted row and restores the flags in the same UPDATE as the edit', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }]);
 
-    expect(result).toEqual({ replacedPhotoLocations: ['old-1', 'old-2'] });
-    const statements = sqls(conn);
-    expect(statements[0]).toContain('FOR UPDATE');
-    expect(statements[2]).toContain('supplier_name = ?');
-    expect(statements[2]).toContain('is_active = TRUE');
-    expect(statements[2]).toContain('is_deleted = FALSE');
-    expect(statements[2]).toContain('version = version + 1');
-    expect(conn.query.mock.calls[2]?.[1]).toEqual(['Campus Store', 'desc', '2026-09-29 10:00:00', 11]);
-    expect(statements.slice(3, 6).every((s) => s.startsWith('DELETE FROM'))).toBe(true);
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, {
+      version: 3,
+      now,
+      name: 'Campus Store',
+      reactivate: true,
+    });
+
+    expect(sqls(conn)[0]).toBe(
+      'UPDATE supplier SET supplier_name = ?, is_deleted = FALSE, is_active = TRUE, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND version = ? AND is_deleted = TRUE',
+    );
+    expect(conn.query.mock.calls[0]?.[1]).toEqual(['Campus Store', now, 5, 3]);
     expect(conn.commit).toHaveBeenCalled();
   });
 
-  it('rejects with 422 when the supplier is no longer soft-deleted', async () => {
-    const { pool, conn } = fakePool([[{ is_deleted: 0 }]]);
-    await expect(createMysqlSupplierWriteRepository(pool).reactivateSupplier(11, input)).rejects.toMatchObject({
-      statusCode: 422,
-    });
+  it('an ordinary update still requires a live row and does not touch the flags', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }]);
+
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, { version: 3, now, name: 'Campus Store' });
+
+    expect(sqls(conn)[0]).toBe(
+      'UPDATE supplier SET supplier_name = ?, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND version = ? AND is_deleted = FALSE',
+    );
+  });
+
+  it('rolls back, committing nothing, when a later statement of the edit fails', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, new Error('category insert failed')]);
+
+    await expect(
+      createMysqlSupplierWriteRepository(pool).updateSupplier(5, { version: 3, now, categoryIds: [2], reactivate: true }),
+    ).rejects.toThrow('category insert failed');
+
     expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
   });
 });
 

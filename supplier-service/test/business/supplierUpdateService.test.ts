@@ -10,6 +10,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed the queue dependency and the enqueue tests; added tests for the onPhotosRemoved outbox-task builder (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added reactivation-mode tests; the fake loses reactivateSupplier (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentSupplier, SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
@@ -32,7 +35,6 @@ function setup(overrides: Partial<SupplierWriteRepository> = {}) {
     locationExists: vi.fn().mockResolvedValue(true),
     findMissingCategoryIds: vi.fn().mockResolvedValue([]),
     insertSupplier: vi.fn(),
-    reactivateSupplier: vi.fn(),
     findCurrent: vi.fn().mockResolvedValue(current),
     updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
     softDelete: vi.fn(),
@@ -174,5 +176,77 @@ describe('updateSupplier', () => {
     const { service, repo } = setup();
     await service.updateSupplier(101, { version: 3, name: 'New name', isPhotoDirty: false }, []);
     expect(vi.mocked(repo.updateSupplier).mock.calls[0]?.[1]).not.toHaveProperty('onPhotosRemoved');
+  });
+});
+
+describe('reactivation mode', () => {
+  const edit = {
+    version: 3,
+    name: 'Campus Store',
+    type: 'Store' as const,
+    locationId: 4,
+    openingHours: '[{"day":1,"open":"09:00","close":"18:00"}]',
+    is24h: false,
+    isPhotoDirty: false,
+  };
+
+  function build(isDeleted: boolean) {
+    const repo = {
+      findCurrent: vi.fn().mockResolvedValue({
+        supplierId: 5,
+        name: 'Old',
+        type: 'Store',
+        locationId: 4,
+        isDeleted,
+        version: 3,
+        photos: [],
+      }),
+      locationExists: vi.fn().mockResolvedValue(true),
+      findMissingCategoryIds: vi.fn().mockResolvedValue([]),
+      findByIdentity: vi.fn().mockResolvedValue({ supplierId: 5, isDeleted }),
+      updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
+    };
+    const storage = { upload: vi.fn(), update: vi.fn(), delete: vi.fn(), view: vi.fn() };
+    const service = createSupplierUpdateService({
+      repo: repo as unknown as SupplierWriteRepository,
+      storage,
+      reader: { getAdminSupplier: vi.fn().mockResolvedValue({ id: 5 }) },
+      clock: () => new Date('2026-09-30T02:00:00Z'),
+    });
+    return { service, repo };
+  }
+
+  it('edits a soft-deleted supplier and asks the repository to restore the flags in the same transaction', async () => {
+    const { service, repo } = build(true);
+    const result = await service.updateSupplier(5, edit, [], { reactivate: true });
+    expect(repo.updateSupplier).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ version: 3, name: 'Campus Store', reactivate: true }),
+    );
+    expect(result).toEqual({ statusCode: 200, body: { id: 5 } });
+  });
+
+  it('answers 422 when the supplier is no longer soft-deleted, and writes nothing', async () => {
+    const { service, repo } = build(false);
+    await expect(service.updateSupplier(5, edit, [], { reactivate: true })).rejects.toMatchObject({ statusCode: 422 });
+    expect(repo.updateSupplier).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary update of a soft-deleted supplier is still 404', async () => {
+    const { service, repo } = build(true);
+    await expect(service.updateSupplier(5, edit, [])).rejects.toMatchObject({ statusCode: 404 });
+    expect(repo.updateSupplier).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary update does not ask for reactivation', async () => {
+    const { service, repo } = build(false);
+    await service.updateSupplier(5, edit, []);
+    expect(repo.updateSupplier.mock.calls[0]?.[1]).not.toHaveProperty('reactivate');
+  });
+
+  it('answers 500 when the transaction fails, having changed nothing', async () => {
+    const { service, repo } = build(true);
+    repo.updateSupplier.mockRejectedValueOnce(new Error('db down'));
+    await expect(service.updateSupplier(5, edit, [], { reactivate: true })).rejects.toMatchObject({ statusCode: 500 });
   });
 });

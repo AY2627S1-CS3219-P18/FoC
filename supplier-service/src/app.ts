@@ -31,6 +31,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): dropped the job-queue wiring from the update service (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): construct the update service before the creation service and pass it in as the creation service's update dependency (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
@@ -65,15 +68,16 @@ const supplierService = createSupplierService(createMysqlSupplierRepository(pool
 apiV1.use('/suppliers', createSupplierRouter(supplierService));
 const writeRepository = createMysqlSupplierWriteRepository(pool);
 const photoStorage = createConfiguredPhotoStorage(config.photoStore);
-const supplierCreation = createSupplierCreationService({
-  repo: writeRepository,
-  storage: photoStorage,
-  reader: supplierService,
-});
 const supplierUpdate = createSupplierUpdateService({
   repo: writeRepository,
   storage: photoStorage,
   reader: supplierService,
+});
+const supplierCreation = createSupplierCreationService({
+  repo: writeRepository,
+  storage: photoStorage,
+  reader: supplierService,
+  update: supplierUpdate,
 });
 apiV1.use(
   '/admin/suppliers',

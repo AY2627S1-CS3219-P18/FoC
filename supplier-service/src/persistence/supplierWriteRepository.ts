@@ -13,6 +13,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added SupplierChange.onPhotosRemoved (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed reactivateSupplier; added SupplierChange.reactivate (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { CurrentPhoto } from '../business/photoPlan.js';
 import type { OutboxTask } from '../queue/tasks.js';
@@ -69,6 +72,11 @@ export interface SupplierChange {
    * are written to the outbox in that same transaction (Arch §8.2; team answer 2026-09-30).
    */
   onPhotosRemoved?: (removed: CurrentPhoto[]) => OutboxTask[];
+  /**
+   * Reactivation (Arch §6.2): the row must be soft-deleted; the same UPDATE sets is_deleted false
+   * and is_active true, so the flags commit only if the whole edit transaction succeeds.
+   */
+  reactivate?: boolean;
 }
 
 export interface SupplierWriteRepository {
@@ -87,12 +95,6 @@ export interface SupplierWriteRepository {
   findMissingCategoryIds(categoryIds: number[]): Promise<number[]>;
   /** One transaction: supplier, category map, hours and photos. Duplicate race → AppError 422. */
   insertSupplier(input: NewSupplier): Promise<number>;
-  /**
-   * One transaction (Arch §6.2): reverses the soft delete, sets is_active true, replaces desc,
-   * categories, hours and photo rows with the submitted ones, sets updated_on and increments
-   * version. Returns the replaced photo locations so the cloud objects can be cleaned up later.
-   */
-  reactivateSupplier(supplierId: number, input: NewSupplier): Promise<{ replacedPhotoLocations: string[] }>;
   /**
    * Soft delete (Arch §6.2, §8.1), in one transaction: sets is_deleted, updated_on and version on a
    * row that is not already deleted (is_active untouched) and writes `tasks` to the outbox, stamped

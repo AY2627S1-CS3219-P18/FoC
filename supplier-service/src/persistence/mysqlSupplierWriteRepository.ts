@@ -16,6 +16,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): updateSupplier writes the excluded-photo cleanup outbox rows in its transaction (Phase 4 plan Task 7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed reactivateSupplier; updateSupplier gains reactivation mode (flags restored in the edit's own UPDATE) (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { CurrentPhoto } from '../business/photoPlan.js';
@@ -114,36 +117,6 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
       }
     },
 
-    async reactivateSupplier(supplierId, input) {
-      return inTransaction(async (conn) => {
-        const [current] = await conn.query<RowDataPacket[]>(
-          'SELECT is_deleted FROM supplier WHERE supplier_id = ? FOR UPDATE',
-          [supplierId],
-        );
-        if (current[0] === undefined || !current[0].is_deleted) {
-          throw duplicate();
-        }
-
-        const [oldPhotos] = await conn.query<RowDataPacket[]>(
-          'SELECT photo_location FROM supplier_photos WHERE supplier_id = ? ORDER BY display_order',
-          [supplierId],
-        );
-
-        await conn.query(
-          `UPDATE supplier
-           SET supplier_name = ?, supplier_desc = ?, is_active = TRUE, is_deleted = FALSE, updated_on = ?, version = version + 1
-           WHERE supplier_id = ?`,
-          [input.name, input.desc, input.now, supplierId],
-        );
-        await conn.query('DELETE FROM supplier_category_map WHERE supplier_id = ?', [supplierId]);
-        await conn.query('DELETE FROM supplier_hours WHERE supplier_id = ?', [supplierId]);
-        await conn.query('DELETE FROM supplier_photos WHERE supplier_id = ?', [supplierId]);
-        await insertChildren(conn, supplierId, input);
-
-        return { replacedPhotoLocations: oldPhotos.map((row) => String(row.photo_location)) };
-      });
-    },
-
     async findCurrent(supplierId) {
       const [rows] = await pool.query<RowDataPacket[]>(
         `SELECT supplier_id, supplier_name, supplier_type, location_id, is_deleted, version
@@ -180,12 +153,14 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
           if (change.type !== undefined) set('supplier_type', change.type);
           if (change.desc !== undefined) set('supplier_desc', change.desc);
           if (change.locationId !== undefined) set('location_id', change.locationId);
-          if (change.isActive !== undefined) set('is_active', change.isActive ? 1 : 0);
+          if (change.isActive !== undefined && change.reactivate !== true) set('is_active', change.isActive ? 1 : 0);
+          if (change.reactivate === true) sets.push('is_deleted = FALSE', 'is_active = TRUE');
           set('updated_on', change.now);
           sets.push('version = version + 1');
 
           const [updated] = await conn.query<ResultSetHeader>(
-            `UPDATE supplier SET ${sets.join(', ')} WHERE supplier_id = ? AND version = ? AND is_deleted = FALSE`,
+            `UPDATE supplier SET ${sets.join(', ')}
+             WHERE supplier_id = ? AND version = ? AND is_deleted = ${change.reactivate === true ? 'TRUE' : 'FALSE'}`,
             [...params, supplierId, change.version],
           );
           if (updated.affectedRows === 0) {
