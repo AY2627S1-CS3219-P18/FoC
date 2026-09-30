@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Added an Admin option to the demo Role toggle, for previewing the admin supplier screens. No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useState } from 'react'
@@ -68,6 +73,13 @@ export default function DemoControls() {
               onClick={() => setRole('courier')}
             >
               Courier
+            </button>
+            <button
+              type="button"
+              className={seg(role === 'admin')}
+              onClick={() => setRole('admin')}
+            >
+              Admin
             </button>
           </div>
 

@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Shows a 'Manage suppliers' link when the demo role is Admin. No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useEffect, useState } from 'react'
@@ -22,8 +27,11 @@ const LINKS = [
   { to: '/activity', label: 'My activity', gated: 'You need an account to see your activity.' },
 ]
 
+const ADMIN_LINK = { to: '/admin/suppliers', label: 'Manage suppliers' }
+
 export default function TopNav() {
-  const { isLoggedIn, currentUser, credits, requireLogin, setIsLoggedIn } = useDemo()
+  const { isLoggedIn, currentUser, credits, requireLogin, setIsLoggedIn, role } = useDemo()
+  const links = role === 'admin' ? [...LINKS, ADMIN_LINK] : LINKS
   const [scrolled, setScrolled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const location = useLocation()
@@ -62,7 +70,7 @@ export default function TopNav() {
           <Logo />
 
           <nav className="hidden items-center gap-8 lg:flex" aria-label="Main">
-            {LINKS.map((link) => (
+            {links.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -143,7 +151,7 @@ export default function TopNav() {
             )}
 
             <nav className="flex flex-col" aria-label="Mobile">
-              {LINKS.map((link) => (
+              {links.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
