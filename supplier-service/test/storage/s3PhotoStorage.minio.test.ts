@@ -8,6 +8,10 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added a double-delete idempotency test
+ *        (Phase 4 plan Task 15). No requirements, architecture, schema, or API decisions were made
+ *        by the AI tool.
+ * Author review:
  */
 import { describe, expect, it } from 'vitest';
 import { createMinioTestStorage } from './minioTestStorage.js';
@@ -61,6 +65,13 @@ describe('S3 adapter against the local MinIO', () => {
     const storage = createMinioTestStorage();
     const location = await storage.upload(png);
     await storage.delete(location);
+    await expect(storage.delete(location)).resolves.toBeUndefined();
+  });
+
+  it('deleting the same location twice succeeds both times (safe for a repeated cleanup job)', async () => {
+    const storage = createMinioTestStorage();
+    const location = await storage.upload(png);
+    await expect(storage.delete(location)).resolves.toBeUndefined();
     await expect(storage.delete(location)).resolves.toBeUndefined();
   });
 

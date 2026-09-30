@@ -4,6 +4,10 @@
  * Scope: Tests for the image_cleanup and supplier_suspension handlers (Phase 4 plan Task 10). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added two idempotency tests (Phase 4 plan
+ *        Task 15): repeating a cleanup job, and re-running a suspension job after a partial failure.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { UnrecoverableError } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
@@ -31,6 +35,14 @@ describe('photo cleanup handler', () => {
     expect(error).toMatchObject({ message: 's3 down' });
     expect(error).not.toBeInstanceOf(UnrecoverableError);
   });
+
+  it('is safe to run twice for the same job (storage deletion is idempotent)', async () => {
+    const del = vi.fn().mockResolvedValue(undefined);
+    const handler = createPhotoCleanupHandler({ delete: del });
+    await handler({ photo_id: 7, photo_location: 'loc-7' });
+    await expect(handler({ photo_id: 7, photo_location: 'loc-7' })).resolves.toBeUndefined();
+    expect(del).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('suspension handler', () => {
@@ -57,5 +69,15 @@ describe('suspension handler', () => {
     const error = await createSuspensionHandler({ order, message })({ supplier_id: 'x' }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
+  });
+
+  it('can be re-run as a unit after a partial failure: the order call repeats, the notification then goes out', async () => {
+    const order = { deleteUncollectedRequests: vi.fn().mockResolvedValue(undefined) };
+    const message = { notifyAffected: vi.fn().mockRejectedValueOnce(new Error('msg down')).mockResolvedValue(undefined) };
+    const handler = createSuspensionHandler({ order, message });
+    await expect(handler({ supplier_id: 101 })).rejects.toThrow('msg down');
+    await expect(handler({ supplier_id: 101 })).resolves.toBeUndefined();
+    expect(order.deleteUncollectedRequests).toHaveBeenCalledTimes(2);
+    expect(message.notifyAffected).toHaveBeenCalledTimes(2);
   });
 });
