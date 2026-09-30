@@ -265,6 +265,8 @@ describe('softDelete', () => {
     expect(conn.query.mock.calls[2]?.[1]).toEqual([[['supplier_suspension', '{"supplier_id":7}', 6]]]);
     expect(conn.commit).toHaveBeenCalled();
     expect(conn.release).toHaveBeenCalled();
+    expect(conn.beginTransaction.mock.invocationCallOrder[0]).toBeLessThan(conn.query.mock.invocationCallOrder[0] ?? 0);
+    expect(conn.query.mock.invocationCallOrder[2]).toBeLessThan(conn.commit.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('rolls back, committing neither the delete nor the outbox row, when the outbox insert fails', async () => {
@@ -276,6 +278,7 @@ describe('softDelete', () => {
 
     expect(conn.rollback).toHaveBeenCalled();
     expect(conn.commit).not.toHaveBeenCalled();
+    expect(conn.release).toHaveBeenCalled();
   });
 
   it('returns false and writes no outbox row when no live row matched (unknown or already deleted)', async () => {
@@ -283,6 +286,19 @@ describe('softDelete', () => {
 
     expect(await createMysqlSupplierWriteRepository(pool).softDelete(7, now, tasks)).toBe(false);
     expect(sqls(conn)).toHaveLength(1);
+    expect(conn.release).toHaveBeenCalled();
+    expect(conn.rollback).not.toHaveBeenCalled();
+  });
+
+  it('with no tasks still updates and reads the version, writes no outbox row, and returns true', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, [{ version: 6 }]]);
+
+    expect(await createMysqlSupplierWriteRepository(pool).softDelete(7, now, [])).toBe(true);
+    expect(sqls(conn)).toEqual([
+      'UPDATE supplier SET is_deleted = TRUE, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND is_deleted = FALSE',
+      'SELECT version FROM supplier WHERE supplier_id = ?',
+    ]);
+    expect(conn.commit).toHaveBeenCalled();
   });
 });
 

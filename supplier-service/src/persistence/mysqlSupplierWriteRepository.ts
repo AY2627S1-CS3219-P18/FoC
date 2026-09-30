@@ -255,6 +255,7 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
         throw error;
       }
     },
+
     async softDelete(supplierId, now, tasks) {
       return inTransaction(async (conn) => {
         const [result] = await conn.query<ResultSetHeader>(
@@ -263,7 +264,10 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
           [now, supplierId],
         );
         if (result.affectedRows === 0) return false;
-        const [rows] = await conn.query<RowDataPacket[]>('SELECT version FROM supplier WHERE supplier_id = ?', [supplierId]);
+        const [rows] = await conn.query<RowDataPacket[]>(
+          'SELECT version FROM supplier WHERE supplier_id = ?',
+          [supplierId],
+        );
         const row = rows[0];
         if (row === undefined) throw new Error(`Supplier ${supplierId} vanished inside its own transaction.`);
         await insertOutboxRows(conn, Number(row.version), tasks);

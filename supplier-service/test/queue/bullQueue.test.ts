@@ -4,6 +4,9 @@
  * Scope: Tests for the BullMQ producer adapter and retry policy (Phase 4 plan Task 2). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): the close test now covers both queues (Phase 4 plan Task 2 review follow-up).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -72,7 +75,9 @@ describe('bull job queue', () => {
   it('closes every queue it created', async () => {
     const { queue, queues } = build();
     await queue.enqueue('queue:image:cleanup', { id: 'a', task_name: 't', payload: {} });
+    await queue.enqueue('queue:supplier:suspension', { id: 'b', task_name: 't', payload: {} });
     await queue.close();
-    expect(queues[0]?.close).toHaveBeenCalled();
+    expect(queues).toHaveLength(2);
+    for (const created of queues) expect(created.close).toHaveBeenCalledTimes(1);
   });
 });
