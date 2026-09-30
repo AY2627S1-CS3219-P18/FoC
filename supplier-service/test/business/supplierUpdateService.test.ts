@@ -13,10 +13,14 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added reactivation-mode tests; the fake loses reactivateSupplier (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added a reactivation-plus-photo-edit test; the reactivation builder accepts existing photos and an upload stub.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentSupplier, SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
 import { createInMemoryPhotoStorage } from '../storage/inMemoryPhotoStorage.js';
+import { buildPhotoCleanupTask } from '../../src/queue/tasks.js';
 import { AppError } from '../../src/utils/AppError.js';
 import type { UpdateSupplierInput } from '../../src/validation/supplierUpdateInput.js';
 import { createSupplierUpdateService } from '../../src/business/supplierUpdateService.js';
@@ -190,7 +194,7 @@ describe('reactivation mode', () => {
     isPhotoDirty: false,
   };
 
-  function build(isDeleted: boolean) {
+  function build(isDeleted: boolean, photos: CurrentSupplier['photos'] = [], upload = vi.fn()) {
     const repo = {
       findCurrent: vi.fn().mockResolvedValue({
         supplierId: 5,
@@ -199,14 +203,14 @@ describe('reactivation mode', () => {
         locationId: 4,
         isDeleted,
         version: 3,
-        photos: [],
+        photos,
       }),
       locationExists: vi.fn().mockResolvedValue(true),
       findMissingCategoryIds: vi.fn().mockResolvedValue([]),
       findByIdentity: vi.fn().mockResolvedValue({ supplierId: 5, isDeleted }),
       updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
     };
-    const storage = { upload: vi.fn(), update: vi.fn(), delete: vi.fn(), view: vi.fn() };
+    const storage = { upload, update: vi.fn(), delete: vi.fn(), view: vi.fn() };
     const service = createSupplierUpdateService({
       repo: repo as unknown as SupplierWriteRepository,
       storage,
@@ -224,6 +228,28 @@ describe('reactivation mode', () => {
       expect.objectContaining({ version: 3, name: 'Campus Store', reactivate: true }),
     );
     expect(result).toEqual({ statusCode: 200, body: { id: 5 } });
+  });
+
+  it('reactivates together with a photo edit: new photo saved and old photo queued for cleanup', async () => {
+    const upload = vi.fn().mockResolvedValue('loc-new');
+    const { service, repo } = build(true, [{ photoId: 1, location: 'loc-old' }], upload);
+    const file = { buffer: Buffer.from('p'), mimeType: 'image/png' as const };
+    await service.updateSupplier(
+      5,
+      { ...edit, isPhotoDirty: true, photoIds: ['p0'], placeholderIds: ['p0'] },
+      [file],
+      { reactivate: true },
+    );
+    const change = repo.updateSupplier.mock.calls[0]?.[1] as {
+      reactivate?: boolean;
+      photos?: unknown;
+      onPhotosRemoved?: (p: Array<{ photoId: number; location: string }>) => unknown;
+    };
+    expect(change.reactivate).toBe(true);
+    expect(change.photos).toEqual([{ kind: 'new', location: 'loc-new' }]);
+    expect(typeof change.onPhotosRemoved).toBe('function');
+    const old = { photoId: 1, location: 'loc-old' };
+    expect(change.onPhotosRemoved?.([old])).toEqual([buildPhotoCleanupTask(old)]);
   });
 
   it('answers 422 when the supplier is no longer soft-deleted, and writes nothing', async () => {

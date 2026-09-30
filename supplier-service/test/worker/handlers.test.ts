@@ -8,6 +8,9 @@
  *        Task 15): repeating a cleanup job, and re-running a suspension job after a partial failure.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added payload-constraint tests for both handlers; renamed the repeated-delivery cleanup test.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { UnrecoverableError } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
@@ -36,13 +39,37 @@ describe('photo cleanup handler', () => {
     expect(error).not.toBeInstanceOf(UnrecoverableError);
   });
 
-  it('is safe to run twice for the same job (storage deletion is idempotent)', async () => {
+  it('does not fail when the same job is delivered twice', async () => {
     const del = vi.fn().mockResolvedValue(undefined);
     const handler = createPhotoCleanupHandler({ delete: del });
     await handler({ photo_id: 7, photo_location: 'loc-7' });
     await expect(handler({ photo_id: 7, photo_location: 'loc-7' })).resolves.toBeUndefined();
     expect(del).toHaveBeenCalledTimes(2);
   });
+});
+
+describe('payload constraints that only the schemas enforce', () => {
+  it.each([
+    { photo_id: 1, photo_location: '' },
+    { photo_id: 1.5, photo_location: 'x' },
+  ])('photo cleanup handler rejects %j as a bad job', async (payload) => {
+    const del = vi.fn();
+    const error = await createPhotoCleanupHandler({ delete: del })(payload).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it.each([{ supplier_id: 0 }, { supplier_id: -1 }, { supplier_id: 1.5 }])(
+    'suspension handler rejects %j as a bad job',
+    async (payload) => {
+      const order = { deleteUncollectedRequests: vi.fn() };
+      const message = { notifyAffected: vi.fn() };
+      const error = await createSuspensionHandler({ order, message })(payload).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(UnrecoverableError);
+      expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
+      expect(message.notifyAffected).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('suspension handler', () => {

@@ -23,6 +23,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): replaced the reactivateSupplier tests with updateSupplier reactivation-mode tests (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added a reactivation case asserting a single is_active = TRUE and no is_active = ? placeholder.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -119,6 +122,26 @@ describe('updateSupplier in reactivation mode', () => {
     );
     expect(conn.query.mock.calls[0]?.[1]).toEqual(['Campus Store', now, 5, 3]);
     expect(conn.commit).toHaveBeenCalled();
+  });
+
+  it('writes is_active = TRUE once, as a literal, even when the change carries isActive: false', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }]);
+
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, {
+      version: 3,
+      now,
+      name: 'Campus Store',
+      isActive: false,
+      reactivate: true,
+    });
+
+    const sql = sqls(conn)[0] as string;
+    expect(sql).toBe(
+      'UPDATE supplier SET supplier_name = ?, is_deleted = FALSE, is_active = TRUE, updated_on = ?, version = version + 1 WHERE supplier_id = ? AND version = ? AND is_deleted = TRUE',
+    );
+    expect(sql.match(/is_active = TRUE/g)).toHaveLength(1);
+    expect(sql).not.toContain('is_active = ?');
+    expect(conn.query.mock.calls[0]?.[1]).toEqual(['Campus Store', now, 5, 3]);
   });
 
   it('an ordinary update still requires a live row and does not touch the flags', async () => {
