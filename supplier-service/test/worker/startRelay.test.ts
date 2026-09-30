@@ -64,5 +64,17 @@ describe('startRelay', () => {
     await relay.close();
     expect(mocks.workerClose).toHaveBeenCalled();
     expect(mocks.queueClose).toHaveBeenCalled();
+    expect(mocks.workerClose.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      mocks.queueClose.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('closes the queue and creates no worker when scheduling fails', async () => {
+    mocks.upsertJobScheduler.mockRejectedValueOnce(new Error('redis down'));
+
+    await expect(startRelay({ host: 'h', port: 1 }, vi.fn())).rejects.toThrow('redis down');
+
+    expect(mocks.queueClose).toHaveBeenCalledTimes(1);
+    expect(mocks.workers).toHaveLength(0);
   });
 });

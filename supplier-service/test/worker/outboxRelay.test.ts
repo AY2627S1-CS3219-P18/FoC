@@ -104,6 +104,15 @@ describe('outbox relay tick', () => {
     expect(queue.enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it('fails the tick and keeps the row when the dead-letter insert fails for an unroutable row', async () => {
+    const { relayOnce, outbox, deadLetters } = build([{ id: 3, taskName: 'nope', payload: { a: 1 }, version: 5 }] as never);
+    deadLetters.insert.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(relayOnce()).rejects.toThrow('db down');
+
+    expect(outbox.delete).not.toHaveBeenCalled();
+  });
+
   it('lets a failed delete propagate so the tick fails and the row is retried (the job id makes the re-enqueue harmless)', async () => {
     const { relayOnce, outbox } = build([suspension(4, 6)]);
     outbox.delete.mockRejectedValueOnce(new Error('db down'));

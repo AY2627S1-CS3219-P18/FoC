@@ -23,11 +23,16 @@ export async function startRelay(
 
   const queue = new Queue(name, { connection, prefix });
   // The scheduler only creates the next tick when the previous one starts, so ticks never pile up.
-  await queue.upsertJobScheduler(
-    SCHEDULER_ID,
-    { every: OUTBOX_RELAY_INTERVAL_MS },
-    { name: 'outbox_relay', opts: { attempts: 1, removeOnComplete: true, removeOnFail: true } },
-  );
+  try {
+    await queue.upsertJobScheduler(
+      SCHEDULER_ID,
+      { every: OUTBOX_RELAY_INTERVAL_MS },
+      { name: 'outbox_relay', opts: { attempts: 1, removeOnComplete: true, removeOnFail: true } },
+    );
+  } catch (error) {
+    await queue.close(); // do not leak the queue's Redis connection when scheduling fails
+    throw error;
+  }
 
   const worker = new Worker(
     name,

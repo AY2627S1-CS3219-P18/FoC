@@ -42,6 +42,8 @@ export function createOutboxRelay({ outbox, queue, deadLetters, log = console.er
           errorTrace: `No queue is registered for task_name "${row.taskName}".`,
           failedAt: sgtDatetime(clock()),
         });
+        // If the insert succeeds and this delete then fails, the next tick writes a second dead-letter row
+        // for the same outbox-<id>: harmless and self-healing.
         await outbox.delete(row.id);
         continue;
       }
