@@ -5,14 +5,20 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Read the cover image from supplier.photos[].photoLocation instead of supplier.image.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useState } from 'react'
 import { ImageOff } from 'lucide-react'
+import { coverPhoto } from '../data/suppliers'
 
-// Never let a broken image icon render. Until the team drops photos into
-// public/images/, this placeholder is what shows.
-// `supplier.image` is a path under /images/, e.g. "stalls/japanese.jpg".
+// Never let a broken image icon render. A supplier with no photos, or a photoLocation that
+// fails to load (for example an expired signed URL), shows this placeholder instead.
+// The cover is the first entry of `supplier.photos` by displayOrder.
 export default function SupplierImage({
   supplier,
   className = '',
@@ -21,9 +27,10 @@ export default function SupplierImage({
   compact = false,
 }) {
   const [failed, setFailed] = useState(false)
+  const cover = coverPhoto(supplier)
   const shell = `relative w-full overflow-hidden bg-surface-alt ${ratio} ${rounded} ${className}`
 
-  if (failed) {
+  if (failed || !cover) {
     return (
       <div className={shell}>
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
@@ -43,8 +50,7 @@ export default function SupplierImage({
   return (
     <div className={shell}>
       <img
-        /* Each path segment is encoded: some supplied filenames contain spaces. */
-        src={'/images/' + supplier.image.split('/').map(encodeURIComponent).join('/')}
+        src={cover.photoLocation}
         alt={supplier.name}
         loading="lazy"
         onError={() => setFailed(true)}

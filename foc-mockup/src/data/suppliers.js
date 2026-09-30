@@ -5,269 +5,299 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Reshaped the mock data and helpers to the Supplier Service response contract
+ *        (SupplierServiceArchitecture.md §7.3) following the team's field-by-field resolution
+ *        given in chat. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review: Congchen
  */
 
-// TEAM DECISION (settled, not an AI choice): the supplier entity is the STALL, not the
-// canteen. "The Deck" is a venue attribute on the stall. Standalone stalls with no venue are
-// valid suppliers too. This table is flat — one row per orderable place. The venue grouping on
-// the home page and /suppliers is a view over this list, not a parent-child relationship.
-// Order Service is unaffected: supplierId still points at exactly one row.
+// TEAM DECISION (2026-09-30): supplier objects use exactly the fields the Supplier Service API
+// returns (§7.3). Mockup field -> API field, as resolved by the team:
+//   id (string)      -> id (number)
+//   venue            -> location
+//   location         -> faculty
+//   shortName        -> removed
+//   category         -> categories[] (shown as pills)
+//   description      -> desc (detail view only; the list does not show it)
+//   image            -> photos[].photoLocation (the API returns signed URLs)
+//   activeRequests   -> deferred (Order Service data, not supplier-service)
 //
-// Placeholders chosen for the open questions the team has not yet answered — see AI-NOTES.md:
-//   a. `venue` is a plain nullable string, not its own entity.
-//   b. `hours` / `isOpen` live on the stall. A venue heading derives "n of m open" from its
-//      stalls; there is no venue-level open state.
-//   c. `supplierId` always points at a stall. Nothing can target a venue.
-//
-// `image` is a path under /images/ so the flat list needs no per-record directory field.
+// PLACEHOLDER MOCK VALUES, not team data: `type` ('Store' everywhere), `level` (1 everywhere),
+// every supplier's opening hours (the same each day, Mon-Sun), and `photoLocation`, which points
+// at local files under /images/ until real signed URLs exist. Suppliers that had no venue use
+// their old location text as `location` because the API requires one.
+
+// `hours` is expanded to one openingHours entry per day (1 = Monday .. 7 = Sunday, §6.2) because
+// the detail response carries per-day hours. The list response does not, so list views never
+// read it.
+const supplier = ({ hours, photo, ...rest }) => ({
+  ...rest,
+  photos: [{ photoId: rest.id * 100 + 1, photoLocation: photo, displayOrder: 0 }],
+  openingHours: [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, open: hours[0], close: hours[1] })),
+})
+
 export const suppliers = [
-  // --- The Deck: a venue with four stalls -----------------------------------------------
-  {
-    id: 's1',
-    name: 'Roasted Delights',
-    venue: 'The Deck',
-    shortName: 'Roasted',
-    location: 'Faculty of Arts & Social Sciences',
-    category: 'Canteen',
-    hours: { open: '07:30', close: '20:00' },
+  supplier({
+    id: 1,
+    name: "Roasted Delights",
+    type: 'Store',
+    location: "The Deck",
+    faculty: "Faculty of Arts & Social Sciences",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:30', '20:00'],
     isOpen: true,
-    description: 'Roast meats, chicken rice, char siew.',
-    activeRequests: 2,
-    image: 'stalls/roasted delight.webp',
-  },
-  {
-    id: 's2',
-    name: 'Japanese',
-    venue: 'The Deck',
-    shortName: 'Japanese',
-    location: 'Faculty of Arts & Social Sciences',
-    category: 'Canteen',
-    hours: { open: '11:00', close: '19:30' },
+    photo: "/images/stalls/roasted%20delight.webp",
+    desc: "Roast meats, chicken rice, char siew.",
+  }),
+  supplier({
+    id: 2,
+    name: "Japanese",
+    type: 'Store',
+    location: "The Deck",
+    faculty: "Faculty of Arts & Social Sciences",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['11:00', '19:30'],
     isOpen: true,
-    description: 'Donburi, katsu sets, cold soba.',
-    activeRequests: 1,
-    image: 'stalls/japanese.jpg',
-  },
-  {
-    id: 's3',
-    name: 'Yong Tau Foo & Laksa',
-    venue: 'The Deck',
-    shortName: 'YTF & Laksa',
-    location: 'Faculty of Arts & Social Sciences',
-    category: 'Canteen',
-    hours: { open: '07:30', close: '19:00' },
+    photo: "/images/stalls/japanese.jpg",
+    desc: "Donburi, katsu sets, cold soba.",
+  }),
+  supplier({
+    id: 3,
+    name: "Yong Tau Foo & Laksa",
+    type: 'Store',
+    location: "The Deck",
+    faculty: "Faculty of Arts & Social Sciences",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:30', '19:00'],
     isOpen: true,
-    description: 'Pick your own pieces, soup or dry, laksa gravy.',
-    activeRequests: 1,
-    image: 'stalls/yongtaufooandlaksa.jpg',
-  },
-  {
-    id: 's4',
-    name: 'Vegetarian',
-    venue: 'The Deck',
-    shortName: 'Vegetarian',
-    location: 'Faculty of Arts & Social Sciences',
-    category: 'Canteen',
-    hours: { open: '10:30', close: '19:00' },
-    // Deliberately closed while its neighbours are open: this is the case open question (b)
-    // is about — a venue whose stalls disagree.
+    photo: "/images/stalls/yongtaufooandlaksa.jpg",
+    desc: "Pick your own pieces, soup or dry, laksa gravy.",
+  }),
+  supplier({
+    id: 4,
+    name: "Vegetarian",
+    type: 'Store',
+    location: "The Deck",
+    faculty: "Faculty of Arts & Social Sciences",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['10:30', '19:00'],
     isOpen: false,
-    description: 'Mixed rice, all vegetarian, no onion or garlic on request.',
-    activeRequests: 0,
-    image: 'stalls/vegetarian.jpg',
-  },
-
-  // --- Venues carrying a single stall each ----------------------------------------------
-  {
-    id: 's5',
-    name: 'Fine Food',
-    venue: 'UTown',
-    shortName: 'Fine Food',
-    location: 'UTown',
-    category: 'Food court',
-    hours: { open: '07:30', close: '21:30' },
+    photo: "/images/stalls/vegetarian.jpg",
+    desc: "Mixed rice, all vegetarian, no onion or garlic on request.",
+  }),
+  supplier({
+    id: 5,
+    name: "Fine Food",
+    type: 'Store',
+    location: "UTown",
+    faculty: "UTown",
+    level: 1,
+    categories: ["Food court"],
+    hours: ['07:30', '21:30'],
     isOpen: true,
-    description: 'Food court in Stephen Riady Centre, one level up from the plaza.',
-    activeRequests: 4,
-    image: 'suppliers/utownfinefood.jpg',
-  },
-  {
-    id: 's6',
-    name: 'Flavours',
-    venue: 'UTown',
-    shortName: 'Flavours',
-    location: 'UTown',
-    category: 'Food court',
-    hours: { open: '07:00', close: '21:00' },
+    photo: "/images/suppliers/utownfinefood.jpg",
+    desc: "Food court in Stephen Riady Centre, one level up from the plaza.",
+  }),
+  supplier({
+    id: 6,
+    name: "Flavours",
+    type: 'Store',
+    location: "UTown",
+    faculty: "UTown",
+    level: 1,
+    categories: ["Food court"],
+    hours: ['07:00', '21:00'],
     isOpen: true,
-    description: 'The larger UTown food court, beside the Education Resource Centre.',
-    activeRequests: 1,
-    image: 'suppliers/flavours.jpg',
-  },
-  {
-    id: 's7',
-    name: '食堂',
-    venue: 'UTown Plaza',
-    shortName: '食堂',
-    location: 'UTown',
-    category: 'Food court',
-    hours: { open: '10:30', close: '21:00' },
+    photo: "/images/suppliers/flavours.jpg",
+    desc: "The larger UTown food court, beside the Education Resource Centre.",
+  }),
+  supplier({
+    id: 7,
+    name: "食堂",
+    type: 'Store',
+    location: "UTown Plaza",
+    faculty: "UTown",
+    level: 1,
+    categories: ["Food court"],
+    hours: ['10:30', '21:00'],
     isOpen: false,
-    description: 'Chinese food court at the UTown plaza level.',
-    activeRequests: 0,
-    image: 'suppliers/utownplaza.png',
-  },
-  {
-    id: 's8',
-    name: 'Tomoro Coffee',
-    venue: 'Hong Swee Sen Memorial Library',
-    shortName: 'Tomoro',
-    location: 'Hong Swee Sen Memorial Library',
-    category: 'Café',
-    hours: { open: '08:30', close: '20:00' },
+    photo: "/images/suppliers/utownplaza.png",
+    desc: "Chinese food court at the UTown plaza level.",
+  }),
+  supplier({
+    id: 8,
+    name: "Tomoro Coffee",
+    type: 'Store',
+    location: "Hong Swee Sen Memorial Library",
+    faculty: "Hong Swee Sen Memorial Library",
+    level: 1,
+    categories: ["Café"],
+    hours: ['08:30', '20:00'],
     isOpen: true,
-    description: 'Coffee, tea and pastries on the library level.',
-    activeRequests: 1,
-    image: 'stalls/tomorocoffee.jpg',
-  },
-
-  // --- No venue: canteens not yet broken into stalls ------------------------------------
-  // These four are carried as single rows because their stall lists have not been collected
-  // yet. They are not standalone by nature. See AI-NOTES.md.
-  {
-    id: 's9',
-    name: 'Techno Edge',
-    venue: null,
-    shortName: 'Techno',
-    location: 'Faculty of Engineering',
-    category: 'Canteen',
-    hours: { open: '07:00', close: '21:00' },
+    photo: "/images/stalls/tomorocoffee.jpg",
+    desc: "Coffee, tea and pastries on the library level.",
+  }),
+  supplier({
+    id: 9,
+    name: "Techno Edge",
+    type: 'Store',
+    location: "Faculty of Engineering",
+    faculty: "Faculty of Engineering",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:00', '21:00'],
     isOpen: false,
-    description: 'Engineering canteen next to E2. Known for the late-night supper stalls.',
-    activeRequests: 0,
-    image: 'suppliers/techno-edge.jpg',
-  },
-  {
-    id: 's10',
-    name: 'Frontier',
-    venue: null,
-    shortName: 'Frontier',
-    location: 'Faculty of Science',
-    category: 'Canteen',
-    hours: { open: '07:30', close: '20:30' },
+    photo: "/images/suppliers/techno-edge.jpg",
+    desc: "Engineering canteen next to E2. Known for the late-night supper stalls.",
+  }),
+  supplier({
+    id: 10,
+    name: "Frontier",
+    type: 'Store',
+    location: "Faculty of Science",
+    faculty: "Faculty of Science",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:30', '20:30'],
     isOpen: true,
-    description: 'Science canteen at S16. Wide stall mix, gets very full at noon.',
-    activeRequests: 2,
-    image: 'suppliers/frontier.png',
-  },
-  {
-    id: 's11',
-    name: 'The Terrace',
-    venue: null,
-    shortName: 'Terrace',
-    location: 'School of Design & Environment',
-    category: 'Canteen',
-    hours: { open: '07:30', close: '19:00' },
+    photo: "/images/suppliers/frontier.png",
+    desc: "Science canteen at S16. Wide stall mix, gets very full at noon.",
+  }),
+  supplier({
+    id: 11,
+    name: "The Terrace",
+    type: 'Store',
+    location: "School of Design & Environment",
+    faculty: "School of Design & Environment",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:30', '19:00'],
     isOpen: true,
-    description: 'Open-air canteen at SDE. Quiet outside lunch hours.',
-    activeRequests: 1,
-    image: 'suppliers/terrace.png',
-  },
-  {
-    id: 's12',
-    name: 'PGPR Canteen',
-    venue: null,
-    shortName: 'PGPR',
+    photo: "/images/suppliers/terrace.png",
+    desc: "Open-air canteen at SDE. Quiet outside lunch hours.",
+  }),
+  supplier({
+    id: 12,
+    name: "PGPR Canteen",
+    type: 'Store',
     location: "Prince George's Park Residences",
-    category: 'Canteen',
-    hours: { open: '07:00', close: '22:00' },
+    faculty: "Prince George's Park Residences",
+    level: 1,
+    categories: ["Canteen"],
+    hours: ['07:00', '22:00'],
     isOpen: true,
-    description: 'Residence canteen serving PGPR. Breakfast and late supper.',
-    activeRequests: 2,
-    image: 'suppliers/PGP-canteen.jpg',
-  },
-
-  // --- Genuinely standalone stalls: no venue at all -------------------------------------
-  // Added to make the flat model visible. Names are PLACEHOLDERS — verify before D1.
-  {
-    id: 's13',
-    name: 'Cool Spot',
-    venue: null,
-    shortName: 'Cool Spot',
-    location: 'University Sports Centre',
-    category: 'Café',
-    hours: { open: '08:00', close: '20:00' },
+    photo: "/images/suppliers/PGP-canteen.jpg",
+    desc: "Residence canteen serving PGPR. Breakfast and late supper.",
+  }),
+  supplier({
+    id: 13,
+    name: "Cool Spot",
+    type: 'Store',
+    location: "University Sports Centre",
+    faculty: "University Sports Centre",
+    level: 1,
+    categories: ["Café"],
+    hours: ['08:00', '20:00'],
     isOpen: true,
-    description: 'Drinks and snacks kiosk by the sports centre.',
-    activeRequests: 1,
-    image: 'stalls/cool-spot.jpg',
-  },
-  {
-    id: 's14',
-    name: 'Spinelli Coffee',
-    venue: null,
-    shortName: 'Spinelli',
-    location: 'Faculty of Law',
-    category: 'Café',
-    hours: { open: '08:00', close: '18:00' },
+    photo: "/images/stalls/cool-spot.jpg",
+    desc: "Drinks and snacks kiosk by the sports centre.",
+  }),
+  supplier({
+    id: 14,
+    name: "Spinelli Coffee",
+    type: 'Store',
+    location: "Faculty of Law",
+    faculty: "Faculty of Law",
+    level: 1,
+    categories: ["Café"],
+    hours: ['08:00', '18:00'],
     isOpen: false,
-    description: 'Coffee bar on the law campus.',
-    activeRequests: 0,
-    image: 'stalls/spinelli.jpg',
-  },
+    photo: "/images/stalls/spinelli.jpg",
+    desc: "Coffee bar on the law campus.",
+  }),
 ]
 
-// Derived, not hardcoded: a category with no suppliers left stops appearing in filters.
-export const categories = [...new Set(suppliers.map((s) => s.category))]
+// --- Reference data ---------------------------------------------------------------------
+// Mirrors GET /api/v1/suppliers/reference/location and /reference/categories (§7.3). Derived from
+// the supplier list so the filters never offer an option with no supplier behind it.
+const unique = (list) => [...new Set(list)]
 
-export const getSupplier = (id) => suppliers.find((s) => s.id === id)
+const facultyNames = unique(suppliers.map((s) => s.faculty))
+export const faculties = facultyNames.map((faculty, i) => ({ faculty_id: i + 1, faculty }))
 
-// "Roasted Delights @ The Deck" — used everywhere a stall appears outside its venue group.
+export const locationRefs = unique(suppliers.map((s) => s.location + '|' + s.faculty)).map(
+  (key, i) => {
+    const [location, faculty] = key.split('|')
+    return {
+      location_id: i + 1,
+      location,
+      faculty_id: faculties.find((f) => f.faculty === faculty).faculty_id,
+      faculty,
+    }
+  },
+)
+
+export const categoryRefs = unique(suppliers.flatMap((s) => s.categories)).map(
+  (category, i) => ({ category_id: i + 1, category }),
+)
+
+export const getSupplier = (id) => suppliers.find((s) => s.id === Number(id))
+
+// "Roasted Delights @ The Deck" — used wherever a supplier appears outside its location group.
 export const qualifiedName = (supplier) =>
-  supplier ? (supplier.venue ? supplier.name + ' @ ' + supplier.venue : supplier.name) : ''
+  !supplier
+    ? ''
+    : supplier.location && supplier.location !== supplier.name
+      ? supplier.name + ' @ ' + supplier.location
+      : supplier.name
 
-// Search matches the stall name, the venue name, the location and the category, so "Deck"
-// returns every stall in it and "laksa" returns the stall directly.
+// Photos are ordered by displayOrder (§8.2); the first is the cover.
+export const coverPhoto = (supplier) =>
+  supplier?.photos?.length
+    ? [...supplier.photos].sort((a, b) => a.displayOrder - b.displayOrder)[0]
+    : null
+
+// Mirrors the §7.2 `search` parameter: name, location or category, case-insensitive.
 export const matchesQuery = (supplier, query) => {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  return [supplier.name, supplier.venue, supplier.location, supplier.category]
-    .filter(Boolean)
+  return [supplier.name, supplier.location, ...supplier.categories]
     .join(' ')
     .toLowerCase()
     .includes(q)
 }
 
-// A view over the flat list: venues in first-seen order, then everything with no venue.
-// Nothing here implies a parent-child relationship in the data.
-export const groupByVenue = (list) => {
+// A view over the flat list: locations in first-seen order. Not a parent-child relationship.
+export const groupByLocation = (list) => {
   const groups = []
-  const byVenue = new Map()
-  const standalone = []
-
+  const byLocation = new Map()
   list.forEach((s) => {
-    if (!s.venue) {
-      standalone.push(s)
-      return
-    }
-    if (!byVenue.has(s.venue)) {
-      const group = { venue: s.venue, items: [] }
-      byVenue.set(s.venue, group)
+    if (!byLocation.has(s.location)) {
+      const group = { location: s.location, items: [] }
+      byLocation.set(s.location, group)
       groups.push(group)
     }
-    byVenue.get(s.venue).items.push(s)
+    byLocation.get(s.location).items.push(s)
   })
-
-  return { groups, standalone }
+  return groups
 }
 
-// Open state is per stall (placeholder for open question b); a venue only summarises.
-export const venueOpenSummary = (items) => {
+// Open state is per supplier; a location group only summarises.
+export const locationOpenSummary = (items) => {
   const open = items.filter((s) => s.isOpen).length
   if (items.length === 1) return open === 1 ? 'Open now' : 'Closed'
   return open + ' of ' + items.length + ' open now'
 }
 
-// Other stalls sharing a venue — used on the stall detail screen.
-export const stallsAtVenue = (supplier) =>
-  supplier.venue ? suppliers.filter((s) => s.venue === supplier.venue && s.id !== supplier.id) : []
+// Other suppliers sharing a location — used on the supplier detail screen.
+export const suppliersAtLocation = (supplier) =>
+  suppliers.filter((s) => s.location === supplier.location && s.id !== supplier.id)
+
+export const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']

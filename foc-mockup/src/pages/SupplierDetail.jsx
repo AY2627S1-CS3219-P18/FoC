@@ -5,19 +5,25 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Renders a day-8 opening-hours entry as 'Open 24 hours' (§6.2). No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review:
  */
 
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import SupplierImage from '../components/SupplierImage'
+import CategoryPills from '../components/CategoryPills'
 import SupplierCard from '../components/SupplierCard'
 import Button from '../components/Button'
-import { getSupplier, stallsAtVenue, qualifiedName } from '../data/suppliers'
+import { getSupplier, suppliersAtLocation, DAY_NAMES } from '../data/suppliers'
 import { useDemo } from '../context/DemoContext'
 
-// Stall detail. The supplier entity is the stall (team decision), so this page is one
-// supplier row. If the stall sits in a venue, the other stalls in that venue are listed as a
-// view over the flat list. Display only — no menus, no items, no cart.
+// Supplier detail: one supplier as returned by GET /api/v1/suppliers/:id (§7.3). Other
+// suppliers at the same location are listed as a view over the flat list. Display only —
+// no menus, no items, no cart.
 export default function SupplierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -26,7 +32,7 @@ export default function SupplierDetail() {
   const supplier = getSupplier(id)
   if (!supplier) return <Navigate to="/suppliers" replace />
 
-  const siblings = stallsAtVenue(supplier)
+  const siblings = suppliersAtLocation(supplier)
 
   const requestFromHere = () =>
     requireLogin('You need an account to post an errand.', () =>
@@ -53,9 +59,9 @@ export default function SupplierDetail() {
             {supplier.name}
           </h1>
           <p className="mt-1.5 text-base text-ink-40">
-            {supplier.venue ? supplier.venue + ' · ' : ''}
-            {supplier.location} · {supplier.category}
+            {supplier.location} · {supplier.faculty} · Level {supplier.level} · {supplier.type}
           </p>
+          <CategoryPills categories={supplier.categories} className="mt-3" />
 
           <p className="mt-3 flex flex-wrap items-center gap-x-1.5 text-sm">
             <span
@@ -66,19 +72,23 @@ export default function SupplierDetail() {
               aria-hidden="true"
             />
             <span className={supplier.isOpen ? 'text-ink-70' : 'text-ink-40'}>
-              {supplier.isOpen
-                ? 'Open until ' + supplier.hours.close
-                : 'Closed · opens ' + supplier.hours.open}
+              {supplier.isOpen ? 'Open now' : 'Closed'}
             </span>
-            {supplier.activeRequests > 0 && (
-              <span className="text-ink-70">
-                · {supplier.activeRequests} open{' '}
-                {supplier.activeRequests === 1 ? 'errand' : 'errands'}
-              </span>
-            )}
           </p>
 
-          <p className="mt-4 max-w-prose text-base text-ink-70">{supplier.description}</p>
+          <p className="mt-4 max-w-prose text-base text-ink-70">{supplier.desc}</p>
+
+          <h2 className="mt-6 text-base font-semibold text-ink">Opening hours</h2>
+          <dl className="mt-2 max-w-xs divide-y divide-line rounded-card border border-line text-sm">
+            {supplier.openingHours.map((h) => (
+              <div key={h.day} className="flex justify-between px-3 py-2">
+                <dt className="text-ink-70">{h.day === 8 ? 'Every day' : DAY_NAMES[h.day - 1]}</dt>
+                <dd className="tnum text-ink">
+                  {h.day === 8 ? 'Open 24 hours' : h.open + '–' + h.close}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
 
         {/* Desktop: the action sits alongside. Mobile: it follows the header. */}
@@ -96,9 +106,9 @@ export default function SupplierDetail() {
 
       {siblings.length > 0 && (
         <section className="mt-12">
-          <h2 className="text-xl font-semibold text-ink">Also at {supplier.venue}</h2>
+          <h2 className="text-xl font-semibold text-ink">Also at {supplier.location}</h2>
           <p className="mt-1 text-sm text-ink-40">
-            Other stalls in the same venue. Each one is its own supplier.
+            Other suppliers at the same location.
           </p>
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {siblings.map((stall) => (

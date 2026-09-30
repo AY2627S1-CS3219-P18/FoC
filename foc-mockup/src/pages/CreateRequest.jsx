@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Shows the supplier's faculty where the old location text was shown. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review: Congchen
  */
 
 import { useEffect, useState } from 'react'
@@ -89,7 +94,7 @@ export default function CreateRequest() {
                 <p className="truncate text-sm font-semibold text-ink">
                   {qualifiedName(supplier)}
                 </p>
-                <p className="truncate text-sm text-ink-40">{supplier.location}</p>
+                <p className="truncate text-sm text-ink-40">{supplier.faculty}</p>
               </div>
               <button
                 type="button"

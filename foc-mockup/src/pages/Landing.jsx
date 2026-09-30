@@ -5,15 +5,20 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Reads the API-contract supplier fields: category chips from the category reference, grouping by location, and no separate 'On their own' group (every supplier has a location). No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review: Congchen
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import SupplierCard from '../components/SupplierCard'
-import { suppliers, categories, groupByVenue, venueOpenSummary } from '../data/suppliers'
+import { suppliers, categoryRefs, groupByLocation, locationOpenSummary } from '../data/suppliers'
 
-const CHIPS = ['All', ...categories, 'Open now']
+const CHIPS = ['All', ...categoryRefs.map((c) => c.category), 'Open now']
 
 // User F2 / Supplier F1.1 — suppliers are visible logged out; posting and accepting are gated.
 export default function Landing() {
@@ -23,10 +28,10 @@ export default function Landing() {
   const shown = suppliers.filter((s) => {
     if (chip === 'All') return true
     if (chip === 'Open now') return s.isOpen
-    return s.category === chip
+    return s.categories.includes(chip)
   })
 
-  const grouped = groupByVenue(shown)
+  const grouped = groupByLocation(shown)
 
   return (
     <>
@@ -73,20 +78,20 @@ export default function Landing() {
 
         <h2 className="mt-8 text-xl font-semibold text-ink">Places to fetch from on campus</h2>
         <p className="mt-1 text-sm text-ink-40">
-          Every card is one stall you can order from. Stalls that share a venue are listed
-          together.
+          Every card is one supplier you can order from. Suppliers that share a location are
+          listed together.
         </p>
 
-        {/* Grouping by venue is a view over the flat supplier list, not a parent-child
+        {/* Grouping by location is a view over the flat supplier list, not a parent-child
             relationship in the data. */}
-        {grouped.groups.map((group) => (
-          <section key={group.venue} className="mt-8">
+        {grouped.map((group) => (
+          <section key={group.location} className="mt-8">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h3 className="text-base font-semibold text-ink">{group.venue}</h3>
+              <h3 className="text-base font-semibold text-ink">{group.location}</h3>
               <p className="text-sm text-ink-40">
                 <span className="tnum">{group.items.length}</span>{' '}
-                {group.items.length === 1 ? 'stall' : 'stalls'} ·{' '}
-                {venueOpenSummary(group.items)}
+                {group.items.length === 1 ? 'supplier' : 'suppliers'} ·{' '}
+                {locationOpenSummary(group.items)}
               </p>
             </div>
             <div className="mt-3 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -101,25 +106,6 @@ export default function Landing() {
             </div>
           </section>
         ))}
-
-        {grouped.standalone.length > 0 && (
-          <section className="mt-8">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h3 className="text-base font-semibold text-ink">On their own</h3>
-              <p className="text-sm text-ink-40">Stalls that are not inside a venue</p>
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {grouped.standalone.map((s) => (
-                <SupplierCard
-                  key={s.id}
-                  supplier={s}
-                  ratio="aspect-[16/9] sm:aspect-[4/3]"
-                  showAction={false}
-                />
-              ))}
-            </div>
-          </section>
-        )}
       </section>
 
       <section className="mt-16 border-y border-line bg-surface-alt">

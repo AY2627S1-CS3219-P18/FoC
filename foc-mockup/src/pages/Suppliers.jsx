@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Filters and grouping use the API-contract fields (category and location reference data, `categories`, `location`); sort limited to A-Z / Z-A per §7.2; removed the activeRequests sort. No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useMemo, useState } from 'react'
@@ -14,21 +19,22 @@ import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import {
   suppliers,
-  categories,
-  groupByVenue,
-  venueOpenSummary,
+  categoryRefs,
+  locationRefs,
+  groupByLocation,
+  locationOpenSummary,
   matchesQuery,
 } from '../data/suppliers'
 
-const SORTS = ['A–Z', 'Most errands', 'Open first']
-const venues = [...new Set(suppliers.map((s) => s.venue).filter(Boolean))]
+// §7.2: sorting is fixed to alphabetical supplier-name order, A-Z or Z-A.
+const SORTS = ['A–Z', 'Z–A']
 
 // Supplier F1.1 listing, F1.1.1 search and filter, F1.2.1 open/closed indicator.
 export default function Suppliers() {
   const [query, setQuery] = useState('')
   const [cats, setCats] = useState([])
   const [openNow, setOpenNow] = useState(false)
-  const [vens, setVens] = useState([])
+  const [locs, setLocs] = useState([])
   const [sort, setSort] = useState(SORTS[0])
   const [sheetOpen, setSheetOpen] = useState(false)
 
@@ -38,19 +44,18 @@ export default function Suppliers() {
   const results = useMemo(() => {
     const filtered = suppliers.filter((s) => {
       if (!matchesQuery(s, query)) return false
-      if (cats.length && !cats.includes(s.category)) return false
+      if (cats.length && !s.categories.some((c) => cats.includes(c))) return false
       if (openNow && !s.isOpen) return false
-      if (vens.length && !vens.includes(s.venue)) return false
+      if (locs.length && !locs.includes(s.location)) return false
       return true
     })
     const sorted = [...filtered]
     if (sort === 'A–Z') sorted.sort((a, b) => a.name.localeCompare(b.name))
-    if (sort === 'Most errands') sorted.sort((a, b) => b.activeRequests - a.activeRequests)
-    if (sort === 'Open first') sorted.sort((a, b) => Number(b.isOpen) - Number(a.isOpen))
+    if (sort === 'Z–A') sorted.reverse()
     return sorted
-  }, [query, cats, openNow, vens, sort])
+  }, [query, cats, openNow, locs, sort])
 
-  const grouped = groupByVenue(results)
+  const grouped = groupByLocation(results)
 
   const checkbox = (label, checked, onChange) => (
     <label key={label} className="flex min-h-[44px] cursor-pointer items-center gap-2.5 text-sm text-ink-70">
@@ -69,7 +74,9 @@ export default function Suppliers() {
       <div>
         <h3 className="text-sm font-semibold text-ink">Category</h3>
         <div className="mt-1">
-          {categories.map((c) => checkbox(c, cats.includes(c), () => toggle(cats, setCats, c)))}
+          {categoryRefs.map(({ category: c }) =>
+            checkbox(c, cats.includes(c), () => toggle(cats, setCats, c)),
+          )}
         </div>
       </div>
       <div>
@@ -77,9 +84,11 @@ export default function Suppliers() {
         <div className="mt-1">{checkbox('Open now', openNow, () => setOpenNow((v) => !v))}</div>
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-ink">Venue</h3>
+        <h3 className="text-sm font-semibold text-ink">Location</h3>
         <div className="mt-1">
-          {venues.map((v) => checkbox(v, vens.includes(v), () => toggle(vens, setVens, v)))}
+          {locationRefs.map(({ location: l }) =>
+            checkbox(l, locs.includes(l), () => toggle(locs, setLocs, l)),
+          )}
         </div>
       </div>
     </div>
@@ -121,7 +130,7 @@ export default function Suppliers() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search stalls, venues, or faculties"
+              placeholder="Search suppliers, locations, or categories"
               aria-label="Search suppliers"
               className="h-12 w-full rounded-btn border border-line bg-surface pl-11 pr-4 text-base text-ink"
             />
@@ -131,7 +140,7 @@ export default function Suppliers() {
           <div className="sticky top-16 z-30 -mx-4 mt-4 flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-3 lg:static lg:mx-0 lg:border-0 lg:px-0">
             <p className="text-sm text-ink-70">
               <span className="tnum font-medium text-ink">{results.length}</span>{' '}
-              {results.length === 1 ? 'stall' : 'stalls'} on campus
+              {results.length === 1 ? 'supplier' : 'suppliers'} on campus
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -147,15 +156,15 @@ export default function Suppliers() {
             </div>
           </div>
 
-          {/* A view over the flat list: venues first, then stalls with no venue. */}
-          {grouped.groups.map((group) => (
-            <section key={group.venue} className="mt-6">
+          {/* A view over the flat list, grouped by location. */}
+          {grouped.map((group) => (
+            <section key={group.location} className="mt-6">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 className="text-base font-semibold text-ink">{group.venue}</h2>
+                <h2 className="text-base font-semibold text-ink">{group.location}</h2>
                 <p className="text-sm text-ink-40">
                   <span className="tnum">{group.items.length}</span>{' '}
-                  {group.items.length === 1 ? 'stall' : 'stalls'} ·{' '}
-                  {venueOpenSummary(group.items)}
+                  {group.items.length === 1 ? 'supplier' : 'suppliers'} ·{' '}
+                  {locationOpenSummary(group.items)}
                 </p>
               </div>
               <div className="mt-3 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -166,25 +175,11 @@ export default function Suppliers() {
             </section>
           ))}
 
-          {grouped.standalone.length > 0 && (
-            <section className="mt-6">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 className="text-base font-semibold text-ink">On their own</h2>
-                <p className="text-sm text-ink-40">Stalls that are not inside a venue</p>
-              </div>
-              <div className="mt-3 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {grouped.standalone.map((s) => (
-                  <SupplierCard key={s.id} supplier={s} />
-                ))}
-              </div>
-            </section>
-          )}
-
           {results.length === 0 && (
             <div className="mt-5">
               <EmptyState
-                title="No stalls match those filters"
-                body="Try clearing a filter, or search for a venue like The Deck."
+                title="No suppliers match those filters"
+                body="Try clearing a filter, or search for a location like The Deck."
                 action={
                   <Button
                     variant="secondary"
@@ -192,7 +187,7 @@ export default function Suppliers() {
                     onClick={() => {
                       setQuery('')
                       setCats([])
-                      setVens([])
+                      setLocs([])
                       setOpenNow(false)
                     }}
                   >

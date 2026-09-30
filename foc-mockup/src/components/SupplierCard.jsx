@@ -5,27 +5,34 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Switched the card to the API-contract fields (faculty, categories pills, isOpen only);
+ *        removed hours and activeRequests, which the list response does not carry. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bookmark } from 'lucide-react'
 import SupplierImage from './SupplierImage'
+import CategoryPills from './CategoryPills'
 import Button from './Button'
 import { qualifiedName } from '../data/suppliers'
 import { useDemo } from '../context/DemoContext'
 
 // Supplier F1.1 listing, F1.2.1 open/closed indicator, plus the bookmarking nice-to-have.
-// showVenue: false inside a venue group (the heading already names it), true everywhere else.
+// showLocation: false inside a location group (the heading already names it), true everywhere else.
 export default function SupplierCard({
   supplier,
   ratio = 'aspect-[4/3]',
   showAction = true,
-  showVenue = false,
+  showLocation = false,
 }) {
   const { requireLogin } = useDemo()
   const navigate = useNavigate()
-  const [bookmarked, setBookmarked] = useState(supplier.id === 's1' || supplier.id === 's5')
+  const [bookmarked, setBookmarked] = useState(supplier.id === 1 || supplier.id === 5)
 
   const requestFromHere = () =>
     requireLogin('You need an account to post an errand.', () =>
@@ -61,10 +68,11 @@ export default function SupplierCard({
             to={'/suppliers/' + supplier.id}
             className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline md:min-h-0 md:min-w-0"
           >
-            {showVenue ? qualifiedName(supplier) : supplier.name}
+            {showLocation ? qualifiedName(supplier) : supplier.name}
           </Link>
         </h3>
-        <p className="text-sm text-ink-40">{supplier.location}</p>
+        <p className="text-sm text-ink-40">{supplier.faculty}</p>
+        <CategoryPills categories={supplier.categories} className="mt-1" />
 
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm">
           <span
@@ -75,15 +83,8 @@ export default function SupplierCard({
             aria-hidden="true"
           />
           <span className={supplier.isOpen ? 'text-ink-70' : 'text-ink-40'}>
-            {supplier.isOpen
-              ? 'Open until ' + supplier.hours.close
-              : 'Closed · opens ' + supplier.hours.open}
+            {supplier.isOpen ? 'Open now' : 'Closed'}
           </span>
-          {supplier.activeRequests > 0 && (
-            <span className="text-ink-70">
-              · {supplier.activeRequests} open {supplier.activeRequests === 1 ? 'errand' : 'errands'}
-            </span>
-          )}
         </p>
 
         {showAction && (
