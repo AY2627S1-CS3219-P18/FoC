@@ -313,6 +313,8 @@ describe('updateSupplier outbox rows', () => {
       [['image_cleanup', '{"photo_id":7,"photo_location":"loc-7"}', 4]],
     ]);
     expect(conn.commit).toHaveBeenCalled();
+    const insertOrder = conn.query.mock.invocationCallOrder.at(-1) ?? Infinity;
+    expect(insertOrder).toBeLessThan(conn.commit.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('writes no outbox row when no photo was removed', async () => {

@@ -76,8 +76,9 @@ export interface SupplierWriteRepository {
   /**
    * One transaction (Arch §8.2 step 3): matches supplier_id + version, applies the sent fields,
    * replaces categories/hours if sent, deletes excluded photo rows, appends new ones and reorders,
-   * bumps updated_on and version. No matching row → AppError 409; duplicate identity → AppError 422.
-   * Returns the excluded photos so the caller can enqueue their cloud deletion.
+   * bumps updated_on and version, and writes the tasks returned by `change.onPhotosRemoved` for the
+   * excluded photos to the outbox, stamped with the new supplier version. No matching row → AppError
+   * 409; duplicate identity → AppError 422. The excluded photos are also returned.
    */
   updateSupplier(supplierId: number, change: SupplierChange): Promise<{ removedPhotos: CurrentPhoto[] }>;
   findByIdentity(name: string, type: 'Store' | 'Facility', locationId: number): Promise<ExistingSupplier | null>;
