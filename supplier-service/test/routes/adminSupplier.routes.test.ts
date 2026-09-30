@@ -262,7 +262,7 @@ describe('PUT /api/v1/admin/suppliers/:id', () => {
   });
 });
 
-describe('DELETE /:id', () => {
+describe('DELETE /api/v1/admin/suppliers/:id', () => {
   it.each(['admin', 'super admin'])('lets %s soft-delete and returns the service body', async (role) => {
     const { app, deletion } = buildApp();
     const res = await request(app).delete('/api/v1/admin/suppliers/101').set('x-test-role', role);
@@ -275,6 +275,13 @@ describe('DELETE /:id', () => {
     const { app, deletion } = buildApp();
     const res = await request(app).delete('/api/v1/admin/suppliers/101').set('x-test-role', 'user');
     expect(res.status).toBe(403);
+    expect(deletion.deleteSupplier).not.toHaveBeenCalled();
+  });
+
+  it.each(['abc', '0', '-1', '1.5'])('422s the invalid id %s and never reaches the service', async (id) => {
+    const { app, deletion } = buildApp();
+    const res = await request(app).delete(`/api/v1/admin/suppliers/${id}`).set('x-test-role', 'admin');
+    expect(res.status).toBe(422);
     expect(deletion.deleteSupplier).not.toHaveBeenCalled();
   });
 
