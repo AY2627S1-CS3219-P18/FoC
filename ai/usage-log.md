@@ -2704,3 +2704,117 @@ Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx ts
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-09-30 — Supplier Service: OpenAPI description and local seed test
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team direction in chat (below): record endpoints as OpenAPI starting with the supplier service; seed the compose `supplier-db` through the creation process as a test. Contracts come from `supplier-service/SupplierServiceArchitecture.md` §6–§8 and the service README.
+
+**Prompts (exact):**
+> i have commited them myself. Currently, supplier data is all mocked and stored in memory. To build the actual deployment fe, i have copied the foc-mockup folder as "frontend". This is what will be modified into the real fe. The first major change within frontend will be to make the fe talk to various services using their respective exposed API calls. For the first stage, i want my local mySQL to host the supplier data that the fe is referencing To facilitate this, lets also utilise the OpenAPI yaml file format to record all my endpoints, starting with just the supplier service
+
+Answers to the agent's questions (chat): frontend auth = real login with the token in memory; seeding = "a TS seed script that replicates the supplier creation process that saves the details to mysql, and photos to minio (which points to the local positions), minio returns the local positions and mysql captures them. In fact, this should be a test in itself"; database = the compose supplier-db container.
+
+**Key responses:**
+- Asked before choosing the frontend auth storage, the seeding method and which MySQL (all unrecorded); implemented after the team answered.
+- `supplier-service/openapi.yaml`: OpenAPI 3.0.3 description of every supplier endpoint (user reads, reference, admin CRUD, admin reference), with the error envelope, rate limit, multipart bodies and the `Idempotency-Key`. It restates existing contracts; where the docs and code differ it follows the code (category management uses `category_type`). Validated with `@redocly/cli lint` (valid, one missing-`license` warning).
+- `npm run seed` runs `test/seed/seedSuppliers.seed.test.ts` under `vitest.seed.config.ts`: it creates faculties, locations and categories, then each of the 14 mock suppliers through the real `createSupplierCreationService` (MySQL plus MinIO); it asserts every supplier is readable and each stored photo location serves an image. Re-runnable.
+- Verification: default `npm test` still 38 files / 343 tests and `tsc --noEmit` clean. The seed passed, twice (second run skipped existing rows), against a throwaway database `seed_check` with `PHOTO_STORE_ENDPOINT=http://localhost:9000`: 14 suppliers, 10 photos, 98 hour rows; that database and its 10 MinIO objects were then removed. The seed was NOT completed against the real `supplier_service` database: with the default `http://host.docker.internal:9000` the upload hangs because the Windows hosts entry for `host.docker.internal` points at a stale LAN address (192.168.10.102; the Wi-Fi address is 10.249.219.35). Only reference data and one supplier (Roasted Delights, no photo) were written there before it timed out.
+
+**Files:**
+- `supplier-service/openapi.yaml` (created)
+- `supplier-service/vitest.seed.config.ts` (created)
+- `supplier-service/test/seed/seedSuppliers.seed.test.ts` (created)
+- `supplier-service/test/seed/supplierSeedData.ts` (created)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/package.json` (modified: `seed` script; cannot carry a header)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- Placeholder seed values, not team data: supplier `type` ('Store'), location `level` (1), identical opening hours every day.
+- `.webp` images are skipped because the API accepts only JPEG/PNG; three referenced images (`techno-edge.jpg`, `cool-spot.jpg`, `spinelli.jpg`) do not exist in the mock's folder, so those suppliers have no photo.
+- `view()` in the photo storage returns the stored location unchanged; the architecture says `photoLocation` is a signed URL valid for 24 hours. Images load in the browser only because the bucket allows anonymous download.
+- The `frontend/` folder was incomplete when checked (no `src/`, `public/` or `package.json`), so no frontend change was made in this task.
+- The local `supplier_service` database already held earlier development rows (for example Campus Store, Gym, Night Kiosk, Hidden Inactive/Deleted); they will appear in the frontend alongside the seeded suppliers.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-30 — Frontend: real login and supplier screens on the Supplier Service
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Team decisions in chat (prompts and answers below); contracts from `supplier-service/openapi.yaml`, `SupplierServiceArchitecture.md` §7 and the User Service routes; same-origin/gateway decision (Arch §3, §9 item 18).
+
+**Prompts (exact):**
+> docker restarted. frontend folder fully loaded
+
+Earlier prompt of this stage (quoted in the entry "Supplier Service: OpenAPI description and local seed test"): make the fe talk to the services through their exposed APIs, starting with supplier data from the local MySQL. Answers given in chat: real login with the access token held in memory; the refresh cookie is the session carrier.
+
+**Key responses:**
+- `frontend/` (the copy of `foc-mockup/`) was missing its build configs and lockfile: `vite.config.js`, `tailwind.config.js`, `postcss.config.js` and `package-lock.json` were copied unchanged from `foc-mockup/`, and `npm ci` was run in `frontend/` because the copied `node_modules` was broken.
+- `vite.config.js`: dev proxy `/api/v1` to `localhost:3004` (supplier service), `/auth` and `/users` to `localhost:3001` (user service), so the browser only uses one origin and no CORS is involved. The user-service paths are a development choice; the gateway's routing for that service is not recorded.
+- `src/api/`: `http.js` (fetch wrapper; in-memory access token; one shared `POST /auth/refresh` then retry on 401), `auth.js` (login, logout, session restore via refresh + `GET /users/me`), `suppliers.js` (every user and admin supplier call, multipart create with `Idempotency-Key`, update with `version` and photo placeholders), `useApi.js` (loading hook and reference-data hook).
+- `DemoContext` now holds a real session (`session`, `login`, `logout`, `systemRole`, `isAdmin`) and restores it on page load; the demo Auth toggle and the demo Admin role were removed. `role` (requester/courier), credits and every order/request screen are still mock data.
+- Landing, Suppliers, SupplierDetail and the request form's supplier picker read the Supplier Service. The list sends search, one `location_id`, one `category_id`, `isOpen`, A-Z/Z-A and page to the service (the service accepts one location and one category, so those filters are single-choice). Logged out, these screens show a "Log in to see suppliers" notice because every supplier route needs a token.
+- Admin list and form call the admin endpoints (list, get, create, update, delete); field errors, 404 and 409 are shown; the in-memory admin store (`AdminSuppliersContext.jsx`) was deleted. The admin screens are available only to `admin` and `super admin` sessions.
+- Verification: `vite build` passes; `oxlint` shows only fast-refresh / set-state-in-effect / unused-variable warnings of the existing kind. In the browser (Vite on port 5174): logged out, the landing page shows the login notice; the login modal posts through the proxy to the real User Service and shows "Wrong username/email or password." for wrong credentials. NOT verified: a successful login, the supplier list/detail, the request form picker, and every admin create/edit/delete flow, because the login needs the real super-admin password, which lives in the private `user-service/.env` and was not read or used. The seed into the real database is also still blocked (see the previous entry): the Windows hosts entry for `host.docker.internal` still pointed at 192.168.10.102 after the Docker restart.
+
+**Files:**
+- `frontend/vite.config.js` (created by copy, then modified)
+- `frontend/tailwind.config.js`, `frontend/postcss.config.js`, `frontend/package-lock.json` (copied unchanged; cannot carry a header where JSON)
+- `frontend/src/api/http.js`, `auth.js`, `suppliers.js`, `useApi.js` (created)
+- `frontend/src/components/ApiNotice.jsx` (created)
+- `frontend/src/components/LoginModal.jsx`, `TopNav.jsx`, `DemoControls.jsx` (modified)
+- `frontend/src/context/DemoContext.jsx` (modified)
+- `frontend/src/main.jsx` (modified)
+- `frontend/src/pages/Landing.jsx`, `Suppliers.jsx`, `SupplierDetail.jsx`, `CreateRequest.jsx`, `AdminSuppliers.jsx`, `AdminSupplierForm.jsx` (modified)
+- `frontend/src/context/AdminSuppliersContext.jsx` (deleted from `frontend/`; it came with the copy of `foc-mockup/`)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- The mock supplier helpers in `frontend/src/data/suppliers.js` remain because the mocked request screens (RequestCard, Activity, Chat, RequestBoard) look suppliers up by the mock ids 1-14; those ids do not match the database ids. Connecting the Order Service should remove that.
+- `frontend/AI-NOTES.md` is a copy of the mockup's notes; under the root AGENTS.md only `foc-mockup/` keeps a separate log, so work in `frontend/` is logged here.
+- Photos: `photoLocation` is used as an image URL as returned; it only loads in the browser if `host.docker.internal` resolves on the machine (or the stored prefix is otherwise reachable).
+- `package.json` of `frontend/` still has the name `foc-mockup`.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-30 — Frontend: fix request flood and lost admin role after reload
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** None needed; bug fixes within the behaviour already described in `frontend/` and `supplier-service/openapi.yaml`. The 30 requests/minute/IP limit is a recorded team decision (SupplierServiceArchitecture.md §7.5) and was not changed.
+
+**Prompts (exact):**
+> hold off. i ran the npm run seed myself - was successful. I verified a successful login with superadmin account, but the main supplier page shows unable to load immediately. Navigating to manage suppliers also show rate limit exceeded. Refreshing the page suddenly identify me as being not an admin or superadmin. Is the 30requests/min rate limiting too strict?
+
+**Key responses:**
+- Cause of "unable to load" and the rate-limit error: on the landing page the category list used in the request's dependency list was a new empty array on every render until the reference data arrived, so the list request re-ran in a loop. With the network stubbed in the browser, the landing page sent 216 list requests in 3 seconds.
+- Cause of the lost admin role after reload: `GET /users/me` returns only `{ username, email }`, so a restored session had no role. Session restore now also calls `GET /auth/verify` (`{ user_id, role }`).
+- Fixes: `useReferenceData` returns constant empty arrays; the landing query depends on the category id; identical in-flight GETs share one network call; `restoreSession` merges `/users/me` and `/auth/verify`.
+- Verification (network stubbed in the browser, since the real super-admin password was not used): landing page 3 requests (list plus the two reference calls), Suppliers page 1, after the fix; `vite build` passes. The role restore after a real reload was NOT run; it follows from the `/auth/verify` response shape in `user-service/src/controllers/auth.controller.ts`.
+- Question answered in chat, not acted on: whether 30/min is too strict. A normal page view now uses 1-3 requests; a rate change is a team decision.
+
+**Files:**
+- `frontend/src/api/auth.js`, `frontend/src/api/http.js`, `frontend/src/api/useApi.js`, `frontend/src/pages/Landing.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- The limiter is per client IP (`req.ip`, with `trust proxy` on). Users behind one shared address would share the 30-per-minute budget; whether that matters is for the team.
+- The limit counts every request, including the frontend's reference-data and detail lookups.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**

@@ -139,3 +139,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-30 | supplier-service | Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id) | Optimistic-concurrency supplier edit with photo reorder and cleanup-job enqueue |
 | 2026-09-30 | supplier-service | Phase 4: Admin soft-delete, transactional outbox and downstream worker | Added soft-delete, transactional outbox, BullMQ worker and container; reworked reactivation |
 | 2026-09-30 | supplier-service | Supplier Service: Supplier responses carry location_id, faculty_id and category ids | Added ids beside names and category objects to supplier responses; tests and docs updated |
+| 2026-09-30 | supplier-service | Supplier Service: OpenAPI description and local seed test | OpenAPI file for the supplier endpoints; npm run seed loads mock suppliers via the creation service |
+| 2026-09-30 | frontend | Frontend: real login and supplier screens on the Supplier Service | Added dev proxy, API client, real login, and supplier and admin screens reading the service |
+| 2026-09-30 | frontend | Frontend: fix request flood and lost admin role after reload | Fixed a render loop flooding the list endpoint and restored the role from /auth/verify |
