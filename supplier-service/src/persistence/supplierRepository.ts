@@ -13,7 +13,11 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added AdminSupplierRow and the admin
  *        read operations per Phase 2 plan Task 3 (Arch §7). No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): returned location_id, faculty_id and categories as {category, category_id} objects in supplier responses. Per the team's
+ *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review: Congchen
  */
 
 export interface SupplierRow {
@@ -21,7 +25,9 @@ export interface SupplierRow {
   name: string;
   type: 'Store' | 'Facility';
   desc: string | null;
+  locationId: number;
   location: string;
+  facultyId: number;
   faculty: string;
   level: number;
 }
@@ -37,6 +43,7 @@ export interface AdminSupplierRow extends SupplierRow {
 
 export interface CategoryLinkRow {
   supplierId: number;
+  categoryId: number;
   category: string;
 }
 

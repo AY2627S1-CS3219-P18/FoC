@@ -10,6 +10,12 @@
  * Scope: Reads the API-contract supplier fields: category chips from the category reference, grouping by location, and no separate 'On their own' group (every supplier has a location). No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -28,7 +34,7 @@ export default function Landing() {
   const shown = suppliers.filter((s) => {
     if (chip === 'All') return true
     if (chip === 'Open now') return s.isOpen
-    return s.categories.includes(chip)
+    return s.categories.some((cat) => cat.category === chip)
   })
 
   const grouped = groupByLocation(shown)

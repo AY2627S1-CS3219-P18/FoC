@@ -14,6 +14,9 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): expectations for location_id, faculty_id and
+ *        categories as {category, category_id}, per the team's decision in chat.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../../src/utils/AppError.js';
@@ -27,7 +30,9 @@ const store: SupplierRow = {
   name: 'Campus Store',
   type: 'Store',
   desc: 'A campus convenience store.',
+  locationId: 4,
   location: 'Central Library',
+  facultyId: 2,
   faculty: 'Computing',
   level: 1,
 };
@@ -36,7 +41,9 @@ const facility: SupplierRow = {
   name: 'Gym',
   type: 'Facility',
   desc: null,
+  locationId: 5,
   location: 'Sports Hall',
+  facultyId: 3,
   faculty: 'Sports',
   level: 2,
 };
@@ -45,7 +52,9 @@ const kiosk: SupplierRow = {
   name: 'Night Kiosk',
   type: 'Store',
   desc: null,
+  locationId: 4,
   location: 'Central Library',
+  facultyId: 2,
   faculty: 'Computing',
   level: 1,
 }; // no hours rows: never open
@@ -70,8 +79,8 @@ function fakeRepo(overrides: Partial<SupplierRepository> = {}): SupplierReposito
     findAllAdmin: vi.fn().mockResolvedValue([adminStore, adminFacility]),
     findAdminById: vi.fn().mockResolvedValue(adminStore),
     findCategoryLinks: vi.fn().mockResolvedValue([
-      { supplierId: 1, category: 'Drinks' },
-      { supplierId: 1, category: 'Food' },
+      { supplierId: 1, categoryId: 3, category: 'Drinks' },
+      { supplierId: 1, categoryId: 2, category: 'Food' },
     ]),
     findHours: vi.fn().mockResolvedValue([
       { supplierId: 1, dayOfWeek: 2, open: '10:00', close: '12:00' },
@@ -97,10 +106,15 @@ describe('listSuppliers', () => {
       id: 1,
       name: 'Campus Store',
       type: 'Store',
+      location_id: 4,
       location: 'Central Library',
+      faculty_id: 2,
       faculty: 'Computing',
       level: 1,
-      categories: ['Drinks', 'Food'],
+      categories: [
+        { category: 'Drinks', category_id: 3 },
+        { category: 'Food', category_id: 2 },
+      ],
       photos: [{ photoId: 201, photoLocation: 'https://x/201.png', displayOrder: 1 }],
       isOpen: true,
     });

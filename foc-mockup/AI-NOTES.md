@@ -580,3 +580,30 @@ API shapes from `supplier-service/SupplierServiceArchitecture.md` §6.2, §7.2, 
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+---
+
+## 2026-09-30 — Supplier ids in the mock data; admin edit form uses them
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** refactor
+**Scope:** Implementation code (UI mockup only)
+**Governing decision:** Team decision in chat, 2026-09-30, recorded in `supplier-service/SupplierServiceArchitecture.md` §7.3 and §9 item 23.
+
+**Prompts (exact):**
+> 2. Update the API responses so that the name and ids are sent together. new location_id and faculty_id. for categories, since there can be multiple categories for a given supplier, the categories will be sent as a list of json, with the structure being  "categories": [{"category": "Food", "category_id": 1 }, {"category": "Drinks", "category_id":2}] for example
+
+**Key responses:**
+- Mock supplier objects now carry `location_id`, `faculty_id` and `categories` as `{category, category_id}` objects, matching the updated service responses. `CategoryPills`, both supplier lists, the landing chips and the admin list/store read the new shape.
+- The admin edit form pre-fills `locationId` and the category selection directly from those ids; the earlier name-to-id lookup against the reference lists is removed. The duplicate check in the mock store compares `location_id`.
+- Verified: `vite build` passes; in the browser the edit form for "Japanese" showed location "The Deck · Faculty of Arts & Social Sciences" and category "Canteen" selected. Other screens were not re-checked visually.
+
+**Files:**
+- `src/data/suppliers.js`, `src/components/CategoryPills.jsx`, `src/pages/Landing.jsx`, `src/pages/Suppliers.jsx`, `src/pages/AdminSuppliers.jsx`, `src/pages/AdminSupplierForm.jsx`, `src/context/AdminSuppliersContext.jsx` (modified)
+- `AI-NOTES.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+
+**Author review:**

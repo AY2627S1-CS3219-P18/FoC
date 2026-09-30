@@ -12,6 +12,12 @@
  *        given in chat. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 // TEAM DECISION (2026-09-30): supplier objects use exactly the fields the Supplier Service API
@@ -20,7 +26,7 @@
 //   venue            -> location
 //   location         -> faculty
 //   shortName        -> removed
-//   category         -> categories[] (shown as pills)
+//   category         -> categories[] of { category, category_id } (shown as pills)
 //   description      -> desc (detail view only; the list does not show it)
 //   image            -> photos[].photoLocation (the API returns signed URLs)
 //   activeRequests   -> deferred (Order Service data, not supplier-service)
@@ -39,7 +45,7 @@ const supplier = ({ hours, photo, ...rest }) => ({
   openingHours: [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, open: hours[0], close: hours[1] })),
 })
 
-export const suppliers = [
+const rawSuppliers = [
   supplier({
     id: 1,
     name: "Roasted Delights",
@@ -229,10 +235,10 @@ export const suppliers = [
 // the supplier list so the filters never offer an option with no supplier behind it.
 const unique = (list) => [...new Set(list)]
 
-const facultyNames = unique(suppliers.map((s) => s.faculty))
+const facultyNames = unique(rawSuppliers.map((s) => s.faculty))
 export const faculties = facultyNames.map((faculty, i) => ({ faculty_id: i + 1, faculty }))
 
-export const locationRefs = unique(suppliers.map((s) => s.location + '|' + s.faculty)).map(
+export const locationRefs = unique(rawSuppliers.map((s) => s.location + '|' + s.faculty)).map(
   (key, i) => {
     const [location, faculty] = key.split('|')
     return {
@@ -244,9 +250,24 @@ export const locationRefs = unique(suppliers.map((s) => s.location + '|' + s.fac
   },
 )
 
-export const categoryRefs = unique(suppliers.flatMap((s) => s.categories)).map(
+export const categoryRefs = unique(rawSuppliers.flatMap((s) => s.categories)).map(
   (category, i) => ({ category_id: i + 1, category }),
 )
+
+// Team decision (2026-09-30): every supplier response carries the ids beside the names, and
+// `categories` is a list of { category, category_id } objects.
+export const suppliers = rawSuppliers.map((s) => {
+  const loc = locationRefs.find((l) => l.location === s.location && l.faculty === s.faculty)
+  return {
+    ...s,
+    location_id: loc.location_id,
+    faculty_id: loc.faculty_id,
+    categories: s.categories.map((name) => {
+      const ref = categoryRefs.find((r) => r.category === name)
+      return { category: ref.category, category_id: ref.category_id }
+    }),
+  }
+})
 
 export const getSupplier = (id) => suppliers.find((s) => s.id === Number(id))
 
@@ -268,7 +289,7 @@ export const coverPhoto = (supplier) =>
 export const matchesQuery = (supplier, query) => {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  return [supplier.name, supplier.location, ...supplier.categories]
+  return [supplier.name, supplier.location, ...supplier.categories.map((c) => c.category)]
     .join(' ')
     .toLowerCase()
     .includes(q)

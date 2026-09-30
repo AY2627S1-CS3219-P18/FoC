@@ -10,6 +10,12 @@
  * Scope: Filters and grouping use the API-contract fields (category and location reference data, `categories`, `location`); sort limited to A-Z / Z-A per §7.2; removed the activeRequests sort. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 import { useMemo, useState } from 'react'
@@ -44,7 +50,7 @@ export default function Suppliers() {
   const results = useMemo(() => {
     const filtered = suppliers.filter((s) => {
       if (!matchesQuery(s, query)) return false
-      if (cats.length && !s.categories.some((c) => cats.includes(c))) return false
+      if (cats.length && !s.categories.some((c) => cats.includes(c.category))) return false
       if (openNow && !s.isOpen) return false
       if (locs.length && !locs.includes(s.location)) return false
       return true

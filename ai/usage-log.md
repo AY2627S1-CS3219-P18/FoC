@@ -2662,6 +2662,45 @@ Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx ts
 - MinIO and Redis containers were restarted during the manual tests and left healthy.
 - The plan file itself was committed by the team as `194854b`.
 
-**What I kept/changed/rejected:**
+**What I kept/changed/rejected: Kept all**
 
-**Author review:**
+**Author review: Congchen**
+
+## 2026-09-30 — Supplier Service: Supplier responses carry location_id, faculty_id and category ids
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | refactor | docs
+**Scope:** Implementation code
+**Governing decision:** Team decision given in chat on 2026-09-30 (prompt below), recorded in `supplier-service/SupplierServiceArchitecture.md` §7.3 and §9 item 23.
+
+**Prompts (exact):**
+> edit-form ids: where is this at
+
+> 2. Update the API responses so that the name and ids are sent together. new location_id and faculty_id. for categories, since there can be multiple categories for a given supplier, the categories will be sent as a list of json, with the structure being  "categories": [{"category": "Food", "category_id": 1 }, {"category": "Drinks", "category_id":2}] for example
+
+**Key responses:**
+- Stopped and asked before changing the contract (API response shape is a team decision); implemented once the team chose option 2.
+- Every supplier response (user and admin, list and detail) now includes `location_id` and `faculty_id` next to `location` and `faculty`, and `categories` is a list of `{category, category_id}` objects. The reference endpoints are unchanged apart from key order.
+- Persistence: the supplier query selects `s.location_id` and `f.faculty_id`; the category-link query selects `cm.category_id`.
+- Updated the affected unit tests and the architecture document's §7.3 examples; added §9 item 23.
+- Verification: `npx tsc --noEmit` clean; `npx vitest run` 38 files / 343 tests passed. These use mocked database pools; nothing was run against a real MySQL, and the MinIO tests were not run. Dependencies were installed with `npm ci --legacy-peer-deps` because a plain `npm ci` fails on the existing vitest / `@types/node` peer conflict (no tracked file changed).
+
+**Files:**
+- `supplier-service/src/types/supplier.ts` (modified)
+- `supplier-service/src/persistence/supplierRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (modified)
+- `supplier-service/src/business/supplierService.ts` (modified)
+- `supplier-service/test/business/supplierService.test.ts` (modified)
+- `supplier-service/test/persistence/mysqlSupplierRepository.test.ts` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- The prompt said "API responses" without naming endpoints; the agent applied it to all supplier list and detail responses, user and admin, because they share one summary type. Confirm this is the intent.
+- Location uniqueness in the schema is `(location, faculty_id, level)`, so a location name alone is not unique; the ids remove any need to match by name.
+- Existing behaviour not changed: the `level` field remains in the summary as before.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**

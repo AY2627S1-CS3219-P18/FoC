@@ -7,10 +7,16 @@
  *        name/type/location, `version` bumped on edit, computed `isOpen`. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import { suppliers as seedSuppliers, locationRefs } from '../data/suppliers'
+import { suppliers as seedSuppliers, locationRefs, categoryRefs } from '../data/suppliers'
 
 const AdminSuppliersContext = createContext(null)
 
@@ -56,7 +62,7 @@ const seed = seedSuppliers.map((s) => ({
 const sameIdentity = (a, b) =>
   a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
   a.type === b.type &&
-  a.location === b.location
+  a.location_id === b.location_id
 
 export function AdminSuppliersProvider({ children }) {
   const [items, setItems] = useState(seed)
@@ -67,7 +73,7 @@ export function AdminSuppliersProvider({ children }) {
   // photos, isActive }. Returns { ok, status, message, supplier } so screens can show the same
   // outcomes the API would: 201 created, 200 reactivated/updated, 404, 422.
   const save = useCallback(
-    (form, { id, categories }) => {
+    (form, { id }) => {
       const loc = locationRefs.find((l) => l.location_id === Number(form.locationId))
       const openingHours =
         form.type === 'Facility' || form.is24h
@@ -81,10 +87,14 @@ export function AdminSuppliersProvider({ children }) {
       const fields = {
         name: form.name.trim(),
         type: form.type,
+        location_id: loc.location_id,
         location: loc.location,
+        faculty_id: loc.faculty_id,
         faculty: loc.faculty,
         level: 1,
-        categories,
+        categories: categoryRefs
+          .filter((c) => form.categoryIds.includes(c.category_id))
+          .map(({ category, category_id }) => ({ category, category_id })),
         photos,
         desc: form.desc.trim(),
         openingHours,

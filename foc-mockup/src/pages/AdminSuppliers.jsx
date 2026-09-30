@@ -7,6 +7,12 @@
  *        SupplierServiceArchitecture.md §7.2-§7.3. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 import { useMemo, useState } from 'react'
@@ -108,8 +114,8 @@ export default function AdminSuppliers() {
     const filtered = items.filter(
       (s) =>
         matchesQuery(s, query) &&
-        (!loc || s.location === loc.location) &&
-        (!cat || s.categories.includes(cat.category)),
+        (!loc || s.location_id === loc.location_id) &&
+        (!cat || s.categories.some((c) => c.category_id === cat.category_id)),
     )
     filtered.sort((a, b) => a.name.localeCompare(b.name))
     return sortOrder === 'Z-A' ? filtered.reverse() : filtered

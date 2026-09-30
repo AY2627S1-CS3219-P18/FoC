@@ -7,6 +7,12 @@
  *        openingHours[], is24h, isActive, version, photos). Visual/layout implementation only. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+  *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
+ *        no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -23,14 +29,14 @@ const MAX_BYTES = 5 * 1024 * 1024
 const inputClass =
   'h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink'
 
-// The API returns names, not ids, so the edit form maps them back through the reference lists.
+// The admin detail response carries location_id and each category's id, so nothing is looked up.
 const initialState = (s) =>
   s
     ? {
         name: s.name,
         type: s.type,
-        locationId: String(locationRefs.find((l) => l.location === s.location)?.location_id ?? ''),
-        categoryIds: categoryRefs.filter((c) => s.categories.includes(c.category)).map((c) => c.category_id),
+        locationId: String(s.location_id),
+        categoryIds: s.categories.map((c) => c.category_id),
         desc: s.desc,
         is24h: s.openingHours.some((h) => h.day === 8),
         openingHours: s.openingHours.some((h) => h.day === 8)
@@ -150,8 +156,7 @@ export default function AdminSupplierForm() {
     setErrors(e)
     setSubmitError('')
     if (Object.keys(e).length) return
-    const categories = categoryRefs.filter((c) => form.categoryIds.includes(c.category_id)).map((c) => c.category)
-    const result = save(form, { id, categories })
+    const result = save(form, { id })
     if (!result.ok) {
       setSubmitError(result.message)
       return
