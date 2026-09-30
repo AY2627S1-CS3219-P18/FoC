@@ -14,18 +14,38 @@ describe('mysql dead-letter repository', () => {
     const query = vi.fn().mockResolvedValue([{}, []]);
     const repo = createMysqlDeadLetterRepository({ query } as unknown as Pool);
 
-    await repo.insert({
+    await expect(repo.insert({
       jobId: 'j-1',
       taskName: 'supplier_suspension',
       payload: { supplier_id: 101 },
       errorTrace: 'Error: boom',
       failedAt: '2026-09-30 10:00:00',
-    });
+    })).resolves.toBeUndefined();
 
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql.replace(/\s+/g, ' ').trim()).toBe(
       'INSERT INTO dead_letter_jobs (job_id, task_name, payload, error_trace, failed_at) VALUES (?, ?, CAST(? AS JSON), ?, ?)',
     );
     expect(params).toEqual(['j-1', 'supplier_suspension', '{"supplier_id":101}', 'Error: boom', '2026-09-30 10:00:00']);
+  });
+
+  it('binds the string null when the payload is undefined', async () => {
+    const query = vi.fn().mockResolvedValue([{}, []]);
+    const repo = createMysqlDeadLetterRepository({ query } as unknown as Pool);
+
+    await repo.insert({ jobId: 'j-2', taskName: 'image_cleanup', payload: undefined, errorTrace: 'e', failedAt: '2026-09-30 10:00:00' });
+
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params[2]).toBe('null');
+  });
+
+  it('truncates an oversized error trace before binding', async () => {
+    const query = vi.fn().mockResolvedValue([{}, []]);
+    const repo = createMysqlDeadLetterRepository({ query } as unknown as Pool);
+
+    await repo.insert({ jobId: 'j-3', taskName: 'image_cleanup', payload: {}, errorTrace: 'x'.repeat(100_000), failedAt: '2026-09-30 10:00:00' });
+
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect((params[3] as string).length).toBeLessThanOrEqual(60_000);
   });
 });
