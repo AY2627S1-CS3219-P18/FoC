@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest",
     "test:minio": "vitest run --config vitest.minio.config.ts",
+    "seed": "vitest run --config vitest.seed.config.ts",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:phase2": "tsx src/db/migratePhase2.ts",
     "lint": "eslint .",
