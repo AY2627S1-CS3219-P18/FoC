@@ -6,6 +6,11 @@
  *        SupplierServiceArchitecture.md §8.1, §8.2). No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Bad-job detection now mirrors BullMQ (instanceof or error name) via a local helper. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { UnrecoverableError } from 'bullmq';
 import type { DeadLetterRepository } from '../persistence/deadLetterRepository.js';
@@ -27,6 +32,11 @@ interface Dependencies {
   deadLetters: DeadLetterRepository;
   log?: (message: string) => void;
   clock?: () => Date;
+}
+
+// Mirrors BullMQ's own check (instanceof or name), so an error from a duplicated bullmq copy still counts.
+function isUnrecoverable(error: unknown): boolean {
+  return error instanceof UnrecoverableError || (error instanceof Error && error.name === 'UnrecoverableError');
 }
 
 function errorTrace(error: unknown): string {
@@ -61,7 +71,7 @@ export function createJobProcessor({ handlers, deadLetters, log = console.error,
       await handler(job.data);
     } catch (error) {
       // Final when a bad job (UnrecoverableError) or when this was the last allowed attempt (BullMQ: attemptsMade + 1 >= attempts).
-      const isFinal = error instanceof UnrecoverableError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      const isFinal = isUnrecoverable(error) || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       if (isFinal) await deadLetter(job, error);
       throw error; // BullMQ schedules the delayed retry (or marks the job failed); the worker stays free.
     }

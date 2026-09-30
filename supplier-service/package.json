@@ -6,7 +6,7 @@
     "start": "tsx src/app.ts",
     "dev": "nodemon -L --watch src --ext ts,json --exec tsx src/app.ts",
     "worker": "tsx src/worker/main.ts",
-    "worker:dev": "nodemon -L --watch src --ext ts,json --exec tsx src/worker/main.ts",
+    "worker:dev": "nodemon -L --watch src --ext ts,json --signal SIGTERM --exec tsx src/worker/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest",
     "test:minio": "vitest run --config vitest.minio.config.ts",

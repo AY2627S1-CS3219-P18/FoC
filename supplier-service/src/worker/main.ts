@@ -7,6 +7,11 @@
  *        shutdown that lets the active job finish (team answers, 2026-09-30). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Signal handlers now log a failed shutdown and exit non-zero instead of leaving an unhandled
+ *        rejection. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { config } from '../config.js';
 import { pool } from '../db/pool.js';
@@ -60,5 +65,10 @@ async function shutdown(signal: string): Promise<void> {
 }
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => void shutdown(signal));
+  process.on(signal, () => {
+    shutdown(signal).catch((error) => {
+      console.error('Worker shutdown failed:', error);
+      process.exit(1);
+    });
+  });
 }
