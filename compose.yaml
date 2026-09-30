@@ -3,6 +3,10 @@
 # Scope: Project scaffolding / infrastructure only (order-service + its DB).
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review: george-yeo
+# Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the supplier-worker service and the
+#        PHOTO_STORE_* env lines / extra_hosts on supplier-service per Phase 4 plan Task 14. No
+#        requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -212,8 +216,53 @@ services:
       REDIS_HOST: supplier-redis
       REDIS_PORT: 6379
       USER_SERVICE_URL: http://user-service:3001
+      PHOTO_STORE_ENDPOINT: ${PHOTO_STORE_ENDPOINT:-http://host.docker.internal:9000}
+      PHOTO_STORE_BUCKET: ${PHOTO_STORE_BUCKET:-supplier-photos}
+      PHOTO_STORE_ACCESS_KEY: ${PHOTO_STORE_ACCESS_KEY:-photostoredev}
+      PHOTO_STORE_SECRET_KEY: ${PHOTO_STORE_SECRET_KEY:-photostoredev-secret}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${SUPPLIER_SERVICE_PORT:-3004}:3002"
+    volumes:
+      - ./supplier-service/src:/app/src
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+      supplier-redis:
+        condition: service_healthy
+
+  # Background worker for the supplier queues and the outbox relay (SupplierServiceArchitecture.md
+  # §8.1, §8.2). Same image as supplier-service, different command. PORT and USER_SERVICE_URL are set
+  # only because supplier-service/src/config.ts validates them at startup; the worker opens no port.
+  supplier-worker:
+    build:
+      context: ./supplier-service
+      target: dev
+    container_name: foc-supplier-worker
+    init: true
+    restart: unless-stopped
+    command: ["npm", "run", "worker:dev"]
+    # Let an in-flight job finish on `docker stop` (Docker's default is SIGKILL after 10 s).
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DB_HOST: supplier-db
+      DB_PORT: 3306
+      DB_NAME: supplier_service
+      DB_USER: root
+      DB_PASSWORD: ${SUPPLIER_DB_PASSWORD}
+      REDIS_HOST: supplier-redis
+      REDIS_PORT: 6379
+      USER_SERVICE_URL: http://user-service:3001
+      PHOTO_STORE_ENDPOINT: ${PHOTO_STORE_ENDPOINT:-http://host.docker.internal:9000}
+      PHOTO_STORE_BUCKET: ${PHOTO_STORE_BUCKET:-supplier-photos}
+      PHOTO_STORE_ACCESS_KEY: ${PHOTO_STORE_ACCESS_KEY:-photostoredev}
+      PHOTO_STORE_SECRET_KEY: ${PHOTO_STORE_SECRET_KEY:-photostoredev-secret}
+      MOCK_DOWNSTREAM_FAILURE: ${MOCK_DOWNSTREAM_FAILURE:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./supplier-service/src:/app/src
     depends_on:
