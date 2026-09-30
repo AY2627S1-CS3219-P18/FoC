@@ -28,6 +28,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): wired the supplier deletion service into the admin supplier router per Phase 4 plan Task 6. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): dropped the job-queue wiring from the update service (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
@@ -44,7 +47,6 @@ import { createRateLimiter } from './middleware/rateLimit.js';
 import { createMysqlLookupRepository } from './persistence/mysqlLookupRepository.js';
 import { createMysqlSupplierRepository } from './persistence/mysqlSupplierRepository.js';
 import { createMysqlSupplierWriteRepository } from './persistence/mysqlSupplierWriteRepository.js';
-import { createRedisJobQueue } from './queue/jobQueue.js';
 import redis from './redis/client.js';
 import { createAdminSupplierRouter } from './routes/adminSupplier.routes.js';
 import { createLookupRouter } from './routes/lookup.routes.js';
@@ -72,7 +74,6 @@ const supplierUpdate = createSupplierUpdateService({
   repo: writeRepository,
   storage: photoStorage,
   reader: supplierService,
-  queue: createRedisJobQueue(redis),
 });
 apiV1.use(
   '/admin/suppliers',

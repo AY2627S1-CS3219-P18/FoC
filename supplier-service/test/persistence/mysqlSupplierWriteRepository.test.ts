@@ -17,11 +17,15 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete tests (Phase 4 plan Task 4).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added updateSupplier outbox-row tests (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
 import { createMysqlSupplierWriteRepository } from '../../src/persistence/mysqlSupplierWriteRepository.js';
 import type { NewSupplier } from '../../src/persistence/supplierWriteRepository.js';
+import { buildPhotoCleanupTask } from '../../src/queue/tasks.js';
 
 const input: NewSupplier = {
   name: 'Campus Store',
@@ -279,5 +283,67 @@ describe('softDelete', () => {
 
     expect(await createMysqlSupplierWriteRepository(pool).softDelete(7, now, tasks)).toBe(false);
     expect(sqls(conn)).toHaveLength(1);
+  });
+});
+
+describe('updateSupplier outbox rows', () => {
+  const now = '2026-09-30 10:00:00';
+  const onPhotosRemoved = (removed: Array<{ photoId: number; location: string }>) => removed.map(buildPhotoCleanupTask);
+
+  it('writes one image_cleanup outbox row per removed photo, stamped with the bumped supplier version, before committing', async () => {
+    // supplier UPDATE, SELECT photos, DELETE removed photos, shift display_order, outbox INSERT
+    const { pool, conn } = fakePool([
+      { affectedRows: 1 },
+      [{ photo_id: 7, photo_location: 'loc-7' }],
+      {},
+      {},
+      {},
+    ]);
+
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, {
+      version: 3,
+      now,
+      photos: [],
+      onPhotosRemoved,
+    });
+
+    const calls = sqls(conn);
+    expect(calls.at(-1)).toBe('INSERT INTO outbox (task_name, payload, version) VALUES ?');
+    expect(conn.query.mock.calls.at(-1)?.[1]).toEqual([
+      [['image_cleanup', '{"photo_id":7,"photo_location":"loc-7"}', 4]],
+    ]);
+    expect(conn.commit).toHaveBeenCalled();
+  });
+
+  it('writes no outbox row when no photo was removed', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, [], {}]);
+
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, { version: 3, now, photos: [], onPhotosRemoved });
+
+    expect(sqls(conn).some((sql) => sql.startsWith('INSERT INTO outbox'))).toBe(false);
+  });
+
+  it('writes no outbox row when the caller supplies no onPhotosRemoved', async () => {
+    const { pool, conn } = fakePool([{ affectedRows: 1 }, [{ photo_id: 7, photo_location: 'loc-7' }], {}, {}]);
+
+    await createMysqlSupplierWriteRepository(pool).updateSupplier(5, { version: 3, now, photos: [] });
+
+    expect(sqls(conn).some((sql) => sql.startsWith('INSERT INTO outbox'))).toBe(false);
+  });
+
+  it('rolls back the edit when the outbox insert fails', async () => {
+    const { pool, conn } = fakePool([
+      { affectedRows: 1 },
+      [{ photo_id: 7, photo_location: 'loc-7' }],
+      {},
+      {},
+      new Error('outbox insert failed'),
+    ]);
+
+    await expect(
+      createMysqlSupplierWriteRepository(pool).updateSupplier(5, { version: 3, now, photos: [], onPhotosRemoved }),
+    ).rejects.toThrow('outbox insert failed');
+    expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
   });
 });

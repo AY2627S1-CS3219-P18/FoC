@@ -7,10 +7,12 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete: vi.fn() to the repository fake so it still satisfies the interface (Phase 4 plan Task 4).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed the queue dependency and the enqueue tests; added tests for the onPhotosRemoved outbox-task builder (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentSupplier, SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
-import { PHOTO_DELETION_QUEUE_KEY, PHOTO_DELETION_TASK_NAME } from '../../src/queue/photoDeletionJob.js';
 import { createInMemoryPhotoStorage } from '../storage/inMemoryPhotoStorage.js';
 import { AppError } from '../../src/utils/AppError.js';
 import type { UpdateSupplierInput } from '../../src/validation/supplierUpdateInput.js';
@@ -24,7 +26,7 @@ const current: CurrentSupplier = {
 const png = { buffer: Buffer.from('p'), mimeType: 'image/png' as const };
 const base: UpdateSupplierInput = { version: 3, isPhotoDirty: false };
 
-function setup(overrides: Partial<SupplierWriteRepository> = {}, queueError?: Error) {
+function setup(overrides: Partial<SupplierWriteRepository> = {}) {
   const repo: SupplierWriteRepository = {
     findByIdentity: vi.fn().mockResolvedValue(null),
     locationExists: vi.fn().mockResolvedValue(true),
@@ -38,9 +40,8 @@ function setup(overrides: Partial<SupplierWriteRepository> = {}, queueError?: Er
   };
   const storage = createInMemoryPhotoStorage();
   const reader = { getAdminSupplier: vi.fn().mockResolvedValue({ id: 101, version: 4 }) };
-  const queue = { enqueue: queueError ? vi.fn().mockRejectedValue(queueError) : vi.fn().mockResolvedValue(undefined) };
-  const service = createSupplierUpdateService({ repo, storage, reader, queue, clock: () => NOW });
-  return { repo, storage, reader, queue, service };
+  const service = createSupplierUpdateService({ repo, storage, reader, clock: () => NOW });
+  return { repo, storage, reader, service };
 }
 
 describe('updateSupplier', () => {
@@ -59,7 +60,7 @@ describe('updateSupplier', () => {
   });
 
   it('writes only the sent fields and returns 200 with the admin detail', async () => {
-    const { service, repo, reader, queue } = setup();
+    const { service, repo, reader } = setup();
     const result = await service.updateSupplier(101, { ...base, name: 'New Name', isActive: false }, []);
 
     expect(result).toEqual({ statusCode: 200, body: { id: 101, version: 4 } });
@@ -67,7 +68,6 @@ describe('updateSupplier', () => {
       version: 3, now: '2026-09-29 10:00:00', name: 'New Name', isActive: false,
     });
     expect(reader.getAdminSupplier).toHaveBeenCalledWith(101);
-    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
   it('422s a collision with another supplier but allows the supplier itself', async () => {
@@ -104,9 +104,8 @@ describe('updateSupplier', () => {
     );
   });
 
-  it('uploads new photos, writes the resolved order, and enqueues one job per excluded photo', async () => {
-    const removed = [{ photoId: 1, location: 'loc-a' }];
-    const { service, repo, queue, storage } = setup({ updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: removed }) });
+  it('uploads new photos and writes the resolved order', async () => {
+    const { service, repo, storage } = setup();
     await service.updateSupplier(
       101,
       { ...base, isPhotoDirty: true, photoIds: [2, 'ph-1'], placeholderIds: ['ph-1'] },
@@ -117,11 +116,6 @@ describe('updateSupplier', () => {
     expect(repo.updateSupplier).toHaveBeenCalledWith(
       101,
       expect.objectContaining({ photos: [{ kind: 'existing', photoId: 2 }, { kind: 'new', location: 'memory://photos/1' }] }),
-    );
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(
-      PHOTO_DELETION_QUEUE_KEY,
-      expect.objectContaining({ task_name: PHOTO_DELETION_TASK_NAME, payload: { photo_id: 1, photo_location: 'loc-a' } }),
     );
   });
 
@@ -148,12 +142,11 @@ describe('updateSupplier', () => {
   });
 
   it('cleans up new uploads and 500s when the transaction fails', async () => {
-    const { service, storage, queue } = setup({ updateSupplier: vi.fn().mockRejectedValue(new Error('db')) });
+    const { service, storage } = setup({ updateSupplier: vi.fn().mockRejectedValue(new Error('db')) });
     await expect(
       service.updateSupplier(101, { ...base, isPhotoDirty: true, photoIds: ['a'], placeholderIds: ['a'] }, [png]),
     ).rejects.toMatchObject({ statusCode: 500 });
     expect(storage.objects.size).toBe(0);
-    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
   it('cleans up and rethrows the 409 raised inside the transaction', async () => {
@@ -165,11 +158,21 @@ describe('updateSupplier', () => {
     expect(storage.objects.size).toBe(0);
   });
 
-  it('500s when the deletion job cannot be enqueued after commit', async () => {
-    const removed = [{ photoId: 1, location: 'loc-a' }];
-    const { service } = setup({ updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: removed }) }, new Error('redis'));
-    await expect(
-      service.updateSupplier(101, { ...base, isPhotoDirty: true, photoIds: [2] }, []),
-    ).rejects.toMatchObject({ statusCode: 500 });
+  it('hands the repository a builder of image_cleanup outbox tasks when the photo set is edited', async () => {
+    const { service, repo } = setup();
+    // isPhotoDirty true with photo_ids [] and no files: every current photo is excluded
+    await service.updateSupplier(101, { version: 3, isPhotoDirty: true, photoIds: [], placeholderIds: [] }, []);
+    const change = vi.mocked(repo.updateSupplier).mock.calls[0]?.[1] as {
+      onPhotosRemoved?: (p: Array<{ photoId: number; location: string }>) => unknown;
+    };
+    expect(change.onPhotosRemoved?.([{ photoId: 7, location: 'loc-7' }])).toEqual([
+      { taskName: 'image_cleanup', payload: { photo_id: 7, photo_location: 'loc-7' } },
+    ]);
+  });
+
+  it('does not ask for outbox tasks when the photos are not edited', async () => {
+    const { service, repo } = setup();
+    await service.updateSupplier(101, { version: 3, name: 'New name', isPhotoDirty: false }, []);
+    expect(vi.mocked(repo.updateSupplier).mock.calls[0]?.[1]).not.toHaveProperty('onPhotosRemoved');
   });
 });

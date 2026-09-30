@@ -13,6 +13,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete, which writes the outbox rows in the same transaction (Phase 4 plan Task 4).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): updateSupplier writes the excluded-photo cleanup outbox rows in its transaction (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { CurrentPhoto } from '../business/photoPlan.js';
@@ -241,6 +244,9 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
                 );
               }
             }
+          }
+          if (change.onPhotosRemoved !== undefined) {
+            await insertOutboxRows(conn, change.version + 1, change.onPhotosRemoved(removedPhotos));
           }
           return { removedPhotos };
         });

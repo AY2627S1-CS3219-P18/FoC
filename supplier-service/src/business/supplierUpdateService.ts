@@ -5,10 +5,12 @@
  *        plan Task 6; SupplierServiceArchitecture.md §6.2, §7.5, §8.2. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): the update saga no longer enqueues jobs; excluded-photo cleanup tasks go to the outbox in the update transaction (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { PhotoWrite, SupplierChange, SupplierWriteRepository } from '../persistence/supplierWriteRepository.js';
-import type { JobQueue } from '../queue/jobQueue.js';
-import { PHOTO_DELETION_QUEUE_KEY, buildPhotoDeletionJob } from '../queue/photoDeletionJob.js';
+import { buildPhotoCleanupTask } from '../queue/tasks.js';
 import type { PhotoFile, PhotoStorage } from '../storage/photoStorage.js';
 import { AppError } from '../utils/AppError.js';
 import { sgtDatetime } from '../utils/time.js';
@@ -25,7 +27,6 @@ interface Dependencies {
   repo: SupplierWriteRepository;
   storage: PhotoStorage;
   reader: { getAdminSupplier(supplierId: number): Promise<unknown> };
-  queue: JobQueue;
   clock?: () => Date;
 }
 
@@ -33,7 +34,7 @@ function invalid(field: string, message: string): AppError {
   return new AppError(422, 'Unprocessable Entity', message, { details: [{ field, location: 'body', message }] });
 }
 
-export function createSupplierUpdateService({ repo, storage, reader, queue, clock = () => new Date() }: Dependencies) {
+export function createSupplierUpdateService({ repo, storage, reader, clock = () => new Date() }: Dependencies) {
   async function removeUploaded(locations: string[]): Promise<void> {
     // Best effort: a failed cleanup must not mask the original error.
     await Promise.allSettled(locations.map((location) => storage.delete(location)));
@@ -98,25 +99,16 @@ export function createSupplierUpdateService({ repo, storage, reader, queue, cloc
               ? { kind: 'existing', photoId: entry.photoId }
               : { kind: 'new', location: uploaded[entry.fileIndex] as string },
         );
+        change.onPhotosRemoved = (removed) => removed.map(buildPhotoCleanupTask);
       }
 
-      // Steps 3-4: one transaction; on failure remove the new cloud objects.
-      let removedPhotos: Array<{ photoId: number; location: string }>;
+      // Steps 3-4: one transaction (edit + outbox rows); on failure remove the new cloud objects.
       try {
-        ({ removedPhotos } = await repo.updateSupplier(supplierId, change));
+        await repo.updateSupplier(supplierId, change);
       } catch (error) {
         await removeUploaded(uploaded);
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Internal Server Error', 'Supplier could not be saved.');
-      }
-
-      // Steps 5-6: after commit, enqueue deletion of the excluded photos' cloud objects.
-      try {
-        for (const photo of removedPhotos) {
-          await queue.enqueue(PHOTO_DELETION_QUEUE_KEY, buildPhotoDeletionJob(photo));
-        }
-      } catch {
-        throw new AppError(500, 'Internal Server Error', 'Photo cleanup could not be queued.');
       }
 
       return { statusCode: 200, body: await reader.getAdminSupplier(supplierId) };

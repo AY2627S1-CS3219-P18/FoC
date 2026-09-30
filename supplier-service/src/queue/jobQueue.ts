@@ -5,9 +5,10 @@
  *        SupplierServiceArchitecture.md §8.1). No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed createRedisJobQueue and the ioredis import (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import type { Redis } from 'ioredis';
-
 /** Generic job shape shared by every Redis job (Arch §8.1). */
 export interface Job {
   id: string;
@@ -17,12 +18,4 @@ export interface Job {
 
 export interface JobQueue {
   enqueue(queueKey: string, job: Job): Promise<void>;
-}
-
-export function createRedisJobQueue(redis: Redis): JobQueue {
-  return {
-    async enqueue(queueKey, job) {
-      await redis.lpush(queueKey, JSON.stringify(job));
-    },
-  };
 }

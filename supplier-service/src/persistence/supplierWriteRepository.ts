@@ -10,6 +10,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the softDelete method (Phase 4 plan Task 4).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added SupplierChange.onPhotosRemoved (Phase 4 plan Task 7).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { CurrentPhoto } from '../business/photoPlan.js';
 import type { OutboxTask } from '../queue/tasks.js';
@@ -61,6 +64,11 @@ export interface SupplierChange {
   hours?: HourInput[];
   /** Final ordered photo list (index = display_order); omitted = photos untouched. */
   photos?: PhotoWrite[];
+  /**
+   * Called inside the update transaction with the photo rows the edit deleted; the tasks it returns
+   * are written to the outbox in that same transaction (Arch §8.2; team answer 2026-09-30).
+   */
+  onPhotosRemoved?: (removed: CurrentPhoto[]) => OutboxTask[];
 }
 
 export interface SupplierWriteRepository {
