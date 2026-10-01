@@ -47,7 +47,7 @@ export function useApi(load, deps) {
 // new array on every render (that re-ran its request in a loop).
 const NONE = []
 let referencePromise = null
-export function ueReferenceData() {
+export function useReferenceData() {
   const { data, error, loading } = useApi(() => {
     if (!referencePromise) {
       referencePromise = Promise.all([listLocationOptions(), listCategoryOptions()])
