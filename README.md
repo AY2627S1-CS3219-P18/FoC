@@ -145,3 +145,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-10-01 | frontend | Frontend: README with local run guide and photo troubleshooting | Documented mocked vs real run modes, setup, seed and the host.docker.internal fix |
 | 2026-10-02 | frontend | Frontend: README section for checking MySQL and MinIO by hand | Added manual MySQL and MinIO verification commands and a working-setup checklist |
 | 2026-10-02 | frontend | Frontend: README manual MySQL testing in the supplier-db container | Added an in-container mysql walkthrough pairing app actions with queries to check |
+| 2026-10-02 | user-service | User Service: optional seeded normal test user | Added env-driven startup seeding of a normal user alongside the superadmin |
+| 2026-10-02 | frontend | Frontend: desktop Log out button | Added a Log out button to the desktop nav so accounts can be switched |

@@ -2899,3 +2899,59 @@ Earlier prompt of this stage (quoted in the entry "Supplier Service: OpenAPI des
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-10-02 — User Service: optional seeded normal test user
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Superadmin env-var bootstrap pattern in `instructions.md` (Stage 4e); mechanism (optional `TEST_USER_*` env vars, run at startup) chosen by the user in chat.
+
+**Prompts (exact):**
+> current user service only provides a superadmin test account. Add a normal user account as well
+
+**Key responses:**
+- Asked which provisioning mechanism to use (AGENTS.md §2.1); the user chose optional env vars like the superadmin.
+- Added optional `TEST_USER_USERNAME` / `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` to `config.ts`, and `bootstrapTestUser()` in `bootstrap.service.ts`, called from `server.ts` after the superadmin bootstrap. It does nothing unless all three are set, applies the existing password-complexity rule, skips if the username or email already exists, and otherwise creates an active user with the default role. No default password is in code.
+- Added four tests to `bootstrap.service.test.ts`.
+- Verification: NOT run. `node_modules` is not installed in `user-service`, so neither typecheck nor tests were executed.
+
+**Files:**
+- `user-service/src/config.ts` (modified)
+- `user-service/src/services/bootstrap.service.ts` (modified)
+- `user-service/src/server.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/tests/services/bootstrap.service.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked the mechanism question above; answered by the user.
+
+**What I kept/changed/rejected: Kept**
+
+**Author review: Congchen**
+
+## 2026-10-02 — Frontend: desktop Log out button
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Existing `logout` in `frontend/src/context/DemoContext.jsx` and `POST /auth/logout` in the User Service; the request only asked for a way to sign out.
+
+**Prompts (exact):**
+> add an option to sign out of the current account so i can switch around
+
+**Key responses:**
+- Found that a Log out control already existed but only in the mobile drawer of `TopNav.jsx`; the desktop nav had none. Added a Log out button to the desktop nav that calls the existing `logout`. No API or context changes.
+- Verification: NOT run (no build, lint or browser check in this task).
+
+**Files:**
+- `frontend/src/components/TopNav.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**

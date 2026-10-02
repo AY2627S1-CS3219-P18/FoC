@@ -14,11 +14,15 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The nav shows the logged-in username and initials from the session, logs out through the User Service, and shows the admin link only for admin and super admin accounts. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-10-02
+ * Scope: Added a Log out button to the desktop nav (it was only in the mobile menu), wired to the existing logout. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Bell, Menu, X } from 'lucide-react'
+import { Bell, LogOut, Menu, X } from 'lucide-react'
 import Logo from './Logo'
 import Button from './Button'
 import CreditPill from './CreditPill'
@@ -107,6 +111,14 @@ export default function TopNav() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
                   {initials}
                 </span>
+                <button
+                  type="button"
+                  className="flex h-10 items-center gap-1.5 rounded-btn px-2 text-sm text-ink-70 hover:bg-surface-alt hover:text-ink"
+                  onClick={logout}
+                >
+                  <LogOut size={16} aria-hidden="true" />
+                  Log out
+                </button>
               </>
             ) : (
               <Button size="sm" onClick={() => requireLogin('Log in to post and accept errands.')}>
