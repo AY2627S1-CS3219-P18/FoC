@@ -2818,3 +2818,84 @@ Earlier prompt of this stage (quoted in the entry "Supplier Service: OpenAPI des
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-10-01 — Frontend: README with local run guide and photo troubleshooting
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** None needed; describes the compose files, service READMEs and Vite proxy as they are today.
+
+**Prompts (exact):**
+> details the steps to run the fe locally, based on which services I want to be mocked and which i want to use actual services
+
+> the local dev fe was working, but now the images are missing. why?
+
+> combine this with the guide to run fe locally into the frontend readme
+
+**Key responses:**
+- Diagnosis of the missing images (answered in chat, no code changed): the photo-store container was not running, and the hosts entry for `host.docker.internal` had gone stale again after the Wi-Fi address changed. The photo store was restarted; the hosts file was not edited (it needs administrator rights).
+- Created `frontend/README.md`: which areas are real or mocked, the three run modes (fully mocked via `foc-mockup/`, real user and supplier services, real user with mocked supplier marked unsupported), setup, start commands, seeding, the Vite proxy, and the `host.docker.internal` fix and troubleshooting table.
+- Verification: no code was run for this task; the commands and ports were taken from `compose.yaml`, `supplier-service/compose.photo-store.yaml`, `frontend/vite.config.js` and the READMEs, and the photo-store check was run (`localhost:9000` returned 200 and a stored photo served through it).
+
+**Files:**
+- `frontend/README.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- The README tells the reader to pin `host.docker.internal` to `127.0.0.1` in the hosts file. This is operational advice for a development machine; changing the recorded development photo-store address instead would be a team decision and was not made.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-10-02 — Frontend: README section for checking MySQL and MinIO by hand
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** None needed; describes the existing schema (`supplier-service/src/db/init.sql`, `user-service/src/db/init.sql`) and compose services.
+
+**Prompts (exact):**
+> 1. add instructions for checking the data in mysql and minio manually to verify everything is working
+
+**Key responses:**
+- Added "Verifying the data by hand" to `frontend/README.md`: `docker exec` MySQL queries (counts, suppliers with location and faculty, categories, hours, photos, `outbox` and `dead_letter_jobs`, an interactive prompt), a PostgreSQL query for accounts, MinIO console access, health check, object count and fetching one photo, and a short checklist of what a working setup looks like.
+- Verification: the schema column names were read from the two `init.sql` files. The Docker engine was not running when this was written, so none of the new commands were executed in this task. The same `docker exec ... mysql` pattern and a photo fetch through `localhost:9000` were run earlier in the session. The MinIO object count command (`ls /data/supplier-photos`) assumes MinIO's single-drive folder layout and is unverified; the README says to use the console if it differs.
+
+**Files:**
+- `frontend/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-10-02 — Frontend: README manual MySQL testing in the supplier-db container
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** None needed; describes the existing `supplier-db` container and the schema in `supplier-service/src/db/init.sql`.
+
+**Prompts (exact):**
+> update the readme to show manual testing using docker's supplier-db container exec terminal
+
+**Key responses:**
+- Replaced the one-line interactive-prompt note in `frontend/README.md` with a "Manual testing in the container terminal" subsection: opening a shell (`docker exec -it foc-supplier-db bash` or Docker Desktop's Exec tab), starting the `mysql` client with the container's own root password variable, example statements (`SHOW TABLES`, `DESCRIBE`, `\G`), how to exit, and a table that pairs each admin action in the app (add, add photos, edit, reorder/remove, deactivate, delete, worker) with the query to run and the result to expect. It warns against hand-written `UPDATE`/`DELETE`.
+- Verification: no command was run in this task and the Docker engine was not running. Column and table names come from `init.sql`; the expectations in the table (version bump on edit, `is_deleted` on delete, `outbox` emptying) follow the behaviour recorded in the supplier-service README and architecture document and were not re-tested here.
+
+**Files:**
+- `frontend/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**

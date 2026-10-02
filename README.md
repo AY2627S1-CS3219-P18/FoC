@@ -142,3 +142,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-30 | supplier-service | Supplier Service: OpenAPI description and local seed test | OpenAPI file for the supplier endpoints; npm run seed loads mock suppliers via the creation service |
 | 2026-09-30 | frontend | Frontend: real login and supplier screens on the Supplier Service | Added dev proxy, API client, real login, and supplier and admin screens reading the service |
 | 2026-09-30 | frontend | Frontend: fix request flood and lost admin role after reload | Fixed a render loop flooding the list endpoint and restored the role from /auth/verify |
+| 2026-10-01 | frontend | Frontend: README with local run guide and photo troubleshooting | Documented mocked vs real run modes, setup, seed and the host.docker.internal fix |
+| 2026-10-02 | frontend | Frontend: README section for checking MySQL and MinIO by hand | Added manual MySQL and MinIO verification commands and a working-setup checklist |
+| 2026-10-02 | frontend | Frontend: README manual MySQL testing in the supplier-db container | Added an in-container mysql walkthrough pairing app actions with queries to check |
