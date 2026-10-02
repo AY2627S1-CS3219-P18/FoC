@@ -6,6 +6,8 @@
 //    Author review:
 //  2026-09-25: Stage 6 pre-work - add OTP resend window config
 //    Author review:
+//  2026-10-02: Add optional TEST_USER_* env vars for a seeded normal user
+//    Author review: Congchen
 
 import { z } from "zod";
 
@@ -34,6 +36,11 @@ const envSchema = z
     SUPER_ADMIN_USERNAME: z.string().min(1),
     SUPER_ADMIN_EMAIL: z.string().min(1),
     SUPER_ADMIN_PASSWORD: z.string().min(1),
+
+    // Optional local-dev test user; seeded at startup only when all three are set.
+    TEST_USER_USERNAME: z.string().default(""),
+    TEST_USER_EMAIL: z.string().default(""),
+    TEST_USER_PASSWORD: z.string().default(""),
 
     OTP_TTL_MINUTES: z.coerce.number().int().positive(),
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
@@ -106,5 +113,10 @@ export const config = {
     username: env.SUPER_ADMIN_USERNAME,
     email: env.SUPER_ADMIN_EMAIL,
     password: env.SUPER_ADMIN_PASSWORD,
+  },
+  testUser: {
+    username: env.TEST_USER_USERNAME,
+    email: env.TEST_USER_EMAIL,
+    password: env.TEST_USER_PASSWORD,
   },
 } as const;

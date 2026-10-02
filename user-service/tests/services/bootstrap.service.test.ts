@@ -1,7 +1,8 @@
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - tests for bootstrapSuperAdmin (config module mocked in this file only)
-// Author review:
+// 2026-10-02: tests for bootstrapTestUser
+// Author review: Congchen
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,20 +10,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // mutable copy so each test can set its own credentials.
 vi.mock('../../src/config.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/config.js')>();
-  return { config: { ...actual.config, superAdmin: { ...actual.config.superAdmin } } };
+  return {
+    config: {
+      ...actual.config,
+      superAdmin: { ...actual.config.superAdmin },
+      testUser: { ...actual.config.testUser },
+    },
+  };
 });
 
 import { config } from '../../src/config.js';
 import * as userQueries from '../../src/db/queries/users.queries.js';
-import { bootstrapSuperAdmin } from '../../src/services/bootstrap.service.js';
+import { bootstrapSuperAdmin, bootstrapTestUser } from '../../src/services/bootstrap.service.js';
 import { countUsers, getUserByUsername, truncateAll } from '../helpers/db.js';
 
 const superAdmin = config.superAdmin as { username: string; email: string; password: string };
 const original = { ...superAdmin };
+const testUser = config.testUser as { username: string; email: string; password: string };
+const testUserOriginal = { ...testUser };
 
 beforeEach(async () => {
   await truncateAll();
   Object.assign(superAdmin, original);
+  Object.assign(testUser, testUserOriginal);
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 afterEach(async () => {
@@ -124,5 +134,46 @@ describe('bootstrapSuperAdmin', () => {
     const results = await Promise.allSettled([bootstrapSuperAdmin(), bootstrapSuperAdmin()]);
     expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
     expect(await countUsers()).toBe(1);
+  });
+});
+
+describe('bootstrapTestUser', () => {
+  beforeEach(() => {
+    Object.assign(testUser, {
+      username: ' TestUser ',
+      email: 'Test@Foc.test',
+      password: 'Test-User-Pass1!',
+    });
+  });
+
+  it('creates an active regular user with a bcrypt-hashed password', async () => {
+    await bootstrapTestUser();
+    const row = (await getUserByUsername('testuser'))!;
+    expect(row).toMatchObject({ role: 'user', status: 'active', email: 'test@foc.test' });
+    expect(await bcrypt.compare('Test-User-Pass1!', row.password_hash)).toBe(true);
+  });
+
+  it('does nothing when any TEST_USER_* value is unset', async () => {
+    testUser.password = '';
+    await bootstrapTestUser();
+    expect(await countUsers()).toBe(0);
+  });
+
+  it('skips without changing anything when the username already exists', async () => {
+    await userQueries.createUser({
+      username: 'testuser',
+      email: 'other@foc.test',
+      passwordHash: 'h',
+      status: 'active',
+    });
+    await bootstrapTestUser();
+    expect(await countUsers()).toBe(1);
+    expect((await getUserByUsername('testuser'))!.password_hash).toBe('h');
+  });
+
+  it('rejects a password that fails the complexity rule, creating nothing', async () => {
+    testUser.password = 'weak';
+    await expect(bootstrapTestUser()).rejects.toThrow(/TEST_USER_PASSWORD/);
+    expect(await countUsers()).toBe(0);
   });
 });
