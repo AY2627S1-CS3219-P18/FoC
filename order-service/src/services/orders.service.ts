@@ -3,13 +3,13 @@ import type {
   ReserveResult,
 } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
-import type {
-  OrderRequest,
+import {
   RequestStatus,
+  type OrderRequest,
 } from '../generated/prisma/client.js';
 import { checkTransition, type ActorId } from '../domain/order-status.js';
 import type { CreateOrderPayload } from '../types/orders.js';
-import { ErrorCode } from '../constants/errors.js';
+import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import {
   isIsoDateString,
   isNonEmptyString,
@@ -18,6 +18,9 @@ import {
 
 export type CreateOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
+
+export type GetOrderResult =
+  { ok: true; orders: OrderRequest[] } | { ok: false; errors: any };
 
 export const createOrder = async (
   prisma: PrismaClient,
@@ -122,18 +125,36 @@ export const createOrder = async (
 export const getOrders = async (
   prisma: PrismaClient,
   statusFilter: RequestStatus | undefined,
-) => {
+): Promise<GetOrderResult> => {
+  if (
+    statusFilter !== undefined &&
+    !Object.values(RequestStatus).includes(statusFilter)
+  ) {
+    const errorCode = ErrorCode.INVALID_STATUS;
+    return {
+      ok: false,
+      errors: ErrorMessage[errorCode],
+    };
+  }
   try {
-    return await prisma.orderRequest.findMany({
+    const orders = await prisma.orderRequest.findMany({
       where: statusFilter
         ? {
             status: statusFilter,
           }
         : undefined,
     });
+
+    return {
+      ok: true,
+      orders: orders,
+    };
   } catch (error) {
     // TODO: retry and log
-    throw error;
+    return {
+      ok: false,
+      errors: error,
+    };
   }
 };
 

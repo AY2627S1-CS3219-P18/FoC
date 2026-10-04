@@ -6,6 +6,9 @@
  * Author review: george-yeo
  * Scope (2026-09-29): Added HTTP-level tests for GET /orders results, filters, and failures.
  * Author review: tng wen xi
+ * Scope (2026-10-04): Updated GET /orders HTTP expectations and test doubles to
+ *        match the service result contract and controller failure responses.
+ * Author review: tng wen xi
  */
 
 import request from 'supertest';
@@ -100,7 +103,7 @@ describe('GET /orders', () => {
       .get('/orders')
       .expect(200);
 
-    expect(res.body).toEqual({ success: true, orders });
+    expect(res.body).toEqual({ ok: true, orders });
     expect(findMany).toHaveBeenCalledWith({ where: undefined });
   });
 
@@ -122,21 +125,21 @@ describe('GET /orders', () => {
         .query({ status })
         .expect(200);
 
-      expect(res.body).toEqual({ success: true, orders: filtered });
+      expect(res.body).toEqual({ ok: true, orders: filtered });
       expect(findMany).toHaveBeenCalledWith({ where: { status } });
     },
   );
 
-  it('rejects an invalid status filter without querying the database', async () => {
+  it('returns 500 for an invalid status filter without querying the database', async () => {
     const findMany = vi.fn(async () => orders);
     await request(
       appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
     )
       .get('/orders')
       .query({ status: 'not-a-status' })
-      .expect(400, {
-        success: false,
-        message: 'Status provided is invalid.',
+      .expect(500, {
+        ok: false,
+        errors: 'Status provided is invalid.',
       });
 
     expect(findMany).not.toHaveBeenCalled();
@@ -151,7 +154,7 @@ describe('GET /orders', () => {
       .query({ status: 'expired' })
       .expect(200);
 
-    expect(res.body).toEqual({ success: true, orders: [] });
+    expect(res.body).toEqual({ ok: true, orders: [] });
   });
 
   it('returns 500 when listing orders fails', async () => {
@@ -164,6 +167,6 @@ describe('GET /orders', () => {
       .get('/orders')
       .expect(500);
 
-    expect(res.body).toEqual({ success: false, orders: [] });
+    expect(res.body).toEqual({ ok: false, errors: {} });
   });
 });

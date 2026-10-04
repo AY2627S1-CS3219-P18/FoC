@@ -48,30 +48,12 @@ export const getOrders =
   (prisma: PrismaClient): RequestHandler =>
   async (req, res) => {
     const statusFilter = req.query.status as RequestStatus | undefined;
-    if (
-      statusFilter !== undefined &&
-      !Object.values(RequestStatus).includes(statusFilter)
-    ) {
-      const errorCode = ErrorCode.INVALID_STATUS;
-      res.status(statusFor([errorCode])).json({
-        success: false,
-        message: ErrorMessage[errorCode],
-      });
-      return;
-    }
-    console.log('statusFilter: ', statusFilter);
-    try {
-      const result = await ordersService.getOrders(prisma, statusFilter);
-      res.status(200).json({
-        success: true,
-        orders: result,
-      });
-    } catch (err) {
-      console.log(err);
-      res.status(500).json({
-        success: false,
-        orders: [],
-      });
+    const result = await ordersService.getOrders(prisma, statusFilter);
+
+    if (result.ok) {
+      res.status(200).json(result);
+    } else {
+      res.status(500).json(result);
     }
   };
 

@@ -304,6 +304,33 @@ None
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+## 2026-10-04 — Order-service controller test update
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `order-service` controller and service implementation in the working tree.
+
+**Prompts (exact):**
+
+> help me update the test file based on the changes i've made. also update the ai usage log.
+
+**Key responses:**
+Updated `orders.controller.spec.ts` to match the new `getOrders` result contract: successful responses use `{ ok: true, orders }`, invalid status filters return HTTP 500 with the service error result, and database failures return the serialized service error result. Ran `npm test -- src/controllers/orders.controller.spec.ts` from `order-service`; 1 test file and all 11 tests passed.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
 ## 2026-09-28 — order-service: Prisma Order Seed Fixtures
 
 **Tool:** GitHub Copilot (model: GPT-5.6 Luna)
@@ -1315,3 +1342,31 @@ None as spec ambiguities — see the concurrency observation above (informationa
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-10-04 — Order-service service test update
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `order-service` service implementation in the working tree.
+
+**Prompts (exact):**
+
+> update this one also
+
+**Key responses:**
+Updated `orders.service.spec.ts` to assert the new `getOrders` result objects, added invalid-status validation without a database query, and changed database-error coverage from rejection to an error result. Ran `npm test -- src/services/orders.service.spec.ts` from `order-service`; 1 test file and all 29 tests passed.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**

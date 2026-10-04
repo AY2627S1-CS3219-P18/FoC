@@ -7,6 +7,9 @@
  * Author review: george-yeo
  * Scope (2026-09-29): Added getOrders unit tests for unfiltered and status-filtered queries.
  * Author review: tng wen xi
+ * Scope (2026-10-04): Updated getOrders unit tests for result objects, invalid
+ *        status handling, and database-error results.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -278,7 +281,10 @@ describe('getOrders', () => {
     const { findMany, prisma } = prismaWithFindMany();
     findMany.mockResolvedValue(orders);
 
-    await expect(getOrders(prisma, undefined)).resolves.toEqual(orders);
+    await expect(getOrders(prisma, undefined)).resolves.toEqual({
+      ok: true,
+      orders,
+    });
     expect(findMany).toHaveBeenCalledWith({ where: undefined });
   });
 
@@ -292,7 +298,10 @@ describe('getOrders', () => {
       const { findMany, prisma } = prismaWithFindMany();
       findMany.mockResolvedValue(result);
 
-      await expect(getOrders(prisma, status)).resolves.toEqual(result);
+      await expect(getOrders(prisma, status)).resolves.toEqual({
+        ok: true,
+        orders: result,
+      });
       expect(findMany).toHaveBeenCalledWith({ where: { status } });
     },
   );
@@ -301,15 +310,31 @@ describe('getOrders', () => {
     const { findMany, prisma } = prismaWithFindMany();
     findMany.mockResolvedValue([]);
 
-    await expect(getOrders(prisma, 'cancelled')).resolves.toEqual([]);
+    await expect(getOrders(prisma, 'cancelled')).resolves.toEqual({
+      ok: true,
+      orders: [],
+    });
     expect(findMany).toHaveBeenCalledWith({ where: { status: 'cancelled' } });
   });
 
-  it('propagates database errors', async () => {
+  it('returns an invalid-status result without querying the database', async () => {
+    const { findMany, prisma } = prismaWithFindMany();
+
+    await expect(getOrders(prisma, 'not-a-status' as never)).resolves.toEqual({
+      ok: false,
+      errors: 'Status provided is invalid.',
+    });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns database errors in the result', async () => {
     const { findMany, prisma } = prismaWithFindMany();
     const error = new Error('db down');
     findMany.mockRejectedValue(error);
 
-    await expect(getOrders(prisma, undefined)).rejects.toBe(error);
+    await expect(getOrders(prisma, undefined)).resolves.toEqual({
+      ok: false,
+      errors: error,
+    });
   });
 });

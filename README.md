@@ -104,3 +104,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-27 | user-service   | Stage 12e: Change Password — Initiate + Confirm                                  | Two-step password change with OTP, revoking all refresh tokens on success                  |
 | 2026-09-28 | order-service  | order-service: Prisma Order Seed Fixtures                                        | Added deterministic fixtures covering statuses, locations, and credit amounts              |
 | 2026-09-29 | order-service  | order-service: getOrders Service and Controller Tests                            | Added service/controller coverage for results, filters, invalid status, and failures       |
+| 2026-10-04 | order-service  | Order-service controller test update                                             | Updated GET /orders tests for the new service result contract and failure responses         |
+| 2026-10-04 | order-service  | Order-service service test update                                                | Updated getOrders unit tests for result objects and failure handling                       |
