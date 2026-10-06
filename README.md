@@ -132,6 +132,10 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Corrections (soft delete kept, 24/7 hours, photo store ids) | Kept supplier soft delete, refined 24/7 hours and photo-store ids in docs |
 | 2026-09-29 | supplier-service | Supplier Service: Local Photo Store Switched from MySQL to MinIO | Recorded MinIO as local photo store; replaced the compose file and README section |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Hours Update (days 1–7 plus reserved 8) and S3 Client Choice | Updated is_open and hours schema to days 1-8; recorded AWS S3 client for MinIO |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Schema Migration and Implementation Plan | Added idempotent hours-schema upgrade script; wrote the Phase 2 implementation plan |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Plan Choices Accepted, MinIO Test Scope | Accepted plan choices; MinIO now covers real cloud-connection tests in the plan |
+| 2026-09-29 | supplier-service | Supplier Service: Phase 2 Implementation (admin reads, lookups, supplier create) | Implemented admin reads, lookup management and multipart supplier create; 210 tests and MinIO tests pass |
+| 2026-09-30 | supplier-service | Supplier Service: Move Tests into a test/ Folder | Moved all tests and test helpers from src/ to a mirrored test/ folder; updated configs |
 | Date       | Service        | Entry                                                                            | High-level summary                                                                         |
 | ---------- | -------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | 2026-09-24 | user-service   | Stage 1: Project Scaffold                                                        | Project scaffold: package.json, tsconfig, ESLint, .env.example, RS256 keys, src layout     |

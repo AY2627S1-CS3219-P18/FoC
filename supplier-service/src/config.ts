@@ -3,6 +3,10 @@
  * Tool: Codex (model: gpt-5.6-luna), date: 2026-09-28
  * Scope: Phase 0 Task 2 config loader; no requirements, architecture, schema, or API decisions made.
  * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added optional PHOTO_STORE_* settings and
+ *        the `photoStore` config group per Phase 2 plan Task 1. No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from "zod";
@@ -20,6 +24,10 @@ const envSchema = z.object({
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: positiveInteger,
   USER_SERVICE_URL: z.string().min(1),
+  PHOTO_STORE_ENDPOINT: z.string().min(1).optional(),
+  PHOTO_STORE_BUCKET: z.string().min(1).optional(),
+  PHOTO_STORE_ACCESS_KEY: z.string().min(1).optional(),
+  PHOTO_STORE_SECRET_KEY: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -46,4 +54,10 @@ export const config = Object.freeze({
   }),
   redis: Object.freeze({ host: values.REDIS_HOST, port: values.REDIS_PORT }),
   userServiceUrl: values.USER_SERVICE_URL,
+  photoStore: Object.freeze({
+    endpoint: values.PHOTO_STORE_ENDPOINT,
+    bucket: values.PHOTO_STORE_BUCKET,
+    accessKey: values.PHOTO_STORE_ACCESS_KEY,
+    secretKey: values.PHOTO_STORE_SECRET_KEY,
+  }),
 });

@@ -5,10 +5,14 @@
  *        and §7.1.1. No requirements, architecture, schema, or API decisions were made by the AI
  *        tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/validation/supplierQuery.test.ts to test/validation/supplierQuery.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../utils/AppError.js';
-import { idParamSchema, listQuerySchema, parseOrThrow } from './supplierQuery.js';
+import { AppError } from '../../src/utils/AppError.js';
+import { idParamSchema, listQuerySchema, parseOrThrow } from '../../src/validation/supplierQuery.js';
 
 function catchAppError(fn: () => unknown): AppError {
   try {

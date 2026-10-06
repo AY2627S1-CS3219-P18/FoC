@@ -8,11 +8,16 @@
 #        the AI tool. No requirements, architecture, schema, or API decisions were made by the AI
 #        tool.
 # Author review:
+# Scope (2026-09-29 update): Enabled anonymous read on the dev bucket so returned locations are fetchable
+#        locally (Phase 2 plan, Task 2). No requirements, architecture, schema, or API decisions were
+#        made by the AI tool. Also switched the image references to quay.io (minio/minio and minio/mc
+#        can no longer be pulled from Docker Hub).
+# Author review:
 #
 # Run from supplier-service/:  docker compose -f compose.photo-store.yaml up -d
 services:
   photo-store:
-    image: minio/minio
+    image: quay.io/minio/minio
     container_name: foc-supplier-photo-store
     command: server /data --console-address ":9001"
     environment:
@@ -31,14 +36,15 @@ services:
 
   # One-shot job that creates the bucket once the store is healthy.
   photo-store-init:
-    image: minio/mc
+    image: quay.io/minio/mc
     depends_on:
       photo-store:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
       mc alias set local http://photo-store:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
-      mc mb --ignore-existing local/supplier-photos
+      mc mb --ignore-existing local/supplier-photos &&
+      mc anonymous set download local/supplier-photos
       "
     environment:
       MINIO_ROOT_USER: ${PHOTO_STORE_ACCESS_KEY:-photostoredev}

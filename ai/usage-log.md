@@ -2391,4 +2391,177 @@ Confirm the `is_24h` definition. Existing dev databases need `supplier_hours` re
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Schema Migration and Implementation Plan
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Requirements formatting
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §6.4 and §9 item 21; `supplier-service/SupplierServiceSpec.md` (Phase 2).
+
+**Prompts (exact):**
+> confirm is_24h is a boolean not null default false.
+> Continue with migration and phase 2 plan
+
+**Key responses:**
+Recorded the team's confirmation that `supplier_hours.is_24h` is `BOOLEAN NOT NULL DEFAULT FALSE` and removed the related flags from the architecture and spec. Wrote an idempotent upgrade for existing databases (`src/db/phase2Schema.ts`, runner `src/db/migratePhase2.ts`, `npm run migrate:phase2`): adds `is_24h`, drops the old 0–6 check, converts Sunday 0 to 7, adds the 1–8 check; already-upgraded databases are left unchanged. Added `ON DELETE RESTRICT` explicitly to the three lookup foreign keys in `init.sql` (MySQL's default already behaves this way; a real MySQL reports the rule as `NO ACTION`). Verification: `npx vitest run` — 14 files, 107 tests passing; `npx tsc --noEmit` and `npm run lint` clean; the upgrade was run twice against a scratch database on the dev MySQL server created from the pre-Phase 2 schema (days 0 and 1 became 7 and 1, `is_24h` added, check 1–8), then the scratch database was dropped. The real `supplier_service` database was **not** upgraded; run `npm run migrate:phase2` against it. Wrote the Phase 2 implementation plan `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (10 tasks: dependencies/config, photo storage port and S3-client adapter, admin reads, lookup management, create-request validation, idempotency, create/reactivate workflow, HTTP layer, manual verification, docs). The plan's code was not compiled or run. The plan lists 12 choices it makes that are not in the architecture (for example the lookup delete body, `201` for lookup creates, UUID-only idempotency keys, timestamps written as Singapore time by the app, no cloud cleanup of photos replaced on reactivation until Phase 4, and business-layer tests using an in-memory storage double rather than MinIO) for the team to confirm.
+
+**Files:**
+- `supplier-service/src/db/phase2Schema.ts` (created)
+- `supplier-service/src/db/phase2Schema.test.ts` (created)
+- `supplier-service/src/db/migratePhase2.ts` (created)
+- `supplier-service/src/db/init.sql` (modified)
+- `supplier-service/package.json` (modified; no header possible — added the `migrate:phase2` script)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Confirm or change the 12 choices in the plan's "Choices this plan makes" section. Run `npm run migrate:phase2` against the real dev database.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-29 — Supplier Service: Phase 2 Plan Choices Accepted, MinIO Test Scope
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answer supplied in chat; recorded in `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` ("Choices this plan makes", item 8).
+
+**Prompts (exact):**
+> accept the 12 choices except for 8 - minio should be used when testing actual cloud connection logic
+
+**Key responses:**
+Recorded acceptance of choices 1–7 and 9–12 in the Phase 2 plan. Rewrote choice 8: pure business logic keeps an in-memory storage double, while anything testing real cloud-connection logic uses the local MinIO. In the plan this became `*.minio.test.ts` files excluded from `npm test` and run with a new `npm run test:minio` (second Vitest config, so a missing MinIO fails loudly rather than being skipped): Task 2 gained six S3-adapter tests against MinIO (upload and serve, unique locations, update, delete, deleting a missing object, unreachable store) and Task 7 gained two creation-workflow tests (photos stored and kept; uploaded objects removed when the transaction fails). The plan's code was not compiled or run, and no MinIO test was executed.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-29 — Supplier Service: Phase 2 Implementation (admin reads, lookups, supplier create)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor, docs
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (Tasks 1–10), transcribing `supplier-service/SupplierServiceSpec.md` ("Phase 2") and `SupplierServiceArchitecture.md` (§6.2, §6.4, §7, §7.1.1, §7.5, §8.2, §9 item 21).
+
+**Prompts (exact):**
+> execute, subagent driven, skip reviewer agent for simple implementation tasks
+
+**Key responses:**
+Executed Tasks 1–8 of the Phase 2 plan on branch `supplier-phase-2` with superpowers:subagent-driven-development: a fresh implementer subagent per task, each given the plan's line ranges, and the controller re-ran typecheck, the full test suite and lint after every task. Per the instruction, dedicated reviewer agents were skipped for the simple tasks; one reviewer agent was used on the create/reactivate transaction workflow (Task 7). It found no high or medium defects and one low one (the reactivation `UPDATE` did not replace `supplier_name`, so a differently-cased resubmission kept the old spelling); this was fixed in a follow-up commit. Built: `PhotoStorage` port with an S3-client adapter (MinIO locally) and an in-memory test double; admin list/detail reads; faculty/location/category management with hard delete of unreferenced rows; create-request parsing and the hours rules (days 1–7, reserved day 8, `is24h`); the Redis idempotency store and header check; the create and reactivate workflow (upload, transaction, cleanup); the multipart `multer` layer, `POST /api/v1/admin/suppliers` and app wiring. Task 9 (manual verification) was run by the controller: the service ran on the host against a scratch MySQL database (`phase2_verify`) on the dev MySQL server, a temporary Redis container, the local MinIO, and a **stub** of the User Service's `/auth/verify` (not the real User Service). Confirmed live: admin list `200`; user role `403` and no token `401` on admin routes; lookup create `201`, duplicate `422`, delete of a referenced faculty `422`, delete of an unreferenced one `200`, repeat delete `404`, category update `200`; create Facility with two photos `201` (photos fetchable from MinIO, `display_order` 0 and 1, single day-8 hours entry); replay with the same `Idempotency-Key` returned the cached `201` with no new row; duplicate with a new key `422`; missing key `400`; 24/7 Store `201`; equal open/close `422`; GIF photo `422`; after soft-deleting the supplier, user detail `404`, admin detail `isDeleted: true`, and re-creating it (different name case, one photo) returned `200` with `isActive` true, `version` 1, the new description and exactly one photo row. The old photo object stayed in MinIO, as planned (Phase 4). The scratch database, temporary Redis, stub and service were removed afterwards. Final verification: `npx vitest run` — 26 files, 210 tests passing; `npm run test:minio` — 2 files, 8 tests passing against the running MinIO; `npx tsc --noEmit` and `npm run lint` clean. Not run: the flow against the real User Service and real dev database `supplier_service` (`npm run migrate:phase2` has not been run on it), the rate limiter under load, and any test of `PUT`/`DELETE` supplier (later phases).
+
+**Files:**
+- `supplier-service/.env.example` (modified)
+- `supplier-service/compose.photo-store.yaml` (modified)
+- `supplier-service/package-lock.json` (modified)
+- `supplier-service/package.json` (modified)
+- `supplier-service/src/app.integration.test.ts` (modified)
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/business/lookupService.test.ts` (created)
+- `supplier-service/src/business/lookupService.ts` (created)
+- `supplier-service/src/business/supplierCreation.minio.test.ts` (created)
+- `supplier-service/src/business/supplierCreationService.test.ts` (created)
+- `supplier-service/src/business/supplierCreationService.ts` (created)
+- `supplier-service/src/business/supplierService.test.ts` (modified)
+- `supplier-service/src/business/supplierService.ts` (modified)
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/controllers/adminSupplier.controller.ts` (created)
+- `supplier-service/src/controllers/lookup.controller.ts` (created)
+- `supplier-service/src/idempotency/idempotencyStore.test.ts` (created)
+- `supplier-service/src/idempotency/idempotencyStore.ts` (created)
+- `supplier-service/src/middleware/requireIdempotencyKey.test.ts` (created)
+- `supplier-service/src/middleware/requireIdempotencyKey.ts` (created)
+- `supplier-service/src/middleware/uploadPhotos.test.ts` (created)
+- `supplier-service/src/middleware/uploadPhotos.ts` (created)
+- `supplier-service/src/persistence/lookupRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlLookupRepository.test.ts` (created)
+- `supplier-service/src/persistence/mysqlLookupRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierRepository.test.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierWriteRepository.test.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierWriteRepository.ts` (created)
+- `supplier-service/src/persistence/supplierRepository.ts` (modified)
+- `supplier-service/src/persistence/supplierWriteRepository.ts` (created)
+- `supplier-service/src/redis/client.ts` (modified)
+- `supplier-service/src/routes/adminSupplier.routes.test.ts` (created)
+- `supplier-service/src/routes/adminSupplier.routes.ts` (created)
+- `supplier-service/src/routes/lookup.routes.test.ts` (created)
+- `supplier-service/src/routes/lookup.routes.ts` (created)
+- `supplier-service/src/routes/supplier.routes.test.ts` (modified)
+- `supplier-service/src/storage/inMemoryPhotoStorage.ts` (created)
+- `supplier-service/src/storage/minioTestStorage.ts` (created)
+- `supplier-service/src/storage/photoStorage.ts` (created)
+- `supplier-service/src/storage/s3PhotoStorage.minio.test.ts` (created)
+- `supplier-service/src/storage/s3PhotoStorage.test.ts` (created)
+- `supplier-service/src/storage/s3PhotoStorage.ts` (created)
+- `supplier-service/src/types/supplier.ts` (modified)
+- `supplier-service/src/utils/time.test.ts` (modified)
+- `supplier-service/src/utils/time.ts` (modified)
+- `supplier-service/src/validation/lookupInput.test.ts` (created)
+- `supplier-service/src/validation/lookupInput.ts` (created)
+- `supplier-service/src/validation/supplierInput.test.ts` (created)
+- `supplier-service/src/validation/supplierInput.ts` (created)
+- `supplier-service/src/validation/supplierQuery.ts` (modified)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/vitest.minio.config.ts` (created)
+- `supplier-service/README.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+- `npm install` fails with `ERESOLVE` (a peer conflict between `vitest@5.0.2` and `@types/node@20` that was already in the repo), so the new packages were installed with `--force`; `npm ci` fails for the same reason. `--legacy-peer-deps` was tried and broke `vite`, so it was not used.
+- `compose.photo-store.yaml` now pulls `quay.io/minio/minio` and `quay.io/minio/mc` because the Docker Hub images failed to pull in this environment; the images are not version-pinned.
+- Task 5 changed `invalid()` so single-field failures carry the specific message (for example the 24/7 hint) in `message`, with the generic text kept for multi-issue errors.
+- Task 3 added the two new methods to the `fakeService` in the Phase 1 route test so it still type-checks.
+- The transaction helper swallows a failed `rollback()` so it cannot mask the original error.
+- Two of the plan's test helpers had bugs (a reused `Response` body; a `fetch` stub outside its `describe`) and were fixed in the tests only.
+- The plan's 12 choices (accepted by the team, with choice 8 revised) are implemented as written; the lookup create `201` and delete body `{ "deleted": true, "id": … }` are among them.
+- Still open: the cloud objects of photos replaced on reactivation are not deleted (Phase 4), and MinIO test objects created during manual checks were left in the dev bucket.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-09-30 — Supplier Service: Move Tests into a test/ Folder
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction in chat (no design decision involved).
+
+**Prompts (exact):**
+> make a new "test" folder within supplier service and add subfolders mirroring that in the src folder, and move all test cases from src into test
+
+**Key responses:**
+Moved all 26 `*.test.ts` files from `supplier-service/src/` to `supplier-service/test/`, keeping the same subfolders (`business`, `db`, `idempotency`, `middleware`, `persistence`, `routes`, `storage`, `utils`, `validation`, plus `app.integration.test.ts` at the top), using `git mv` and rewriting each file's relative imports; no test logic was changed. Also moved two test-only helpers that lived in `src/storage/` (`minioTestStorage.ts` and `inMemoryPhotoStorage.ts`) into `test/storage/` so no test code remains under `src/`. Config changes: `tsconfig.json` now includes `test/` (and no longer sets `rootDir`); a new `tsconfig.build.json` builds `src/` only and `npm run build` uses it; `vitest.config.ts` and `vitest.minio.config.ts` now look under `test/`. Verification: `npx tsc --noEmit` and `npx tsc -p tsconfig.build.json --noEmit` clean; `npx vitest run` — 24 files, 204 tests passing; `npm run test:minio` — 2 files, 8 tests passing; `npm run lint` clean. The default run count dropped from 26 files / 210 tests to 24 / 204 because the old pattern also ran two stale compiled copies of tests in `dist/` (`dist/middleware/errorHandler.test.js`, `dist/utils/time.test.js`); the new `test/**` include no longer picks them up. The Phase 2 and Phase 3 plan documents still refer to the old `src/...test.ts` paths and were not edited.
+
+**Files:**
+- `supplier-service/test/**` (26 test files and 2 helpers moved from `supplier-service/src/**`, imports updated; listed by `git log --follow`)
+- `supplier-service/tsconfig.json` (modified)
+- `supplier-service/tsconfig.build.json` (created)
+- `supplier-service/package.json` (modified; no header possible — `build` script)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/vitest.minio.config.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The two helpers were moved as well, which goes slightly beyond "test cases". A `git stash -u` used during a comparison briefly stashed the untracked `docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md`; it was restored immediately with `git stash pop` and is unchanged.
+
+**What I kept/changed/rejected:**
+
 **Author review:**

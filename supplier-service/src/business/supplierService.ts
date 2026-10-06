@@ -8,17 +8,27 @@
  *        rows matching the other filters) is an implementation choice listed in the Phase 1 plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): generalised list/detail assembly and
+ *        added the admin list/detail workflows per Phase 2 plan Task 3 (Arch §7). No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type {
+  AdminSupplierRow,
   CategoryLinkRow,
   HourRow,
+  ListCriteria,
+  ListFilter,
   PhotoRow,
   SupplierRepository,
   SupplierRow,
 } from '../persistence/supplierRepository.js';
 import type {
+  AdminSupplierDetail,
+  AdminSupplierSummary,
   CategoryOption,
   LocationOption,
+  Paginated,
   PaginatedSuppliers,
   SupplierDetail,
   SupplierSummary,
@@ -37,12 +47,18 @@ export interface ListParams {
   sortOrder: 'A-Z' | 'Z-A';
 }
 
-interface Assembled {
+interface Assembled<R extends SupplierRow> {
+  row: R;
   summary: SupplierSummary;
   hours: HourRow[];
 }
 
-function envelope(page: number, total: number, data: SupplierSummary[]): PaginatedSuppliers {
+interface PageSource<R extends SupplierRow> {
+  page(filter: ListFilter): Promise<{ rows: R[]; total: number }>;
+  all(criteria: ListCriteria): Promise<R[]>;
+}
+
+function envelope<T>(page: number, total: number, data: T[]): Paginated<T> {
   return {
     metadata: {
       totalRecords: total,
@@ -58,7 +74,7 @@ export function createSupplierService(
   repo: SupplierRepository,
   clock: () => Date = () => new Date(),
 ) {
-  async function assemble(rows: SupplierRow[]): Promise<Assembled[]> {
+  async function assemble<R extends SupplierRow>(rows: R[]): Promise<Assembled<R>[]> {
     if (rows.length === 0) return [];
 
     const ids = rows.map((row) => row.supplierId);
@@ -69,6 +85,7 @@ export function createSupplierService(
     return rows.map((row) => {
       const ownHours = hours.filter((hour) => hour.supplierId === row.supplierId);
       return {
+        row,
         hours: ownHours,
         summary: {
           id: row.supplierId,
@@ -93,28 +110,51 @@ export function createSupplierService(
     });
   }
 
+  async function listPage<R extends SupplierRow, S>(
+    params: ListParams,
+    source: PageSource<R>,
+    decorate: (item: Assembled<R>) => S,
+  ): Promise<Paginated<S>> {
+    const criteria = {
+      search: params.search,
+      locationId: params.locationId,
+      categoryId: params.categoryId,
+      sortOrder: params.sortOrder,
+    };
+    const offset = (params.page - 1) * PAGE_SIZE;
+
+    if (params.isOpen === undefined) {
+      const { rows, total } = await source.page({ ...criteria, limit: PAGE_SIZE, offset });
+      const assembled = await assemble(rows);
+      return envelope(params.page, total, assembled.map(decorate));
+    }
+
+    // isOpen is computed, not stored, so filter the whole matching set before cutting the page.
+    const all = await assemble(await source.all(criteria));
+    const matching = all.filter((item) => item.summary.isOpen === params.isOpen);
+    return envelope(params.page, matching.length, matching.slice(offset, offset + PAGE_SIZE).map(decorate));
+  }
+
+  function toDetail(item: Assembled<SupplierRow>): SupplierDetail {
+    return {
+      ...item.summary,
+      desc: item.row.desc,
+      openingHours: item.hours
+        .map((hour) => ({ day: hour.dayOfWeek, open: hour.open, close: hour.close }))
+        .sort((a, b) => a.day - b.day),
+    };
+  }
+
   return {
-    async listSuppliers(params: ListParams): Promise<PaginatedSuppliers> {
-      const criteria = {
-        search: params.search,
-        locationId: params.locationId,
-        categoryId: params.categoryId,
-        sortOrder: params.sortOrder,
-      };
-      const offset = (params.page - 1) * PAGE_SIZE;
-
-      if (params.isOpen === undefined) {
-        const { rows, total } = await repo.findVisiblePage({ ...criteria, limit: PAGE_SIZE, offset });
-        const assembled = await assemble(rows);
-        return envelope(params.page, total, assembled.map((item) => item.summary));
-      }
-
-      // isOpen is computed, not stored, so filter the whole matching set before cutting the page.
-      const all = await assemble(await repo.findAllVisible(criteria));
-      const matching = all
-        .map((item) => item.summary)
-        .filter((summary) => summary.isOpen === params.isOpen);
-      return envelope(params.page, matching.length, matching.slice(offset, offset + PAGE_SIZE));
+    listSuppliers(params: ListParams): Promise<PaginatedSuppliers> {
+      return listPage(
+        params,
+        {
+          page: (filter) => repo.findVisiblePage(filter),
+          all: (criteria) => repo.findAllVisible(criteria),
+        },
+        (item) => item.summary,
+      );
     },
 
     async getSupplier(supplierId: number): Promise<SupplierDetail> {
@@ -126,13 +166,37 @@ export function createSupplierService(
       if (assembled === undefined) {
         throw new AppError(404, 'Not Found', 'Supplier not found.');
       }
+      return toDetail(assembled);
+    },
 
+    listAdminSuppliers(params: ListParams): Promise<Paginated<AdminSupplierSummary>> {
+      return listPage<AdminSupplierRow, AdminSupplierSummary>(
+        params,
+        {
+          page: (filter) => repo.findAdminPage(filter),
+          all: (criteria) => repo.findAllAdmin(criteria),
+        },
+        (item) => ({ ...item.summary, isActive: item.row.isActive, isDeleted: item.row.isDeleted }),
+      );
+    },
+
+    async getAdminSupplier(supplierId: number): Promise<AdminSupplierDetail> {
+      const row = await repo.findAdminById(supplierId);
+      if (row === null) {
+        throw new AppError(404, 'Not Found', 'Supplier not found.');
+      }
+      const [assembled] = await assemble([row]);
+      if (assembled === undefined) {
+        throw new AppError(404, 'Not Found', 'Supplier not found.');
+      }
       return {
-        ...assembled.summary,
-        desc: row.desc,
-        openingHours: assembled.hours
-          .map((hour) => ({ day: hour.dayOfWeek, open: hour.open, close: hour.close }))
-          .sort((a, b) => a.day - b.day),
+        ...toDetail(assembled),
+        isActive: row.isActive,
+        isDeleted: row.isDeleted,
+        createdOn: row.createdOn,
+        createdBy: row.createdBy,
+        updatedOn: row.updatedOn,
+        version: row.version,
       };
     },
 

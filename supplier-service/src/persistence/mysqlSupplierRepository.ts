@@ -7,9 +7,14 @@
  *        paging (§7.2). No requirements, architecture, schema, or API decisions were made by the AI
  *        tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added the admin read queries (no
+ *        visibility filter) per Phase 2 plan Task 3. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import type {
+  AdminSupplierRow,
   CategoryLinkRow,
   CategoryRow,
   HourRow,
@@ -39,17 +44,32 @@ const SUPPLIER_FROM = `
   JOIN supplier_locations l ON l.location_id = s.location_id
   JOIN faculties f ON f.faculty_id = l.faculty_id`;
 
+interface AdminDbRow extends SupplierDbRow {
+  is_active: number;
+  is_deleted: number;
+  created_on: string;
+  created_by: string;
+  updated_on: string;
+  version: number;
+}
+
+// created_on / updated_on are stored as Singapore wall-clock time (Arch §6.2).
+const ADMIN_COLUMNS = `${SUPPLIER_COLUMNS},
+  s.is_active, s.is_deleted, s.created_by, s.version,
+  DATE_FORMAT(s.created_on, '%Y-%m-%dT%H:%i:%s+08:00') AS created_on,
+  DATE_FORMAT(s.updated_on, '%Y-%m-%dT%H:%i:%s+08:00') AS updated_on`;
+
 const VISIBLE = 's.is_deleted = FALSE AND s.is_active = TRUE';
 
 function escapeLike(text: string): string {
   return text.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
-function buildWhere(filter: Pick<ListFilter, 'search' | 'locationId' | 'categoryId'>): {
-  where: string;
-  params: Array<string | number>;
-} {
-  const conditions = [VISIBLE];
+function buildWhere(
+  filter: Pick<ListFilter, 'search' | 'locationId' | 'categoryId'>,
+  visibleOnly = true,
+): { where: string; params: Array<string | number> } {
+  const conditions = visibleOnly ? [VISIBLE] : ['1 = 1'];
   const params: Array<string | number> = [];
 
   if (filter.locationId !== undefined) {
@@ -87,6 +107,18 @@ function toSupplierRow(row: SupplierDbRow): SupplierRow {
     location: row.location,
     faculty: row.faculty,
     level: Number(row.level),
+  };
+}
+
+function toAdminRow(row: AdminDbRow): AdminSupplierRow {
+  return {
+    ...toSupplierRow(row),
+    isActive: Boolean(row.is_active),
+    isDeleted: Boolean(row.is_deleted),
+    createdOn: row.created_on,
+    createdBy: row.created_by,
+    updatedOn: row.updated_on,
+    version: Number(row.version),
   };
 }
 
@@ -132,6 +164,43 @@ export function createMysqlSupplierRepository(pool: Pool): SupplierRepository {
       );
       const row = rows[0];
       return row === undefined ? null : toSupplierRow(row);
+    },
+
+    async findAdminPage(filter) {
+      const { where, params } = buildWhere(filter, false);
+      const direction = filter.sortOrder === 'Z-A' ? 'DESC' : 'ASC';
+      const countPromise = pool.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total ${SUPPLIER_FROM} WHERE ${where}`,
+        params,
+      );
+      const pagePromise = pool.query<AdminDbRow[]>(
+        `SELECT ${ADMIN_COLUMNS} ${SUPPLIER_FROM} WHERE ${where}
+         ORDER BY s.supplier_name ${direction}, s.supplier_id ASC
+         LIMIT ? OFFSET ?`,
+        [...params, filter.limit, filter.offset],
+      );
+      const [[countRows], [pageRows]] = await Promise.all([countPromise, pagePromise]);
+      return { rows: pageRows.map(toAdminRow), total: Number(countRows[0]?.total ?? 0) };
+    },
+
+    async findAllAdmin(criteria) {
+      const { where, params } = buildWhere(criteria, false);
+      const direction = criteria.sortOrder === 'Z-A' ? 'DESC' : 'ASC';
+      const [rows] = await pool.query<AdminDbRow[]>(
+        `SELECT ${ADMIN_COLUMNS} ${SUPPLIER_FROM} WHERE ${where}
+         ORDER BY s.supplier_name ${direction}, s.supplier_id ASC`,
+        params,
+      );
+      return rows.map(toAdminRow);
+    },
+
+    async findAdminById(supplierId) {
+      const [rows] = await pool.query<AdminDbRow[]>(
+        `SELECT ${ADMIN_COLUMNS} ${SUPPLIER_FROM} WHERE s.supplier_id = ?`,
+        [supplierId],
+      );
+      const row = rows[0];
+      return row === undefined ? null : toAdminRow(row);
     },
 
     async findCategoryLinks(supplierIds): Promise<CategoryLinkRow[]> {

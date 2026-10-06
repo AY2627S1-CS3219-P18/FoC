@@ -9,9 +9,13 @@
  *        and added tests for the reserved day 8 (open 24/7). No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/business/isOpen.test.ts to test/business/isOpen.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it } from 'vitest';
-import { computeIsOpen } from './isOpen.js';
+import { computeIsOpen } from '../../src/business/isOpen.js';
 
 const at = (iso: string) => new Date(iso);
 const monday9to18 = [{ dayOfWeek: 1, open: '09:00', close: '18:00' }];

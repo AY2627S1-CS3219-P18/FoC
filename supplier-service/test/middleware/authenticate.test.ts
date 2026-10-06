@@ -5,12 +5,16 @@
  *        token, valid token, User Service unreachable). No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/middleware/authenticate.test.ts to test/middleware/authenticate.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { errorHandler } from './errorHandler.js';
-import { authenticate } from './authenticate.js';
+import { errorHandler } from '../../src/middleware/errorHandler.js';
+import { authenticate } from '../../src/middleware/authenticate.js';
 
 function buildApp(): express.Express {
   const app = express();

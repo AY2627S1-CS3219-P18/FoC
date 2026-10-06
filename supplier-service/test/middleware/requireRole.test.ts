@@ -4,12 +4,16 @@
  * Scope: Generated unit tests for the role-guard middleware from the Phase 0 plan. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/middleware/requireRole.test.ts to test/middleware/requireRole.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { errorHandler } from './errorHandler.js';
-import { requireRole } from './requireRole.js';
+import { errorHandler } from '../../src/middleware/errorHandler.js';
+import { requireRole } from '../../src/middleware/requireRole.js';
 
 function buildApp(userRole: string | undefined, ...allowed: string[]): express.Express {
   const app = express();

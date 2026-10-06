@@ -4,12 +4,16 @@
  * Scope: Generated unit tests for the 30 req/min/IP rate limiter (SupplierServiceSpec.md, "Phase 0 — Foundations").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/middleware/rateLimit.test.ts to test/middleware/rateLimit.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { errorHandler } from './errorHandler.js';
-import { createRateLimiter } from './rateLimit.js';
+import { errorHandler } from '../../src/middleware/errorHandler.js';
+import { createRateLimiter } from '../../src/middleware/rateLimit.js';
 
 function buildApp(): express.Express {
   const app = express();

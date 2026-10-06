@@ -6,6 +6,9 @@
  *        §7.1.1. The open questions on `limit`, defaults and edges are recorded in the Phase 1 plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): allowed 'body' as a parseOrThrow location per Phase 2 plan
+ *        Task 4. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { z } from 'zod';
 import { AppError } from '../utils/AppError.js';
@@ -36,7 +39,7 @@ export const idParamSchema = z.object({ id: positiveInt });
 export function parseOrThrow<S extends z.ZodTypeAny>(
   schema: S,
   input: unknown,
-  location: 'query' | 'path',
+  location: 'query' | 'path' | 'body',
 ): z.infer<S> {
   const result = schema.safeParse(input);
   if (result.success) {

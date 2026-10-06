@@ -4,11 +4,15 @@
  * Scope: Generated Phase0 Task6 tests for supplier error response envelopes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/middleware/errorHandler.test.ts to test/middleware/errorHandler.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { AppError } from '../utils/AppError.js';
-import { errorHandler } from './errorHandler.js';
+import { AppError } from '../../src/utils/AppError.js';
+import { errorHandler } from '../../src/middleware/errorHandler.js';
 
 function responseDouble() {
   const res = {

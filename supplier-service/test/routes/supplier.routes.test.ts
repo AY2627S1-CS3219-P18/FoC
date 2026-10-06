@@ -5,14 +5,22 @@
  *        §7.1, §7.2): role acceptance, validation errors, 404 mapping, and static-before-:id route
  *        order. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added the two admin methods to the fake
+ *        service so it still matches the SupplierService type (Phase 2 plan Task 3). No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/routes/supplier.routes.test.ts to test/routes/supplier.routes.test.ts and updated
+ *        the relative imports; no test logic changed. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import type { SupplierService } from '../business/supplierService.js';
-import { errorHandler } from '../middleware/errorHandler.js';
-import { AppError } from '../utils/AppError.js';
-import { createSupplierRouter } from './supplier.routes.js';
+import type { SupplierService } from '../../src/business/supplierService.js';
+import { errorHandler } from '../../src/middleware/errorHandler.js';
+import { AppError } from '../../src/utils/AppError.js';
+import { createSupplierRouter } from '../../src/routes/supplier.routes.js';
 
 function fakeService(): { [K in keyof SupplierService]: ReturnType<typeof vi.fn> } {
   return {
@@ -21,6 +29,8 @@ function fakeService(): { [K in keyof SupplierService]: ReturnType<typeof vi.fn>
       data: [],
     }),
     getSupplier: vi.fn().mockResolvedValue({ id: 101 }),
+    listAdminSuppliers: vi.fn(),
+    getAdminSupplier: vi.fn(),
     listLocations: vi.fn().mockResolvedValue({ locations: [] }),
     listCategories: vi.fn().mockResolvedValue({ categories: [] }),
   };

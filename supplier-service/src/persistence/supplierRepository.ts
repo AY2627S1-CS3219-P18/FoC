@@ -10,6 +10,10 @@
  *        1–7 plus reserved-8 convention (SupplierServiceArchitecture.md §6.2). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added AdminSupplierRow and the admin
+ *        read operations per Phase 2 plan Task 3 (Arch §7). No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export interface SupplierRow {
@@ -20,6 +24,15 @@ export interface SupplierRow {
   location: string;
   faculty: string;
   level: number;
+}
+
+export interface AdminSupplierRow extends SupplierRow {
+  isActive: boolean;
+  isDeleted: boolean;
+  createdOn: string; // 'YYYY-MM-DDTHH:MM:SS+08:00'
+  createdBy: string;
+  updatedOn: string;
+  version: number;
 }
 
 export interface CategoryLinkRow {
@@ -75,6 +88,10 @@ export interface SupplierRepository {
   findAllVisible(criteria: ListCriteria): Promise<SupplierRow[]>;
   /** Same visibility rule; null when the id is missing, deleted, or inactive. */
   findVisibleById(supplierId: number): Promise<SupplierRow | null>;
+  /** Admin reads: no visibility filter (Arch §7). */
+  findAdminPage(filter: ListFilter): Promise<{ rows: AdminSupplierRow[]; total: number }>;
+  findAllAdmin(criteria: ListCriteria): Promise<AdminSupplierRow[]>;
+  findAdminById(supplierId: number): Promise<AdminSupplierRow | null>;
   findCategoryLinks(supplierIds: number[]): Promise<CategoryLinkRow[]>;
   findHours(supplierIds: number[]): Promise<HourRow[]>;
   findPhotos(supplierIds: number[]): Promise<PhotoRow[]>;
