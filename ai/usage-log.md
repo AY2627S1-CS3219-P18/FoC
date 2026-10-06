@@ -1370,3 +1370,38 @@ None.
 I kept all changes
 
 **Author review:**
+tng wen xi
+
+## 2026-10-06 — Order-service pickup endpoint review
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** debug, explain
+**Scope:** Debugging, Refactor/Docs
+**Governing decision:** Existing order-service transition rules in `order-service/src/domain/order-status.ts` and service result contract in `order-service/src/services/orders.service.ts`.
+
+**Prompts (exact):**
+
+> i just implemented this. help me check for code quality or any bugs. also update ai usage log
+
+**Key responses:**
+Reviewed the pickup controller, route, transition service, error definitions, and existing tests. Found that the controller returns HTTP 500 for all transition failures, including `ORDER_NOT_FOUND`, `FORBIDDEN`, `INVALID_TRANSITION`, and `ORDER_CONFLICT`; these should be mapped to the team-approved client/error statuses before release. Found no controller-level tests for `POST /orders/:id/pickup`. TypeScript typecheck, lint, and the full order-service test suite passed: 5 test files and 263 tests.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.ts` (reviewed)
+- `order-service/src/routes/orders.routes.ts` (reviewed)
+- `order-service/src/services/orders.service.ts` (reviewed)
+- `order-service/src/domain/order-status.ts` (reviewed)
+- `order-service/src/constants/errors.ts` (reviewed)
+- `order-service/src/controllers/orders.controller.spec.ts` (reviewed; no pickup coverage found)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+The correct HTTP mapping for pickup transition errors is an API decision not recorded in the reviewed files; the team should decide and document it before implementation.
+
+**What I kept/changed/rejected:**
+No production code changes; findings were reported for team decision.
+
+**Author review:**
+tng wen xi
