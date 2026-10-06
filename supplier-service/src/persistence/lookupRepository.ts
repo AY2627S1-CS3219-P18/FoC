@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
  * Scope: Implemented the lookup-table persistence interface per Phase 2 plan Task 4 (Arch §6.4, §7).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 export interface FacultyRecord {
   faculty_id: number;
