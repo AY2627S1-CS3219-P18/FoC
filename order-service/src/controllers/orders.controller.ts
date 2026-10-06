@@ -78,6 +78,11 @@ export const transitionOrder =
       actorId,
     );
 
+    // Implement kafka to emit status-change event
+
+    // TODO: If transitioning to complete, need to transfer credits to courier
+    // (implement after credit service endpoint is done)
+
     if (response.ok) {
       res.status(200).json(response);
     } else {
