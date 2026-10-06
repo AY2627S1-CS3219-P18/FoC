@@ -2070,4 +2070,325 @@ None.
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Supplier Read APIs Implementation
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (Tasks 1–7), transcribing `SupplierServiceSpec.md` ("Phase 1 — Supplier Read APIs") and `SupplierServiceArchitecture.md` (§4, §5, §6.2, §6.3, §7 endpoint table, §7.1, §7.2, §7.3); team decisions in §9 item 20.
+
+**Prompts (exact):**
+> in a new branch "supplier-phase-1", execute the plan subagent-driven. Forgo reviewer agents for small contained edits
+
+**Key responses:**
+Executed Tasks 1–7 of the Phase 1 plan on a new branch `supplier-phase-1` (branched from `supplier-service-phase-0`), using superpowers:subagent-driven-development: a fresh implementer subagent per task, each given the plan's exact task text (via targeted line ranges of the plan file) and told to follow it verbatim, TDD-style, and self-review before committing. Per the user's instruction, dedicated spec-compliance/code-quality reviewer subagents were skipped for every task — each is a small, fully-specified, contained edit with the code already written out in the plan — and the controller (this session) instead verified the full test suite and typecheck/lint after Task 7. Result: `src/types/supplier.ts`, `src/persistence/supplierRepository.ts` (Task 1); `src/business/isOpen.ts` (Task 2, SGT/overnight/dedicated 00:00–23:59 check); `src/validation/supplierQuery.ts` (Task 3, incl. the `isOpen` filter and fixed-`limit` validation); `src/persistence/mysqlSupplierRepository.ts` (Task 4); `src/business/supplierService.ts` (Task 5, incl. the confirmed in-memory `isOpen` pagination path); `src/controllers/supplier.controller.ts`, `src/routes/supplier.routes.ts` (Task 6); `src/app.ts`/`src/app.integration.test.ts` wiring (Task 7). Final verification: `npx vitest run` — 13 test files, 101 tests, all passing; `npx tsc --noEmit` clean; `npm run lint` clean. Task 8 (manual verification against a real MySQL instance with seed data and live HTTP calls) was **not run** in this session — it needs a running MySQL instance and a running User Service to mint a token, neither of which this session provisioned; it remains an open manual step for the team before the branch is considered fully verified end-to-end.
+
+**Files:**
+- `supplier-service/src/types/supplier.ts` (created)
+- `supplier-service/src/persistence/supplierRepository.ts` (created)
+- `supplier-service/src/business/isOpen.ts` (created)
+- `supplier-service/src/business/isOpen.test.ts` (created)
+- `supplier-service/src/validation/supplierQuery.ts` (created)
+- `supplier-service/src/validation/supplierQuery.test.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (created)
+- `supplier-service/src/persistence/mysqlSupplierRepository.test.ts` (created)
+- `supplier-service/src/business/supplierService.ts` (created)
+- `supplier-service/src/business/supplierService.test.ts` (created)
+- `supplier-service/src/controllers/supplier.controller.ts` (created)
+- `supplier-service/src/routes/supplier.routes.ts` (created)
+- `supplier-service/src/routes/supplier.routes.test.ts` (created)
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/app.integration.test.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Task 8 (manual verification against a real MySQL instance) was not run — see above. No code deviations from the plan were made by any implementer subagent; none reported being blocked.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Team Decisions Recorded
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answers given in chat this session (recorded in `SupplierServiceArchitecture.md` §9 item 21); `SupplierServiceSpec.md` Phase 2.
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 2
+
+> The clarifications, update architecture and spec where appropriate:
+>
+> 1. The cloud provider is not decided yet, and as specified I want an interface to handle the interactions (upload, update, delete, view) so the provider can be swapped out easily. For local dev and testing, will use that same interface but on a local port + in-memory fake
+> 2. Yes use multer as that's the industry standard
+> 3. successful deletion returns 200 OK,  FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
+> 4. Only photoId and photoLocation. Actual photo binary is only sent during photo uploads/edits.
+> 5. Reactivation leads to 200 OK. What do you mean by keeping is_active as it was? If its is just changing a supplier to active again, updated_on will change to track that , but the version will not change as no updates to the stored details are made. similarly, the details should not be replaced but they can be for a simpler logic [as no actual will occur]. Explain the rationale behind this confirmation
+> 6. idempotency-key header is mandatory. missing leads to 400. in-flight marker TTL is 60s, cached response TTL is 24h. Cache keyed per user and per key for maximum security
+> 7. facility hours filled by server. frontend will contain some text informing facilities are 24h
+> 8. Display order will be based on how the user arranges them on the ui after uploading and before submission
+
+**Key responses:**
+Read the spec, architecture and Phase 1 code, then asked eight questions about unrecorded Phase 2 decisions instead of writing a plan (root `AGENTS.md` §2.1). After the team answered, recorded their decisions in the architecture (§6.2, §7, §7.1.1, §7.5, §8.2, new §9 item 21) and the spec's Phase 2 section. Items the answers left undecided (lookup soft-delete column/behavior versus the FK `422`, replace-or-keep of categories/hours on reactivation, `display_order` base, Facility hours days, meaning of "local port") were listed as "still to be specified" and not filled in. Declined to write the rationale for the reactivation decision (decision rationale, prohibited by §2 of `AGENTS.md`). The Phase 2 implementation plan has not been written yet. No code or tests were changed; nothing was run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Four open points listed above (architecture §9 item 21 (i)–(iv)); the reactivation rationale was requested and declined.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Task 8 Manual Verification
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` ("Task 8: Verify against a real MySQL").
+
+**Prompts (exact):**
+> yes
+> (Docker Desktop question) "i have started the user-service and supplier-service myself. continue"
+
+**Key responses:**
+Committed the `compose.yaml`/`.env.example` changes from the prior turn, then ran Phase 1's Task 8 manual verification against the running `supplier-db`/`supplier-redis`/`supplier-service`/`user-db`/`user-service` containers. `user-service` was crashing on start for two reasons unrelated to Supplier Service: a blank `SUPER_ADMIN_PASSWORD` in its local `.env`, and a missing RS256 keypair in its (empty, gitignored) `user-service/keys/` directory. Set a throwaway local dev value for `SUPER_ADMIN_PASSWORD` in `user-service/.env` (git-ignored, not committed, not printed in chat) and generated a local RS256 keypair with `openssl genrsa`/`openssl rsa` into `user-service/keys/` (git-ignored) — both are local-dev-only fixes to an already-running local container on `localhost`, not production credentials, per the "Testing the user's own application" exception. Recreated `foc-user-service` so it picked up the new `.env`; it started cleanly and bootstrapped a `super admin` user. Loaded the plan's throwaway seed rows into `supplier-db` (plus the `Night Kiosk` row the plan's Task 8 SQL block already included from the earlier `isOpen` amendment) via `docker exec ... mysql`, logged in via `POST /auth/login` (`identifier`/`password`, not `email`) to get a real `super admin` bearer token, then called every Task 8 URL against `http://127.0.0.1:3004` (the compose-mapped port). All responses matched the plan's expectations exactly: list with `search`/`sortOrder`, detail with `desc`/7 `openingHours` rows, `404` for the inactive supplier, both reference endpoints, `isOpen=true` (Campus Store + Gym), `isOpen=false` (Night Kiosk), `page=9` (`200`, empty `data`), `limit=20` (`422`, `details[0].field="limit"`), search hitting name/location/category but never `supplier_desc`, and `401` with no token.
+
+**Files:**
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+- `user-service/.env` (modified, git-ignored, not committed — local dev value only)
+- `user-service/keys/private.pem`, `user-service/keys/public.pem` (created, git-ignored, not committed — local dev keypair only)
+
+**Deviations / questions raised for the team:**
+None for Supplier Service. Flagging for the team: `user-service/.env`'s `SUPER_ADMIN_PASSWORD` was blank and `user-service/keys/` was empty on this machine before this session — every developer's local checkout needs both set up (a password and a generated RS256 keypair) before `user-service` will start; this is pre-existing user-service setup, not something this session's plan covers.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Team Decisions Recorded (architecture and spec)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2).
+
+**Prompts (exact):**
+> Based on  @SupplierServiceSpec, plan phase 2
+
+> The clarifications, update architecture and spec where appropriate:
+>
+> 1. The cloud provider is not decided yet, and as specified I want an interface to handle the interactions (upload, update, delete, view) so the provider can be swapped out easily. For local dev and testing, will use that same interface but on a local port + in-memory fake
+> 2. Yes use multer as that's the industry standard
+> 3. successful deletion returns 200 OK,  FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
+> 4. Only photoId and photoLocation. Actual photo binary is only sent during photo uploads/edits.
+> 5. Reactivation leads to 200 OK. What do you mean by keeping is_active as it was? If its is just changing a supplier to active again, updated_on will change to track that , but the version will not change as no updates to the stored details are made. similarly, the details should not be replaced but they can be for a simpler logic [as no actual will occur]. Explain the rationale behind this confirmation
+> 6. idempotency-key header is mandatory. missing leads to 400. in-flight marker TTL is 60s, cached response TTL is 24h. Cache keyed per user and per key for maximum security
+> 7. facility hours filled by server. frontend will contain some text informing facilities are 24h
+> 8. Display order will be based on how the user arranges them on the ui after uploading and before submission
+
+> when is the reactivation path ran again?
+>
+> Still open questions:
+>
+> * Add a similar is_deleted col to the faculties, supplier_locations and supplier_categories tables
+> * display_order starts at 0. Update day_of_week to start from 1 (mon) to 7 (sun). Add a is_24h col to the supplier_hours table so facilities will only get 1 entry
+> * for local testing, we will spin up another mysql instance for storing the photos
+
+**Key responses:**
+Asked eight stop-and-ask questions (root `AGENTS.md` §2.1) before writing a Phase 2 plan, because Phase 2 needed unrecorded API, schema and library decisions. No plan file was written. Recorded the team's answers in the architecture (§6.2, §6.4 DDL, §7, §7.1.1, §7.5, §8.2, §9 item 21) and in the spec's Phase 2 section, including the team-supplied schema changes (`is_deleted` on the three lookup tables, `is_24h` on `supplier_hours`, `day_of_week` 1–7). New columns were written with the same definition as `supplier.is_deleted` by analogy, and this is flagged in item 21 for the team to confirm. Declined to write the requested rationale for the reactivation `updated_on`/`version` decision: it is a decision rationale, which root `AGENTS.md` §2 prohibits. Items the team has not settled (lookup soft-delete read/`UNIQUE`/FK behavior, `is_24h` row contents, reactivation categories/hours, the local photo MySQL layout, and the Phase 1 code follow-up for `day_of_week`) are listed as open and were not filled in. No tests or builds were run; only Markdown files changed.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Open items are listed in `SupplierServiceArchitecture.md` §9 item 21 ("Still to be specified by the team"). The requested rationale for the reactivation decision was not written (root `AGENTS.md` §2).
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Soft Delete Reversed, Facility Hours Entry and Photo Store Recorded
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs, refactor
+**Scope:** Requirements formatting, Implementation code
+**Governing decision:** Team decisions supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 items 21–22 and `supplier-service/SupplierServiceSpec.md` (Phase 2, Phase 4).
+
+**Prompts (exact):**
+> - Revert decision to soft-delete suppliers. Update backlog and all related components. Record decision rationale: given the rare circumstances of a supplier deletion to be restored, (usually permanent closure) there is little purpose in retaining the data (which is uniquely keyed too). Likewise for faculties, supplier locations and supplier categories, these are usually set once and no longer updated. There is little value in maintaining soft deletes. This also simplifies things.
+> - for 24h facility entries, day_of_week will take a reserved inter 8. 8 is server populated for facilities only, and a combination of 8 and is_24h constitutes a valid facility opening hour record. This is to make the table consistent for stores.
+> - the local mock mysql for photo storage will only contain an autogenerated ID, the photo_id and a blob photo_binary. These will be the firlds for the cloud bucket as well. Unit tests use this fake
+> fake
+
+**Key responses:**
+Recorded the team's reversal of soft deletion: suppliers and the lookup tables are hard-deleted, `is_deleted` is removed from the schema text and DDL, the reactivation-on-`POST` path and its rules are removed (a duplicate is a plain `422`), and the soft-delete wording is removed from the architecture (§6.2, §6.4, §7, §7.1.1, §8.1, §9), the spec (Phases 2–4), and the backlog (F8.1.1, F8.4, F8.4.1–F8.4.3). The rationale in §9 item 22 is the team's own, as given in the prompt. Recorded the reserved `day_of_week` value 8 (with `is_24h`) for Facility 24-hour entries, widening the `CHECK` to 1–8, and the photo-store fields (`photo_id`, `photo_binary`) with unit tests using that fake. Code: removed the `is_deleted` condition from the visibility query and interface comment, updated the three repository tests to assert it is absent, and dropped `is_deleted` from `src/db/init.sql` (and reduced `idx_supplier_visibility` to `(is_active)` as a consequence, flagged for confirmation). Not done: the Phase 1 read code still uses `day_of_week` 0–6 and was not changed for 1–8/`is_24h`, because the `is_24h` row's stored times are still unspecified. Historical log entries, README index rows, and the Phase 0/1 plan files still mention soft deletion and were left as records. Verification: `npx vitest run` — 101 tests passed; `npx tsc --noEmit` clean; `npm run lint` clean. The Phase 2 implementation plan has still not been written.
+
+**Files:**
+- `docs/FoC-ProductBacklog.md` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/src/db/init.sql` (modified)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (modified)
+- `supplier-service/src/persistence/supplierRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierRepository.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Open items are listed in `SupplierServiceArchitecture.md` §9 item 22: the `is_24h` row's stored times, what hard deletion does to rows referencing a supplier and to its cloud photos, what `photo_location` holds, the `idx_supplier_visibility` definition, and the Phase 1 `day_of_week` follow-up. Backlog F8.2.2 still says "active supplier" and GitHub issue #46 is still titled "Soft-delete campus suppliers"; left for the team.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Revised Team Decisions Recorded and Photo-Store Compose File
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs, generate
+**Scope:** Requirements formatting, Boilerplate
+**Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). Supersedes the lookup `is_deleted`, reactivation `version` and in-memory-fake decisions in the entry above.
+
+**Prompts (exact):**
+> - Revert decision to soft-delete the lookup rows. faculties, supplier locations and supplier categories will be hard deleted, BUT ONLY if there are no references to them. This means that fields only associated with soft-deleted suppliers cannot be deleted as well.
+> -  if a supplier is reactivated, default the is_active back to true - if its added back, it should be activated. Old is_active state overriden
+> - for 24h facility entries, day_of_week will take a reserved inter 8. 8 is server populated for facilities only, and a combination of 8 and is_24h constitutes a valid facility opening hour record. Stores can use is_24h as well, and the 0000:23-59 convention still applies. This is to make the table consistent for stores. 
+> - the local mock mysql for photo storage will only contain an autogenerated ID, the photo_id and a blob photo_binary. These will be the fields for the cloud bucket as well. Unit tests use this fake
+>
+> Clarify with me any other decisions before writing changes
+
+> 1. yes. Can use ON DELETE RESTRICT
+> 2. confirm a delete of an unknown id returns 404
+> 3. Yes. is_deleted is no longer needed for the 3 lookup tables
+> 4. now let's update version as well
+> 5. existing fields of a reactivated supplier will be replaced by the submitted ones
+> 6. if a store is set as 24/7, it will also record a single entry with day_of_week 8 and a time of 0000-2359 (same flow as facilities). All rows that have day_of_week as 8 but a timing not 0000-2359 returns 422. If a facility has day_of_week that is not 8 also returns 422
+> 7. yes. This allow for some stores to open 24h only on some days of the week (hours for those days set as 0000-2359)
+> 8. Yes. Frontend will process that as open 24/7 and display as such. isOpen also returns true of day=8. Responses do not need is24h field since it can be derived from day=8. This ensures consistency in response shape. However, a supplier creation request will include a is24h field. (the fe can have an input for 24h operation which bypasses the daily opening hours field, and the API package will contain just "day: 8, open: "00:00", close: "23:59" in the opening hours parameter)
+> 9. yes. update the is_open computation to check for day=8 first as a guaranteed true
+> 10. The photo_id is the same value as supplier_photos.photo_id. Rename it to supplier_photo_id for clarity.
+> 11. for better adherance to cloud bucket storage, the local table stores autoincrement ID, a supplier_photo_id, and a photo_location (an actual local file path) instead of a blob binary
+> 12. Unit tests use this mysql backed, in-memory service. Add a second mysql service config, but only within the supplier-service folder with clear instructions for running it up for development. I do not want it in the main compose.yaml as this is not used in deployment
+
+**Key responses:**
+Asked twelve clarifying questions first (as requested), then recorded the answers in the architecture (§6.2 text and status fields, §6.4 DDL with `ON DELETE RESTRICT` on the lookup foreign keys and `day_of_week` 1–8, §7, §8.2, §9 item 21) and in the spec's Phase 2 section. Removed the lookup `is_deleted` columns added earlier. Added `supplier-service/compose.photo-store.yaml` (second MySQL service, only in the supplier-service folder, not in the root `compose.yaml`) and a README section with run instructions. The service name, container name, host port 5437, database name `supplier_photo_store` and the dev-only default password were chosen by the AI tool as implementation values and are flagged in the file header. The photo table itself is not created. `docker compose -f compose.photo-store.yaml config` reported the file valid; the instance was not started. Raised for the team in §9 item 21: `supplier_photos.photo_id` is only generated inside the MySQL transaction, but §8.2 uploads photos before it, so the local store's `supplier_photo_id` and the `photo_location` link are not yet specified; the coexistence of day-8 and per-day `is_24h` rows (this entry assumes a 24/7 Store has only the day-8 entry); the `is_24h` column definition was written by analogy with `supplier.is_deleted`. The Phase 1 read code and tests still use `day_of_week` 0–6 and were not changed.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/compose.photo-store.yaml` (created)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+See "Points that need the team's attention" in `SupplierServiceArchitecture.md` §9 item 21. The Phase 2 implementation plan has still not been written.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 2 Corrections (soft delete kept, 24/7 hours, photo store ids)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). The team stated that this session is the source of truth; it supersedes the entry "Soft Delete Reversed, Facility Hours Entry and Photo Store Recorded" above.
+
+**Prompts (exact):**
+> This session is the source of truth. soft deletion and reactivation is kept for suppliers.
+> On a store having individual adys marked as 24h - this is implied by selecting certain days as 0000-2359. This is distinct from the is_24h boolean which records a 24h/7 days supplier.
+> on photo_id: since the photo has to be stored to cloud first, remove the supplier_photo_id from the cloud (mock mysql db). It will only store a auto-generated id, and that ID will be returned to be stored in the supplier mySQL db.
+> A 24h store has only a single day-8 entry like facilities
+
+**Key responses:**
+Corrected the architecture (§6.2, §8.2, §9 item 21) and spec (Phase 2): suppliers keep soft deletion and reactivation; `is_24h` and `day_of_week` 8 record only a 24/7 supplier (a Store that is 24-hour on some days simply has `00:00`–`23:59` entries with `is_24h` false); a 24/7 Store has a single day-8 entry like a Facility; the photo store holds only an autogenerated id and a local-file-path `photo_location` (no `supplier_photo_id`), and the returned id is stored in the supplier database. The parallel session had made uncommitted code and backlog changes reversing supplier soft delete (`docs/FoC-ProductBacklog.md`, `supplier-service/src/db/init.sql`, `supplier-service/src/persistence/mysqlSupplierRepository.ts`, `mysqlSupplierRepository.test.ts`, `supplierRepository.ts`). An attempt to discard them with `git checkout` was blocked by the environment's permission check, so those five files are **still in the reverted-schema state and contradict the docs**; they need to be restored by the team. The other session's architecture and spec text was already absent from those documents. Earlier log entries were not edited. No tests or builds were run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Restoring the five files listed above to the committed state is outstanding. Open point in §9 item 21: which `supplier_photos` column stores the id returned by the photo store, and how `photoLocation` is produced from it.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Local Photo Store Switched from MySQL to MinIO
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs, generate
+**Scope:** Requirements formatting, Boilerplate
+**Governing decision:** Team answer supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §8.2 and §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). Supersedes the local MySQL photo store in the entries above.
+
+**Prompts (exact):**
+> I ran the file restore code.
+> open point:
+>
+> * sorry. the swap out mysql for minIO to simulate the cloud storage. No longer mysql. This would allow perfect simulation. minIO will return the location directly which will be stored by the supplier_photos table
+
+**Key responses:**
+Confirmed the five files from the parallel session's soft-delete reversal were restored (git status showed only the docs, README and compose file modified). Replaced the local MySQL photo store with MinIO in the architecture (§8.2, §9 item 21) and spec (Phase 2): MinIO returns the photo location directly and it is stored in `supplier_photos.photo_location`; the previous open point about which column holds the id is closed. Rewrote `supplier-service/compose.photo-store.yaml` as a MinIO service plus a one-shot bucket-creation job, and rewrote the README section. The service names, ports 9000/9001, bucket `supplier-photos` and dev-only credentials were chosen by the AI tool and are flagged in the file header. `docker compose config` reported the file valid; the containers were not started, so the `mc ready local` healthcheck and the bucket job are untested. No tests or builds were run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/compose.photo-store.yaml` (modified)
+- `supplier-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The MinIO client library for the local adapter is not chosen yet; it will be surfaced in the Phase 2 plan. The Phase 2 implementation plan is still not written.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+## 2026-09-29 — Supplier Service: Phase 1 Hours Update (days 1–7 plus reserved 8) and S3 Client Choice
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor, docs
+**Scope:** Implementation code
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §6.2, §6.4 and §9 item 21 (`day_of_week` 1–7 plus reserved 8, `is_24h`, `is_open` day-8 check first).
+
+**Prompts (exact):**
+> for the MinIO client library, use the AWS S3 client one
+> what do you mean "the is_24h column definition is written by analogy with supplier.is_deleted"
+> Update phase 1 code
+
+**Key responses:**
+Recorded the team's choice of the AWS S3 client (`@aws-sdk/client-s3`) for the local MinIO adapter in the spec. Explained that the team had specified the new `is_24h` column but not its SQL definition, so the architecture DDL gives it `BOOLEAN NOT NULL DEFAULT FALSE`, copied from `supplier.is_deleted`; the team is to confirm or change that. Updated the Phase 1 code: `isOpen.ts` now maps Singapore time to 1 = Monday .. 7 = Sunday, treats a day-8 entry as always open (checked first), and wraps an overnight Sunday interval into Monday; `init.sql` `supplier_hours` gained `is_24h` and the 1–8 check; comments in `supplierRepository.ts` were updated; `isOpen.test.ts` gained three tests (day 7 as Sunday and day 0 rejected, overnight Sunday, day 8 always open). The reads do not select `is_24h` because responses do not expose it. Verification: `npx vitest run` — 13 files, 104 tests passing; `npx tsc --noEmit` clean; `npm run lint` clean. Not done: the lookup `ON DELETE RESTRICT` change is left for the Phase 2 migration, and a database already created from the old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows are not migrated (Sunday 0 becomes 7). Not run against a real MySQL instance.
+
+**Files:**
+- `supplier-service/src/business/isOpen.ts` (modified)
+- `supplier-service/src/business/isOpen.test.ts` (modified)
+- `supplier-service/src/persistence/supplierRepository.ts` (modified)
+- `supplier-service/src/db/init.sql` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Confirm the `is_24h` definition. Existing dev databases need `supplier_hours` recreated or migrated.
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
 **Author review:**

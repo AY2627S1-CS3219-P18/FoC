@@ -5,30 +5,55 @@ Scope: Organized the already-decided Supplier Service architecture (SupplierServ
        and the team's existing product backlog / GitHub issues into a phased implementation spec.
        No new requirements, architecture, schema, or API decisions were made by the AI tool; phase
        ordering reflects technical build dependencies only, not sprint prioritization.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied API-gateway/CORS explanation, resolved the
        three previously open questions (uniqueness enforcement, supplier_id stability, is_active vs.
        is_deleted), and added a new open question about soft-deleted rows and the uniqueness
        constraint.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied resolution that recreating a soft-deleted
        supplier's exact name/type/location reactivates and updates the existing row instead of
        inserting a new one; narrowed the remaining open question to the reactivation path's photo
        handling only.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — recorded the team-supplied decision that reactivation-path photos
        replace the existing supplier's photo rows; no open questions remain from this line of
        clarification.
-Author review:
+Author review: Congchen
 Scope: 2026-09-28 update — replaced the `super_admin` role literal with `super admin` (space) per
        the team's resolution of a naming mismatch against the User Service's actual `role_enum`/
        `GET /auth/verify`, discovered after merging `main` into `supplier-service`.
-Author review:
+Author review: Congchen
 Scope: 2026-09-29 update — reflected the team's recorded Phase 1 decisions (see
        SupplierServiceArchitecture.md §9 item 20) in the Phase 1 scope: the `isOpen` filter, the
        enforced `limit`, the `A-Z` default, and the `00:00`–`23:59` all-day check. Tool: Claude Code
        (model: claude-sonnet-5). No decisions were made by the AI tool.
-Author review:
+Author review: Congchen
+Scope: 2026-09-29 update — reflected the team's recorded Phase 2 decisions (see
+       SupplierServiceArchitecture.md §9 item 21) in the Phase 2 scope. Tool: Claude Code
+       (model: claude-sonnet-5). No decisions were made by the AI tool; items the team has not
+       finished deciding are listed under "Still to be specified" and were not filled in. Also
+       recorded the team's schema changes (`is_24h`, 1–7 `day_of_week`).
+Author review: Congchen
+Scope: 2026-09-29 update — reflected the team's revised Phase 2 decisions (see
+       SupplierServiceArchitecture.md §9 item 21): hard delete of unreferenced lookup rows, the
+       reactivation behavior, day-8/`is_24h` hours, the `is24h` create field and the local photo
+       store fields. Tool: Claude Code (model: claude-sonnet-5). No decisions were made by the AI
+       tool.
+Author review: Congchen
+Scope: 2026-09-29 update — reflected the team's corrections (suppliers keep soft deletion and
+       reactivation; `is_24h`/day 8 records only a 24/7 supplier; the photo store holds no
+       `supplier_photo_id`). Tool: Claude Code (model: claude-sonnet-5). No decisions were made by
+       the AI tool.
+Author review: Congchen
+Scope: 2026-09-29 update — local photo storage is now a MinIO instance (not MySQL) returning the
+       photo location directly. Tool: Claude Code (model: claude-sonnet-5). No decisions were made
+       by the AI tool.
+Author review: Congchen
+Scope: 2026-09-29 update — recorded the team's choice of the AWS S3 client for the local MinIO
+       adapter and marked the Phase 1 `day_of_week` follow-up as done. Tool: Claude Code (model:
+       claude-sonnet-5). No decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Implementation Spec
@@ -189,7 +214,42 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
   - Matching row, soft-deleted → reverse the soft delete on that row and apply the submitted fields
     to it as an update, reusing the existing `supplier_id` instead of inserting a new row; any
     submitted photos replace that supplier's existing photo rows entirely rather than being
-    appended alongside them (§6.2).
+    appended alongside them (§6.2). The response is `200 OK`; `is_active` is set to true, the stored
+    fields are replaced by the submitted ones, and `updated_on` and `version` change (§6.2).
+- Request handling and responses (§7, §7.1.1, §7.5, §8.2):
+  - `multer` parses the multipart body.
+  - The create response returns photos as `photoId`/`photoLocation` only.
+  - `Idempotency-Key` is mandatory (`400` if absent), cached in Redis per user and key, with a 60 s
+    in-flight TTL and a 24 h completed-response TTL.
+  - For a Facility the server fills in the `00:00`–`23:59` hours; a Store must supply hours.
+  - Photo `display_order` follows the admin's UI arrangement.
+  - Lookup `DELETE` is a hard delete allowed only for an unreferenced row (references from
+    soft-deleted suppliers count) and returns `200 OK`; an unknown id returns `404`; lookup
+    foreign-key and `UNIQUE` violations return `422`.
+  - Hours: `day` runs 1–7 plus a reserved `8`, which records a supplier open 24/7 and is valid only
+    with `is_24h` true and `00:00`–`23:59` (`is_24h` is true only on day `8`). A Facility gets one
+    server-filled day-`8` entry (any other day is `422`). A 24/7 Store is recorded the same way, as a
+    single day-`8` entry. A Store that is 24-hour on only some days uses `00:00`–`23:59` entries on
+    those days with `is_24h` false. A create request carries `is24h`, with a single day-`8`
+    `openingHours` entry. Responses have no `is24h` field.
+  - `is_open` returns `true` whenever the supplier has a day-`8` entry.
+- Photo storage interface with upload, update, delete, and view operations; for local testing and
+  unit tests a local MinIO instance simulates the cloud object storage. MinIO returns the photo
+  location directly and it is stored in `supplier_photos.photo_location`; business and persistence
+  logic use no provider SDK (§8.2).
+- Schema changes (migrations, §6.4): the lookup foreign keys use `ON DELETE RESTRICT` (no lookup
+  `is_deleted` column); `supplier_hours.day_of_week` becomes 1–8 (8 reserved for 24-hour operation) and
+  `supplier_hours` gains `is_24h` (a supplier open 24/7). Photo `display_order` starts at 0.
+- Phase 1 follow-up (done 2026-09-29): `is_open` now uses `day_of_week` 1–7, checks for a day-`8`
+  entry first, and `init.sql` has `is_24h` and the 1–8 check. Existing databases created from the
+  old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows still need migrating
+  (Sunday 0 becomes 7).
+- Library: the local MinIO adapter uses the AWS S3 client (`@aws-sdk/client-s3`), chosen by the team;
+  MinIO is S3-compatible.
+
+### Points that need the team's attention
+
+- The new `is_24h` column definition was written by analogy with `supplier.is_deleted`.
 
 ### Acceptance criteria
 

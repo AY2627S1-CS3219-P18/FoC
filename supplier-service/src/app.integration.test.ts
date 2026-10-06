@@ -4,6 +4,9 @@
  * Scope: Generated integration tests for the Phase 0 middleware chain from the Phase 0 plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Phase 1 route tests. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,5 +39,20 @@ describe('app (Phase 0 middleware chain)', () => {
   it('does not set any CORS headers (single-origin API gateway, §3)', async () => {
     const res = await request(app).get('/api/v1/__probe');
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('rejects an unauthenticated GET /api/v1/suppliers with 401', async () => {
+    const res = await request(app).get('/api/v1/suppliers');
+    expect(res.status).toBe(401);
+    expect(res.body.status_code).toBe(401);
+  });
+
+  it('routes an authenticated user to the supplier list (empty database rows mocked out)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ user_id: 'u-1', role: 'user' }), { status: 200 }),
+    );
+    const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', 'Bearer good-token');
+    // limit=51 fails validation before any database access, so no MySQL is needed for this test.
+    expect(res.status).toBe(422);
   });
 });
