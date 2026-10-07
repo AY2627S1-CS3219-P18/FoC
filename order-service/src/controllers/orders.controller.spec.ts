@@ -9,6 +9,9 @@
  * Scope (2026-10-04): Updated GET /orders HTTP expectations and test doubles to
  *        match the service result contract and controller failure responses.
  * Author review: tng wen xi
+ * Scope (2026-10-07): Added POST /orders/:id transition controller coverage for
+ *        successful pickup, forbidden actors, and invalid transitions.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -32,11 +35,24 @@ function appWith(
   findMany: (args: {
     where?: { status: string };
   }) => Promise<object[]> = async () => [],
+  orderRequestOverrides: Partial<{
+    create: (args: { data: object }) => Promise<object>;
+    findUnique: (args: { where: { id: string } }) => Promise<object | null>;
+    updateMany: (args: {
+      where: { id: string; version: number };
+      data: object;
+    }) => Promise<{ count: number }>;
+    findUniqueOrThrow: (args: { where: { id: string } }) => Promise<object>;
+  }> = {},
 ) {
   const prisma = {
     orderRequest: {
       create: async ({ data }: { data: object }) => ({ id: 'new', ...data }),
       findMany,
+      findUnique: async () => null,
+      updateMany: async () => ({ count: 1 }),
+      findUniqueOrThrow: async () => ({ id: 'order-1', status: 'picked_up' }),
+      ...orderRequestOverrides,
     },
   } as unknown as PrismaClient;
   const credits: CreditsClient = { reserve, release: async () => {} };
@@ -168,5 +184,87 @@ describe('GET /orders', () => {
       .expect(500);
 
     expect(res.body).toEqual({ ok: false, errors: {} });
+  });
+});
+
+describe('POST /orders/:id/pickup', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  it('200 when the courier is allowed to pick up the order', async () => {
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 1 }),
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            status: 'picked_up',
+            requesterId,
+            courierId,
+            version: 4,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/pickup`)
+      .set('x-user-id', courierId)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      ok: true,
+      order: { id: orderId, status: 'picked_up', courierId },
+    });
+  });
+
+  it('403 when the actor is not allowed to pick up the order', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/pickup`)
+      .set('x-user-id', requesterId)
+      .expect(403, { ok: false, error: 'FORBIDDEN' });
+  });
+
+  it('409 when the requested transition is not valid from the current status', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'open',
+            requesterId,
+            courierId: null,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/deliver`)
+      .set('x-user-id', courierId)
+      .expect(409, { ok: false, error: 'INVALID_TRANSITION' });
   });
 });
