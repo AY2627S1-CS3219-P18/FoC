@@ -7,6 +7,10 @@
  *        the `photoStore` config group per Phase 2 plan Task 1. No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the optional MOCK_DOWNSTREAM_FAILURE
+ *        setting and the `mockDownstreamFailure` config flag per Phase 4 plan Task 13. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from "zod";
@@ -28,6 +32,7 @@ const envSchema = z.object({
   PHOTO_STORE_BUCKET: z.string().min(1).optional(),
   PHOTO_STORE_ACCESS_KEY: z.string().min(1).optional(),
   PHOTO_STORE_SECRET_KEY: z.string().min(1).optional(),
+  MOCK_DOWNSTREAM_FAILURE: z.enum(["true", "false"]).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -60,4 +65,5 @@ export const config = Object.freeze({
     accessKey: values.PHOTO_STORE_ACCESS_KEY,
     secretKey: values.PHOTO_STORE_SECRET_KEY,
   }),
+  mockDownstreamFailure: values.MOCK_DOWNSTREAM_FAILURE === "true",
 });

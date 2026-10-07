@@ -71,6 +71,12 @@ Scope: 2026-09-29 update — recorded the team's confirmation that `supplier_hou
        `BOOLEAN NOT NULL DEFAULT FALSE`. Tool: Claude Code (model: claude-sonnet-5). No decisions
        were made by the AI tool.
 Author review: Congchen
+Scope: 2026-09-30 update — recorded the team's Phase 4 decisions of 2026-09-30 (soft-delete
+       response, transactional `outbox` table, relay and BullMQ worker, reactivation through the
+       edit cycle) in §6.2, §6.4, §7, §8.1, §8.2 and §9 item 22, and updated §9 item 8. Tool: Claude
+       Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
 -->
 
 # Supplier Service Architecture
@@ -233,6 +239,7 @@ tables:
 | `supplier_hours` | Operating-hours data, one row per supplier per day of week | `entry_id`, `supplier_id`, integer `day_of_week` from 1–8 (1 = Monday .. 7 = Sunday, 8 = reserved for a supplier open 24 hours a day, 7 days a week; unique per supplier), `open_time`, `close_time`, `is_24h` |
 | `supplier_photos` | Supplier photo references and display order | Autoincrement `photo_id`, `supplier_id`, text `photo_location`, numerical `display_order` (unique per supplier) |
 | `dead_letter_jobs` | Redis background jobs that exhausted their retries | Autoincrement `id`, `job_id`, `task_name`, `payload`, `error_trace`, `failed_at`, `status` (defaults to `UNRESOLVED`) |
+| `outbox` | Background tasks committed with the supplier write and waiting to be added to the BullMQ queue | Autoincrement `id`, `task_name`, `payload`, `version` (the supplier version) |
 
 The supplier type is either **Store** or **Facility**. A supplier may have multiple categories. The
 supplier's location includes a faculty value as a subcategory of location.
@@ -303,7 +310,8 @@ The supplier status fields have the following meanings:
 
 - `is_active` is an independent visibility toggle set directly by an admin edit; it is unrelated to
   `is_deleted` and is not touched by the soft-delete (`DELETE`) operation, but reactivating a
-  soft-deleted supplier (below) sets it back to true;
+  soft-deleted supplier (below) sets it back to true; `DELETE` also bumps `updated_on` and
+  `version`;
 - `is_deleted` records that a supplier has been soft-deleted via `DELETE`; a soft-deleted supplier is
   hidden regardless of its `is_active` value, so soft-delete has no need to also update `is_active`;
 - `is_open` is calculated for list and detail responses from the current time and opening hours;
@@ -326,16 +334,18 @@ this, `POST /api/v1/admin/suppliers` branches on the application-level pre-check
 
 - no existing row matches the submitted name/type/location — insert a new supplier row as normal;
 - an existing row matches and is *not* soft-deleted — reject as a duplicate (F8.2.2, `422`);
-- an existing row matches and *is* soft-deleted — reverse the soft delete (`is_deleted = FALSE`) on
-  that existing row and apply the submitted fields to it as an update, rather than inserting a new
-  row. This reuses the existing `supplier_id`, preserves any history tied to it, and keeps the
+- an existing row matches and *is* soft-deleted — apply the submitted details and photos to that
+  existing row through the edit cycle and restore `is_deleted = FALSE` and `is_active = TRUE` in the
+  same transaction, rather than inserting a new row. This reuses the existing `supplier_id`, preserves any history tied to it, and keeps the
   `UNIQUE` constraint satisfied without needing to exclude soft-deleted rows from it.
 
-On this reactivation-as-update path, any newly submitted photos replace the reactivated supplier's
-existing photo rows entirely (the prior photo rows are deleted and the submitted ones inserted in
-their place) rather than being appended alongside them. The reactivating `POST` returns `200 OK`.
-Reactivation sets `is_active` to true, overriding its previous value, replaces the supplier's stored
-fields with the submitted ones, and updates `updated_on` and increments `version`.
+On this reactivation-as-update path, newly submitted photos replace the reactivated supplier's
+existing photo rows entirely; if no photos are submitted the existing photos are left as they are.
+The excluded photos' cloud-object cleanup tasks are written to the `outbox` table in the same
+transaction (§8.2). The reactivating `POST` returns `200 OK`. Reactivation sets `is_active` to true,
+overriding its previous value, replaces the supplier's stored fields with the submitted ones, and
+updates `updated_on` and increments `version` once. If anything fails before the commit, the
+supplier stays soft-deleted and unchanged.
 
 The `faculties`, `supplier_locations`, and `supplier_categories` rows are hard deleted by their
 management `DELETE` endpoints (§7), but only when nothing references them. The foreign keys that
@@ -515,6 +525,14 @@ CREATE TABLE dead_letter_jobs (
     PRIMARY KEY (id),
     KEY idx_dead_letter_jobs_status (status)
 );
+
+CREATE TABLE outbox (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    task_name VARCHAR(255) NOT NULL,
+    payload JSON NOT NULL,
+    version BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (id)
+);
 ```
 
 The schema-level relationships are:
@@ -529,9 +547,12 @@ The schema-level relationships are:
 - supplier photos are one-to-many through `supplier_photos.supplier_id`, with display order stored
   on each photo row and unique per `supplier_id`/`display_order` pair; and
 - `supplier.version` is incremented on every successful update and used to detect concurrent edits;
-  and
 - `dead_letter_jobs` is a standalone record of Redis background jobs that exhausted their retries;
-  it has no foreign key to `supplier` since `payload` identifies whatever record the job concerned.
+  it has no foreign key to `supplier` since `payload` identifies whatever record the job concerned;
+  and
+- `outbox` is a standalone table of background tasks written in the same transaction as the supplier
+  write; `version` is the supplier version and `id` gives the order within a version. A row is
+  deleted once it has been added to the BullMQ queue (§8.1).
 
 JPEG/PNG validation, the 5 MB per-image limit, and the maximum of 10 photos per supplier are
 application-level upload constraints rather than database column constraints.
@@ -575,7 +596,7 @@ All Supplier Service endpoints below are versioned under the `/api/v1` prefix.
 | Category management (delete) — `admin`, `super admin` | `DELETE /api/v1/admin/reference/categories/:id` | Category identifier in the path | Deletion response |
 | Admin create — `admin`, `super admin` | `POST /api/v1/admin/suppliers` | `multipart/form-data`: supplier fields plus zero to ten JPEG/PNG photo files, each at most 5 MB | Created supplier response with photo references (`photoId` and `photoLocation` only; no photo binaries), or — if the name/type/location matches a soft-deleted supplier — that supplier reactivated and updated, returned with `200 OK` (§6.2) |
 | Admin edit — `admin`, `super admin` | `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: any updated supplier field, current `version`, `isPhotoDirty`, ordered `photo_ids`, optional `placeholder_ids`, and uploaded photo files | Updated supplier response with photo references, `updatedOn`, and the new `version` |
-| Admin soft delete — `admin`, `super admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | Soft-deletion response |
+| Admin soft delete — `admin`, `super admin` | `DELETE /api/v1/admin/suppliers/:id` | Supplier identifier in the path | `200 OK` with `{ "id": <supplier id>, "isDeleted": true }`; `404` for an unknown or already deleted supplier |
 
 Management endpoints for `faculties`, `supplier_locations`, and `supplier_categories` follow the
 same request/response shape as their corresponding lookup tables (§6.2, §6.4) and are restricted to
@@ -951,45 +972,59 @@ dynamic so that the supplier-management experience can adapt to different viewpo
 
 Deleting a supplier is a soft delete implemented by updating the supplier's `is_deleted` field.
 Past records and requests that have already been picked up remain unchanged. For requests that have
-not yet been collected, the Supplier Service submits a downstream workflow job. A background worker
-uses the job queue to interact with the Order Service's delete API and then the Message Service's
+not yet been collected, the Supplier Service writes a downstream workflow task to the `outbox` table
+in the same transaction as the delete. A background worker uses the BullMQ job queue to interact with the Order Service's delete API and then the Message Service's
 messaging API to send a message to the request poster. The same worker/job-queue mechanism is
 intended to support the broader supplier-suspension, order-cancellation, and user-notification flow.
 
-The client receives its response immediately once the supplier's `is_deleted` update commits and the
-Redis job is successfully enqueued; the response does not wait for the background worker to finish
-the downstream workflow.
+The delete (which also bumps `updated_on` and `version`) and its `outbox` row commit in one
+transaction, and the client receives its response once that transaction commits; the response does
+not wait for the relay, the queue or the background worker. A relay in the worker, driven by a BullMQ
+job scheduler every second, reads `outbox` rows ordered by `version` then `id`, adds each to BullMQ and
+deletes the row after it has been added. Ordering is enqueue order only.
 
 ```mermaid
 sequenceDiagram
     participant Admin as Admin client
     participant Supplier as Supplier Service
     participant DB as MySQL
-    participant Redis as Redis job queue
+    participant Redis as BullMQ queue (Redis)
     participant Worker as Background worker
     participant Order as Order Service
     participant Message as Message Service
 
     Admin->>Supplier: DELETE /api/v1/admin/suppliers/:id
-    Supplier->>DB: Update supplier.is_deleted
-    Supplier->>Redis: Enqueue suspension workflow job {id, task_name, payload}
-    Supplier-->>Admin: Immediate response after enqueue succeeds
+    Supplier->>DB: Update supplier.is_deleted and insert outbox row (one transaction)
+    Supplier-->>Admin: 200 {id, isDeleted: true} after the commit
+    Worker->>DB: Every second, read outbox rows (version, id order)
+    Worker->>Redis: Add job (job id outbox-<id>, name = task_name, data = payload)
+    Worker->>DB: Delete the outbox row once added
     Redis->>Worker: Deliver workflow job
     Worker->>Order: Delete requests not yet collected
     Worker->>Message: Message affected request poster
-    alt Job still fails after 5 retries (exponential backoff)
+    alt Job still fails after 5 attempts (delayed retries)
         Worker->>DB: Insert dead_letter_jobs row (status UNRESOLVED)
     end
 ```
 
-Every Redis job uses the same generic payload shape: `id` (the job's identifier), `task_name` (which
+Every background task uses the same generic shape: `id` (the job's identifier), `task_name` (which
 worker handler processes it), and `payload` (the data that handler needs, derived directly from the
 already-decided database schema — for example a photo-deletion job's `payload` carries the
-`photo_id`/`photo_location` to remove). Job retries use exponential backoff with a maximum of 5
-attempts. If the job still fails after retries are exhausted, a row is inserted into
+`photo_id`/`photo_location` to remove). In BullMQ the job id is `outbox-<outbox id>`, the job name is
+`task_name` and the job data is `payload`. The suspension job is `supplier_suspension` on queue key
+`queue:supplier:suspension` with payload `{supplier_id}`; it calls the Order Service delete and then
+the Message Service notify. The photo-deletion job is `image_cleanup` on `queue:image:cleanup`. A
+queue key maps to BullMQ as prefix plus name split at the last colon (`queue:supplier:suspension`
+is prefix `queue:supplier`, name `suspension`; the relay queue is `queue:outbox:relay`). Retries are
+BullMQ delayed jobs, with a maximum of 5 attempts and delays of 5 s, 25 s, 125 s and 625 s. A bad job
+(unknown name or invalid payload) and an outbox row with no queue go straight to `dead_letter_jobs`
+without retries. If the job still fails after retries are exhausted, a row is inserted into
 `dead_letter_jobs` (§6.2, §6.4) recording the job's `job_id`, `task_name`, `payload`, the last
 retry's `error_trace`, `failed_at`, and a `status` defaulted to `UNRESOLVED`; this table is the
 mechanism for visibility into failed jobs.
+
+The worker is a separate process and container; on the standard shutdown signals it takes no new
+jobs and lets the active job finish.
 
 The concrete request contracts for the Order Service's delete API and the Message Service's
 messaging API remain deferred and mocked until those services are built; this is an explicit,
@@ -1043,11 +1078,12 @@ The upload, database update, and cloud-object cleanup use a saga-style compensat
    update `updatedOn` and `version`.
 4. If the MySQL transaction fails, roll it back, clean up the newly uploaded cloud objects, and
    return `500 Internal Server Error`. Existing cloud objects have not yet been deleted.
-5. After the MySQL transaction commits, enqueue a cloud-object deletion job in Redis for excluded
-   photos. Cloud-object deletion is therefore performed after the MySQL edits and deletions are
+5. In the same MySQL transaction, write one cloud-object deletion task per excluded photo to the
+   `outbox` table. Cloud-object deletion is performed after the MySQL edits and deletions are
    complete.
-6. Return the response to the client immediately once the job is successfully enqueued, without
-   waiting for the background worker to finish deleting the excluded cloud objects.
+6. Return the response to the client once the transaction commits, without waiting for the relay or
+   the background worker to delete the excluded cloud objects. The relay adds each `outbox` row to
+   BullMQ and deletes the row after it has been added (§8.1).
 7. A background worker processes the deletion job and retries failed cloud deletions using
    exponential backoff, up to a maximum of 5 attempts. If a deletion still fails after retries are
    exhausted, the worker inserts a `dead_letter_jobs` row (§6.2, §6.4, §8.1) for manual follow-up.
@@ -1058,7 +1094,7 @@ sequenceDiagram
     participant API as Supplier Service API
     participant Storage as Photo storage
     participant DB as MySQL
-    participant Redis as Redis job queue
+    participant Redis as BullMQ queue (Redis)
     participant Worker as Background worker
 
     Admin->>API: multipart create/edit with supplier fields and photos
@@ -1075,8 +1111,9 @@ sequenceDiagram
             API-->>Admin: 500 Internal Server Error
         else Database save succeeds
             DB-->>API: Committed supplier and photo rows
-            API->>Redis: Enqueue excluded-photo deletion job {id, task_name, payload}
-            API-->>Admin: Immediate response after enqueue succeeds, with photo references
+            API-->>Admin: Response after the commit, with photo references
+            Worker->>DB: Every second, read outbox rows and delete each after adding it to BullMQ
+            Worker->>Redis: Add excluded-photo deletion job (job id outbox-<id>, name = task_name)
             Redis->>Worker: Deliver deletion job
             Worker->>Storage: Delete excluded cloud objects
             Worker->>Storage: Retry failed deletions (exponential backoff, max 5 attempts)
@@ -1124,9 +1161,8 @@ additional design decisions.
    MySQL transaction commits and retries failed deletions. The concrete provider remains undecided
    between AWS S3 and Google Cloud Storage.
 8. Job execution failure is now specified: exponential-backoff retries up to 5 attempts, then a
-   `dead_letter_jobs` row for visibility (see item 17). Enqueue-time failure (Redis itself being
-   unavailable when the API tries to submit the job) still falls under the generic
-   `500 Internal Server Error` mapping (§7.1.1) rather than a dedicated reconciliation behavior.
+   `dead_letter_jobs` row for visibility (see item 17). Since 2026-09-30 the API writes tasks to the
+   `outbox` table instead of submitting them to Redis (see item 22).
 9. Responsive behavior is a React presentation implementation concern rather than a service
    architecture decision. The UI will use responsive React layout principles; detailed viewport
    acceptance states can be verified during UI implementation.
@@ -1224,6 +1260,26 @@ additional design decisions.
     databases already created from the old `init.sql` and existing hours rows still need migrating;
     (ii) the `is_24h` column
     definition (`BOOLEAN NOT NULL DEFAULT FALSE`) is confirmed by the team.
+
+22. Phase 4 decisions recorded (2026-09-30): (a) `DELETE /api/v1/admin/suppliers/:id` returns `200`
+    with `{ id, isDeleted: true }`, `404` for an unknown or already deleted supplier, and bumps
+    `updated_on` and `version`; all API responses use `id` (§7, §8.1); (b) the `outbox` table
+    (`id`, `task_name`, `payload`, `version`) receives all background tasks (suspension and
+    excluded-photo cleanup from `PUT` and reactivation) in the write transaction, `version` being
+    the supplier version; a relay driven by a BullMQ job scheduler every second in the worker reads
+    rows ordered by `version` then `id`, adds each to BullMQ (job id `outbox-<id>`, job name =
+    `task_name`, data = `payload`) and deletes the row once added; ordering is enqueue order only
+    (§6.4, §8.1, §8.2); (c) suspension is one job, `supplier_suspension` on `queue:supplier:suspension`
+    with payload `{supplier_id}`, calling the mocked Order Service delete then the mocked Message
+    Service notify (§8.1); (d) retries are BullMQ delayed jobs, max 5 attempts, delays 5 s / 25 s /
+    125 s / 625 s; a bad job or an unroutable outbox row goes straight to `dead_letter_jobs` (§8.1);
+    (e) the worker is a separate process and container, standard shutdown signals apply and the
+    active job finishes (§8.1); (f) reactivation applies the submitted details and photos through the
+    edit cycle and restores `is_deleted = FALSE` and `is_active = TRUE` in the same transaction; new
+    photos replace the existing ones, no photos submitted leaves them, `version` is bumped once
+    (§6.2); (g) queue keys map to BullMQ as prefix plus name split at the last colon, and
+    `PHOTO_STORE_ENDPOINT` is `http://host.docker.internal:9000` in development, the same string in
+    the API and the worker (§8.1).
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.

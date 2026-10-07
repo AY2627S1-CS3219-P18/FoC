@@ -12,6 +12,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added PUT /:id per Phase 3 plan Task 7. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added DELETE /:id per Phase 4 plan Task 6. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { Router } from 'express';
 import {
@@ -33,6 +36,8 @@ export function createAdminSupplierRouter(dependencies: AdminSupplierDependencie
   router.post('/', requireIdempotencyKey, uploadPhotos, controller.create);
   // PUT is idempotent by design, so no idempotency middleware (Arch §7.5).
   router.put('/:id', uploadPhotos, controller.update);
+  // DELETE is idempotent by design (a repeat returns 404), so no idempotency middleware (Arch §7.5).
+  router.delete('/:id', controller.remove);
 
   return router;
 }

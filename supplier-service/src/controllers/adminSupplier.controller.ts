@@ -12,8 +12,12 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the update handler per Phase 3 plan Task 7. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the remove handler per Phase 4 plan Task 6. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { SupplierCreationService } from '../business/supplierCreationService.js';
+import type { SupplierDeletionService } from '../business/supplierDeletionService.js';
 import type { SupplierService } from '../business/supplierService.js';
 import type { SupplierUpdateService } from '../business/supplierUpdateService.js';
 import type { IdempotencyStore } from '../idempotency/idempotencyStore.js';
@@ -28,10 +32,11 @@ export interface AdminSupplierDependencies {
   reader: SupplierService;
   creation: SupplierCreationService;
   update: SupplierUpdateService;
+  deletion: SupplierDeletionService;
   idempotency: IdempotencyStore;
 }
 
-export function createAdminSupplierController({ reader, creation, update: updater, idempotency }: AdminSupplierDependencies) {
+export function createAdminSupplierController({ reader, creation, update: updater, deletion, idempotency }: AdminSupplierDependencies) {
   return {
     list: asyncHandler(async (req, res) => {
       const query = parseOrThrow(listQuerySchema, req.query, 'query');
@@ -86,6 +91,12 @@ export function createAdminSupplierController({ reader, creation, update: update
         (file): PhotoFile => ({ buffer: file.buffer, mimeType: file.mimetype as PhotoFile['mimeType'] }),
       );
       const result = await updater.updateSupplier(id, input, files);
+      res.status(result.statusCode).json(result.body);
+    }),
+
+    remove: asyncHandler(async (req, res) => {
+      const { id } = parseOrThrow(idParamSchema, req.params, 'path');
+      const result = await deletion.deleteSupplier(id);
       res.status(result.statusCode).json(result.body);
     }),
   };
