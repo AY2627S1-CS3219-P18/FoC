@@ -4,7 +4,7 @@
  * Scope: Multipart upload middleware (multer) per Phase 2 plan Task 8;
  *        SupplierServiceArchitecture.md §7, §8.2. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';

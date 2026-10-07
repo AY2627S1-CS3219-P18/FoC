@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-29
  * Scope: Implemented Phase 2 Task 6 Redis idempotency store, as specified in the plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { Redis } from 'ioredis';
 

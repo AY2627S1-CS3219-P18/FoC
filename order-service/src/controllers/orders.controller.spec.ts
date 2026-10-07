@@ -4,6 +4,11 @@
  * Scope: HTTP-level tests for POST /orders status codes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-09-29): Added HTTP-level tests for GET /orders results, filters, and failures.
+ * Author review: tng wen xi
+ * Scope (2026-10-04): Updated GET /orders HTTP expectations and test doubles to
+ *        match the service result contract and controller failure responses.
+ * Author review: tng wen xi
  */
 
 import request from 'supertest';
@@ -22,10 +27,16 @@ const body = {
   credits: 4,
 };
 
-function appWith(reserve: () => Promise<ReserveResult>) {
+function appWith(
+  reserve: () => Promise<ReserveResult>,
+  findMany: (args: {
+    where?: { status: string };
+  }) => Promise<object[]> = async () => [],
+) {
   const prisma = {
     orderRequest: {
       create: async ({ data }: { data: object }) => ({ id: 'new', ...data }),
+      findMany,
     },
   } as unknown as PrismaClient;
   const credits: CreditsClient = { reserve, release: async () => {} };
@@ -74,5 +85,88 @@ describe('POST /orders', () => {
       .set('x-user-id', USER)
       .send({ ...body, completeBy: '2000-01-01T00:00:00.000Z' })
       .expect(400, { message: 'Complete-by time must be in the future.' });
+  });
+});
+
+describe('GET /orders', () => {
+  const orders = [
+    { id: 'open-1', status: 'open', description: 'Chicken rice' },
+    { id: 'accepted-1', status: 'accepted', description: 'Coffee' },
+    { id: 'cancelled-1', status: 'cancelled', description: 'Textbooks' },
+  ];
+
+  it('returns different orders across multiple statuses without a filter', async () => {
+    const findMany = vi.fn(async () => orders);
+    const res = await request(
+      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
+    )
+      .get('/orders')
+      .expect(200);
+
+    expect(res.body).toEqual({ ok: true, orders });
+    expect(findMany).toHaveBeenCalledWith({ where: undefined });
+  });
+
+  it.each([
+    ['open', [orders[0]!]],
+    ['accepted', [orders[1]!]],
+    ['cancelled', [orders[2]!]],
+  ] as const)(
+    'returns only %s orders when filtered',
+    async (status, filtered) => {
+      const findMany = vi.fn(
+        async ({ where }: { where?: { status: string } }) =>
+          where ? [...filtered] : orders,
+      );
+      const res = await request(
+        appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
+      )
+        .get('/orders')
+        .query({ status })
+        .expect(200);
+
+      expect(res.body).toEqual({ ok: true, orders: filtered });
+      expect(findMany).toHaveBeenCalledWith({ where: { status } });
+    },
+  );
+
+  it('returns 500 for an invalid status filter without querying the database', async () => {
+    const findMany = vi.fn(async () => orders);
+    await request(
+      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
+    )
+      .get('/orders')
+      .query({ status: 'not-a-status' })
+      .expect(500, {
+        ok: false,
+        errors: 'Status provided is invalid.',
+      });
+
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty list with success when no orders match', async () => {
+    const findMany = vi.fn(async () => []);
+    const res = await request(
+      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
+    )
+      .get('/orders')
+      .query({ status: 'expired' })
+      .expect(200);
+
+    expect(res.body).toEqual({ ok: true, orders: [] });
+  });
+
+  it('returns 500 when listing orders fails', async () => {
+    const findMany = vi.fn(async () => {
+      throw new Error('db down');
+    });
+    const res = await request(
+      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
+    )
+      .get('/orders')
+      .expect(500);
+
+    expect(res.body).toEqual({ ok: false, errors: {} });
   });
 });

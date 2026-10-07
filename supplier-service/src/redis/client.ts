@@ -9,7 +9,7 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): set `lazyConnect: true` so importing the app
  *        in tests does not open a Redis connection (Phase 2 plan Task 1). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 
 import { Redis } from "ioredis";

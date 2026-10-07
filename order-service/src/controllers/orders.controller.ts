@@ -1,9 +1,18 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: GitHub Copilot (model: GPT-5.6 Luna), date: 2026-09-29
+ * Scope: Added the early return after invalid status-filter responses.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ */
+
 import type { RequestHandler } from 'express';
 import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
 import * as ordersService from '../services/orders.service.js';
+import { RequestStatus } from '../generated/prisma/enums.js';
 
 export const createOrder =
   (prisma: PrismaClient, credits: CreditsClient): RequestHandler =>
@@ -33,6 +42,19 @@ export const createOrder =
     }
 
     res.status(201).json(result.order);
+  };
+
+export const getOrders =
+  (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const statusFilter = req.query.status as RequestStatus | undefined;
+    const result = await ordersService.getOrders(prisma, statusFilter);
+
+    if (result.ok) {
+      res.status(200).json(result);
+    } else {
+      res.status(500).json(result);
+    }
   };
 
 function statusFor(errors: ErrorCode[]): number {

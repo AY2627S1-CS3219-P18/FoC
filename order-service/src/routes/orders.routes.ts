@@ -9,5 +9,6 @@ export function ordersRouter(
 ): Router {
   const router = Router();
   router.post('/', ordersController.createOrder(prisma, credits));
+  router.get('/', ordersController.getOrders(prisma));
   return router;
 }
