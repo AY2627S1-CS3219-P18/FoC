@@ -18,6 +18,11 @@ Scope: 2026-09-29 update — added the Phase 2 admin API section, `npm run migra
        `npm run test:minio` and the `PHOTO_STORE_*` variables (SupplierServiceSpec.md, "Phase 2").
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope: 2026-09-30 update — added the Phase 3 `PUT /api/v1/admin/suppliers/:id` row to the admin API
+       table (SupplierServiceSpec.md, "Phase 3 — Admin Update"). Tool: Claude Code (model:
+       claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
+       AI tool.
+Author review:
 -->
 
 # Supplier Service
@@ -90,6 +95,7 @@ All routes require a valid bearer token with role `admin` or `super admin` (§7)
 | `GET /api/v1/admin/suppliers` | Same query parameters as the user list; includes inactive and soft-deleted suppliers and adds `isActive`, `isDeleted` |
 | `GET /api/v1/admin/suppliers/:id` | Adds `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, `version` |
 | `POST /api/v1/admin/suppliers` | `multipart/form-data`: `name`, `type`, `location_id`, `category_id` (JSON array), `desc`, `openingHours` (JSON array), `is24h`, and 0–10 JPEG/PNG `photos` (≤ 5 MB each). Requires an `Idempotency-Key` UUID header. `201` on create, `200` when it reactivates a soft-deleted supplier |
+| `PUT /api/v1/admin/suppliers/:id` | `multipart/form-data`: `name`, `type`, `desc`, `location_id`, `category_id` (JSON array; replaces the whole set), `openingHours` (JSON array), `is24h`, `isActive`, required `version`, `isPhotoDirty`, `photo_ids` (JSON array; numbers are existing photo ids, strings are placeholders), `placeholder_ids` (JSON array; the i-th placeholder matches the i-th uploaded `photos` file), and 0–10 JPEG/PNG `photos` (≤ 5 MB each). No `Idempotency-Key`. `200` with the updated admin supplier; `404` for an unknown or soft-deleted supplier; `409` for a stale `version`; `422` for a validation failure, a duplicate name/type/location, nothing to update, or files sent without `isPhotoDirty`. Excluded-photo cleanup jobs are enqueued to the Redis list `queue:image:cleanup` (`task_name` `image_cleanup`); the worker that consumes them is Phase 4 |
 | `POST` / `PUT /:id` / `DELETE /:id` on `/api/v1/admin/reference/faculties`, `/locations`, `/categories` | JSON bodies as in §7; `DELETE` succeeds only for an unreferenced row |
 
 See `SupplierServiceArchitecture.md` §6.2, §7 and §8.2 for the full contract.

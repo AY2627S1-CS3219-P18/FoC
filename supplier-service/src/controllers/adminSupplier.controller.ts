@@ -9,23 +9,29 @@
  *        Idempotency-Key handling per Phase 2 plan Task 8. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the update handler per Phase 3 plan Task 7. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { SupplierCreationService } from '../business/supplierCreationService.js';
 import type { SupplierService } from '../business/supplierService.js';
+import type { SupplierUpdateService } from '../business/supplierUpdateService.js';
 import type { IdempotencyStore } from '../idempotency/idempotencyStore.js';
 import type { PhotoFile } from '../storage/photoStorage.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { parseCreateSupplier } from '../validation/supplierInput.js';
+import { parseUpdateSupplier } from '../validation/supplierUpdateInput.js';
 import { idParamSchema, listQuerySchema, parseOrThrow } from '../validation/supplierQuery.js';
 
 export interface AdminSupplierDependencies {
   reader: SupplierService;
   creation: SupplierCreationService;
+  update: SupplierUpdateService;
   idempotency: IdempotencyStore;
 }
 
-export function createAdminSupplierController({ reader, creation, idempotency }: AdminSupplierDependencies) {
+export function createAdminSupplierController({ reader, creation, update: updater, idempotency }: AdminSupplierDependencies) {
   return {
     list: asyncHandler(async (req, res) => {
       const query = parseOrThrow(listQuerySchema, req.query, 'query');
@@ -71,6 +77,16 @@ export function createAdminSupplierController({ reader, creation, idempotency }:
         await idempotency.abandon(userId, key);
         throw error;
       }
+    }),
+
+    update: asyncHandler(async (req, res) => {
+      const { id } = parseOrThrow(idParamSchema, req.params, 'path');
+      const input = parseUpdateSupplier((req.body ?? {}) as Record<string, unknown>);
+      const files = ((req.files as Express.Multer.File[] | undefined) ?? []).map(
+        (file): PhotoFile => ({ buffer: file.buffer, mimeType: file.mimetype as PhotoFile['mimeType'] }),
+      );
+      const result = await updater.updateSupplier(id, input, files);
+      res.status(result.statusCode).json(result.body);
     }),
   };
 }

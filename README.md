@@ -136,6 +136,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Plan Choices Accepted, MinIO Test Scope | Accepted plan choices; MinIO now covers real cloud-connection tests in the plan |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Implementation (admin reads, lookups, supplier create) | Implemented admin reads, lookup management and multipart supplier create; 210 tests and MinIO tests pass |
 | 2026-09-30 | supplier-service | Supplier Service: Move Tests into a test/ Folder | Moved all tests and test helpers from src/ to a mirrored test/ folder; updated configs |
+| 2026-09-30 | supplier-service | Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id) | Optimistic-concurrency supplier edit with photo reorder and cleanup-job enqueue |
 | Date       | Service        | Entry                                                                            | High-level summary                                                                         |
 | ---------- | -------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | 2026-09-24 | user-service   | Stage 1: Project Scaffold                                                        | Project scaffold: package.json, tsconfig, ESLint, .env.example, RS256 keys, src layout     |

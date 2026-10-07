@@ -22,11 +22,15 @@
  *        per Phase 2 plan Task 8. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): created the write repository and photo storage once and wired the update service per Phase 3 plan Task 7. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
 import { createSupplierCreationService } from './business/supplierCreationService.js';
 import { createSupplierService } from './business/supplierService.js';
+import { createSupplierUpdateService } from './business/supplierUpdateService.js';
 import { config } from './config.js';
 import { pool } from './db/pool.js';
 import { createRedisIdempotencyStore } from './idempotency/idempotencyStore.js';
@@ -36,6 +40,7 @@ import { createRateLimiter } from './middleware/rateLimit.js';
 import { createMysqlLookupRepository } from './persistence/mysqlLookupRepository.js';
 import { createMysqlSupplierRepository } from './persistence/mysqlSupplierRepository.js';
 import { createMysqlSupplierWriteRepository } from './persistence/mysqlSupplierWriteRepository.js';
+import { createRedisJobQueue } from './queue/jobQueue.js';
 import redis from './redis/client.js';
 import { createAdminSupplierRouter } from './routes/adminSupplier.routes.js';
 import { createLookupRouter } from './routes/lookup.routes.js';
@@ -52,16 +57,25 @@ const apiV1 = express.Router();
 apiV1.use(authenticate);
 const supplierService = createSupplierService(createMysqlSupplierRepository(pool));
 apiV1.use('/suppliers', createSupplierRouter(supplierService));
+const writeRepository = createMysqlSupplierWriteRepository(pool);
+const photoStorage = createConfiguredPhotoStorage(config.photoStore);
 const supplierCreation = createSupplierCreationService({
-  repo: createMysqlSupplierWriteRepository(pool),
-  storage: createConfiguredPhotoStorage(config.photoStore),
+  repo: writeRepository,
+  storage: photoStorage,
   reader: supplierService,
+});
+const supplierUpdate = createSupplierUpdateService({
+  repo: writeRepository,
+  storage: photoStorage,
+  reader: supplierService,
+  queue: createRedisJobQueue(redis),
 });
 apiV1.use(
   '/admin/suppliers',
   createAdminSupplierRouter({
     reader: supplierService,
     creation: supplierCreation,
+    update: supplierUpdate,
     idempotency: createRedisIdempotencyStore(redis),
   }),
 );
