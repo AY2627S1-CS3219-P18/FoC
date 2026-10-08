@@ -12,8 +12,8 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 ## Team Members
 
-| Name | Role |
-| ----- | ----- |
+| Name      | Role           |
+| --------- | -------------- |
 | Your Name | Your ownership |
 | Your Name | Your ownership |
 | Your Name | Your ownership |
@@ -46,6 +46,7 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
   one-service-per-folder skeleton** for core implementation.
 
 ---
+
 ## AI Use Summary
 
 **Tools:** Claude Code (claude-sonnet-5; claude-opus-5 / claude-opus-5-5 for the mockup and order-service scaffolding)
@@ -59,7 +60,7 @@ which keeps its own standalone log in [foc-mockup/AI-NOTES.md](foc-mockup/AI-NOT
 
 One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. Keep each summary to one line.
 
-| Date | Service | Entry | High-level Summary |
+| Date       | Service          | Entry                                                                                  | High-level summary                                                                                                                              |
 | ---------- | ---------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-09-24 | user-service     | Stage 1: Project Scaffold                                                              | Project scaffold: package.json, tsconfig, ESLint, .env.example, RS256 keys, src layout                                                          |
 | 2026-09-24 | user-service     | Stage 2: Database Setup                                                                | Postgres schema, Zod-validated config, pg pool                                                                                                  |
@@ -111,14 +112,12 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-27 | supplier-service | Supplier Service: Completeness Review and Team-Supplied Clarifications                 | Fixed consistency bugs, ran a completeness review, and recorded concurrency, idempotency, rate-limit, and versioning decisions                  |
 | 2026-09-27 | supplier-service | Supplier Service: Async Response Timing, Redis Job Contract, and Dead-Letter Table     | Recorded immediate-response timing, the generic Redis job/retry contract, and the new dead-letter-jobs table                                    |
 | 2026-09-27 | supplier-service | Supplier Service: Phased Implementation Spec                                           | Organized the architecture into six build phases mapped to backlog IDs and GitHub issues #40–#46, #60, #61                                      |
-| 2026-09-28 | order-service    | order-service: Prisma Order Seed Fixtures                                              | Added deterministic fixtures covering statuses, locations, and credit amounts                                                                   |
 | 2026-09-28 | supplier-service | Supplier Service: API Gateway, Uniqueness Constraint, and Open-Question Resolutions    | Recorded the API-gateway/CORS rationale, a name/type/location uniqueness constraint, and resolved the spec's three open questions               |
 | 2026-09-28 | supplier-service | Supplier Service: Soft-Delete Recreation Resolved as Reactivation                      | Recreating a soft-deleted supplier's exact name/type/location now reactivates and updates that row instead of inserting a duplicate             |
 | 2026-09-28 | supplier-service | Supplier Service: Reactivation Photo Handling Resolved                                 | Photos submitted on the reactivation path now replace the existing supplier's photo rows; no open questions remain                              |
 | 2026-09-28 | supplier-service | Supplier Service: Tech Stack Recorded in AGENTS.md                                     | Recorded the team's TypeScript/Node.js/Express.js/MySQL/Redis stack in a new supplier-service AGENTS.md; cross-referenced from the Phase 0 plan |
 | 2026-09-28 | supplier-service | Supplier Service: `super admin` Role Literal Reconciled After Merging main             | Fixed a role-string mismatch with user-service's actual `role_enum`; docs and plan now use `super admin` (space)                                |
 | 2026-09-28 | supplier-service | Supplier Service: Phase 1 Supplier Read APIs Implementation Plan                       | Wrote the Phase 1 read-endpoint implementation plan; open points flagged for the team                                                           |
-| 2026-09-29 | order-service    | order-service: getOrders Service and Controller Tests                                  | Added service/controller coverage for results, filters, invalid status, and failures                                                            |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 0 Tasks 6–11 Implementation                                    | Implemented error/rate-limit/auth/role middleware, app wiring, and README for Phase 0                                                           |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Team Decisions Recorded and Plan Amended                     | Recorded eight team decisions in the architecture and amended the Phase 1 plan                                                                  |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 1 Plan's Four Remaining Points Confirmed                       | Team confirmed isOpen format, in-memory paging, Facility default, and zero-length row handling                                                  |
@@ -135,6 +134,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Plan Choices Accepted, MinIO Test Scope                      | Accepted plan choices; MinIO now covers real cloud-connection tests in the plan                                                                 |
 | 2026-09-29 | supplier-service | Supplier Service: Phase 2 Implementation (admin reads, lookups, supplier create)       | Implemented admin reads, lookup management and multipart supplier create; 210 tests and MinIO tests pass                                        |
 | 2026-09-30 | supplier-service | Supplier Service: Move Tests into a test/ Folder                                       | Moved all tests and test helpers from src/ to a mirrored test/ folder; updated configs                                                          |
+| 2026-09-28 | order-service    | order-service: Prisma Order Seed Fixtures                                              | Added deterministic fixtures covering statuses, locations, and credit amounts                                                                   |
+| 2026-09-29 | order-service    | order-service: getOrders Service and Controller Tests                                  | Added service/controller coverage for results, filters, invalid status, and failures                                                            |
 | 2026-09-30 | supplier-service | Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id)                                | Optimistic-concurrency supplier edit with photo reorder and cleanup-job enqueue                                                                 |
 | 2026-09-30 | supplier-service | Phase 4: Admin soft-delete, transactional outbox and downstream worker                 | Added soft-delete, transactional outbox, BullMQ worker and container; reworked reactivation                                                     |
 | 2026-09-30 | supplier-service | Supplier Service: Supplier responses carry location_id, faculty_id and category ids    | Added ids beside names and category objects to supplier responses; tests and docs updated                                                       |
@@ -146,3 +147,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 2026-10-02 | frontend         | Frontend: README manual MySQL testing in the supplier-db container                     | Added an in-container mysql walkthrough pairing app actions with queries to check                                                               |
 | 2026-10-04 | order-service    | Order-service controller test update                                                   | Updated GET /orders tests for the new service result contract and failure responses                                                             |
 | 2026-10-04 | order-service    | Order-service service test update                                                      | Updated getOrders unit tests for result objects and failure handling                                                                            |
+| 2026-10-06 | order-service    | Order-service pickup endpoint review                                                   | Reviewed pickup endpoint; found error-status mapping and controller test coverage gaps                                                          |
+| 2026-10-07 | order-service    | order-service: transitionOrder test coverage                                           | Added service and HTTP tests for valid, invalid, and forbidden transitions                                                                      |
+| 2026-10-08 | order-service    | order-service: F17 cancellation test coverage                                          | Added service and HTTP tests for open and deadline-based requester cancellation                                                                 |

@@ -57,8 +57,45 @@ export const getOrders =
     }
   };
 
+export const transitionOrder =
+  (prisma: PrismaClient, newStatus: RequestStatus): RequestHandler =>
+  async (req, res) => {
+    const actorId = req.get('x-user-id'); // TODO(team): take from verified JWT
+    if (!isUuid(actorId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+
+    const orderId = req.params.id as string;
+
+    // const response = await ordersService.pickupOrder(prisma, actorId, orderId);
+    const response = await ordersService.transitionOrder(
+      prisma,
+      orderId,
+      newStatus,
+      actorId,
+    );
+
+    // Implement kafka to emit status-change event
+
+    // TODO: If transitioning to complete, need to transfer credits to courier
+    // (implement after credit service endpoint is done)
+
+    if (response.ok) {
+      res.status(200).json(response);
+    } else {
+      const errors = [response.error];
+      const errorCode = statusFor(errors);
+      res.status(errorCode).json(response);
+    }
+  };
+
 function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.CREDIT_SERVICE_UNAVAILABLE)) return 503;
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
+  if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
+  if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
   return 400;
 }

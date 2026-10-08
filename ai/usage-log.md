@@ -328,8 +328,38 @@ Updated `orders.controller.spec.ts` to match the new `getOrders` result contract
 None.
 
 **What I kept/changed/rejected:**
+I accepted all changes.
 
 **Author review:**
+tng wen xi
+
+## 2026-10-07 — order-service: transitionOrder test coverage
+
+**Tool:** GitHub Copilot (model: MAI-Code-1.1-Flash)
+**Mode:** debug, generate
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `order-service` controller and service implementation in the working tree.
+
+**Prompts (exact):**
+
+> help me write tests in these files for this new function transitionOrder
+
+**Key responses:**
+Added focused unit coverage for the service-level transition rules and HTTP coverage for the pickup/deliver routes. The tests now exercise valid accepted-to-picked_up transitions, forbidden actors, invalid status edges, missing orders, and optimistic-lock conflicts. Verification: `npx vitest run src/services/orders.service.spec.ts src/controllers/orders.controller.spec.ts` passed with 48 tests passing across 2 files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-09-28 — order-service: Prisma Order Seed Fixtures
 
@@ -826,7 +856,6 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 **What I kept/changed/rejected:**
 
 **Author review:**
-
 
 ## 2026-09-26 — Recess iteration: Credit Service verification run
 
@@ -1350,59 +1379,62 @@ Accepted all changes.
 **Governing decision:** User-supplied Supplier Service architecture and database plans in the task prompt; supplier requirements in `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > Requirement Context:
+>
 > ```markdown
 > Part 2: Supplier Service
 > Your task is to implement the Supplier Service backend, together with a responsive UI. The
 > UI should consume the Supplier Service’s APIs to perform CRUD operations.
 > Points 1-5 are the expectations for a near-complete supplier service.
 > Points 1-4 are the expectations for significant progress on the supplier service.
+>
 > 1. Database Choice and Schema Design
-> • Which database technology have you selected?
-> • Justify your choice with reasoning specific to FoC's design. Consider the
-> nature of the data—for example, whether it is structured or contains flexible
-> content—as well as the expected query patterns and scalability requirements.
-> • Present a concrete schema. Specify the tables, collections or documents; the
-> fields they contain; and the relationships among them.
-> • Identify the metadata required for each supplier, such as its name, type and
-> location, and explain how this metadata is stored and queried.
+>    • Which database technology have you selected?
+>    • Justify your choice with reasoning specific to FoC's design. Consider the
+>    nature of the data—for example, whether it is structured or contains flexible
+>    content—as well as the expected query patterns and scalability requirements.
+>    • Present a concrete schema. Specify the tables, collections or documents; the
+>    fields they contain; and the relationships among them.
+>    • Identify the metadata required for each supplier, such as its name, type and
+>    location, and explain how this metadata is stored and queried.
 > 2. Query Patterns & API Design
-> • Identify the key ways in which the Supplier Service will be queried, such as
-> retrieving a supplier by ID or finding suppliers by location.
-> • Define the API endpoints that expose these operations. Demonstrate the key
-> query patterns using working API calls.
-> • Explain how Supplier Service API endpoints use identity and role information
-> from the User Service to enforce access control and respond to denied
-> requests.
+>    • Identify the key ways in which the Supplier Service will be queried, such as
+>    retrieving a supplier by ID or finding suppliers by location.
+>    • Define the API endpoints that expose these operations. Demonstrate the key
+>    query patterns using working API calls.
+>    • Explain how Supplier Service API endpoints use identity and role information
+>    from the User Service to enforce access control and respond to denied
+>    requests.
 > 3. CRUD operations in the Backend
-> • Demonstrate a running Supplier Service connected to a database, with
-> working APIs that support CRUD operations on supplier data.
-> • The Supplier Service is an independent backend service. Its functionality must
-> be exposed through its APIs and should not depend on the UI.
-> • Demonstrate that the Supplier Service can be used and tested through its APIs
-> without the UI being present or running.
+>    • Demonstrate a running Supplier Service connected to a database, with
+>    working APIs that support CRUD operations on supplier data.
+>    • The Supplier Service is an independent backend service. Its functionality must
+>    be exposed through its APIs and should not depend on the UI.
+>    • Demonstrate that the Supplier Service can be used and tested through its APIs
+>    without the UI being present or running.
 > 4. End-to-End Integration
-> • Demonstrate the complete flow from an authenticated user, through the
-> Supplier Service API, to the database.
-> • Show that users with different roles receive the appropriate API access.
-> • Focus the demonstration on the complete supplier-management experience
-> for all relevant users, including administrators where applicable.
+>    • Demonstrate the complete flow from an authenticated user, through the
+>    Supplier Service API, to the database.
+>    • Show that users with different roles receive the appropriate API access.
+>    • Focus the demonstration on the complete supplier-management experience
+>    for all relevant users, including administrators where applicable.
 > 5. Responsive Supplier Management UI
-> • Demonstrate the complete supplier management UI.
-> • Show the UI adapting appropriately across desktop- and mobile-sized
-> viewports.
-> • Include workflows such as:
-> • Creating, editing, and deleting suppliers
-> • Viewing supplier records
-> • Searching for suppliers
-> • Filtering and sorting results
-> • Paginating through supplier data
-> • Viewing supplier details
-> • Demonstrate integration with the Supplier Service by retrieving and modifying
-> supplier data through its APIs. The UI must use live data from the service and
-> must not rely on mock or hard-coded supplier data.
-> • Note: The demonstration should not be limited to administrator-only
-> screens.
+>    • Demonstrate the complete supplier management UI.
+>    • Show the UI adapting appropriately across desktop- and mobile-sized
+>    viewports.
+>    • Include workflows such as:
+>    • Creating, editing, and deleting suppliers
+>    • Viewing supplier records
+>    • Searching for suppliers
+>    • Filtering and sorting results
+>    • Paginating through supplier data
+>    • Viewing supplier details
+>    • Demonstrate integration with the Supplier Service by retrieving and modifying
+>    supplier data through its APIs. The UI must use live data from the service and
+>    must not rely on mock or hard-coded supplier data.
+>    • Note: The demonstration should not be limited to administrator-only
+>    screens.
 > ```
 >
 > Craft an ServiceArchitecture.md document according to my specified plans. Use mermaid for any diagrams, and record my design considerations at appropriate sections:
@@ -1415,7 +1447,7 @@ Accepted all changes.
 >
 > Database Schema:
 >
-> fields should contain supplier\_name, supplier\_type ["Store" vs "Facility"], supplier\_category [can contain multiple of "Food", "Drinks", "Snacks", "Printing", etc.], supplier\_location, supplier\_faculty [subcategory of location], supplier\_hours [always 24h for "Facility", and customisable for "Store"] and supplier\_desc. This means separate tables for supplier, supplier\_locations, supplier\_categories, a junction table mapping supplier to supplier categories, supplier\_hours, and supplier\_photos [links to dedicated storage location]
+> fields should contain supplier_name, supplier_type ["Store" vs "Facility"], supplier_category [can contain multiple of "Food", "Drinks", "Snacks", "Printing", etc.], supplier_location, supplier_faculty [subcategory of location], supplier_hours [always 24h for "Facility", and customisable for "Store"] and supplier_desc. This means separate tables for supplier, supplier_locations, supplier_categories, a junction table mapping supplier to supplier categories, supplier_hours, and supplier_photos [links to dedicated storage location]
 >
 > The main API interfaces for accessing supplier data, based on the backlog, will contain:
 >
@@ -1433,6 +1465,7 @@ Accepted all changes.
 Created `supplier-service/ServiceArchitecture.md` containing the supplied tiered architecture, WebMVC presentation model, MySQL rationale, supplier entity/table plan, logical API operation inventory, Mermaid diagrams, and factual traceability notes. Concrete route names and unspecified schema/API choices were intentionally not invented. The architecture/design critique was limited to factual gaps because the repository policy prohibits the agent from making architecture/design decisions or drafting trade-off analyses.
 
 **Files:**
+
 - `supplier-service/ServiceArchitecture.md` (created)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1454,10 +1487,11 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied photo-management, authentication, service-entrypoint, normalized location/faculty/level, and server-managed-field decisions in the follow-up prompt; `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > Photo amangement:
 >
 > - uploaded photos are part of the form data payload, sent alongside the request parameters in the create and edit flow for admins
-> - a dedicated junction table will be used to map supplier\_id to one or multiple photoids
+> - a dedicated junction table will be used to map supplier_id to one or multiple photoids
 > - images are rendered directly on the websites, sent alongside the dashboard and detail API calls
 > - general accepted formats are jpeg and png, at 5mb per image and max of 10 images
 > - utilise saga pattern: if file upload fails, backend save aborts and do not commit any changes the database, reporting 500 Error. if storage succeeds but if db fails, execute a cleanup of the uploaded picture(s) before returning a 500
@@ -1468,7 +1502,7 @@ Additions were all based on content I provided. Reviewed.
 >
 > - we are operating with the assumptions that each service will provide the necessary entrypoints. This entire project is a microservices architecture mocked thought different subfolders afterall. likewise message-service is just for the future. We can asssume that order-service can take in a order-delete call, and message service can take in some sendMsg call
 > - the authentication will be offloaded to google oauth following their conventions
-> - location maps to location table and unique location\_ids. new faculty table with faculty\_ids. level is just a numerical field
+> - location maps to location table and unique location_ids. new faculty table with faculty_ids. level is just a numerical field
 > - server-managed fields are not included in the create/update bodies
 >
 > Based on what i have provided, generate the database schema for the various tables as well
@@ -1477,6 +1511,7 @@ Additions were all based on content I provided. Reviewed.
 Updated `supplier-service/SupplierServiceArchitecture.md` with multipart photo uploads, photo junction mapping, photo response references, JPEG/PNG and size/count constraints, Google OAuth ownership, assumed Order/Message Service entrypoints, normalized faculties and locations, server-managed write fields, a compensating photo-upload saga, and concrete MySQL `CREATE TABLE` definitions for supplier, locations, faculties, categories, junction tables, hours, photos, and photo mappings.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1498,6 +1533,7 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied answers to the Supplier Service traceability notes in the follow-up prompt; `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > Fill in the gaps raised in the "Requirement traceability notes and unresolved items" section. Some of my answers:
 >
 > 1. I already provided all the fields and structure for the request and response envelops. Generate the structure and fill in
@@ -1511,7 +1547,7 @@ Additions were all based on content I provided. Reviewed.
 > 9. i already lited them clearly. make necessary inferences. This is unrelated to architecture design decision
 > 10. what hours UUID?
 > 11. 24h represented as 00:00 opening with 23:59 as closing
-> 12. is\_open will be calculated from the current time and cross-comparing with the opening hours
+> 12. is_open will be calculated from the current time and cross-comparing with the opening hours
 > 13. will populate in mock database
 > 14. suggest
 > 15. suggest
@@ -1521,6 +1557,7 @@ Additions were all based on content I provided. Reviewed.
 Updated `supplier-service/ServiceArchitecture.md` to fill the supplied traceability answers: fixed 50-entry pagination, case-insensitive search across name/location/category, alphabetical `A-Z`/`Z-A` sorting without `sortBy`, authentication-provider ownership, `createdOn`/`createdBy`, visibility rules, derived `is_open`, 24-hour hours representation, mock-data reference values, request/response envelopes, and route-level API examples. Remaining photo-storage and detailed UI-state choices are still identified as team-owned decisions rather than selected by the agent.
 
 **Files:**
+
 - `supplier-service/ServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1542,10 +1579,11 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied Supplier Service endpoint, status-code, pagination, authentication, role, soft-delete, and table-field decisions in the follow-up prompt; `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > On the factual observations. Update the document based on these, and point out any other gaps:
 >
 > 1. API status codes: 200 OK, 201 Created, 400 Bad Request, 403 Forbidden, 422 Unprocessable Entity, 404 Not Found. Enpoints:
->    1. user dashboard: /api/suppliers. request:GET, params=page, limit, search, location\_id, category\_id, sortBy, sortOrder. Response: metadata=totalRecords, currPage, limit, totalPages, data=id, name, type, location, faculty, level, categories, isopen
+>    1. user dashboard: /api/suppliers. request:GET, params=page, limit, search, location_id, category_id, sortBy, sortOrder. Response: metadata=totalRecords, currPage, limit, totalPages, data=id, name, type, location, faculty, level, categories, isopen
 >    2. admin dashboard: /api/admin/suppliers. same as 1, with more data in response: isActive, isDeleted, isOpen
 >    3. user detailed view: /api/suppliers/:id. same as 1, but now with more data in response: desc, openingHours
 >    4. admin detailed view: api/admin/suppliers/:id, same as 3, but also contain createdOn and createdBy in the response
@@ -1553,19 +1591,20 @@ Additions were all based on content I provided. Reviewed.
 >    6. admin edit: /api/admin/suppliers/:id. request: PUT, params=whatever updated field from the whole list in 5
 >    7. admin delete: /api/admin/suppliers/:id. request: DELETE
 > 2. Update the document to show that API requests for querying data takes in filter, sort and search parameters which will be used to query for 50 entries at a time
-> 3. clarify supplifier deletion is a soft delete from updating a new is\_deleted field in supplier
-> 4. add these fields into the supplier data model: is\_active (whether the result is shown), is\_deleted (from 3.), is\_open, creation\_date and creator
+> 3. clarify supplifier deletion is a soft delete from updating a new is_deleted field in supplier
+> 4. add these fields into the supplier data model: is_active (whether the result is shown), is_deleted (from 3.), is_open, creation_date and creator
 > 5. update to include that in case of soft deletion, past records and requests already picked up will be kept the same. For requests not yet collected, the supplier service will interact with the order service's delete API to delete the request. It will also interact with the message service's messaging API to send a msg to the request poster
 > 6. The UI interface is locked behind authentication, and a JWT will be used to verify the identity and authenticate users. There will be 3 user roles - super admin, admin and user. The roles accepted by each operation is as specified in the API operation inventory section
-> 7. For location table, it will consisit of an autoincrement location\_id, (text) location, (text) faculty, (text) level. For hours table, it will include some autoincrement UUID, supplier\_id, day\_of\_week (represented by int 0-6), open\_time (time), close\_time (time). For category table, it will consist of an autoincrement category\_id and (text) category\_type. The junction table contains the supplier\_id and category\_id, with both forming a composite key. The photo table contains an autoincremend photo\_id, (text) photo\_lcoation.
+> 7. For location table, it will consisit of an autoincrement location_id, (text) location, (text) faculty, (text) level. For hours table, it will include some autoincrement UUID, supplier_id, day_of_week (represented by int 0-6), open_time (time), close_time (time). For category table, it will consist of an autoincrement category_id and (text) category_type. The junction table contains the supplier_id and category_id, with both forming a composite key. The photo table contains an autoincremend photo_id, (text) photo_lcoation.
 > 8. is considered in 7
-> 9. for 24h availability, the open\_time and close\_time are just both set to 00:00 (or time field equivalent)
+> 9. for 24h availability, the open_time and close_time are just both set to 00:00 (or time field equivalent)
 > 10. all components will be dynamic to cater to different viewports.
 
 **Key responses:**
 Updated `supplier-service/ServiceArchitecture.md` with the supplied endpoint paths, HTTP methods, query parameters, response fields, status-code set, 50-entry query behavior, authenticated JWT role model, soft-delete field and workflow, downstream Order/Message Service interactions, concrete table fields, and dynamic viewport behavior. Added further factual gap notes for unresolved contract, identifier, query, authorization, integration, and UI details.
 
 **Files:**
+
 - `supplier-service/ServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1587,6 +1626,7 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied Supplier Service photo-provider, photo-edit, authentication, downstream-mock, lookup-payload, and schema decisions in the follow-up prompt; repository User Service authentication contract.
 
 **Prompts (exact):**
+
 > - photo provide selection is still pending team selection of cloud deployement provider. It is either AWS with S3, or Google Developer Cloud with Google Cloud storage to reduce latency and configuration. The supplier service should expose a provider-agnositic interface to allow for easy swapping instead of coupling to a specific one we choose
 > - photo edit semantics:
 >   - for edits to the photo (add/replace/delete/reorder), a dedicated boolean variable "isPhotoDirty" will be added to supplier edit payload so the backend knows the need to process them. Alongside that, an ordered array of photo_ids will be sent to inform the backend of the new ordering/remaining photos. if new photos are uploaded too, the multipart form data will contain the binary and placeholder_ids if the new photos. The backend logic will check through the ordering, and 1. delete photos associated with excluded ids from cloud storage and mysql backend, 2. upload new photos(if any) to cloud storage, append to mysql database, 3. reorder mysql's stored display order
@@ -1599,6 +1639,7 @@ Additions were all based on content I provided. Reviewed.
 Updated `supplier-service/SupplierServiceArchitecture.md` to align authentication with the repository User Service's RS256 JWT and `/auth/verify` contract; document the provider-agnostic AWS S3/Google Cloud Storage boundary; replace the photo junction table with direct one-to-many photo rows; record `updatedOn`, `isPhotoDirty`, ordered `photo_ids`, `placeholder_ids`, binary multipart examples, lookup metadata, and the remaining photo and API-contract gaps.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1620,18 +1661,20 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied Supplier Service reference-endpoint, error-envelope, query, opening-hours, and photo-consistency decisions in the follow-up prompt.
 
 **Prompts (exact):**
+
 > 1. endpoint for lookup options: a GET /api/suppliers/reference/location with the payload for locations:[{location\_id:.., location:..., faculty\_id:..., faculty:...},{}...], and a GET /api/suppliers/reference/categories categories:[{category\_id:..., category:...},{}...]. Category and location are separated on purpose as there may be a lot more locations than categories, so this would allow us to request for them separately. While the add supplier interface will always call both, but the user-oriented filtering might only require access to either of them, so respecting the concept of lazt loading, these api calls will be kept apart
-> 2. All error response envelops will follow a fixed format with the status\_code, error, message, timestamp and details (the exact fields, locations of the error). The status codes are listed in 7.1
+> 2. All error response envelops will follow a fixed format with the status_code, error, message, timestamp and details (the exact fields, locations of the error). The status codes are listed in 7.1
 > 3. for limit, 50 is fixed; for sort values are only order by A-Z/Z-A, these are not user-modifiable. For filtering, the options will be loaded from the options retrieved via the api lookup for location and categories. There is no risk of invalid fields
-> 4. no. I was just giving example as a store may only only on some days of the week. The database day\_of\_week still maps days to 0-6, with 0 being sunday
+> 4. no. I was just giving example as a store may only only on some days of the week. The database day_of_week still maps days to 0-6, with 0 being sunday
 > 5. time-zone will be fixed to singapore's UTC+8 timezone. this will be clearly recorded. overnight opening hours are just when the opening time is later (e.g., 2100) than the closing time (e.g., 0300). server calculated isOpen must accomodate this
 > 6. in the photo deletion flow, cloud object deletion will be last after ensuring mysql updates (edits, deletions) are complete to reduce operational
-> 7. placeholder\_ids are generated randomly for each uploaded photo (binary file). the backend will process the ordering of images sent over by resolving their index positions. The association does not matter as long it is one-to-one. the backend will replace the placeholder\_ids. its only purpose is to keep a reference to the new images
+> 7. placeholder_ids are generated randomly for each uploaded photo (binary file). the backend will process the ordering of images sent over by resolving their index positions. The association does not matter as long it is one-to-one. the backend will replace the placeholder_ids. its only purpose is to keep a reference to the new images
 
 **Key responses:**
 Updated `supplier-service/SupplierServiceArchitecture.md` with separate lazy-loaded location and category reference endpoints, the fixed error envelope, fixed 50-entry pagination and sort/filter semantics, Singapore time and overnight-hour rules, placeholder-ID resolution, and MySQL-first photo edits followed by cloud-object deletion. Remaining gaps are limited to endpoint-specific status-code mapping, post-commit cloud-deletion failure handling, downstream contract confirmation, provider selection, and live API evidence.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1653,6 +1696,7 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied reference-endpoint role, status-code template, Redis job-queue, retry, and downstream workflow decisions in the follow-up prompt.
 
 **Prompts (exact):**
+
 > 1. the 2 new reference endpoints will be open to all roles
 > 2. generate the appropriate template with the various conditions and literal status-code-meaning mappings for me to fill in the gaps
 > 3. ill introduce a background worker with a job queue stored in redis, not just to ensure failed cloud deletions are retried, but also to support other features like the supplier suspension -> cancelling orders -> informing users flow, and in general allow for more robust handling of failures
@@ -1661,6 +1705,7 @@ Additions were all based on content I provided. Reviewed.
 Updated `supplier-service/SupplierServiceArchitecture.md` to make both reference endpoints available to `user`, `admin`, and `super admin`; added a fill-in status-code mapping template; and documented the Redis-backed background worker for post-commit photo deletion retries and queued supplier-suspension workflows involving Order and Message Services. Remaining queue failure, job contract, and downstream mapping details remain explicitly open.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1682,6 +1727,7 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied concurrency, uniqueness, timezone, role, API-management, idempotency, rate-limit, versioning, and deployment decisions given directly in chat; `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > Review the architecture design in SupplierServiceArchitecture.md for issues
 
 > I fixed the consistency issues 1-5. I want a review on the entire design's completeness before moving to spec
@@ -1689,26 +1735,24 @@ Additions were all based on content I provided. Reviewed.
 > fold into the document at appropriate locations:
 > data model
 >
-> * concurrent edits: add an additional version col for supplier tables. All updates will include an incremented version number, so in the case of concurrent edits, the first to execute will update the records, and the later ones will not be able to find the record to update with the old version number, allowing a Concurrent Edit error to be raised (409 Conflict)
-> * for supplier hours, day of week should be unique for a supplier (no multiple hours in a single day), and display_order for supplier_photos should be unique as well (photos of the same supplier cannot share the same order)
-> * Exclusion of supplier_desc from search is intentional as desc will not be displayed
-> * All timezones are in SGT (UTC +8)
->
+> - concurrent edits: add an additional version col for supplier tables. All updates will include an incremented version number, so in the case of concurrent edits, the first to execute will update the records, and the later ones will not be able to find the record to update with the old version number, allowing a Concurrent Edit error to be raised (409 Conflict)
+> - for supplier hours, day of week should be unique for a supplier (no multiple hours in a single day), and display_order for supplier_photos should be unique as well (photos of the same supplier cannot share the same order)
+> - Exclusion of supplier_desc from search is intentional as desc will not be displayed
+> - All timezones are in SGT (UTC +8)
 >
 > API/auth
 >
-> * currently super_admin and admin do not defer in capabilities. super_admin comes with additional admin management which is not part of this service.
-> * following the exact same format as the read endpoints, add management endpoints for faculties, supplier_categories and supplier_locations to allow admin UI CRUD
-> * PUT and DELETE are idempotent by design. There will be no issue with multiple calls. Multiple PUT leads to the same addition, and multiple DELETEs just lead to 404s after a successful execution. For POST, apply the idempotency key pattern where the client generates a UUID "idempotency key" and attach it to the request header. This key and response will be cached in redis so that subsequent retries will be flagged with 409 Conflict, or to directly return the completed response if avialbale.
-> * photo_location urls will be short-lived signed URLs provided by the cloud storage
->
+> - currently super_admin and admin do not defer in capabilities. super_admin comes with additional admin management which is not part of this service.
+> - following the exact same format as the read endpoints, add management endpoints for faculties, supplier_categories and supplier_locations to allow admin UI CRUD
+> - PUT and DELETE are idempotent by design. There will be no issue with multiple calls. Multiple PUT leads to the same addition, and multiple DELETEs just lead to 404s after a successful execution. For POST, apply the idempotency key pattern where the client generates a UUID "idempotency key" and attach it to the request header. This key and response will be cached in redis so that subsequent retries will be flagged with 409 Conflict, or to directly return the completed response if avialbale.
+> - photo_location urls will be short-lived signed URLs provided by the cloud storage
 >
 > Others
 >
-> * Introduce rate limit of 30requests/min/ip
-> * Same origin will be used
-> * Apply versioning /v1 to all API endpoints
-> * defer health-check endpoints for now
+> - Introduce rate limit of 30requests/min/ip
+> - Same origin will be used
+> - Apply versioning /v1 to all API endpoints
+> - defer health-check endpoints for now
 >
 > Are these clarifications sufficient to spec the supplier service
 
@@ -1716,6 +1760,7 @@ Additions were all based on content I provided. Reviewed.
 First reviewed `supplier-service/SupplierServiceArchitecture.md` for internal consistency and found five factual bugs: a duplicate blank `401 Unauthorized` row, an ER-diagram cardinality mismatch between `SUPPLIER` and `SUPPLIER_LOCATIONS`, `super admin` vs `super_admin` spelling inconsistency, a `level` field typed as numeric in the schema but stringified in JSON examples, and mixed snake_case/camelCase audit-timestamp naming — reported these without editing (the user then fixed them independently). After the user's fixes were confirmed, ran a completeness review surfacing gaps not yet covered by the document (optimistic concurrency, hours/photo uniqueness, role differentiation, lookup-table CRUD, idempotency, signed photo URLs, rate limiting, CORS/versioning/health-check policy) and reported them as open questions rather than deciding them. The user then supplied concrete answers/decisions for each; folded these verbatim decisions into the document: added `supplier.version` (optimistic concurrency, `409 Conflict` on stale edit) to the schema, table description, ERD, and DDL; added `UNIQUE` constraints on `supplier_hours(supplier_id, day_of_week)` and `supplier_photos(supplier_id, display_order)`; recorded the SGT-only timestamp policy and the intentional `supplier_desc` search exclusion; noted `admin`/`super_admin` capability parity; added CRUD management endpoints for `faculties`, `supplier_locations`, and `supplier_categories` mirroring the existing reference-endpoint format; added a new §7.5 documenting `PUT`/`DELETE` idempotency, the `POST` idempotency-key/Redis-cache pattern, and the 30 req/min/IP rate limit; recorded signed-URL photo references; added the same-origin/no-CORS note; applied `/api/v1` versioning across every endpoint path in the document; and noted the deferred health-check scope. Added new `409`/`429` rows to the status-code table and mapping template, and appended items 11–16 to the traceability section summarizing what is now resolved. Answered the final question in chat (not logged here) rather than in the document, since it was a question about the document, not new document content.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1737,17 +1782,19 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied response-timing, Redis job payload/retry, dead-letter-table, idempotency-header, signed-URL-duration, and downstream-deferral decisions given directly in chat.
 
 **Prompts (exact):**
+
 > remaining open questions:
 >
-> * client gets immediate response as soon as the job is enqueued
-> * redis job contract: payload is generic with an id, a task name, payload with the information to be sent (for photo delete, it will contain the photo_id, for instance). This can be derived directly from the database schema already decided upon. retries will be on exponential backoff with maximum 5 retries. if the job still fails after retries are used up, a record will be added to a new table in the database for dead-letter-jobs. It will include: autoincrement id, job_id (of the failed redis task), task_name, payload (used by the redis worker), error_trace (error message from last retry), failed_at (time of last retry failure), status (defaulted as "UNRESOLVED"). This table offers visibility too
-> * just use "Idempotency-Key" as the header name, unless there are conventions. signed photoURL duration is 24h for now
-> * continue deferring the downstream contracts till they are built
+> - client gets immediate response as soon as the job is enqueued
+> - redis job contract: payload is generic with an id, a task name, payload with the information to be sent (for photo delete, it will contain the photo_id, for instance). This can be derived directly from the database schema already decided upon. retries will be on exponential backoff with maximum 5 retries. if the job still fails after retries are used up, a record will be added to a new table in the database for dead-letter-jobs. It will include: autoincrement id, job_id (of the failed redis task), task_name, payload (used by the redis worker), error_trace (error message from last retry), failed_at (time of last retry failure), status (defaulted as "UNRESOLVED"). This table offers visibility too
+> - just use "Idempotency-Key" as the header name, unless there are conventions. signed photoURL duration is 24h for now
+> - continue deferring the downstream contracts till they are built
 
 **Key responses:**
 Folded the supplied answers into `supplier-service/SupplierServiceArchitecture.md`: recorded that the API returns its response immediately once the relevant database write and Redis enqueue succeed, without waiting for the background worker, in both the soft-delete workflow (§8.1) and the photo-deletion workflow (§8.2), updating both sequence diagrams accordingly; added the `dead_letter_jobs` table (autoincrement `id`, `job_id`, `task_name`, `payload`, `error_trace`, `failed_at`, `status` defaulted to `UNRESOLVED`) to the data model table (§6.2) and MySQL DDL (§6.4); documented the generic `{id, task_name, payload}` Redis job shape and the exponential-backoff/5-attempt retry policy with dead-letter fallback in §8.1/§8.2; finalized the `Idempotency-Key` header name (removed the earlier "to be confirmed" hedge) in §7.5; set the signed photo URL duration to 24 hours in §6.3/§8.2; and updated §9 items 5, 8, 14, and 16, and added a new item 17, to reflect that these are resolved while the Order/Message Service request contracts remain an explicit, continued deferral.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1769,12 +1816,14 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` (already team-reviewed and committed) and the existing Supplier Service GitHub issues (#40–#46, #60, #61) in `AY2627S1-CS3219-P18/FoC`, tracing back to `docs/FoC-ProductBacklog.md`.
 
 **Prompts (exact):**
+
 > i've commited the docs. Start specing out the supplier service. Given this is a large service, the specs may be broken up into different phases. The product backlog's supplier service features are associated with open issues within github, so they should be used to guide the sectioning of tasks where appropriate (especially after the foundations are laid out)
 
 **Key responses:**
 Read `docs/FoC-ProductBacklog.md`'s Supplier Service section and fetched the corresponding GitHub issues (`gh issue view` for #40–#46, #60, #61) to confirm their exact scope/requirement text. Created `supplier-service/SupplierServiceSpec.md`, organizing the already-decided architecture into six phases: Phase 0 (foundations — schema migrations, auth/role middleware, error envelope, rate limiting; no dedicated issue, prerequisite for all others), Phase 1 (supplier read APIs — #40/#41/#42), Phase 2 (admin visibility, lookup-table management, and creation — #43/#44), Phase 3 (admin update — #45), Phase 4 (soft-delete and downstream Redis workflow — #46), and Phase 5 (cross-cutting hardening/verification — #60/#61). Each phase cites the exact architecture section(s) it implements and quotes the backlog requirement IDs it satisfies; no new architecture, schema, or API decisions were introduced. Phase ordering is stated explicitly as technical build-dependency order, not a sprint-priority decision, since reordering the backlog is outside what the agent may do. Flagged three open questions the spec surfaced but did not resolve: (1) whether F8.2.2's duplicate-supplier check needs a schema-level `UNIQUE` constraint or an application-level check, (2) whether the Order Service's historical-record preservation (F8.3.2) needs confirmation from that service's owner, and (3) an apparent mismatch between the backlog's F8.4.1 wording ("toggling active status") and the architecture's actual soft-delete implementation (`is_deleted`, a separate flag from `is_active`).
 
 **Files:**
+
 - `supplier-service/SupplierServiceSpec.md` (created)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1794,6 +1843,7 @@ See the three open questions above (also recorded in the spec's closing section)
 **Governing decision:** User-supplied API-gateway/CORS explanation and answers to the spec's three open questions, given directly in chat.
 
 **Prompts (exact):**
+
 > fold into the spec on CORS that a single API gateway will be used to access all the services, hence the single-origin. For the open questions:
 >
 > 1. an application-level pre check with be done first, but backend will also verify that the supplier name, type and location fields together form a unique set
@@ -1801,9 +1851,10 @@ See the three open questions above (also recorded in the spec's closing section)
 > 3. toggling active status is meant to purely updates the is_active field that controls visibility and is unrelated to is_deleted. (but if an item is soft deleted, it is also no longer visible and theres no need for the is_active state to be uppdated)
 
 **Key responses:**
-Updated both `supplier-service/SupplierServiceArchitecture.md` and `supplier-service/SupplierServiceSpec.md`. In the architecture doc: explained the same-origin/no-CORS deployment as a consequence of a single API gateway fronting all FoC services (§3, §9 item 15); added a `UNIQUE` constraint on `supplier(supplier_name, supplier_type, location_id)` to the data model (§6.2) and DDL (§6.4), enforced by both an application-level pre-check and the database constraint; clarified that `is_active` and `is_deleted` are independent flags — `is_active` is a separate admin-editable visibility toggle already settable via the generic `PUT` edit endpoint, and soft-delete (`DELETE`) only sets `is_deleted` since either flag alone hides a supplier (§6.2); and added §9 item 18 recording all of this, including a flagged edge case the team's answer didn't address: the `UNIQUE` constraint as given applies even to soft-deleted rows, which would block recreating a supplier with the same name/type/location as a previously soft-deleted one, contradicting F8.2.2's "if an *active* supplier ... exists" wording. In the spec: updated Phase 0 (API gateway), resolved Phase 2/3/4's flagged open questions accordingly, and updated the closing "Summary of open questions" section to mark three items resolved and add the new soft-deleted-row uniqueness question in their place.
+Updated both `supplier-service/SupplierServiceArchitecture.md` and `supplier-service/SupplierServiceSpec.md`. In the architecture doc: explained the same-origin/no-CORS deployment as a consequence of a single API gateway fronting all FoC services (§3, §9 item 15); added a `UNIQUE` constraint on `supplier(supplier_name, supplier_type, location_id)` to the data model (§6.2) and DDL (§6.4), enforced by both an application-level pre-check and the database constraint; clarified that `is_active` and `is_deleted` are independent flags — `is_active` is a separate admin-editable visibility toggle already settable via the generic `PUT` edit endpoint, and soft-delete (`DELETE`) only sets `is_deleted` since either flag alone hides a supplier (§6.2); and added §9 item 18 recording all of this, including a flagged edge case the team's answer didn't address: the `UNIQUE` constraint as given applies even to soft-deleted rows, which would block recreating a supplier with the same name/type/location as a previously soft-deleted one, contradicting F8.2.2's "if an _active_ supplier ... exists" wording. In the spec: updated Phase 0 (API gateway), resolved Phase 2/3/4's flagged open questions accordingly, and updated the closing "Summary of open questions" section to mark three items resolved and add the new soft-deleted-row uniqueness question in their place.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -1811,6 +1862,7 @@ Updated both `supplier-service/SupplierServiceArchitecture.md` and `supplier-ser
 
 **Deviations / questions raised for the team:**
 Whether the new `UNIQUE` constraint on `supplier(supplier_name, supplier_type, location_id)` should exclude soft-deleted rows (so a supplier can be recreated after a prior soft-delete), or whether such a recreation should instead reactivate the existing soft-deleted row, was not addressed by the team's answer and remains open (architecture §9 item 18, spec closing section item 4).
+
 ## 2026-10-04 — Order-service service test update
 
 **Tool:** GitHub Copilot (model: GPT-5.6 Luna)
@@ -1848,12 +1900,14 @@ Additions were all based on content I provided. Reviewed.
 **Governing decision:** User-supplied resolution for the soft-deleted-row uniqueness question, given directly in chat.
 
 **Prompts (exact):**
+
 > in the unlikely scenario that the exact same supplier that was deleted is re-added, the soft-delete is reversed and the addition serves as an update of fields instead. This preserves the uniqueness
 
 **Key responses:**
 Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, the admin-create row in §7's endpoint table, §9 item 18) and `supplier-service/SupplierServiceSpec.md` (Phase 2, closing "Summary of open questions") to record that `POST /api/v1/admin/suppliers` now branches on the pre-check result: no match inserts normally; a match against a non-deleted supplier is rejected (F8.2.2, unchanged); a match against a soft-deleted supplier instead reverses that row's `is_deleted` flag and applies the submitted fields to it as an update, reusing the existing `supplier_id` rather than inserting a new row. This resolves the previously flagged uniqueness-constraint/soft-delete conflict without needing a partial or filtered `UNIQUE` index. Narrowed the remaining open item to one the team's answer didn't cover: whether photos submitted on the reactivating request should replace or append to the reactivated supplier's existing photo rows.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -1874,12 +1928,14 @@ Photo handling on the reactivation path (replace vs. append existing photo rows)
 **Governing decision:** User-supplied resolution for the last open item (reactivation-path photo handling), given directly in chat.
 
 **Prompts (exact):**
+
 > replace existing photos on reactivation
 
 **Key responses:**
 Updated `supplier-service/SupplierServiceArchitecture.md` (§6.2, §9 item 18) and `supplier-service/SupplierServiceSpec.md` (Phase 2, closing "Summary of open questions") to record that when `POST /api/v1/admin/suppliers` reactivates a soft-deleted supplier (per the prior session's resolution), any newly submitted photos replace that supplier's existing photo rows entirely rather than being appended alongside them. This was the last open item raised across the completeness review, architecture, and spec sessions; the closing summary in the spec now states no open questions remain from this line of clarification.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -1900,12 +1956,14 @@ None.
 **Governing decision:** User-supplied tech stack (TypeScript, Node.js, Express.js, MySQL, Redis), given directly in chat.
 
 **Prompts (exact):**
+
 > Fold into the folder level agents.md the tech stack for this service.: TypeScript, Node.js, express.js, MySQL, Redis etc and make necessary changes to the spec or plans
 
 **Key responses:**
 Created `supplier-service/AGENTS.md` (previously an empty placeholder file) recording the team-supplied tech stack — TypeScript, Node.js, Express.js, MySQL, Redis — as a service-specific addendum to the root `AGENTS.md`, consistent with the existing four-tier design in `SupplierServiceArchitecture.md` (§2, §6.1). Updated `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md`'s header "Tech Stack" line, its "Library choices requiring team confirmation" section, its self-review notes, and Task 11's log-entry template to cite `supplier-service/AGENTS.md` as the now-confirmed source for the top-level stack, narrowing the still-open deviation to just the specific MySQL/Redis client packages (`mysql2`, `ioredis`), which the user did not name. No requirements, architecture, schema, or API decisions were made by the AI tool beyond transcribing what the user supplied.
 
 **Files:**
+
 - `supplier-service/AGENTS.md` (created/modified)
 - `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -1926,6 +1984,7 @@ None — the user supplied the stack directly; the agent only recorded and cross
 **Governing decision:** User-supplied resolution ("follow super admin with space"), given directly in chat, of a cross-service naming mismatch the agent surfaced after merging `main` into `supplier-service`.
 
 **Prompts (exact):**
+
 > does the additions in user-service change anything I have planned and speced?
 
 > follow super admin with space
@@ -1934,6 +1993,7 @@ None — the user supplied the stack directly; the agent only recorded and cross
 While reviewing what `main`'s user-service additions changed for the Supplier Service, found that `SupplierServiceArchitecture.md` and `SupplierServiceSpec.md` (and the Phase 0 plan built from them) assumed the literal role string `super_admin`, but the merged user-service code actually defines `role_enum AS ENUM ('user', 'admin', 'super admin')` (with a space) and returns that same string verbatim from `GET /auth/verify`. Flagged this as a blocking cross-service mismatch rather than deciding it, since fixing it either way is a naming decision for the team. The user chose to adopt the User Service's existing `super admin` string. Replaced `super_admin` with `super admin` throughout the body text of both documents (26 + 2 occurrences), left prior dated disclosure-header entries untouched, added a new §9 traceability item (19) in the architecture doc recording the correction and its cause, and updated the Phase 0 plan's Task 9 test/comment and self-review notes to match. Task 8's tests were unaffected (they only use `'admin'`).
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (modified)
@@ -1955,12 +2015,14 @@ None remaining — the mismatch was surfaced as a stop-and-ask item and the team
 **Governing decision:** `supplier-service/SupplierServiceSpec.md` ("Phase 1 — Supplier Read APIs"), `supplier-service/SupplierServiceArchitecture.md` (§4, §5, §6.2, §6.3, §7 endpoint table, §7.2, §7.3), `supplier-service/AGENTS.md` ("Tech stack").
 
 **Prompts (exact):**
-> Based on  @SupplierServiceSpec, plan phase 1
+
+> Based on @SupplierServiceSpec, plan phase 1
 
 **Key responses:**
 Used the writing-plans skill to write `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`: nine TDD tasks implementing only the four requester-mode read endpoints (list, detail, location reference, category reference) as controller → business service → `SupplierRepository` interface → MySQL implementation, plus the `is_open` calculation and request validation. Noted that only Phase 0 Tasks 1–2 exist on disk, so Phase 0 must finish first. Did not decide points the documents leave open; listed eight under "Points to confirm with the team" (notably: F7.1.2's open-status filter has no query parameter in §7.2, so none was added; `limit` handling; defaults/edge cases; `photoLocation` signing; Facility/close-time `isOpen` boundaries). No code was written or run in this session.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (created)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -1980,6 +2042,7 @@ Eight open points, listed in the plan's "Points to confirm with the team" sectio
 **Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md` (Tasks 6–11), `supplier-service/SupplierServiceArchitecture.md` (§3, §7 intro, §7.1, §7.5), `supplier-service/SupplierServiceSpec.md` ("Phase 0 — Foundations").
 
 **Prompts (exact):**
+
 > Continue to implement @docs/superpowers/plans/2026-09-28-supplier-service-phase-0.md with subagents.
 > State:
 > Tasks 1–5: implemented; Task 5 timestamp test passes.
@@ -1991,6 +2054,7 @@ Eight open points, listed in the plan's "Points to confirm with the team" sectio
 Committed Task 6 (errorHandler; 4 tests re-run and passing; no index.lock present this session). Dispatched subagents for Task 7 (rate limiter), Task 8 (auth middleware), Tasks 9–10 (role guard, app wiring), each test-first. Departures from the plan snippets: `app.set('trust proxy', true)` in the rate-limit test so the X-Forwarded-For case is meaningful; authenticate.ts types the fetch result as `Awaited<ReturnType<typeof fetch>>` and uses bare `catch {` (plan version had a type error and an unused variable); added `vitest.config.ts` supplying test env values from `.env.example` (config.ts exits on missing env) — a test-tooling addition not in the plan; changed the `ioredis` import in `src/redis/client.ts` to the named `Redis` export to fix TS2351. Wrote `supplier-service/README.md`. Full suite: 8 files / 26 tests passed; `tsc --noEmit` clean after the ioredis fix; eslint clean on src. No per-task spec/quality reviewer subagents were run for Tasks 7–10; the controller reviewed the reports only. MySQL migration (Task 3 Step 4) and Redis PING (Task 4 Step 2) were not run this session. Task 1 plan says `vitest ^1.6.0` but the working-tree package.json (uncommitted) has `^5.0.2` and a reformatted layout — left uncommitted for the team.
 
 **Files:**
+
 - `supplier-service/src/middleware/errorHandler.ts`, `errorHandler.test.ts` (created, committed)
 - `supplier-service/src/middleware/rateLimit.ts`, `rateLimit.test.ts` (created)
 - `supplier-service/src/middleware/authenticate.ts`, `authenticate.test.ts` (created)
@@ -2017,6 +2081,7 @@ Confirm the `vitest.config.ts` test-env addition and the `vitest ^5.0.2` / packa
 **Governing decision:** The team's answers given directly in chat (quoted below) to the eight points raised in the Phase 1 plan; recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 20.
 
 **Prompts (exact):**
+
 > phase 0 has completed.
 > Record all decision changes in the architecture document. Amend the plan if needed:
 >
@@ -2033,6 +2098,7 @@ Confirm the `vitest.config.ts` test-env addition and the `vitest ^5.0.2` / packa
 Transcribed the eight team decisions into `SupplierServiceArchitecture.md` (§6.2, §6.3, §7 table, §7.1, §7.1.1, §7.2, §7.3, §9 item 20) and the Phase 1 scope in `SupplierServiceSpec.md`, without adding rationale. Amended `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`: added the `isOpen` filter (validation, repository `findAllVisible`, in-memory filter-then-page in the service), removed the Facility special case in favour of the dedicated `00:00`–`23:59` check, and aligned the plan with the merged Phase 0 code (`pool` named export, block-comment headers, `vitest.config.ts` env). Two wording choices were not stated by the team and are flagged in the plan for confirmation: `isOpen` takes `true`/`false`, and the `isOpen` filter is paged in memory. No application code was written or run.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (modified)
@@ -2054,12 +2120,14 @@ Four remaining points listed in the plan's "Team decisions" section: `isOpen` va
 **Governing decision:** The team's confirmation given directly in chat of the four implementation-level points listed in `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md`'s "Team decisions" section.
 
 **Prompts (exact):**
+
 > confirm all 4 points
 
 **Key responses:**
 Updated the plan's "Team decisions" section to record all four points as confirmed as originally drafted: `isOpen=true|false` format; the `isOpen` filter loads all matching rows and pages in memory rather than in SQL; a Facility with no `supplier_hours` rows reports closed (not forced open); and an `open == close` row is defensively treated as closed. No code was written or changed; these were plan-level notes, not new architecture/schema/API decisions, so `SupplierServiceArchitecture.md` was not further modified.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -2079,12 +2147,14 @@ None.
 **Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` (Tasks 1–7), transcribing `SupplierServiceSpec.md` ("Phase 1 — Supplier Read APIs") and `SupplierServiceArchitecture.md` (§4, §5, §6.2, §6.3, §7 endpoint table, §7.1, §7.2, §7.3); team decisions in §9 item 20.
 
 **Prompts (exact):**
+
 > in a new branch "supplier-phase-1", execute the plan subagent-driven. Forgo reviewer agents for small contained edits
 
 **Key responses:**
 Executed Tasks 1–7 of the Phase 1 plan on a new branch `supplier-phase-1` (branched from `supplier-service-phase-0`), using superpowers:subagent-driven-development: a fresh implementer subagent per task, each given the plan's exact task text (via targeted line ranges of the plan file) and told to follow it verbatim, TDD-style, and self-review before committing. Per the user's instruction, dedicated spec-compliance/code-quality reviewer subagents were skipped for every task — each is a small, fully-specified, contained edit with the code already written out in the plan — and the controller (this session) instead verified the full test suite and typecheck/lint after Task 7. Result: `src/types/supplier.ts`, `src/persistence/supplierRepository.ts` (Task 1); `src/business/isOpen.ts` (Task 2, SGT/overnight/dedicated 00:00–23:59 check); `src/validation/supplierQuery.ts` (Task 3, incl. the `isOpen` filter and fixed-`limit` validation); `src/persistence/mysqlSupplierRepository.ts` (Task 4); `src/business/supplierService.ts` (Task 5, incl. the confirmed in-memory `isOpen` pagination path); `src/controllers/supplier.controller.ts`, `src/routes/supplier.routes.ts` (Task 6); `src/app.ts`/`src/app.integration.test.ts` wiring (Task 7). Final verification: `npx vitest run` — 13 test files, 101 tests, all passing; `npx tsc --noEmit` clean; `npm run lint` clean. Task 8 (manual verification against a real MySQL instance with seed data and live HTTP calls) was **not run** in this session — it needs a running MySQL instance and a running User Service to mint a token, neither of which this session provisioned; it remains an open manual step for the team before the branch is considered fully verified end-to-end.
 
 **Files:**
+
 - `supplier-service/src/types/supplier.ts` (created)
 - `supplier-service/src/persistence/supplierRepository.ts` (created)
 - `supplier-service/src/business/isOpen.ts` (created)
@@ -2119,13 +2189,14 @@ Task 8 (manual verification against a real MySQL instance) was not run — see a
 **Governing decision:** Team answers given in chat this session (recorded in `SupplierServiceArchitecture.md` §9 item 21); `SupplierServiceSpec.md` Phase 2.
 
 **Prompts (exact):**
-> Based on  @SupplierServiceSpec, plan phase 2
+
+> Based on @SupplierServiceSpec, plan phase 2
 
 > The clarifications, update architecture and spec where appropriate:
 >
 > 1. The cloud provider is not decided yet, and as specified I want an interface to handle the interactions (upload, update, delete, view) so the provider can be swapped out easily. For local dev and testing, will use that same interface but on a local port + in-memory fake
 > 2. Yes use multer as that's the industry standard
-> 3. successful deletion returns 200 OK,  FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
+> 3. successful deletion returns 200 OK, FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
 > 4. Only photoId and photoLocation. Actual photo binary is only sent during photo uploads/edits.
 > 5. Reactivation leads to 200 OK. What do you mean by keeping is_active as it was? If its is just changing a supplier to active again, updated_on will change to track that , but the version will not change as no updates to the stored details are made. similarly, the details should not be replaced but they can be for a simpler logic [as no actual will occur]. Explain the rationale behind this confirmation
 > 6. idempotency-key header is mandatory. missing leads to 400. in-flight marker TTL is 60s, cached response TTL is 24h. Cache keyed per user and per key for maximum security
@@ -2136,6 +2207,7 @@ Task 8 (manual verification against a real MySQL instance) was not run — see a
 Read the spec, architecture and Phase 1 code, then asked eight questions about unrecorded Phase 2 decisions instead of writing a plan (root `AGENTS.md` §2.1). After the team answered, recorded their decisions in the architecture (§6.2, §7, §7.1.1, §7.5, §8.2, new §9 item 21) and the spec's Phase 2 section. Items the answers left undecided (lookup soft-delete column/behavior versus the FK `422`, replace-or-keep of categories/hours on reactivation, `display_order` base, Facility hours days, meaning of "local port") were listed as "still to be specified" and not filled in. Declined to write the rationale for the reactivation decision (decision rationale, prohibited by §2 of `AGENTS.md`). The Phase 2 implementation plan has not been written yet. No code or tests were changed; nothing was run.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -2156,6 +2228,7 @@ Four open points listed above (architecture §9 item 21 (i)–(iv)); the reactiv
 **Governing decision:** `docs/superpowers/plans/2026-09-28-supplier-service-phase-1.md` ("Task 8: Verify against a real MySQL").
 
 **Prompts (exact):**
+
 > yes
 > (Docker Desktop question) "i have started the user-service and supplier-service myself. continue"
 
@@ -2163,6 +2236,7 @@ Four open points listed above (architecture §9 item 21 (i)–(iv)); the reactiv
 Committed the `compose.yaml`/`.env.example` changes from the prior turn, then ran Phase 1's Task 8 manual verification against the running `supplier-db`/`supplier-redis`/`supplier-service`/`user-db`/`user-service` containers. `user-service` was crashing on start for two reasons unrelated to Supplier Service: a blank `SUPER_ADMIN_PASSWORD` in its local `.env`, and a missing RS256 keypair in its (empty, gitignored) `user-service/keys/` directory. Set a throwaway local dev value for `SUPER_ADMIN_PASSWORD` in `user-service/.env` (git-ignored, not committed, not printed in chat) and generated a local RS256 keypair with `openssl genrsa`/`openssl rsa` into `user-service/keys/` (git-ignored) — both are local-dev-only fixes to an already-running local container on `localhost`, not production credentials, per the "Testing the user's own application" exception. Recreated `foc-user-service` so it picked up the new `.env`; it started cleanly and bootstrapped a `super admin` user. Loaded the plan's throwaway seed rows into `supplier-db` (plus the `Night Kiosk` row the plan's Task 8 SQL block already included from the earlier `isOpen` amendment) via `docker exec ... mysql`, logged in via `POST /auth/login` (`identifier`/`password`, not `email`) to get a real `super admin` bearer token, then called every Task 8 URL against `http://127.0.0.1:3004` (the compose-mapped port). All responses matched the plan's expectations exactly: list with `search`/`sortOrder`, detail with `desc`/7 `openingHours` rows, `404` for the inactive supplier, both reference endpoints, `isOpen=true` (Campus Store + Gym), `isOpen=false` (Night Kiosk), `page=9` (`200`, empty `data`), `limit=20` (`422`, `details[0].field="limit"`), search hitting name/location/category but never `supplier_desc`, and `401` with no token.
 
 **Files:**
+
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
 - `user-service/.env` (modified, git-ignored, not committed — local dev value only)
@@ -2183,13 +2257,14 @@ None for Supplier Service. Flagging for the team: `user-service/.env`'s `SUPER_A
 **Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2).
 
 **Prompts (exact):**
-> Based on  @SupplierServiceSpec, plan phase 2
+
+> Based on @SupplierServiceSpec, plan phase 2
 
 > The clarifications, update architecture and spec where appropriate:
 >
 > 1. The cloud provider is not decided yet, and as specified I want an interface to handle the interactions (upload, update, delete, view) so the provider can be swapped out easily. For local dev and testing, will use that same interface but on a local port + in-memory fake
 > 2. Yes use multer as that's the industry standard
-> 3. successful deletion returns 200 OK,  FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
+> 3. successful deletion returns 200 OK, FK violation and duplicate UNIQUE returns 422 as they are validation issues. Lookups deletes are soft
 > 4. Only photoId and photoLocation. Actual photo binary is only sent during photo uploads/edits.
 > 5. Reactivation leads to 200 OK. What do you mean by keeping is_active as it was? If its is just changing a supplier to active again, updated_on will change to track that , but the version will not change as no updates to the stored details are made. similarly, the details should not be replaced but they can be for a simpler logic [as no actual will occur]. Explain the rationale behind this confirmation
 > 6. idempotency-key header is mandatory. missing leads to 400. in-flight marker TTL is 60s, cached response TTL is 24h. Cache keyed per user and per key for maximum security
@@ -2200,14 +2275,15 @@ None for Supplier Service. Flagging for the team: `user-service/.env`'s `SUPER_A
 >
 > Still open questions:
 >
-> * Add a similar is_deleted col to the faculties, supplier_locations and supplier_categories tables
-> * display_order starts at 0. Update day_of_week to start from 1 (mon) to 7 (sun). Add a is_24h col to the supplier_hours table so facilities will only get 1 entry
-> * for local testing, we will spin up another mysql instance for storing the photos
+> - Add a similar is_deleted col to the faculties, supplier_locations and supplier_categories tables
+> - display_order starts at 0. Update day_of_week to start from 1 (mon) to 7 (sun). Add a is_24h col to the supplier_hours table so facilities will only get 1 entry
+> - for local testing, we will spin up another mysql instance for storing the photos
 
 **Key responses:**
 Asked eight stop-and-ask questions (root `AGENTS.md` §2.1) before writing a Phase 2 plan, because Phase 2 needed unrecorded API, schema and library decisions. No plan file was written. Recorded the team's answers in the architecture (§6.2, §6.4 DDL, §7, §7.1.1, §7.5, §8.2, §9 item 21) and in the spec's Phase 2 section, including the team-supplied schema changes (`is_deleted` on the three lookup tables, `is_24h` on `supplier_hours`, `day_of_week` 1–7). New columns were written with the same definition as `supplier.is_deleted` by analogy, and this is flagged in item 21 for the team to confirm. Declined to write the requested rationale for the reactivation `updated_on`/`version` decision: it is a decision rationale, which root `AGENTS.md` §2 prohibits. Items the team has not settled (lookup soft-delete read/`UNIQUE`/FK behavior, `is_24h` row contents, reactivation categories/hours, the local photo MySQL layout, and the Phase 1 code follow-up for `day_of_week`) are listed as open and were not filled in. No tests or builds were run; only Markdown files changed.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -2228,15 +2304,17 @@ Open items are listed in `SupplierServiceArchitecture.md` §9 item 21 ("Still to
 **Governing decision:** Team decisions supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 items 21–22 and `supplier-service/SupplierServiceSpec.md` (Phase 2, Phase 4).
 
 **Prompts (exact):**
+
 > - Revert decision to soft-delete suppliers. Update backlog and all related components. Record decision rationale: given the rare circumstances of a supplier deletion to be restored, (usually permanent closure) there is little purpose in retaining the data (which is uniquely keyed too). Likewise for faculties, supplier locations and supplier categories, these are usually set once and no longer updated. There is little value in maintaining soft deletes. This also simplifies things.
 > - for 24h facility entries, day_of_week will take a reserved inter 8. 8 is server populated for facilities only, and a combination of 8 and is_24h constitutes a valid facility opening hour record. This is to make the table consistent for stores.
 > - the local mock mysql for photo storage will only contain an autogenerated ID, the photo_id and a blob photo_binary. These will be the firlds for the cloud bucket as well. Unit tests use this fake
-> fake
+>   fake
 
 **Key responses:**
 Recorded the team's reversal of soft deletion: suppliers and the lookup tables are hard-deleted, `is_deleted` is removed from the schema text and DDL, the reactivation-on-`POST` path and its rules are removed (a duplicate is a plain `422`), and the soft-delete wording is removed from the architecture (§6.2, §6.4, §7, §7.1.1, §8.1, §9), the spec (Phases 2–4), and the backlog (F8.1.1, F8.4, F8.4.1–F8.4.3). The rationale in §9 item 22 is the team's own, as given in the prompt. Recorded the reserved `day_of_week` value 8 (with `is_24h`) for Facility 24-hour entries, widening the `CHECK` to 1–8, and the photo-store fields (`photo_id`, `photo_binary`) with unit tests using that fake. Code: removed the `is_deleted` condition from the visibility query and interface comment, updated the three repository tests to assert it is absent, and dropped `is_deleted` from `src/db/init.sql` (and reduced `idx_supplier_visibility` to `(is_active)` as a consequence, flagged for confirmation). Not done: the Phase 1 read code still uses `day_of_week` 0–6 and was not changed for 1–8/`is_24h`, because the `is_24h` row's stored times are still unspecified. Historical log entries, README index rows, and the Phase 0/1 plan files still mention soft deletion and were left as records. Verification: `npx vitest run` — 101 tests passed; `npx tsc --noEmit` clean; `npm run lint` clean. The Phase 2 implementation plan has still not been written.
 
 **Files:**
+
 - `docs/FoC-ProductBacklog.md` (modified)
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
@@ -2262,9 +2340,10 @@ Open items are listed in `SupplierServiceArchitecture.md` §9 item 22: the `is_2
 **Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). Supersedes the lookup `is_deleted`, reactivation `version` and in-memory-fake decisions in the entry above.
 
 **Prompts (exact):**
+
 > - Revert decision to soft-delete the lookup rows. faculties, supplier locations and supplier categories will be hard deleted, BUT ONLY if there are no references to them. This means that fields only associated with soft-deleted suppliers cannot be deleted as well.
-> -  if a supplier is reactivated, default the is_active back to true - if its added back, it should be activated. Old is_active state overriden
-> - for 24h facility entries, day_of_week will take a reserved inter 8. 8 is server populated for facilities only, and a combination of 8 and is_24h constitutes a valid facility opening hour record. Stores can use is_24h as well, and the 0000:23-59 convention still applies. This is to make the table consistent for stores. 
+> - if a supplier is reactivated, default the is_active back to true - if its added back, it should be activated. Old is_active state overriden
+> - for 24h facility entries, day_of_week will take a reserved inter 8. 8 is server populated for facilities only, and a combination of 8 and is_24h constitutes a valid facility opening hour record. Stores can use is_24h as well, and the 0000:23-59 convention still applies. This is to make the table consistent for stores.
 > - the local mock mysql for photo storage will only contain an autogenerated ID, the photo_id and a blob photo_binary. These will be the fields for the cloud bucket as well. Unit tests use this fake
 >
 > Clarify with me any other decisions before writing changes
@@ -2286,6 +2365,7 @@ Open items are listed in `SupplierServiceArchitecture.md` §9 item 22: the `is_2
 Asked twelve clarifying questions first (as requested), then recorded the answers in the architecture (§6.2 text and status fields, §6.4 DDL with `ON DELETE RESTRICT` on the lookup foreign keys and `day_of_week` 1–8, §7, §8.2, §9 item 21) and in the spec's Phase 2 section. Removed the lookup `is_deleted` columns added earlier. Added `supplier-service/compose.photo-store.yaml` (second MySQL service, only in the supplier-service folder, not in the root `compose.yaml`) and a README section with run instructions. The service name, container name, host port 5437, database name `supplier_photo_store` and the dev-only default password were chosen by the AI tool as implementation values and are flagged in the file header. The photo table itself is not created. `docker compose -f compose.photo-store.yaml config` reported the file valid; the instance was not started. Raised for the team in §9 item 21: `supplier_photos.photo_id` is only generated inside the MySQL transaction, but §8.2 uploads photos before it, so the local store's `supplier_photo_id` and the `photo_location` link are not yet specified; the coexistence of day-8 and per-day `is_24h` rows (this entry assumes a 24/7 Store has only the day-8 entry); the `is_24h` column definition was written by analogy with `supplier.is_deleted`. The Phase 1 read code and tests still use `day_of_week` 0–6 and were not changed.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `supplier-service/compose.photo-store.yaml` (created)
@@ -2308,6 +2388,7 @@ See "Points that need the team's attention" in `SupplierServiceArchitecture.md` 
 **Governing decision:** Team answers supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). The team stated that this session is the source of truth; it supersedes the entry "Soft Delete Reversed, Facility Hours Entry and Photo Store Recorded" above.
 
 **Prompts (exact):**
+
 > This session is the source of truth. soft deletion and reactivation is kept for suppliers.
 > On a store having individual adys marked as 24h - this is implied by selecting certain days as 0000-2359. This is distinct from the is_24h boolean which records a 24h/7 days supplier.
 > on photo_id: since the photo has to be stored to cloud first, remove the supplier_photo_id from the cloud (mock mysql db). It will only store a auto-generated id, and that ID will be returned to be stored in the supplier mySQL db.
@@ -2317,6 +2398,7 @@ See "Points that need the team's attention" in `SupplierServiceArchitecture.md` 
 Corrected the architecture (§6.2, §8.2, §9 item 21) and spec (Phase 2): suppliers keep soft deletion and reactivation; `is_24h` and `day_of_week` 8 record only a 24/7 supplier (a Store that is 24-hour on some days simply has `00:00`–`23:59` entries with `is_24h` false); a 24/7 Store has a single day-8 entry like a Facility; the photo store holds only an autogenerated id and a local-file-path `photo_location` (no `supplier_photo_id`), and the returned id is stored in the supplier database. The parallel session had made uncommitted code and backlog changes reversing supplier soft delete (`docs/FoC-ProductBacklog.md`, `supplier-service/src/db/init.sql`, `supplier-service/src/persistence/mysqlSupplierRepository.ts`, `mysqlSupplierRepository.test.ts`, `supplierRepository.ts`). An attempt to discard them with `git checkout` was blocked by the environment's permission check, so those five files are **still in the reverted-schema state and contradict the docs**; they need to be restored by the team. The other session's architecture and spec text was already absent from those documents. Earlier log entries were not edited. No tests or builds were run.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -2337,15 +2419,17 @@ Restoring the five files listed above to the committed state is outstanding. Ope
 **Governing decision:** Team answer supplied in chat, recorded in `supplier-service/SupplierServiceArchitecture.md` §8.2 and §9 item 21 and `supplier-service/SupplierServiceSpec.md` (Phase 2). Supersedes the local MySQL photo store in the entries above.
 
 **Prompts (exact):**
+
 > I ran the file restore code.
 > open point:
 >
-> * sorry. the swap out mysql for minIO to simulate the cloud storage. No longer mysql. This would allow perfect simulation. minIO will return the location directly which will be stored by the supplier_photos table
+> - sorry. the swap out mysql for minIO to simulate the cloud storage. No longer mysql. This would allow perfect simulation. minIO will return the location directly which will be stored by the supplier_photos table
 
 **Key responses:**
 Confirmed the five files from the parallel session's soft-delete reversal were restored (git status showed only the docs, README and compose file modified). Replaced the local MySQL photo store with MinIO in the architecture (§8.2, §9 item 21) and spec (Phase 2): MinIO returns the photo location directly and it is stored in `supplier_photos.photo_location`; the previous open point about which column holds the id is closed. Rewrote `supplier-service/compose.photo-store.yaml` as a MinIO service plus a one-shot bucket-creation job, and rewrote the README section. The service names, ports 9000/9001, bucket `supplier-photos` and dev-only credentials were chosen by the AI tool and are flagged in the file header. `docker compose config` reported the file valid; the containers were not started, so the `mc ready local` healthcheck and the bucket job are untested. No tests or builds were run.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
 - `supplier-service/compose.photo-store.yaml` (modified)
@@ -2368,6 +2452,7 @@ The MinIO client library for the local adapter is not chosen yet; it will be sur
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §6.2, §6.4 and §9 item 21 (`day_of_week` 1–7 plus reserved 8, `is_24h`, `is_open` day-8 check first).
 
 **Prompts (exact):**
+
 > for the MinIO client library, use the AWS S3 client one
 > what do you mean "the is_24h column definition is written by analogy with supplier.is_deleted"
 > Update phase 1 code
@@ -2376,6 +2461,7 @@ The MinIO client library for the local adapter is not chosen yet; it will be sur
 Recorded the team's choice of the AWS S3 client (`@aws-sdk/client-s3`) for the local MinIO adapter in the spec. Explained that the team had specified the new `is_24h` column but not its SQL definition, so the architecture DDL gives it `BOOLEAN NOT NULL DEFAULT FALSE`, copied from `supplier.is_deleted`; the team is to confirm or change that. Updated the Phase 1 code: `isOpen.ts` now maps Singapore time to 1 = Monday .. 7 = Sunday, treats a day-8 entry as always open (checked first), and wraps an overnight Sunday interval into Monday; `init.sql` `supplier_hours` gained `is_24h` and the 1–8 check; comments in `supplierRepository.ts` were updated; `isOpen.test.ts` gained three tests (day 7 as Sunday and day 0 rejected, overnight Sunday, day 8 always open). The reads do not select `is_24h` because responses do not expose it. Verification: `npx vitest run` — 13 files, 104 tests passing; `npx tsc --noEmit` clean; `npm run lint` clean. Not done: the lookup `ON DELETE RESTRICT` change is left for the Phase 2 migration, and a database already created from the old `init.sql` (`CREATE TABLE IF NOT EXISTS`) and any existing hours rows are not migrated (Sunday 0 becomes 7). Not run against a real MySQL instance.
 
 **Files:**
+
 - `supplier-service/src/business/isOpen.ts` (modified)
 - `supplier-service/src/business/isOpen.test.ts` (modified)
 - `supplier-service/src/persistence/supplierRepository.ts` (modified)
@@ -2400,6 +2486,7 @@ Confirm the `is_24h` definition. Existing dev databases need `supplier_hours` re
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §6.4 and §9 item 21; `supplier-service/SupplierServiceSpec.md` (Phase 2).
 
 **Prompts (exact):**
+
 > confirm is_24h is a boolean not null default false.
 > Continue with migration and phase 2 plan
 
@@ -2407,6 +2494,7 @@ Confirm the `is_24h` definition. Existing dev databases need `supplier_hours` re
 Recorded the team's confirmation that `supplier_hours.is_24h` is `BOOLEAN NOT NULL DEFAULT FALSE` and removed the related flags from the architecture and spec. Wrote an idempotent upgrade for existing databases (`src/db/phase2Schema.ts`, runner `src/db/migratePhase2.ts`, `npm run migrate:phase2`): adds `is_24h`, drops the old 0–6 check, converts Sunday 0 to 7, adds the 1–8 check; already-upgraded databases are left unchanged. Added `ON DELETE RESTRICT` explicitly to the three lookup foreign keys in `init.sql` (MySQL's default already behaves this way; a real MySQL reports the rule as `NO ACTION`). Verification: `npx vitest run` — 14 files, 107 tests passing; `npx tsc --noEmit` and `npm run lint` clean; the upgrade was run twice against a scratch database on the dev MySQL server created from the pre-Phase 2 schema (days 0 and 1 became 7 and 1, `is_24h` added, check 1–8), then the scratch database was dropped. The real `supplier_service` database was **not** upgraded; run `npm run migrate:phase2` against it. Wrote the Phase 2 implementation plan `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (10 tasks: dependencies/config, photo storage port and S3-client adapter, admin reads, lookup management, create-request validation, idempotency, create/reactivate workflow, HTTP layer, manual verification, docs). The plan's code was not compiled or run. The plan lists 12 choices it makes that are not in the architecture (for example the lookup delete body, `201` for lookup creates, UUID-only idempotency keys, timestamps written as Singapore time by the app, no cloud cleanup of photos replaced on reactivation until Phase 4, and business-layer tests using an in-memory storage double rather than MinIO) for the team to confirm.
 
 **Files:**
+
 - `supplier-service/src/db/phase2Schema.ts` (created)
 - `supplier-service/src/db/phase2Schema.test.ts` (created)
 - `supplier-service/src/db/migratePhase2.ts` (created)
@@ -2433,12 +2521,14 @@ Confirm or change the 12 choices in the plan's "Choices this plan makes" section
 **Governing decision:** Team answer supplied in chat; recorded in `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` ("Choices this plan makes", item 8).
 
 **Prompts (exact):**
+
 > accept the 12 choices except for 8 - minio should be used when testing actual cloud connection logic
 
 **Key responses:**
 Recorded acceptance of choices 1–7 and 9–12 in the Phase 2 plan. Rewrote choice 8: pure business logic keeps an in-memory storage double, while anything testing real cloud-connection logic uses the local MinIO. In the plan this became `*.minio.test.ts` files excluded from `npm test` and run with a new `npm run test:minio` (second Vitest config, so a missing MinIO fails loudly rather than being skipped): Task 2 gained six S3-adapter tests against MinIO (upload and serve, unique locations, update, delete, deleting a missing object, unreachable store) and Task 7 gained two creation-workflow tests (photos stored and kept; uploaded objects removed when the transaction fails). The plan's code was not compiled or run, and no MinIO test was executed.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -2458,12 +2548,14 @@ None.
 **Governing decision:** `docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md` (Tasks 1–10), transcribing `supplier-service/SupplierServiceSpec.md` ("Phase 2") and `SupplierServiceArchitecture.md` (§6.2, §6.4, §7, §7.1.1, §7.5, §8.2, §9 item 21).
 
 **Prompts (exact):**
+
 > execute, subagent driven, skip reviewer agent for simple implementation tasks
 
 **Key responses:**
 Executed Tasks 1–8 of the Phase 2 plan on branch `supplier-phase-2` with superpowers:subagent-driven-development: a fresh implementer subagent per task, each given the plan's line ranges, and the controller re-ran typecheck, the full test suite and lint after every task. Per the instruction, dedicated reviewer agents were skipped for the simple tasks; one reviewer agent was used on the create/reactivate transaction workflow (Task 7). It found no high or medium defects and one low one (the reactivation `UPDATE` did not replace `supplier_name`, so a differently-cased resubmission kept the old spelling); this was fixed in a follow-up commit. Built: `PhotoStorage` port with an S3-client adapter (MinIO locally) and an in-memory test double; admin list/detail reads; faculty/location/category management with hard delete of unreferenced rows; create-request parsing and the hours rules (days 1–7, reserved day 8, `is24h`); the Redis idempotency store and header check; the create and reactivate workflow (upload, transaction, cleanup); the multipart `multer` layer, `POST /api/v1/admin/suppliers` and app wiring. Task 9 (manual verification) was run by the controller: the service ran on the host against a scratch MySQL database (`phase2_verify`) on the dev MySQL server, a temporary Redis container, the local MinIO, and a **stub** of the User Service's `/auth/verify` (not the real User Service). Confirmed live: admin list `200`; user role `403` and no token `401` on admin routes; lookup create `201`, duplicate `422`, delete of a referenced faculty `422`, delete of an unreferenced one `200`, repeat delete `404`, category update `200`; create Facility with two photos `201` (photos fetchable from MinIO, `display_order` 0 and 1, single day-8 hours entry); replay with the same `Idempotency-Key` returned the cached `201` with no new row; duplicate with a new key `422`; missing key `400`; 24/7 Store `201`; equal open/close `422`; GIF photo `422`; after soft-deleting the supplier, user detail `404`, admin detail `isDeleted: true`, and re-creating it (different name case, one photo) returned `200` with `isActive` true, `version` 1, the new description and exactly one photo row. The old photo object stayed in MinIO, as planned (Phase 4). The scratch database, temporary Redis, stub and service were removed afterwards. Final verification: `npx vitest run` — 26 files, 210 tests passing; `npm run test:minio` — 2 files, 8 tests passing against the running MinIO; `npx tsc --noEmit` and `npm run lint` clean. Not run: the flow against the real User Service and real dev database `supplier_service` (`npm run migrate:phase2` has not been run on it), the rate limiter under load, and any test of `PUT`/`DELETE` supplier (later phases).
 
 **Files:**
+
 - `supplier-service/.env.example` (modified)
 - `supplier-service/compose.photo-store.yaml` (modified)
 - `supplier-service/package-lock.json` (modified)
@@ -2523,6 +2615,7 @@ Executed Tasks 1–8 of the Phase 2 plan on branch `supplier-phase-2` with super
 - `README.md` (modified)
 
 **Deviations / questions raised for the team:**
+
 - `npm install` fails with `ERESOLVE` (a peer conflict between `vitest@5.0.2` and `@types/node@20` that was already in the repo), so the new packages were installed with `--force`; `npm ci` fails for the same reason. `--legacy-peer-deps` was tried and broke `vite`, so it was not used.
 - `compose.photo-store.yaml` now pulls `quay.io/minio/minio` and `quay.io/minio/mc` because the Docker Hub images failed to pull in this environment; the images are not version-pinned.
 - Task 5 changed `invalid()` so single-field failures carry the specific message (for example the 24/7 hint) in `message`, with the generic text kept for multi-issue errors.
@@ -2544,12 +2637,14 @@ Executed Tasks 1–8 of the Phase 2 plan on branch `supplier-phase-2` with super
 **Governing decision:** Team instruction in chat (no design decision involved).
 
 **Prompts (exact):**
+
 > make a new "test" folder within supplier service and add subfolders mirroring that in the src folder, and move all test cases from src into test
 
 **Key responses:**
 Moved all 26 `*.test.ts` files from `supplier-service/src/` to `supplier-service/test/`, keeping the same subfolders (`business`, `db`, `idempotency`, `middleware`, `persistence`, `routes`, `storage`, `utils`, `validation`, plus `app.integration.test.ts` at the top), using `git mv` and rewriting each file's relative imports; no test logic was changed. Also moved two test-only helpers that lived in `src/storage/` (`minioTestStorage.ts` and `inMemoryPhotoStorage.ts`) into `test/storage/` so no test code remains under `src/`. Config changes: `tsconfig.json` now includes `test/` (and no longer sets `rootDir`); a new `tsconfig.build.json` builds `src/` only and `npm run build` uses it; `vitest.config.ts` and `vitest.minio.config.ts` now look under `test/`. Verification: `npx tsc --noEmit` and `npx tsc -p tsconfig.build.json --noEmit` clean; `npx vitest run` — 24 files, 204 tests passing; `npm run test:minio` — 2 files, 8 tests passing; `npm run lint` clean. The default run count dropped from 26 files / 210 tests to 24 / 204 because the old pattern also ran two stale compiled copies of tests in `dist/` (`dist/middleware/errorHandler.test.js`, `dist/utils/time.test.js`); the new `test/**` include no longer picks them up. The Phase 2 and Phase 3 plan documents still refer to the old `src/...test.ts` paths and were not edited.
 
 **Files:**
+
 - `supplier-service/test/**` (26 test files and 2 helpers moved from `supplier-service/src/**`, imports updated; listed by `git log --follow`)
 - `supplier-service/tsconfig.json` (modified)
 - `supplier-service/tsconfig.build.json` (created)
@@ -2566,6 +2661,77 @@ The two helpers were moved as well, which goes slightly beyond "test cases". A `
 
 **Author review:**
 
+## 2026-10-06 — Order-service pickup endpoint review
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** debug, explain
+**Scope:** Debugging, Refactor/Docs
+**Governing decision:** Existing order-service transition rules in `order-service/src/domain/order-status.ts` and service result contract in `order-service/src/services/orders.service.ts`.
+
+**Prompts (exact):**
+
+> i just implemented this. help me check for code quality or any bugs. also update ai usage log
+
+**Key responses:**
+Reviewed the pickup controller, route, transition service, error definitions, and existing tests. Found that the controller returns HTTP 500 for all transition failures, including `ORDER_NOT_FOUND`, `FORBIDDEN`, `INVALID_TRANSITION`, and `ORDER_CONFLICT`; these should be mapped to the team-approved client/error statuses before release. Found no controller-level tests for `POST /orders/:id/pickup`. TypeScript typecheck, lint, and the full order-service test suite passed: 5 test files and 263 tests.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.ts` (reviewed)
+- `order-service/src/routes/orders.routes.ts` (reviewed)
+- `order-service/src/services/orders.service.ts` (reviewed)
+- `order-service/src/domain/order-status.ts` (reviewed)
+- `order-service/src/constants/errors.ts` (reviewed)
+- `order-service/src/controllers/orders.controller.spec.ts` (reviewed; no pickup coverage found)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+The correct HTTP mapping for pickup transition errors is an API decision not recorded in the reviewed files; the team should decide and document it before implementation.
+
+**What I kept/changed/rejected:**
+No production code changes; findings were reported for team decision.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-08 — order-service: F17 cancellation test coverage
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** F17 cancellation requirements supplied by the team in chat and the existing order transition implementation.
+
+**Prompts (exact):**
+
+> F17 Support the cancellation of requests.
+> F17.1 The system shall allow requesters to cancel their open requests High 9
+> The system shall update the request status from “open”
+> to “cancelled” when the user cancels it. High 9
+> F17.2 The system shall allow the requester to cancel a non-“open”
+> request when its complete-by deadline is reached.
+> The system shall provide an option for requesters to cancel
+> a request that is ongoing when the complete-by deadline
+> has passed.
+> The system shall update the request status to “cancelled” when the user cancels it.
+
+**Key responses:**
+Added service and HTTP tests covering requester cancellation of open orders, requester cancellation after a passed complete-by deadline, rejection before the deadline, and rejection of courier cancellation. Verification: `npx vitest run src/services/orders.service.spec.ts src/controllers/orders.controller.spec.ts` passed with 56 tests across 2 files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-09-30 — Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id)
 
 **Tool:** Claude Code (model: claude-sonnet-5-5)
@@ -2574,13 +2740,14 @@ The two helpers were moved as well, which goes slightly beyond "test cases". A `
 **Governing decision:** `SupplierServiceSpec.md` "Phase 3 — Admin Update"; `SupplierServiceArchitecture.md` §6.2, §7, §7.1.1, §7.3, §7.5, §8.1, §8.2; the team's answers in chat on 2026-09-29/30; plan `docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md` (commit `7a44642`).
 
 **Prompts (exact):**
-> Based on  @SupplierServiceSpec, plan phase 3
+
+> Based on @SupplierServiceSpec, plan phase 3
 
 > "PUT body fields…"="Same as create + isActive"; "Identity collisions on PUT…"="422 duplicate; deleted = 404"; "Photo wire format on PUT…"="JSON arrays, files by index"; "Phase 3 must enqueue the excluded-photo deletion job … what should Phase 3 do about the Redis job producer?"="Producer only, you supply names"
 
 > Redis list key: "queue:image:cleanup", task name="image_cleanup".
 > Readings to confirm:
-> 
+>
 > 1. yes one redis job per photo to exclude
 > 2. explain what this case is
 > 3. yes
@@ -2594,7 +2761,7 @@ The two helpers were moved as well, which goes slightly beyond "test cases". A `
 > new photos = "Keep placeholders"; files while not dirty = "422 reject"; version-only PUT = "422 reject"; enqueue failure = "is this purely with enqueuing the redis tasks, not the tasks failing? if yes, api returns 500, failinf the edit. If it is after a redis task has exhausted, that would be recorded in a log"
 
 > open reading:
-> follow original plan. 
+> follow original plan.
 > Any other blockers? if not, we are now in a new branch "supplier-phase-3" , execute with subagent-driven developement
 
 **Key responses:**
@@ -2602,6 +2769,7 @@ Asked the four design questions above (PUT body fields, identity collisions, pho
 Verification actually run by the controller at the end: `npx vitest run` — 28 files, 256 tests passed; `npm run build` and `npm run lint` clean; `npx tsc --noEmit` clean. Not run: the live curl/end-to-end check against MySQL, Redis and MinIO (no MySQL container was running; only Redis and MinIO). The real MySQL reorder (`+1000000` offset against `UNIQUE(supplier_id, display_order)`) is covered only by mock-based unit tests.
 
 **Files:**
+
 - `supplier-service/src/app.ts` (modified)
 - `supplier-service/src/business/photoPlan.ts` (created)
 - `supplier-service/src/business/supplierUpdateService.ts` (created)
@@ -2629,6 +2797,7 @@ Verification actually run by the controller at the end: `npx vitest run` — 28 
 - No file in this change lacks a header for want of comment syntax (`package.json` was not changed).
 
 **Deviations / questions raised for the team:**
+
 - The repo layout changed mid-plan, so tests live in `supplier-service/test/` mirroring `src/`; the plan's paths were adapted.
 - `test/business/supplierCreation.minio.test.ts` was also edited to add the two new repository fake methods so `tsc` passes.
 - The four design questions above were asked rather than decided by the agent.
@@ -2649,12 +2818,13 @@ Verification actually run by the controller at the end: `npx vitest run` — 28 
 **Governing decision:** `SupplierServiceSpec.md` "Phase 4 — Admin Soft-Delete and Downstream Workflow"; `SupplierServiceArchitecture.md` §7, §7.5, §8.1, §8.2; the team's answers in chat on 2026-09-30 (quoted below); plan `docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md`.
 
 **Prompts (exact):**
-> Based on  @SupplierServiceSpec, plan phase 4
 
-> Q: Arch §7 only says "Soft-deletion response". What should DELETE /api/v1/admin/suppliers/:id return on success? (Unknown or already-deleted supplier → 404 per §7.5.)  A: 200 + small JSON body
-> Q: What queue key, task_name and payload should the suspension workflow job use (Phase 3 fixed queue:image:cleanup / image_cleanup for photos)? And should one job do both the Order delete and the Message notify?  A: One job: queue:supplier:suspension
-> Q: Where does the worker run, and what are the exponential-backoff timings (max 5 attempts is already decided)?  A: separate entrypoint. backoff timngs set at 5s, 25s, 125s, 625s
-> Q: Order/Message contracts are deferred and mocked (§9 item 17). What should the mocks be, given no request contract is recorded?  A: Ports + logging mocks
+> Based on @SupplierServiceSpec, plan phase 4
+
+> Q: Arch §7 only says "Soft-deletion response". What should DELETE /api/v1/admin/suppliers/:id return on success? (Unknown or already-deleted supplier → 404 per §7.5.) A: 200 + small JSON body
+> Q: What queue key, task_name and payload should the suspension workflow job use (Phase 3 fixed queue:image:cleanup / image_cleanup for photos)? And should one job do both the Order delete and the Message notify? A: One job: queue:supplier:suspension
+> Q: Where does the worker run, and what are the exponential-backoff timings (max 5 attempts is already decided)? A: separate entrypoint. backoff timngs set at 5s, 25s, 125s, 625s
+> Q: Order/Message contracts are deferred and mocked (§9 item 17). What should the mocks be, given no request contract is recorded? A: Ports + logging mocks
 
 > Readings to confirm:
 >
@@ -2663,32 +2833,32 @@ Verification actually run by the controller at the end: `npx vitest run` — 28 
 > 3. explain again
 > 4. retries should not happen within the worker itself. a queue will be maintained with timestamps to signal when the task should be tried again, freeing the worker for other tasks. Use the BullMQ library for this
 > 5. bad jobs are logged to the dead letter directly
-> 6.  yes. standard shutdown signals apply. allow last job to finish
+> 6. yes. standard shutdown signals apply. allow last job to finish
 > 7. yes. confirm idempotency with current API configurations as well
 >
 > Open items:
 >
-> * reactivation logic specified: the record is first returned to a is_deleted = false and is_active = true state. Then changes, if any, to the details and images will be handled with the typical edit supplier cycle
-> * Add in the dedicated container config that runs the workers , even for development
+> - reactivation logic specified: the record is first returned to a is_deleted = false and is_active = true state. Then changes, if any, to the details and images will be handled with the typical edit supplier cycle
+> - Add in the dedicated container config that runs the workers , even for development
 
 > For reading 3, change the logic to commit only after redis enqueue is attempted. this allows for redis enqueue issues to be captured and prevent the deletion from happening so the user can retry
-> Similarly for reactivation failures, the edit is attempted before the flag is commited. 
+> Similarly for reactivation failures, the edit is attempted before the flag is commited.
 > photo store endpoint: using docker's host.docker.internal:9000 for internal development should mitigate this issue
 
 > commit/enqueue issue update:
 >
-> * apply the transactional outbox pattern: when the commit is made, also commit to a dedicated outbox table with a version number and the whole api package. A scheduled cron job will run every second to check for items in the outbox table. If there is anything, the package will be retreived and used to enqueue a task into the bullmq queue. When the task is successfully enqueued, the entry will be deleted from the outbox table
+> - apply the transactional outbox pattern: when the commit is made, also commit to a dedicated outbox table with a version number and the whole api package. A scheduled cron job will run every second to check for items in the outbox table. If there is anything, the package will be retreived and used to enqueue a task into the bullmq queue. When the task is successfully enqueued, the entry will be deleted from the outbox table
 
 > Q: What should the outbox table look like? ... A: autoincrement id (for worker to know order, and for deletion), task type (the redis task name, so it can be added easily), payload (original content) and version (version 1 processed before 2)
-> Q: What does the outbox row's "version number" mean?  A: the supplier version. So that multiple tasks for the same supplier will be guaranteed to be executed in the intended order
-> Q: Which enqueues go through the outbox?  A: All of them (Recommended)
-> Q: What runs the every-second relay, and where?  A: BullMQ job scheduler in the worker (Recommended)
+> Q: What does the outbox row's "version number" mean? A: the supplier version. So that multiple tasks for the same supplier will be guaranteed to be executed in the intended order
+> Q: Which enqueues go through the outbox? A: All of them (Recommended)
+> Q: What runs the every-second relay, and where? A: BullMQ job scheduler in the worker (Recommended)
 
 > bullMQ can be made to run jobs in the order of the version right
 > col types confirm
 > queue key confirm
 
-> we are now in new branch supplier-phase 4. 
+> we are now in new branch supplier-phase 4.
 > stick with enqueue order only. subagent driven development.
 
 The plan and the implementation were then executed by subagents (one implementer subagent per plan task, followed by a spec-compliance reviewer and a code-quality reviewer subagent), driven by a controller session, on branch `supplier-phase-4`.
@@ -2703,6 +2873,7 @@ Review process: each task had a spec-compliance review and a code-quality review
 Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx tsc --noEmit` clean; `npm run lint` clean; `npm run build` succeeded; `npm run test:minio` 2 files / 9 tests passed (MinIO running); `docker compose config --quiet` clean; `docker compose build supplier-worker` succeeded. Manual live check (plan Task 16, 2026-09-30) against real MySQL 8, Redis, MinIO and the API/worker containers, with a local stub standing in for the User Service `GET /auth/verify` (no real credentials used). Steps 1-8 passed: delete path (200 `{id,isDeleted:true}`, outbox drained in about 0.3 s, the worker logged the two mock lines, repeat DELETE 404 with no outbox row, `user` role 403); Redis outage (DELETE still 200, one outbox row with the supplier's new version, drained after Redis restarted, connection errors logged, no crash); worker down (rows drained ordered by version then id, MinIO objects removed); delayed retry (attempt gaps 5 s, 25 s, 125 s, 625 s, worker not blocked, exactly one `dead_letter_jobs` row with job id `outbox-<id>` and status `UNRESOLVED`); bad rows (unknown `task_name` dead-lettered by the relay and removed; invalid payload dead-lettered once without retry); reactivation (200, flags restored, version +1, old photo objects removed; no-photos case leaves photos untouched; with MinIO stopped the POST returned 500 and the supplier stayed soft-deleted and unchanged, and a retry with the same `Idempotency-Key` then returned 200). Step 9 (shutdown), worker idle: `docker stop` completed in about 3 s with the log lines "Received SIGINT; taking no new jobs..." and "supplier-service worker stopped", exit code 143. Not tested: stopping the worker during an in-flight job (the mock handlers finish in about a millisecond).
 
 **Files:**
+
 - `compose.yaml` (modified)
 - `supplier-service/.env.example` (modified)
 - `supplier-service/package.json` (modified; cannot carry a header)
@@ -2758,6 +2929,7 @@ Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx ts
 - `README.md` (modified)
 
 **Deviations / questions raised for the team:**
+
 - Questions asked and answered by the team rather than decided by the agent: delete response, suspension job identity, worker placement and retry timings, mock shape, outbox table shape, meaning of the outbox `version`, which enqueues use the outbox, relay scheduler, column types, queue key.
 - `bullmq` 6.3.10 was installed with `npm install --force`: a pre-existing peer-dependency conflict between vitest 5.0.2 and `@types/node ^20` makes a plain `npm install` or `npm ci` fail on the branch. The Docker build of `supplier-worker` nevertheless succeeded.
 - A development database created before Phase 2 also needed `npm run migrate:phase2` (in addition to `npm run migrate`) before supplier creation worked.
