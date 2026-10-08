@@ -9,6 +9,10 @@
  *        foreign keys now state `ON DELETE RESTRICT` explicitly (MySQL's default already). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the `outbox` table as the last
+ *        statement, DDL as fixed by the team (Phase 4 plan Task 3). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 CREATE TABLE IF NOT EXISTS faculties (faculty_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, faculty VARCHAR(255) NOT NULL, PRIMARY KEY (faculty_id), UNIQUE KEY uq_faculties_faculty (faculty));
@@ -19,3 +23,4 @@ CREATE TABLE IF NOT EXISTS supplier_category_map (supplier_id BIGINT UNSIGNED NO
 CREATE TABLE IF NOT EXISTS supplier_hours (entry_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, supplier_id BIGINT UNSIGNED NOT NULL, day_of_week TINYINT UNSIGNED NOT NULL, open_time TIME NOT NULL, close_time TIME NOT NULL, is_24h BOOLEAN NOT NULL DEFAULT FALSE, PRIMARY KEY (entry_id), UNIQUE KEY uq_supplier_hours_day (supplier_id, day_of_week), CONSTRAINT chk_supplier_hours_day CHECK (day_of_week BETWEEN 1 AND 8), CONSTRAINT fk_supplier_hours_supplier FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id));
 CREATE TABLE IF NOT EXISTS supplier_photos (photo_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, supplier_id BIGINT UNSIGNED NOT NULL, photo_location VARCHAR(2048) NOT NULL, display_order INT UNSIGNED NOT NULL, PRIMARY KEY (photo_id), UNIQUE KEY uq_supplier_photos_order (supplier_id, display_order), CONSTRAINT fk_supplier_photos_supplier FOREIGN KEY (supplier_id) REFERENCES supplier (supplier_id));
 CREATE TABLE IF NOT EXISTS dead_letter_jobs (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, job_id VARCHAR(255) NOT NULL, task_name VARCHAR(255) NOT NULL, payload JSON NOT NULL, error_trace TEXT NOT NULL, failed_at DATETIME NOT NULL, status VARCHAR(50) NOT NULL DEFAULT 'UNRESOLVED', PRIMARY KEY (id), KEY idx_dead_letter_jobs_status (status));
+CREATE TABLE IF NOT EXISTS outbox (id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, task_name VARCHAR(255) NOT NULL, payload JSON NOT NULL, version BIGINT UNSIGNED NOT NULL, PRIMARY KEY (id));

@@ -8,6 +8,15 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): the repository fake gains findCurrent and updateSupplier so it type-checks (Phase 3 Task 5).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added softDelete: vi.fn() to the repository fake so it still satisfies the interface (Phase 4 plan Task 4).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): replaced the reactivation test with tests that reactivation delegates to the edit cycle; the fake gains the update dependency and loses reactivateSupplier (Phase 4 plan Task 8).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
@@ -35,12 +44,14 @@ function setup(overrides: Partial<SupplierWriteRepository> = {}) {
     locationExists: vi.fn().mockResolvedValue(true),
     findMissingCategoryIds: vi.fn().mockResolvedValue([]),
     insertSupplier: vi.fn().mockResolvedValue(101),
-    reactivateSupplier: vi.fn().mockResolvedValue({ replacedPhotoLocations: [] }),
+    findCurrent: vi.fn().mockResolvedValue(null),
+    updateSupplier: vi.fn().mockResolvedValue({ removedPhotos: [] }),
+    softDelete: vi.fn(),
     ...overrides,
   };
   const storage = createInMemoryPhotoStorage();
   const reader = { getAdminSupplier: vi.fn().mockResolvedValue({ id: 101, version: 0 }) };
-  const service = createSupplierCreationService({ repo, storage, reader, clock: () => NOW });
+  const service = createSupplierCreationService({ repo, storage, reader, update: { updateSupplier: vi.fn() }, clock: () => NOW });
   return { repo, storage, reader, service };
 }
 
@@ -87,20 +98,107 @@ describe('create', () => {
   });
 });
 
-describe('reactivation', () => {
-  it('reactivates a soft-deleted match, returns 200, and keeps its supplier_id', async () => {
-    const { service, repo, reader } = setup({
-      findByIdentity: vi.fn().mockResolvedValue({ supplierId: 7, isDeleted: true }),
-    });
-    const result = await service.createSupplier(input, [png], actor);
+describe('reactivating a soft-deleted supplier', () => {
+  const input = {
+    name: 'Campus Store',
+    type: 'Store' as const,
+    desc: 'desc',
+    locationId: 4,
+    categoryIds: [2],
+    hours: [{ day: 1, open: '09:00', close: '18:00', is24h: false }],
+  };
 
-    expect(result.statusCode).toBe(200);
-    expect(repo.insertSupplier).not.toHaveBeenCalled();
-    expect(repo.reactivateSupplier).toHaveBeenCalledWith(
-      7,
-      expect.objectContaining({ photoLocations: ['memory://photos/1'], now: '2026-09-29 10:00:00' }),
+  function build(updateFails?: Error) {
+    const repo = {
+      locationExists: vi.fn().mockResolvedValue(true),
+      findMissingCategoryIds: vi.fn().mockResolvedValue([]),
+      findByIdentity: vi.fn().mockResolvedValue({ supplierId: 5, isDeleted: true }),
+      findCurrent: vi.fn().mockResolvedValue({
+        supplierId: 5,
+        version: 3,
+        name: 'x',
+        type: 'Store',
+        locationId: 4,
+        isDeleted: true,
+        photos: [],
+      }),
+      insertSupplier: vi.fn(),
+    };
+    const update = {
+      updateSupplier: vi.fn(async (..._args: unknown[]) => {
+        if (updateFails) throw updateFails;
+        return { statusCode: 200 as const, body: { id: 5 } };
+      }),
+    };
+    const storage = { upload: vi.fn(), update: vi.fn(), delete: vi.fn(), view: vi.fn() };
+    const service = createSupplierCreationService({
+      repo: repo as unknown as SupplierWriteRepository,
+      storage,
+      reader: { getAdminSupplier: vi.fn() },
+      update,
+      clock: () => new Date('2026-09-30T02:00:00Z'),
+    });
+    return { service, repo, update, storage };
+  }
+
+  it('runs the edit cycle in reactivation mode with the current version, and answers 200', async () => {
+    const { service, repo, update } = build();
+    const result = await service.createSupplier(input, [], { userId: 'u-1' });
+
+    expect(update.updateSupplier).toHaveBeenCalledWith(
+      5,
+      {
+        version: 3,
+        name: 'Campus Store',
+        type: 'Store',
+        desc: 'desc',
+        locationId: 4,
+        categoryIds: [2],
+        openingHours: '[{"day":1,"open":"09:00","close":"18:00"}]',
+        is24h: false,
+        isPhotoDirty: false,
+      },
+      [],
+      { reactivate: true },
     );
-    expect(reader.getAdminSupplier).toHaveBeenCalledWith(7);
+    expect(result).toEqual({ statusCode: 200, body: { id: 5 } });
+    expect(repo.insertSupplier).not.toHaveBeenCalled();
+  });
+
+  it('replaces the photos entirely when new ones are submitted (one placeholder per file, none retained)', async () => {
+    const { service, update } = build();
+    const files = [
+      { buffer: Buffer.from('a'), mimeType: 'image/png' as const },
+      { buffer: Buffer.from('b'), mimeType: 'image/jpeg' as const },
+    ];
+    await service.createSupplier(input, files, { userId: 'u-1' });
+    const [, edit, passed] = update.updateSupplier.mock.calls[0] as unknown as [number, Record<string, unknown>, unknown[]];
+    expect(edit).toMatchObject({ isPhotoDirty: true, photoIds: ['photo-0', 'photo-1'], placeholderIds: ['photo-0', 'photo-1'] });
+    expect(passed).toBe(files);
+  });
+
+  it('sends a 24/7 Store as is24h true with its day-8 entry', async () => {
+    const { service, update } = build();
+    await service.createSupplier(
+      { ...input, hours: [{ day: 8, open: '00:00', close: '23:59', is24h: true }] },
+      [],
+      { userId: 'u-1' },
+    );
+    expect(update.updateSupplier.mock.calls[0]?.[1]).toMatchObject({
+      is24h: true,
+      openingHours: '[{"day":8,"open":"00:00","close":"23:59"}]',
+    });
+  });
+
+  it('never uploads photos itself; the edit cycle does', async () => {
+    const { service, storage } = build();
+    await service.createSupplier(input, [{ buffer: Buffer.from('a'), mimeType: 'image/png' }], { userId: 'u-1' });
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('propagates an edit failure unchanged', async () => {
+    const { service } = build(new Error('boom'));
+    await expect(service.createSupplier(input, [], { userId: 'u-1' })).rejects.toThrow('boom');
   });
 });
 
