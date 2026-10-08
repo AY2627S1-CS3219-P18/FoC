@@ -2695,3 +2695,40 @@ No production code changes; findings were reported for team decision.
 
 **Author review:**
 tng wen xi
+
+## 2026-10-08 — order-service: F17 cancellation test coverage
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** F17 cancellation requirements supplied by the team in chat and the existing order transition implementation.
+
+**Prompts (exact):**
+
+> F17 Support the cancellation of requests.
+> F17.1 The system shall allow requesters to cancel their open requests High 9
+> The system shall update the request status from “open”
+> to “cancelled” when the user cancels it. High 9
+> F17.2 The system shall allow the requester to cancel a non-“open”
+> request when its complete-by deadline is reached.
+> The system shall provide an option for requesters to cancel
+> a request that is ongoing when the complete-by deadline
+> has passed.
+> The system shall update the request status to “cancelled” when the user cancels it.
+
+**Key responses:**
+Added service and HTTP tests covering requester cancellation of open orders, requester cancellation after a passed complete-by deadline, rejection before the deadline, and rejection of courier cancellation. Verification: `npx vitest run src/services/orders.service.spec.ts src/controllers/orders.controller.spec.ts` passed with 56 tests across 2 files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

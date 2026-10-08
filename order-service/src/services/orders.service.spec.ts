@@ -13,6 +13,9 @@
  * Scope (2026-10-07): Added transitionOrder unit coverage for missing orders,
  *        forbidden actors, invalid edges, optimistic-lock conflicts, and success.
  * Author review:
+ * Scope (2026-10-08): Added F17 cancellation transition coverage for open and
+ *        deadline-reached requests, including deadline and actor failures.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -425,6 +428,96 @@ describe('transitionOrder', () => {
       },
     });
     expect(result).toMatchObject({ ok: true, order: { status: 'picked_up' } });
+  });
+
+  it('allows the requester to cancel an open order', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    const result = await transitionOrder(
+      prisma,
+      orderId,
+      'cancelled',
+      requesterId,
+    );
+
+    expect(orderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        status: 'cancelled',
+        version: { increment: 1 },
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('rejects cancelling a non-open order before its complete-by deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T14:00:00.000Z'),
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-08T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.DEADLINE_NOT_REACHED });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('allows the requester to cancel a non-open order after its complete-by deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T11:00:00.000Z'),
+    });
+
+    const result = await transitionOrder(
+      prisma,
+      orderId,
+      'cancelled',
+      requesterId,
+      new Date('2026-10-08T12:00:00.000Z'),
+    );
+
+    expect(orderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        status: 'cancelled',
+        version: { increment: 1 },
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('does not allow a courier to cancel a request after its deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T11:00:00.000Z'),
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        courierId,
+        new Date('2026-10-08T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('returns ORDER_CONFLICT when optimistic locking fails', async () => {

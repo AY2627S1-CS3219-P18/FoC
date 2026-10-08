@@ -22,5 +22,9 @@ export function ordersRouter(
     '/:id/complete',
     ordersController.transitionOrder(prisma, 'completed'),
   );
+  router.post(
+    '/:id/cancel',
+    ordersController.transitionOrder(prisma, 'cancelled'),
+  );
   return router;
 }
