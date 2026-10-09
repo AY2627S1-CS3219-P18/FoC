@@ -57,6 +57,36 @@ export const getOrders =
     }
   };
 
+export const editOrder =
+  (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const actorId = req.get('x-user-id');
+    if (!isUuid(actorId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const orderId = req.params.id as string;
+    const payload = req.body ?? {};
+
+    const result = await ordersService.editOrder(
+      prisma,
+      actorId,
+      orderId,
+      payload,
+    );
+    if (result.ok) {
+      res.status(200).json(result.order);
+    } else {
+      const errorMessageString =
+        result.errors ?? [].map((e) => ErrorMessage[e]).join('\n');
+      res.status(statusFor(result.errors ?? [])).json({
+        message: errorMessageString,
+      });
+    }
+  };
+
 export const transitionOrder =
   (prisma: PrismaClient, newStatus: RequestStatus): RequestHandler =>
   async (req, res) => {

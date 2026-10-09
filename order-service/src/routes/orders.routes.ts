@@ -26,5 +26,6 @@ export function ordersRouter(
     '/:id/cancel',
     ordersController.transitionOrder(prisma, 'cancelled'),
   );
+  router.patch('/:id/edit', ordersController.editOrder(prisma));
   return router;
 }

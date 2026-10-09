@@ -8,7 +8,7 @@ import {
   type OrderRequest,
 } from '../generated/prisma/client.js';
 import { checkTransition, type ActorId } from '../domain/order-status.js';
-import type { CreateOrderPayload } from '../types/orders.js';
+import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import {
   isIsoDateString,
@@ -22,12 +22,36 @@ export type CreateOrderResult =
 export type GetOrderResult =
   { ok: true; orders: OrderRequest[] } | { ok: false; errors: any };
 
+const validateCredits = (credits: number) => {
+  return Number.isInteger(credits) && credits > 0;
+};
+
+const validateCompleteBy = (
+  completeBy: string | null,
+  now: Date = new Date(),
+) => {
+  const errors = [];
+
+  if (completeBy !== null) {
+    if (!isIsoDateString(completeBy)) {
+      errors.push(ErrorCode.INVALID_COMPLETE_BY);
+    } else if (Date.parse(completeBy) <= now.getTime()) {
+      // F9.1.1: complete-by must be later than the current time
+      errors.push(ErrorCode.COMPLETE_BY_IN_PAST);
+    }
+  }
+  return errors;
+};
+
+const validateAdditionalDetails = (additionalDetails: string | null) => {
+  return additionalDetails === null || typeof additionalDetails === 'string';
+};
+
 export const createOrder = async (
   prisma: PrismaClient,
   credits: CreditsClient,
   requesterId: string,
   requestPayload: CreateOrderPayload,
-  now: Date = new Date(),
 ): Promise<CreateOrderResult> => {
   const errors: ErrorCode[] = [];
 
@@ -49,25 +73,17 @@ export const createOrder = async (
   }
   if (requestPayload.credits === undefined || requestPayload.credits === null) {
     errors.push(ErrorCode.MISSING_CREDITS_OFFERED);
-  } else if (
-    !Number.isInteger(requestPayload.credits) ||
-    requestPayload.credits <= 0
-  ) {
+  } else if (!validateCredits(requestPayload.credits)) {
     errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
   }
 
   // optional fields
-  if (requestPayload.completeBy != null) {
-    if (!isIsoDateString(requestPayload.completeBy)) {
-      errors.push(ErrorCode.INVALID_COMPLETE_BY);
-    } else if (Date.parse(requestPayload.completeBy) <= now.getTime()) {
-      // F9.1.1: complete-by must be later than the current time
-      errors.push(ErrorCode.COMPLETE_BY_IN_PAST);
-    }
+  if (requestPayload.completeBy !== undefined) {
+    errors.push(...validateCompleteBy(requestPayload.completeBy));
   }
   if (
-    requestPayload.additionalDetails != null &&
-    typeof requestPayload.additionalDetails !== 'string'
+    requestPayload.additionalDetails === undefined ||
+    !validateAdditionalDetails(requestPayload.additionalDetails)
   ) {
     errors.push(ErrorCode.INVALID_ADDITIONAL_DETAILS);
   }
@@ -120,6 +136,61 @@ export const createOrder = async (
     throw err;
   }
   return { ok: true, order };
+};
+
+export const editOrder = async (
+  prisma: PrismaClient,
+  actorId: ActorId,
+  orderId: string,
+  payload: EditOrderPayload,
+) => {
+  const errors: ErrorCode[] = [];
+  try {
+    const order = await prisma.orderRequest.findUniqueOrThrow({
+      where: {
+        id: orderId,
+      },
+    });
+
+    // Ensure that request was sent by order requester
+    if (order.requesterId != actorId) {
+      return {
+        ok: false,
+        errors: [ErrorCode.FORBIDDEN],
+      };
+    }
+
+    for (const [key, value] of Object.entries(payload)) {
+      // Validate fields
+      if (key == 'credits') {
+        if (typeof value != 'number' || !validateCredits(value)) {
+          errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
+        }
+      } else if (key == 'completeBy') {
+        if (typeof value != 'string' && value != null) {
+          errors.push(ErrorCode.INVALID_COMPLETE_BY);
+        } else {
+          errors.push(...validateCompleteBy(value));
+        }
+      }
+    }
+    if (errors.length) {
+      return {
+        ok: false,
+        errors: errors,
+      };
+    }
+
+    // No errors, edit order
+    const updatedOrder = await prisma.orderRequest.update({
+      where: { id: orderId },
+      data: payload,
+    });
+    return { ok: true, order: updatedOrder };
+  } catch (error) {
+    // Order ID does not match any order
+    return { ok: false, errors: [ErrorCode.ORDER_NOT_FOUND] };
+  }
 };
 
 export const getOrders = async (

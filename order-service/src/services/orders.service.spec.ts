@@ -71,7 +71,6 @@ async function run(payload: object, deps: ReturnType<typeof fakes> = fakes()) {
     deps.credits,
     REQUESTER,
     payload as unknown as CreateOrderPayload,
-    NOW,
   );
   return { result, ...deps };
 }
