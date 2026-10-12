@@ -4,6 +4,9 @@
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-12): Added validated Redis connection settings for the
+ *        BullMQ maintenance worker.
+ * Author review: tng wen xi
  */
 
 import { z } from 'zod';
@@ -18,6 +21,8 @@ const EnvSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  REDIS_HOST: z.string().min(1).default('localhost'),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -9,6 +9,12 @@
  * Scope (2026-10-12): Applied optimistic locking to editOrder by matching the
  *        fetched version and incrementing it atomically.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Added system-actor maintenance transitions for automatic
+ *        completion after delivery and expiry at the acceptance deadline.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Formatted the maintenance timestamp as ISO-8601 for
+ *        readable, timezone-explicit logs.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -21,7 +27,11 @@ import {
   RequestStatus,
   type OrderRequest,
 } from '../generated/prisma/client.js';
-import { checkTransition, type ActorId } from '../domain/order-status.js';
+import {
+  checkTransition,
+  SYSTEM_ACTOR,
+  type ActorId,
+} from '../domain/order-status.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import {
@@ -275,6 +285,57 @@ export const getOrders = async (
 
 export type TransitionResult =
   { ok: true; order: OrderRequest } | { ok: false; error: ErrorCode };
+
+export async function runRequestMaintenance(
+  prisma: PrismaClient,
+  now: Date = new Date(),
+): Promise<{ completed: number; expired: number }> {
+  console.log(
+    'Running runRequestMaintenance, current time:',
+    now.toISOString(),
+  );
+  const deliveredCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const [deliveredOrders, openOrders] = await Promise.all([
+    prisma.orderRequest.findMany({
+      where: {
+        status: 'delivered',
+        deliveredAt: { lte: deliveredCutoff },
+      },
+    }),
+    prisma.orderRequest.findMany({
+      where: {
+        status: 'open',
+        completeBy: { not: null, lte: now },
+      },
+    }),
+  ]);
+
+  let completed = 0;
+  for (const order of deliveredOrders) {
+    const result = await transitionOrder(
+      prisma,
+      order.id,
+      'completed',
+      SYSTEM_ACTOR,
+      now,
+    );
+    if (result.ok) completed += 1;
+  }
+
+  let expired = 0;
+  for (const order of openOrders) {
+    const result = await transitionOrder(
+      prisma,
+      order.id,
+      'expired',
+      SYSTEM_ACTOR,
+      now,
+    );
+    if (result.ok) expired += 1;
+  }
+
+  return { completed, expired };
+}
 
 export const transitionOrder = async (
   prisma: PrismaClient,

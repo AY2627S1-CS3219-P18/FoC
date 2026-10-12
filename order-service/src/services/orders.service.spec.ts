@@ -22,6 +22,9 @@
  * Scope (2026-10-12): Added edit-order optimistic-lock success and conflict
  *        coverage.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Added maintenance-worker coverage for system-actor
+ *        completion, deadline expiry, and optimistic-lock races.
+ * Author review: tng wen xi
  * Scope (2026-10-12): Updated create-order fixtures for additional-details
  *        validation and added edit-order not-found and forbidden coverage.
  * Author review: tng wen xi
@@ -40,6 +43,7 @@ import {
   createOrder,
   editOrder,
   getOrders,
+  runRequestMaintenance,
   transitionOrder,
 } from './orders.service.js';
 
@@ -430,6 +434,7 @@ describe('getOrders', () => {
       ok: true,
       orders,
     });
+
     expect(findMany).toHaveBeenCalledWith({ where: undefined });
   });
 
@@ -480,6 +485,105 @@ describe('getOrders', () => {
     await expect(getOrders(prisma, undefined)).resolves.toEqual({
       ok: false,
       errors: error,
+    });
+  });
+});
+
+describe('runRequestMaintenance', () => {
+  it('uses system transitions for delivered and expired requests', async () => {
+    const delivered = {
+      id: 'delivered-order',
+      status: 'delivered',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 1,
+    } as OrderRequest;
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([delivered])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi
+      .fn()
+      .mockResolvedValueOnce(delivered)
+      .mockResolvedValueOnce(open)
+      .mockResolvedValueOnce({ ...open, status: 'expired' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn(),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(runRequestMaintenance(prisma, now)).resolves.toEqual({
+      completed: 1,
+      expired: 1,
+    });
+
+    expect(findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        status: 'delivered',
+        deliveredAt: { lte: new Date('2026-10-11T12:00:00.000Z') },
+      },
+    });
+    expect(findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        status: 'open',
+        completeBy: { not: null, lte: now },
+      },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: delivered.id, version: delivered.version },
+      data: {
+        status: 'completed',
+        version: { increment: 1 },
+      },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: open.id, version: open.version },
+      data: {
+        status: 'expired',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('does not count a transition that loses an optimistic-lock race', async () => {
+    const delivered = {
+      id: 'delivered-order',
+      status: 'delivered',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 1,
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([delivered])
+      .mockResolvedValueOnce([]);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique: vi.fn().mockResolvedValue(delivered),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(prisma, new Date('2026-10-12T12:00:00.000Z')),
+    ).resolves.toEqual({
+      completed: 0,
+      expired: 0,
     });
   });
 });

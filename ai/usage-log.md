@@ -333,6 +333,95 @@ I accepted all changes.
 **Author review:**
 tng wen xi
 
+## 2026-10-12 — order-service: Format maintenance timestamp
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Refactor
+**Governing decision:** Existing order-service maintenance logging.
+
+**Prompts (exact):**
+
+> help me format the time nicely here
+
+**Key responses:**
+Changed the maintenance log from Unix milliseconds to an ISO-8601 timestamp using `Date.toISOString()`, preserving an explicit UTC timezone.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: Fix worker watch shutdown
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor
+**Governing decision:** Existing BullMQ worker lifecycle in `order-service/src/worker.ts`.
+
+**Prompts (exact):**
+
+> $ docker compose logs -f order-worker
+> order-worker-1 | 10:26:24 AM [tsx] change in ./src/worker.ts Restarting...
+> order-worker-1 | SIGTERM received, shutting down maintenance worker
+> ...
+
+**Key responses:**
+Diagnosed that the signal handler awaited resource cleanup without explicitly terminating the worker process, preventing `tsx watch` from starting the replacement process. Updated shutdown to exit after cleanup and report cleanup failures.
+
+**Files:**
+
+- `order-service/src/worker.ts` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: Route maintenance through system transitions
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Refactor
+**Governing decision:** Existing team-authored system role and transition table in `order-service/src/domain/order-status.ts`.
+
+**Prompts (exact):**
+
+> ohh cuz over here there is a 'system' role so i would assume it's best to call checkTransition even for system updates
+
+**Key responses:**
+Changed request maintenance to query eligible requests and call `transitionOrder` with `SYSTEM_ACTOR`, so automatic completion and expiry pass through `checkTransition` and the existing optimistic-lock path. Added coverage for successful system transitions and lost optimistic-lock races. Verification was run with the order-service typecheck and full test suite.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-07 — order-service: transitionOrder test coverage
 
 **Tool:** GitHub Copilot (model: MAI-Code-1.1-Flash)
@@ -3034,3 +3123,49 @@ Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx ts
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-12 — order-service: F15.1.4 + F16.1: Automatic request maintenance
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decision confirmed in chat on 2026-10-12 to use a separate BullMQ worker backed by Redis for order-service.
+
+**Prompts (exact):**
+
+> we need to implement these:
+> F15.1.4
+> The system shall automatically mark “completed” a
+> request 24 hours after the state is set to “delivered”, in
+> case the requester forgot to mark as completed.
+>
+> and
+>
+> F16.1 The system shall automatically expire an open request when its acceptance deadline is reached.
+>
+> our team is thinking of using BullMQ's cron job for this. how can this be implemented?
+
+**Key responses:**
+Implemented a recurring BullMQ maintenance job that runs every minute. It conditionally marks delivered requests completed when `deliveredAt` is at least 24 hours old, and marks open requests expired when `completeBy` is reached. Added version increments, worker shutdown handling, Compose Redis/worker services, environment configuration, and unit coverage. Verification was run with the order-service typecheck and targeted tests.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/worker.ts` (created)
+- `order-service/package.json` (modified)
+- `order-service/package-lock.json` (modified)
+- `.env.example` (modified)
+- `compose.yaml` (modified)
+- `compose.dev.yaml` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The team confirmed the separate BullMQ worker and Redis deployment boundary before implementation. None otherwise.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
