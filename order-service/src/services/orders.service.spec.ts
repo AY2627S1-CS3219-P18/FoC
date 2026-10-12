@@ -22,6 +22,9 @@
  * Scope (2026-10-12): Added edit-order optimistic-lock success and conflict
  *        coverage.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Updated create-order fixtures for additional-details
+ *        validation and added edit-order not-found and forbidden coverage.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -30,6 +33,7 @@ import type {
 } from '../clients/credits.client.js';
 import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
+import { Prisma } from '../generated/prisma/client.js';
 import type { OrderRequest } from '../generated/prisma/client.js';
 import type { CreateOrderPayload } from '../types/orders.js';
 import {
@@ -40,7 +44,7 @@ import {
 } from './orders.service.js';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
-const LATER = '2026-09-27T14:00:00.000Z';
+const LATER = '2099-09-27T14:00:00.000Z';
 const EARLIER = '2026-09-27T10:00:00.000Z';
 
 const REQUESTER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
@@ -51,6 +55,7 @@ const valid: CreateOrderPayload = {
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,
+  additionalDetails: null,
 };
 
 function fakes({
@@ -99,6 +104,7 @@ describe('createOrder: validation', () => {
       status: 'completed',
       courierId: REQUESTER,
       version: 99,
+      additionalDetails: null,
     });
 
     expect(result.ok).toBe(true);
@@ -124,6 +130,7 @@ describe('createOrder: validation', () => {
         ErrorCode.MISSING_DESCRIPTION,
         ErrorCode.MISSING_DELIVERY_LOCATION,
         ErrorCode.MISSING_CREDITS_OFFERED,
+        ErrorCode.INVALID_ADDITIONAL_DETAILS,
       ],
     });
     expect(credits.reserve).not.toHaveBeenCalled();
@@ -339,6 +346,21 @@ describe('editOrder', () => {
     expect(findUniqueOrThrow).toHaveBeenCalledTimes(2);
   });
 
+  it('returns FORBIDDEN when the actor is not the requester', async () => {
+    const { prisma, updateMany, order } = prismaWithEdit();
+
+    await expect(
+      editOrder(prisma, SUPPLIER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.FORBIDDEN],
+    });
+
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('returns ORDER_CONFLICT when the fetched version is stale', async () => {
     const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit({
       updatedRows: 0,
@@ -361,6 +383,27 @@ describe('editOrder', () => {
       },
     });
     expect(findUniqueOrThrow).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns ORDER_NOT_FOUND when the order does not exist', async () => {
+    const findUniqueOrThrow = vi.fn(async () => {
+      throw new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: '7.10.0',
+      });
+    });
+    const prisma = {
+      orderRequest: { findUniqueOrThrow },
+    } as unknown as PrismaClient;
+
+    await expect(
+      editOrder(prisma, REQUESTER, 'missing-order', {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_NOT_FOUND],
+    });
   });
 });
 

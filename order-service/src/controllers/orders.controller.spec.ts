@@ -17,6 +17,10 @@
  * Author review: tng wen xi
  * Scope (2026-10-12): Added HTTP coverage for unsupported edit-order fields.
  * Author review:
+ * Scope (2026-10-12): Updated create-order fixtures for additional-details
+ *        validation and added successful, forbidden, and conflict edit-order
+ *        HTTP coverage.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -33,6 +37,7 @@ const body = {
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,
+  additionalDetails: null,
 };
 
 function appWith(
@@ -110,6 +115,93 @@ describe('POST /orders', () => {
 });
 
 describe('PATCH /orders/:id/edit', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+
+  it('200 with the updated order when the requester edits it', async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const updatedOrder = {
+      id: orderId,
+      requesterId,
+      description: 'Updated description',
+      version: 4,
+    };
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: vi
+            .fn()
+            .mockResolvedValueOnce({
+              ...updatedOrder,
+              version: 3,
+            })
+            .mockResolvedValueOnce(updatedOrder),
+          updateMany,
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(200);
+
+    expect(res.body).toEqual(updatedOrder);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('403 when a non-requester edits the order', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            requesterId: USER,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(403, {
+        message: 'You are not allowed to perform this action.',
+      });
+  });
+
+  it('409 when the order changed before the edit was saved', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            requesterId,
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 0 }),
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(409, {
+        message: 'This order was changed by someone else. Refresh and try again.',
+      });
+  });
+
   it('returns a user-facing validation message for unsupported fields', async () => {
     await request(
       appWith(async () => ({ ok: true, reservationId: 'r' })),

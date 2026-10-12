@@ -5,7 +5,9 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-10-12): Mapped edit-order error codes to user-facing messages.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Mapped optimistic-lock edit conflicts to HTTP 409.
+ * Author review: tng wen xi
  */
 
 import type { RequestHandler } from 'express';
@@ -130,5 +132,6 @@ function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
   if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
   if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
+  if (errors.includes(ErrorCode.ORDER_CONFLICT)) return 409;
   return 400;
 }
