@@ -5,7 +5,10 @@
  *        fields now return a validation error and missing orders remain
  *        ORDER_NOT_FOUND. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Applied optimistic locking to editOrder by matching the
+ *        fetched version and incrementing it atomically.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -208,9 +211,19 @@ export const editOrder = async (
       };
     }
 
-    const updatedOrder = await prisma.orderRequest.update({
-      where: { id: orderId },
-      data: payload,
+    const { count } = await prisma.orderRequest.updateMany({
+      where: { id: order.id, version: order.version },
+      data: {
+        ...payload,
+        version: { increment: 1 },
+      },
+    });
+    if (count === 0) {
+      return { ok: false, errors: [ErrorCode.ORDER_CONFLICT] };
+    }
+
+    const updatedOrder = await prisma.orderRequest.findUniqueOrThrow({
+      where: { id: order.id },
     });
     return { ok: true, order: updatedOrder };
   } catch (error) {

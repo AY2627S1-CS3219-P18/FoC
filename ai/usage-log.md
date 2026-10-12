@@ -857,6 +857,36 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-12 — Order edit optimistic locking: Version check and update
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing `OrderRequest.version` schema field and optimistic-locking pattern in `order-service/src/services/orders.service.ts`
+
+**Prompts (exact):**
+
+> should version update and checking also be implemeented in this function? if so, help me implement it
+
+**Key responses:**
+Implemented optimistic locking in `editOrder`: the update now matches the version read during authorization, increments the version atomically, returns `ORDER_CONFLICT` when no row matches, and re-reads the updated order. Added success and stale-version unit tests. Type-checking and linting passed; the two new focused tests passed. The broader service test file still has 20 pre-existing `createOrder` failures unrelated to this change.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-12 — order-service: edit payload error handling
 
 **Tool:** GitHub Copilot (model: GPT-5.6 Luna)

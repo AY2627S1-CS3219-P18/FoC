@@ -19,6 +19,9 @@
  * Scope (2026-10-12): Added edit-order coverage for unsupported fields and
  *        Prisma not-found errors.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Added edit-order optimistic-lock success and conflict
+ *        coverage.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -277,6 +280,20 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
 });
 
 describe('editOrder', () => {
+  function prismaWithEdit({ updatedRows = 1 } = {}) {
+    const order = {
+      id: 'order-1',
+      requesterId: REQUESTER,
+      version: 3,
+    } as OrderRequest;
+    const findUniqueOrThrow = vi.fn(async () => order);
+    const updateMany = vi.fn(async () => ({ count: updatedRows }));
+    const prisma = {
+      orderRequest: { findUniqueOrThrow, updateMany },
+    } as unknown as PrismaClient;
+    return { findUniqueOrThrow, updateMany, prisma, order };
+  }
+
   it('rejects unsupported fields before querying the database', async () => {
     const findUniqueOrThrow = vi.fn();
     const prisma = {
@@ -293,6 +310,57 @@ describe('editOrder', () => {
       errors: [ErrorCode.INVALID_FIELD],
     });
     expect(findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('updates only the fetched version and increments it', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    const updatedOrder = {
+      ...order,
+      description: 'Updated description',
+      version: 4,
+    };
+    findUniqueOrThrow
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce(updatedOrder);
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({ ok: true, order: updatedOrder });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+    expect(findUniqueOrThrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns ORDER_CONFLICT when the fetched version is stale', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit({
+      updatedRows: 0,
+    });
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_CONFLICT],
+    });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+    expect(findUniqueOrThrow).toHaveBeenCalledTimes(1);
   });
 });
 
