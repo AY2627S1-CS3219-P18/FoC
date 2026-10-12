@@ -857,6 +857,37 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-12 — order-service: edit payload error handling
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** refactor, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing order-service edit endpoint behavior; team-selected `INVALID_FIELD` response for unsupported JSON keys.
+
+**Prompts (exact):**
+
+> is there a way to find the type of error within the catch block and send the correct error code and message back to the user?
+
+**Key responses:**
+Added `INVALID_FIELD` for unsupported edit payload keys, validate those keys before querying Prisma, map Prisma `P2025` to `ORDER_NOT_FOUND`, rethrow unrelated database errors, and map edit error codes to user-facing messages in the controller. Added focused service and HTTP tests. Typecheck and focused tests passed. The broader controller/service files retain pre-existing failures related to `additionalDetails` validation.
+
+**Files:**
+
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The team selected adding `INVALID_FIELD` and returning HTTP 400 for unsupported JSON keys.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
 ## 2026-09-26 — Recess iteration: Credit Service verification run
 
 **Tool:** Claude Code (model: claude-opus-5)

@@ -1,9 +1,20 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: GitHub Copilot (model: GPT-5.6 Luna), date: 2026-10-12
+ * Scope: Narrowed edit-order validation and Prisma error handling; unsupported
+ *        fields now return a validation error and missing orders remain
+ *        ORDER_NOT_FOUND. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
+ */
+
 import type {
   CreditsClient,
   ReserveResult,
 } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import {
+  Prisma,
   RequestStatus,
   type OrderRequest,
 } from '../generated/prisma/client.js';
@@ -16,7 +27,19 @@ import {
   isUuid,
 } from '../utils/validation.js';
 
+const EDITABLE_ORDER_FIELDS = new Set([
+  'supplierId',
+  'description',
+  'deliveryLocation',
+  'credits',
+  'completeBy',
+  'additionalDetails',
+]);
+
 export type CreateOrderResult =
+  { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
+
+export type EditOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
 
 export type GetOrderResult =
@@ -143,8 +166,33 @@ export const editOrder = async (
   actorId: ActorId,
   orderId: string,
   payload: EditOrderPayload,
-) => {
+): Promise<EditOrderResult> => {
   const errors: ErrorCode[] = [];
+  for (const [key, value] of Object.entries(payload)) {
+    if (!EDITABLE_ORDER_FIELDS.has(key)) {
+      errors.push(ErrorCode.INVALID_FIELD);
+      continue;
+    }
+
+    // Validate fields
+    if (key == 'credits') {
+      if (typeof value != 'number' || !validateCredits(value)) {
+        errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
+      }
+    } else if (key == 'completeBy') {
+      if (typeof value != 'string' && value != null) {
+        errors.push(ErrorCode.INVALID_COMPLETE_BY);
+      } else {
+        errors.push(...validateCompleteBy(value));
+      }
+    }
+  }
+  if (errors.length) {
+    return {
+      ok: false,
+      errors: errors,
+    };
+  }
   try {
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: {
@@ -160,36 +208,19 @@ export const editOrder = async (
       };
     }
 
-    for (const [key, value] of Object.entries(payload)) {
-      // Validate fields
-      if (key == 'credits') {
-        if (typeof value != 'number' || !validateCredits(value)) {
-          errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
-        }
-      } else if (key == 'completeBy') {
-        if (typeof value != 'string' && value != null) {
-          errors.push(ErrorCode.INVALID_COMPLETE_BY);
-        } else {
-          errors.push(...validateCompleteBy(value));
-        }
-      }
-    }
-    if (errors.length) {
-      return {
-        ok: false,
-        errors: errors,
-      };
-    }
-
-    // No errors, edit order
     const updatedOrder = await prisma.orderRequest.update({
       where: { id: orderId },
       data: payload,
     });
     return { ok: true, order: updatedOrder };
   } catch (error) {
-    // Order ID does not match any order
-    return { ok: false, errors: [ErrorCode.ORDER_NOT_FOUND] };
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return { ok: false, errors: [ErrorCode.ORDER_NOT_FOUND] };
+    }
+    throw error;
   }
 };
 

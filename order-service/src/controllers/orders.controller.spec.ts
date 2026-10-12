@@ -15,6 +15,8 @@
  * Scope (2026-10-08): Added F17 HTTP coverage for requester cancellation of
  *        open and deadline-reached requests and cancellation failures.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Added HTTP coverage for unsupported edit-order fields.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -104,6 +106,20 @@ describe('POST /orders', () => {
       .set('x-user-id', USER)
       .send({ ...body, completeBy: '2000-01-01T00:00:00.000Z' })
       .expect(400, { message: 'Complete-by time must be in the future.' });
+  });
+});
+
+describe('PATCH /orders/:id/edit', () => {
+  it('returns a user-facing validation message for unsupported fields', async () => {
+    await request(
+      appWith(async () => ({ ok: true, reservationId: 'r' })),
+    )
+      .patch('/orders/order-1/edit')
+      .set('x-user-id', USER)
+      .send({ unsupported: true })
+      .expect(400, {
+        message: 'Payload contains an unsupported field.',
+      });
   });
 });
 

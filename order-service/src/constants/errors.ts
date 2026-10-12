@@ -1,3 +1,12 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: GitHub Copilot (model: GPT-5.6 Luna), date: 2026-10-12
+ * Scope: Added the invalid-field error code and message for malformed edit
+ *        payloads. No requirements, architecture, schema, or API decisions
+ *        were made by the AI tool.
+ * Author review:
+ */
+
 export enum ErrorCode {
   UNAUTHENTICATED = 'UNAUTHENTICATED',
   MISSING_SUPPLIER = 'MISSING_SUPPLIER',
@@ -10,6 +19,7 @@ export enum ErrorCode {
   INVALID_CREDITS_OFFERED = 'INVALID_CREDITS_OFFERED',
   INVALID_COMPLETE_BY = 'INVALID_COMPLETE_BY',
   INVALID_ADDITIONAL_DETAILS = 'INVALID_ADDITIONAL_DETAILS',
+  INVALID_FIELD = 'INVALID_FIELD',
   ORDER_NOT_FOUND = 'ORDER_NOT_FOUND',
   INVALID_TRANSITION = 'INVALID_TRANSITION',
   FORBIDDEN = 'FORBIDDEN',
@@ -36,6 +46,7 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.INVALID_CREDITS_OFFERED]: 'Invalid number of credits offered.',
   [ErrorCode.INVALID_COMPLETE_BY]: 'Complete-by time must be a valid date.',
   [ErrorCode.INVALID_ADDITIONAL_DETAILS]: 'Additional details must be text.',
+  [ErrorCode.INVALID_FIELD]: 'Payload contains an unsupported field.',
   [ErrorCode.ORDER_NOT_FOUND]: 'Order not found.',
   [ErrorCode.INVALID_TRANSITION]:
     'This order cannot move to that status from its current status.',

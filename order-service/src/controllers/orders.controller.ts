@@ -4,6 +4,8 @@
  * Scope: Added the early return after invalid status-filter responses.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Mapped edit-order error codes to user-facing messages.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -79,9 +81,10 @@ export const editOrder =
     if (result.ok) {
       res.status(200).json(result.order);
     } else {
-      const errorMessageString =
-        result.errors ?? [].map((e) => ErrorMessage[e]).join('\n');
-      res.status(statusFor(result.errors ?? [])).json({
+      const errorMessageString = result.errors
+        .map((e) => ErrorMessage[e])
+        .join('\n');
+      res.status(statusFor(result.errors)).json({
         message: errorMessageString,
       });
     }

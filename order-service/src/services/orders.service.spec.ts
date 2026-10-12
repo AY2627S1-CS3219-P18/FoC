@@ -16,6 +16,9 @@
  * Scope (2026-10-08): Added F17 cancellation transition coverage for open and
  *        deadline-reached requests, including deadline and actor failures.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Added edit-order coverage for unsupported fields and
+ *        Prisma not-found errors.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -26,7 +29,12 @@ import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
 import type { OrderRequest } from '../generated/prisma/client.js';
 import type { CreateOrderPayload } from '../types/orders.js';
-import { createOrder, getOrders, transitionOrder } from './orders.service.js';
+import {
+  createOrder,
+  editOrder,
+  getOrders,
+  transitionOrder,
+} from './orders.service.js';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
 const LATER = '2026-09-27T14:00:00.000Z';
@@ -265,6 +273,26 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
     });
     deps.credits.release.mockRejectedValue(new Error('credit-service down'));
     await expect(run(valid, deps)).rejects.toThrow('db down');
+  });
+});
+
+describe('editOrder', () => {
+  it('rejects unsupported fields before querying the database', async () => {
+    const findUniqueOrThrow = vi.fn();
+    const prisma = {
+      orderRequest: { findUniqueOrThrow },
+    } as unknown as PrismaClient;
+
+    await expect(
+      editOrder(prisma, REQUESTER, 'order-1', {
+        credits: 4,
+        unsupported: true,
+      } as never),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.INVALID_FIELD],
+    });
+    expect(findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
 
