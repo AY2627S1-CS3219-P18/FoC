@@ -6,8 +6,23 @@
  * Author review: george-yeo
  * Scope (2026-09-29): Added HTTP-level tests for GET /orders results, filters, and failures.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Updated create-order response expectations for generated
+ *        order and reservation identifiers.
+ * Author review: tng wen xi
  * Scope (2026-10-04): Updated GET /orders HTTP expectations and test doubles to
  *        match the service result contract and controller failure responses.
+ * Author review: tng wen xi
+ * Scope (2026-10-07): Added POST /orders/:id transition controller coverage for
+ *        successful pickup, forbidden actors, and invalid transitions.
+ * Author review: tng wen xi
+ * Scope (2026-10-08): Added F17 HTTP coverage for requester cancellation of
+ *        open and deadline-reached requests and cancellation failures.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Added HTTP coverage for unsupported edit-order fields.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Updated create-order fixtures for additional-details
+ *        validation and added successful, forbidden, and conflict edit-order
+ *        HTTP coverage.
  * Author review: tng wen xi
  */
 
@@ -25,6 +40,7 @@ const body = {
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,
+  additionalDetails: null,
 };
 
 function appWith(
@@ -32,11 +48,24 @@ function appWith(
   findMany: (args: {
     where?: { status: string };
   }) => Promise<object[]> = async () => [],
+  orderRequestOverrides: Partial<{
+    create: (args: { data: object }) => Promise<object>;
+    findUnique: (args: { where: { id: string } }) => Promise<object | null>;
+    updateMany: (args: {
+      where: { id: string; version: number };
+      data: object;
+    }) => Promise<{ count: number }>;
+    findUniqueOrThrow: (args: { where: { id: string } }) => Promise<object>;
+  }> = {},
 ) {
   const prisma = {
     orderRequest: {
       create: async ({ data }: { data: object }) => ({ id: 'new', ...data }),
       findMany,
+      findUnique: async () => null,
+      updateMany: async () => ({ count: 1 }),
+      findUniqueOrThrow: async () => ({ id: 'order-1', status: 'picked_up' }),
+      ...orderRequestOverrides,
     },
   } as unknown as PrismaClient;
   const credits: CreditsClient = { reserve, release: async () => {} };
@@ -56,7 +85,8 @@ describe('POST /orders', () => {
       .set('x-user-id', USER)
       .send(body)
       .expect(201);
-    expect(res.body).toMatchObject({ id: 'new', credits: 4 });
+    expect(res.body).toMatchObject({ credits: 4, reservationId: 'r' });
+    expect(res.body.id).toEqual(expect.any(String));
   });
 
   it('422 when the requester does not have enough credits', async () => {
@@ -85,6 +115,106 @@ describe('POST /orders', () => {
       .set('x-user-id', USER)
       .send({ ...body, completeBy: '2000-01-01T00:00:00.000Z' })
       .expect(400, { message: 'Complete-by time must be in the future.' });
+  });
+});
+
+describe('PATCH /orders/:id/edit', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+
+  it('200 with the updated order when the requester edits it', async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const updatedOrder = {
+      id: orderId,
+      requesterId,
+      description: 'Updated description',
+      version: 4,
+    };
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: vi
+            .fn()
+            .mockResolvedValueOnce({
+              ...updatedOrder,
+              version: 3,
+            })
+            .mockResolvedValueOnce(updatedOrder),
+          updateMany,
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(200);
+
+    expect(res.body).toEqual(updatedOrder);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('403 when a non-requester edits the order', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            requesterId: USER,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(403, {
+        message: 'You are not allowed to perform this action.',
+      });
+  });
+
+  it('409 when the order changed before the edit was saved', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            requesterId,
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 0 }),
+        },
+      ),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('x-user-id', requesterId)
+      .send({ description: 'Updated description' })
+      .expect(409, {
+        message:
+          'This order was changed by someone else. Refresh and try again.',
+      });
+  });
+
+  it('returns a user-facing validation message for unsupported fields', async () => {
+    await request(appWith(async () => ({ ok: true, reservationId: 'r' })))
+      .patch('/orders/order-1/edit')
+      .set('x-user-id', USER)
+      .send({ unsupported: true })
+      .expect(400, {
+        message: 'Payload contains an unsupported field.',
+      });
   });
 });
 
@@ -168,5 +298,206 @@ describe('GET /orders', () => {
       .expect(500);
 
     expect(res.body).toEqual({ ok: false, errors: {} });
+  });
+});
+
+describe('POST /orders/:id/pickup', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  it('200 when the courier is allowed to pick up the order', async () => {
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 1 }),
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            status: 'picked_up',
+            requesterId,
+            courierId,
+            version: 4,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/pickup`)
+      .set('x-user-id', courierId)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      ok: true,
+      order: { id: orderId, status: 'picked_up', courierId },
+    });
+  });
+
+  it('403 when the actor is not allowed to pick up the order', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/pickup`)
+      .set('x-user-id', requesterId)
+      .expect(403, { ok: false, error: 'FORBIDDEN' });
+  });
+
+  it('409 when the requested transition is not valid from the current status', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'open',
+            requesterId,
+            courierId: null,
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/deliver`)
+      .set('x-user-id', courierId)
+      .expect(409, { ok: false, error: 'INVALID_TRANSITION' });
+  });
+});
+
+describe('POST /orders/:id/cancel', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  it('200 when the requester cancels an open order', async () => {
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'open',
+            requesterId,
+            courierId: null,
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 1 }),
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            status: 'cancelled',
+            requesterId,
+            courierId: null,
+            version: 4,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/cancel`)
+      .set('x-user-id', requesterId)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      ok: true,
+      order: { id: orderId, status: 'cancelled' },
+    });
+  });
+
+  it('200 when the requester cancels an ongoing order after complete-by', async () => {
+    const res = await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            completeBy: new Date('2000-01-01T00:00:00.000Z'),
+            version: 3,
+          }),
+          updateMany: async () => ({ count: 1 }),
+          findUniqueOrThrow: async () => ({
+            id: orderId,
+            status: 'cancelled',
+            requesterId,
+            courierId,
+            version: 4,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/cancel`)
+      .set('x-user-id', requesterId)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      ok: true,
+      order: { status: 'cancelled' },
+    });
+  });
+
+  it('400 when an ongoing order has not reached complete-by', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            completeBy: new Date('2099-01-01T00:00:00.000Z'),
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/cancel`)
+      .set('x-user-id', requesterId)
+      .expect(400, { ok: false, error: 'DEADLINE_NOT_REACHED' });
+  });
+
+  it('403 when a courier tries to cancel an order', async () => {
+    await request(
+      appWith(
+        async () => ({ ok: true, reservationId: 'r' }),
+        async () => [],
+        {
+          findUnique: async () => ({
+            id: orderId,
+            status: 'accepted',
+            requesterId,
+            courierId,
+            completeBy: new Date('2000-01-01T00:00:00.000Z'),
+            version: 3,
+          }),
+        },
+      ),
+    )
+      .post(`/orders/${orderId}/cancel`)
+      .set('x-user-id', courierId)
+      .expect(403, { ok: false, error: 'FORBIDDEN' });
   });
 });

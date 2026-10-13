@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-09-23
 # Scope: Project scaffolding / infrastructure only.
 # Author review: george-yeo
+# Scope (2026-10-12): Added the development order maintenance worker and its
+#        Redis-backed Compose dependencies.
+# Author review: tng wen xi
 #
 # Dev override: hot reload via Compose Watch (Docker Compose >= 2.22).
 #   docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -27,6 +30,33 @@ services:
           path: ./order-service/test
           target: /app/test
         # Schema/migration changes: restart -> container re-runs generate + migrate deploy
+        - action: sync+restart
+          path: ./order-service/prisma
+          target: /app/prisma
+        - action: rebuild
+          path: ./order-service/package.json
+        - action: rebuild
+          path: ./order-service/package-lock.json
+
+  order-worker:
+    build:
+      target: dev
+    restart: "no"
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma generate && npx prisma migrate deploy && exec npm run worker:dev",
+      ]
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - action: sync
+          path: ./order-service/src
+          target: /app/src
+          ignore:
+            - generated/
         - action: sync+restart
           path: ./order-service/prisma
           target: /app/prisma

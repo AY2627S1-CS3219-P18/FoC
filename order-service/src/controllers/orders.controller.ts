@@ -4,6 +4,13 @@
  * Scope: Added the early return after invalid status-filter responses.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-10-12): Mapped edit-order error codes to user-facing messages.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Mapped optimistic-lock edit conflicts to HTTP 409.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Passed the credit client through status transitions so
+ *        requester cancellation releases the persisted reservation.
+ * Author review: tng wen xi
  */
 
 import type { RequestHandler } from 'express';
@@ -57,8 +64,78 @@ export const getOrders =
     }
   };
 
+export const editOrder =
+  (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const actorId = req.get('x-user-id');
+    if (!isUuid(actorId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const orderId = req.params.id as string;
+    const payload = req.body ?? {};
+
+    const result = await ordersService.editOrder(
+      prisma,
+      actorId,
+      orderId,
+      payload,
+    );
+    if (result.ok) {
+      res.status(200).json(result.order);
+    } else {
+      const errorMessageString = result.errors
+        .map((e) => ErrorMessage[e])
+        .join('\n');
+      res.status(statusFor(result.errors)).json({
+        message: errorMessageString,
+      });
+    }
+  };
+
+export const transitionOrder =
+  (
+    prisma: PrismaClient,
+    credits: CreditsClient,
+    newStatus: RequestStatus,
+  ): RequestHandler =>
+  async (req, res) => {
+    const actorId = req.get('x-user-id'); // TODO(team): take from verified JWT
+    if (!isUuid(actorId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+
+    const orderId = req.params.id as string;
+
+    // const response = await ordersService.pickupOrder(prisma, actorId, orderId);
+    const response = await ordersService.transitionOrder(
+      prisma,
+      orderId,
+      newStatus,
+      actorId,
+      new Date(),
+      credits,
+    );
+
+    if (response.ok) {
+      res.status(200).json(response);
+    } else {
+      const errors = [response.error];
+      const errorCode = statusFor(errors);
+      res.status(errorCode).json(response);
+    }
+  };
+
 function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.CREDIT_SERVICE_UNAVAILABLE)) return 503;
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
+  if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
+  if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
+  if (errors.includes(ErrorCode.ORDER_CONFLICT)) return 409;
   return 400;
 }

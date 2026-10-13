@@ -4,6 +4,9 @@
  * Scope: Generated deterministic dummy order fixtures for local testing.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Added deterministic reservation identifiers and release
+ *        timestamps for seeded lifecycle states.
+ * Author review:
  */
 
 import 'dotenv/config';
@@ -35,9 +38,22 @@ const orderIds = [
   '20000000-0000-4000-8000-000000000009',
 ];
 
+const reservationIds = [
+  '40000000-0000-4000-8000-000000000001',
+  '40000000-0000-4000-8000-000000000002',
+  '40000000-0000-4000-8000-000000000003',
+  '40000000-0000-4000-8000-000000000004',
+  '40000000-0000-4000-8000-000000000005',
+  '40000000-0000-4000-8000-000000000006',
+  '40000000-0000-4000-8000-000000000007',
+  '40000000-0000-4000-8000-000000000008',
+  '40000000-0000-4000-8000-000000000009',
+];
+
 const now = Date.now();
 const minutesFromNow = (minutes: number): Date =>
   new Date(now + minutes * 60_000);
+const minutesAgo = (minutes: number): Date => minutesFromNow(-minutes);
 
 const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
@@ -47,6 +63,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Chicken rice with no cucumber and chilli on the side',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
+    reservationId: reservationIds[0],
     completeBy: minutesFromNow(75),
     additionalDetails: 'Please meet by the vending machines.',
     status: 'open',
@@ -58,6 +75,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Kopi-o kosong and kaya toast set',
     deliveryLocation: 'COM2 Level 3 Lounge',
     credits: 2,
+    reservationId: reservationIds[1],
     completeBy: null,
     status: 'open',
   },
@@ -68,6 +86,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Two dishes cai fan, no pork',
     deliveryLocation: 'Central Library Level 2',
     credits: 6,
+    reservationId: reservationIds[2],
     completeBy: minutesFromNow(120),
     status: 'accepted',
     courierId: courierA,
@@ -80,6 +99,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Large ban mian with extra chilli',
     deliveryLocation: 'UTown Residence Front Desk',
     credits: 8,
+    reservationId: reservationIds[3],
     completeBy: minutesFromNow(40),
     status: 'picked_up',
     courierId: courierA,
@@ -92,6 +112,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Mixed rice, one meat and two vegetables',
     deliveryLocation: 'Yusof Ishak House Lobby',
     credits: 10,
+    reservationId: reservationIds[4],
     completeBy: minutesFromNow(-5),
     status: 'delivered',
     courierId: courierA,
@@ -105,6 +126,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Two prata kosong and one teh peng',
     deliveryLocation: 'PGP Residence Block A',
     credits: 12,
+    reservationId: reservationIds[5],
     completeBy: minutesFromNow(-90),
     status: 'completed',
     courierId: courierA,
@@ -118,6 +140,8 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Nasi lemak set with extra sambal',
     deliveryLocation: 'SDE4 Studio',
     credits: 15,
+    reservationId: reservationIds[6],
+    creditReleasedAt: minutesAgo(3),
     completeBy: minutesFromNow(10),
     additionalDetails: 'Cancelled because the requester left campus.',
     status: 'cancelled',
@@ -129,6 +153,8 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Bubble tea, half sugar and less ice',
     deliveryLocation: 'Science Drive 2',
     credits: 3,
+    reservationId: reservationIds[7],
+    creditReleasedAt: minutesAgo(4),
     completeBy: null,
     status: 'expired',
   },
@@ -139,6 +165,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
     description: 'Iced milo and tuna sandwich',
     deliveryLocation: 'LT19 Main Entrance',
     credits: 5,
+    reservationId: reservationIds[8],
     completeBy: minutesFromNow(25),
     status: 'open',
   },
