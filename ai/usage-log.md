@@ -1014,6 +1014,64 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-13 — order-service: Seed reservation and release lifecycle data
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Boilerplate
+**Governing decision:** Existing `OrderRequest.reservationId` and `OrderRequest.creditReleasedAt` fields.
+
+**Prompts (exact):**
+
+> updaate the seed data to include the new fields of reservationid and creditsReleasedAt where necessary
+
+**Key responses:**
+Added deterministic reservation identifiers to every seeded request. Cancelled and expired requests now include release timestamps; active and completed requests retain a null release timestamp because their reservation is not released by those states.
+
+**Files:**
+
+- `order-service/prisma/seed.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-13 — order-service: Auto-expiry and cancellation edge-case tests
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Existing F16.1 delivery-deadline expiry and F17 cancellation transition rules in `order-service/src/domain/order-status.ts`.
+
+**Prompts (exact):**
+
+> write tests for the auto expire and auto cancel based on the requirements, remember to add for edge cases too and ensure high branch coverage
+
+**Key responses:**
+Added lifecycle tests for automatic expiry and requester cancellation, including exact deadline boundaries, pre-deadline behavior, missing deadlines and reservations, terminal states, optimistic-lock races, and credit-release failures. Verification: 303 tests passed, typecheck passed, and full coverage reported 90.41% branches overall and 93.2% branches in `orders.service.ts`.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+No production code was changed. Existing credit-service stubs remain outside this test scope.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-12 — Order edit optimistic locking: Version check and update
 
 **Tool:** GitHub Copilot (model: GPT-5.6 Luna)

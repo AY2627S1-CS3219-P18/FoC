@@ -30,6 +30,9 @@
  * Author review: tng wen xi
  * Scope (2026-10-13): Added cancellation credit-release coverage.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Added deadline-boundary, missing-reservation, release
+ *        failure, and terminal-state lifecycle coverage.
+ * Author review: tng wen xi
  * Scope (2026-10-13): Updated fixtures for persisted reservation identifiers
  *        and credit release inputs.
  * Author review: tng wen xi
@@ -42,7 +45,10 @@ import type {
 import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { Prisma } from '../generated/prisma/client.js';
-import type { OrderRequest } from '../generated/prisma/client.js';
+import {
+  RequestStatus,
+  type OrderRequest,
+} from '../generated/prisma/client.js';
 import type { CreateOrderPayload } from '../types/orders.js';
 import {
   createOrder,
@@ -538,6 +544,135 @@ describe('runRequestMaintenance', () => {
     });
   });
 
+  it('expires at the exact delivery deadline and skips credit release without a reservation', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: null,
+      completeBy: new Date('2026-10-12T12:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const release = vi.fn();
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...open,
+          status: 'expired',
+        }),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(
+      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
+    ).resolves.toEqual({ completed: 0, expired: 1 });
+
+    expect(release).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: open.id, version: open.version },
+      data: { status: 'expired', version: { increment: 1 } },
+    });
+  });
+
+  it('does not expire an open request before its delivery deadline', async () => {
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const findUnique = vi.fn();
+    const updateMany = vi.fn();
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(prisma, new Date('2026-10-12T11:59:59.999Z')),
+    ).resolves.toEqual({ completed: 0, expired: 0 });
+
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not release credits when expiry loses the optimistic-lock race', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const release = vi.fn();
+    const prisma = {
+      orderRequest: { findMany, findUnique, updateMany },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(
+        prisma,
+        { reserve: vi.fn(), release },
+        new Date('2026-10-12T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ completed: 0, expired: 0 });
+
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('propagates an expiry credit-release failure after the request is expired', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const releaseError = new Error('credit service unavailable');
+    const release = vi.fn().mockRejectedValue(releaseError);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...open,
+          status: 'expired',
+        }),
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(
+        prisma,
+        { reserve: vi.fn(), release },
+        new Date('2026-10-12T12:00:00.000Z'),
+      ),
+    ).rejects.toBe(releaseError);
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('uses system transitions for delivered and expired requests', async () => {
     const delivered = {
       id: 'delivered-order',
@@ -773,6 +908,121 @@ describe('transitionOrder', () => {
       where: { id: orderId, status: 'cancelled', creditReleasedAt: null },
       data: { creditReleasedAt: new Date('2026-10-13T12:00:00.000Z') },
     });
+  });
+
+  it('does not release credits when cancellation loses the optimistic-lock race', async () => {
+    const { prisma, orderRequest } = prismaWithTransition(
+      {
+        status: 'open',
+        requesterId,
+        courierId: null,
+        reservationId: 'reservation-1',
+      },
+      { updatedRows: 0 },
+    );
+    const release = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        { reserve: vi.fn(), release },
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_CONFLICT });
+
+    expect(release).not.toHaveBeenCalled();
+    expect(orderRequest.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('cancels at the exact complete-by deadline', async () => {
+    const deadline = new Date('2026-10-13T12:00:00.000Z');
+    const { prisma } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: deadline,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'cancelled', requesterId, deadline),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it('rejects ongoing cancellation when complete-by is missing', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'picked_up',
+      requesterId,
+      courierId,
+      completeBy: null,
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: ErrorCode.DEADLINE_NOT_REACHED,
+    });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['completed', 'expired', 'cancelled'] as RequestStatus[])(
+    'rejects cancellation from terminal status %s',
+    async (status) => {
+      const { prisma, orderRequest } = prismaWithTransition({
+        status,
+        requesterId,
+        courierId,
+        completeBy: new Date('2026-10-13T10:00:00.000Z'),
+      });
+
+      await expect(
+        transitionOrder(
+          prisma,
+          orderId,
+          'cancelled',
+          requesterId,
+          new Date('2026-10-13T12:00:00.000Z'),
+        ),
+      ).resolves.toEqual({
+        ok: false,
+        error: ErrorCode.INVALID_TRANSITION,
+      });
+      expect(orderRequest.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('propagates a release failure after cancellation', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+      reservationId: 'reservation-1',
+    });
+    const releaseError = new Error('credit service unavailable');
+    const release = vi.fn().mockRejectedValue(releaseError);
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        { reserve: vi.fn(), release },
+      ),
+    ).rejects.toBe(releaseError);
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(orderRequest.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('rejects cancelling a non-open order before its complete-by deadline', async () => {
