@@ -15,12 +15,19 @@
  * Scope (2026-10-12): Formatted the maintenance timestamp as ISO-8601 for
  *        readable, timezone-explicit logs.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Persisted credit reservation identifiers and recorded
+ *        successful expiry-time credit release.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Released the persisted reservation after successful
+ *        requester cancellation.
+ * Author review: tng wen xi
  */
 
 import type {
   CreditsClient,
   ReserveResult,
 } from '../clients/credits.client.js';
+import { createStubCreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import {
   Prisma,
@@ -39,6 +46,7 @@ import {
   isNonEmptyString,
   isUuid,
 } from '../utils/validation.js';
+import { randomUUID } from 'node:crypto';
 
 const EDITABLE_ORDER_FIELDS = new Set([
   'supplierId',
@@ -129,8 +137,13 @@ export const createOrder = async (
   }
 
   // use temporary stub for credit reservation
+  const orderId = crypto.randomUUID();
   const reservation = await credits
-    .reserve({ requesterId, amount: requestPayload.credits })
+    .reserve({
+      requesterId,
+      requestId: orderId,
+      amount: requestPayload.credits,
+    })
     .catch((err: unknown): ReserveResult => {
       console.error('Credit reservation failed:', err);
       return { ok: false, reason: 'UNAVAILABLE' };
@@ -151,6 +164,7 @@ export const createOrder = async (
   try {
     order = await prisma.orderRequest.create({
       data: {
+        id: orderId,
         requesterId,
         supplierId: requestPayload.supplierId,
         description: requestPayload.description,
@@ -160,6 +174,7 @@ export const createOrder = async (
           ? new Date(requestPayload.completeBy)
           : null,
         additionalDetails: requestPayload.additionalDetails ?? null,
+        reservationId: reservation.reservationId,
       },
     });
   } catch (err) {
@@ -288,8 +303,12 @@ export type TransitionResult =
 
 export async function runRequestMaintenance(
   prisma: PrismaClient,
-  now: Date = new Date(),
+  creditsOrNow: CreditsClient | Date = createStubCreditsClient(),
+  maybeNow: Date = new Date(),
 ): Promise<{ completed: number; expired: number }> {
+  const credits =
+    creditsOrNow instanceof Date ? createStubCreditsClient() : creditsOrNow;
+  const now = creditsOrNow instanceof Date ? creditsOrNow : maybeNow;
   console.log(
     'Running runRequestMaintenance, current time:',
     now.toISOString(),
@@ -331,7 +350,16 @@ export async function runRequestMaintenance(
       SYSTEM_ACTOR,
       now,
     );
-    if (result.ok) expired += 1;
+    if (!result.ok) continue;
+
+    if (order.reservationId) {
+      await credits.release(order.reservationId);
+      await prisma.orderRequest.updateMany({
+        where: { id: order.id, status: 'expired', creditReleasedAt: null },
+        data: { creditReleasedAt: now },
+      });
+    }
+    expired += 1;
   }
 
   return { completed, expired };
@@ -343,6 +371,7 @@ export const transitionOrder = async (
   to: RequestStatus,
   actorId: ActorId,
   now: Date = new Date(),
+  credits: CreditsClient = createStubCreditsClient(),
 ): Promise<TransitionResult> => {
   const order = await prisma.orderRequest.findUnique({
     where: { id: orderId },
@@ -367,5 +396,14 @@ export const transitionOrder = async (
   const updated = await prisma.orderRequest.findUniqueOrThrow({
     where: { id: order.id },
   });
+
+  if (to === 'cancelled' && order.reservationId) {
+    await credits.release(order.reservationId);
+    await prisma.orderRequest.updateMany({
+      where: { id: order.id, status: 'cancelled', creditReleasedAt: null },
+      data: { creditReleasedAt: now },
+    });
+  }
+
   return { ok: true, order: updated };
 };

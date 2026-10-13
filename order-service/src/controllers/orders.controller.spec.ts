@@ -6,6 +6,9 @@
  * Author review: george-yeo
  * Scope (2026-09-29): Added HTTP-level tests for GET /orders results, filters, and failures.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Updated create-order response expectations for generated
+ *        order and reservation identifiers.
+ * Author review: tng wen xi
  * Scope (2026-10-04): Updated GET /orders HTTP expectations and test doubles to
  *        match the service result contract and controller failure responses.
  * Author review: tng wen xi
@@ -82,7 +85,8 @@ describe('POST /orders', () => {
       .set('x-user-id', USER)
       .send(body)
       .expect(201);
-    expect(res.body).toMatchObject({ id: 'new', credits: 4 });
+    expect(res.body).toMatchObject({ credits: 4, reservationId: 'r' });
+    expect(res.body.id).toEqual(expect.any(String));
   });
 
   it('422 when the requester does not have enough credits', async () => {
@@ -198,14 +202,13 @@ describe('PATCH /orders/:id/edit', () => {
       .set('x-user-id', requesterId)
       .send({ description: 'Updated description' })
       .expect(409, {
-        message: 'This order was changed by someone else. Refresh and try again.',
+        message:
+          'This order was changed by someone else. Refresh and try again.',
       });
   });
 
   it('returns a user-facing validation message for unsupported fields', async () => {
-    await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' })),
-    )
+    await request(appWith(async () => ({ ok: true, reservationId: 'r' })))
       .patch('/orders/order-1/edit')
       .set('x-user-id', USER)
       .send({ unsupported: true })

@@ -12,19 +12,19 @@ export function ordersRouter(
   router.get('/', ordersController.getOrders(prisma));
   router.post(
     '/:id/pickup',
-    ordersController.transitionOrder(prisma, 'picked_up'),
+    ordersController.transitionOrder(prisma, credits, 'picked_up'),
   );
   router.post(
     '/:id/deliver',
-    ordersController.transitionOrder(prisma, 'delivered'),
+    ordersController.transitionOrder(prisma, credits, 'delivered'),
   );
   router.post(
     '/:id/complete',
-    ordersController.transitionOrder(prisma, 'completed'),
+    ordersController.transitionOrder(prisma, credits, 'completed'),
   );
   router.post(
     '/:id/cancel',
-    ordersController.transitionOrder(prisma, 'cancelled'),
+    ordersController.transitionOrder(prisma, credits, 'cancelled'),
   );
   router.patch('/:id/edit', ordersController.editOrder(prisma));
   return router;

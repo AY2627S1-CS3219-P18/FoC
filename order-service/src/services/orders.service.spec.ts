@@ -28,6 +28,11 @@
  * Scope (2026-10-12): Updated create-order fixtures for additional-details
  *        validation and added edit-order not-found and forbidden coverage.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Added cancellation credit-release coverage.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Updated fixtures for persisted reservation identifiers
+ *        and credit release inputs.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -113,7 +118,7 @@ describe('createOrder: validation', () => {
 
     expect(result.ok).toBe(true);
     expect(create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
         requesterId: REQUESTER,
         supplierId: SUPPLIER,
         description: '1x chicken rice',
@@ -121,7 +126,8 @@ describe('createOrder: validation', () => {
         credits: 4,
         completeBy: new Date(LATER),
         additionalDetails: null,
-      },
+        reservationId: 'res-1',
+      }),
     });
   });
 
@@ -222,6 +228,7 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
     expect(result.ok).toBe(true);
     expect(deps.credits.reserve).toHaveBeenCalledWith({
       requesterId: REQUESTER,
+      requestId: expect.any(String),
       amount: 4,
     });
     expect(order).toEqual(['reserve', 'create']);
@@ -490,6 +497,47 @@ describe('getOrders', () => {
 });
 
 describe('runRequestMaintenance', () => {
+  it('releases a persisted reservation after expiring an open request', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi
+      .fn()
+      .mockResolvedValueOnce(open)
+      .mockResolvedValueOnce({ ...open, status: 'expired' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn(),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(
+      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
+    ).resolves.toEqual({ completed: 0, expired: 1 });
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: open.id, status: 'expired', creditReleasedAt: null },
+      data: { creditReleasedAt: now },
+    });
+  });
+
   it('uses system transitions for delivered and expired requests', async () => {
     const delivered = {
       id: 'delivered-order',
@@ -694,6 +742,37 @@ describe('transitionOrder', () => {
       },
     });
     expect(result).toMatchObject({ ok: true });
+  });
+
+  it('releases the reservation after a successful cancellation', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+      reservationId: 'reservation-1',
+    });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const credits: CreditsClient = {
+      reserve: vi.fn(),
+      release,
+    };
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        credits,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(orderRequest.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: orderId, status: 'cancelled', creditReleasedAt: null },
+      data: { creditReleasedAt: new Date('2026-10-13T12:00:00.000Z') },
+    });
   });
 
   it('rejects cancelling a non-open order before its complete-by deadline', async () => {

@@ -8,6 +8,9 @@
  * Scope (2026-10-12): Ensured signal shutdown exits after closing worker,
  *        queue, and database resources so tsx watch can restart the process.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Passed the credit client into maintenance execution so
+ *        expiry can release the persisted reservation.
+ * Author review: tng wen xi
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -15,6 +18,7 @@ import { config as loadDotenv } from 'dotenv';
 import { createPrismaClient } from './db/prisma.js';
 import { loadEnv } from './config/env.js';
 import { runRequestMaintenance } from './services/orders.service.js';
+import { createStubCreditsClient } from './clients/credits.client.js';
 
 loadDotenv({ quiet: true });
 
@@ -23,9 +27,10 @@ const connection = { host: env.REDIS_HOST, port: env.REDIS_PORT };
 const queueName = 'order-request-maintenance';
 const queue = new Queue(queueName, { connection });
 const prisma = createPrismaClient(env.DATABASE_URL);
+const credits = createStubCreditsClient();
 
 async function processMaintenanceJob(_job: Job): Promise<void> {
-  const result = await runRequestMaintenance(prisma);
+  const result = await runRequestMaintenance(prisma, credits);
   if (result.completed > 0 || result.expired > 0) {
     console.log(
       `Request maintenance: completed ${result.completed}, expired ${result.expired}`,

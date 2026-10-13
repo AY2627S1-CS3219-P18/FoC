@@ -8,6 +8,9 @@
  * Author review: tng wen xi
  * Scope (2026-10-12): Mapped optimistic-lock edit conflicts to HTTP 409.
  * Author review: tng wen xi
+ * Scope (2026-10-13): Passed the credit client through status transitions so
+ *        requester cancellation releases the persisted reservation.
+ * Author review: tng wen xi
  */
 
 import type { RequestHandler } from 'express';
@@ -93,7 +96,11 @@ export const editOrder =
   };
 
 export const transitionOrder =
-  (prisma: PrismaClient, newStatus: RequestStatus): RequestHandler =>
+  (
+    prisma: PrismaClient,
+    credits: CreditsClient,
+    newStatus: RequestStatus,
+  ): RequestHandler =>
   async (req, res) => {
     const actorId = req.get('x-user-id'); // TODO(team): take from verified JWT
     if (!isUuid(actorId)) {
@@ -111,12 +118,9 @@ export const transitionOrder =
       orderId,
       newStatus,
       actorId,
+      new Date(),
+      credits,
     );
-
-    // Implement kafka to emit status-change event
-
-    // TODO: If transitioning to complete, need to transfer credits to courier
-    // (implement after credit service endpoint is done)
 
     if (response.ok) {
       res.status(200).json(response);

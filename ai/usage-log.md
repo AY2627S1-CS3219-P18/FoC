@@ -333,6 +333,73 @@ I accepted all changes.
 **Author review:**
 tng wen xi
 
+## 2026-10-13 — order-service: Credit reservation tracking for automatic expiry
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decision to persist the credit reservation identifier on `OrderRequest`; the credit-service release endpoint remains a later team-owned contract.
+
+**Prompts (exact):**
+
+> can you implement whatever can be implemented now
+
+**Key responses:**
+Persisted the reservation transaction identifier on each order, passed the order ID to credit reservation, and connected expiry maintenance to call the credit client's release operation after a successful system transition. Added a `creditReleasedAt` bookkeeping field and migration. The real credit-service release endpoint was not invented because its request/response fields remain pending team sign-off. Verification: 290 order-service tests passed and TypeScript typecheck passed.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261013123000_add_reservation_tracking/migration.sql` (created)
+- `order-service/src/clients/credits.client.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+The worker still uses the existing stub credit client until the team approves and implements the credit-service release API contract. Release-failure retry/outbox behavior remains for that follow-up.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-13 — order-service: Release credits on cancellation
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing cancellation transition rules in `order-service/src/domain/order-status.ts`; existing persisted reservation ID decision.
+
+**Prompts (exact):**
+
+> implement the credit release for transitionOrder to 'cancelled'
+
+**Key responses:**
+Passed the credit client through the HTTP transition route and released the order's persisted reservation only after the optimistic-locking status update succeeded. Recorded `creditReleasedAt` after release and added unit coverage. Verification: 292 order-service tests passed and TypeScript typecheck passed.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+The application still uses the existing stub credit client, so the release call is wired but does not contact the credit service until its real release client is approved and connected.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-12 — order-service: Format maintenance timestamp
 
 **Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
