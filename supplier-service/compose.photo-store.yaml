@@ -7,12 +7,12 @@
 #        `supplier-photos` and the dev-only default credentials are implementation values chosen by
 #        the AI tool. No requirements, architecture, schema, or API decisions were made by the AI
 #        tool.
-# Author review:
+# Author review: Congchen
 # Scope (2026-09-29 update): Enabled anonymous read on the dev bucket so returned locations are fetchable
 #        locally (Phase 2 plan, Task 2). No requirements, architecture, schema, or API decisions were
 #        made by the AI tool. Also switched the image references to quay.io (minio/minio and minio/mc
 #        can no longer be pulled from Docker Hub).
-# Author review:
+# Author review: Congchen
 #
 # Run from supplier-service/:  docker compose -f compose.photo-store.yaml up -d
 services:

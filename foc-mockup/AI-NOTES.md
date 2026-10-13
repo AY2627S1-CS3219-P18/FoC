@@ -512,3 +512,98 @@ Tailwind's `display:flex` silently overrides. It is now conditionally rendered.
    `delivered → completed` on requester confirmation. Nothing specifies what happens if the
    requester never confirms, so credits stay reserved indefinitely. The `delivered` state on
    `/activity` is built with no auto-confirm affordance, exactly as §7.5 instructs.
+
+---
+
+## 2026-09-30 — Supplier fields aligned to the API contract; admin supplier CRUD mockup
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code (UI mockup only; no backend calls)
+**Governing decision:** Field-by-field resolution given by the team in chat on 2026-09-30 (below);
+API shapes from `supplier-service/SupplierServiceArchitecture.md` §6.2, §7.2, §7.3, §8.2.
+
+**Prompts (exact):**
+> For now, can i configure the frontend to use the supplier service for all supplier-related content?
+
+> For auth, refer to @instructions.md . essentially the tokens are hashed and stored in the postgres db
+> For the UI, i want to revamp the fields such that it uses the fields as supplied by the API contracts
+> Here are the mockup-vs-api resolution:
+> id on fe will be number
+> venue on fe will be renamed and mapped to location
+> shortName on fe will be removed
+> location on fe is renamed and mapped to faculty
+> category on fe will be replaced with categories, and the fe will support display of multiple categories in pills
+> description on fe is renamed to desc, and list view will not display the disc
+> activeRequests deferred - non supplier-service related
+> images will be hosted on cloud, so the image on fe will be renamed to photoLocation and store that signed url link
+> AFter these are resolved, I would like to first mock up the new supplier crud pages in admin
+
+**Key responses:**
+- Declined to choose the frontend/gateway/auth wiring, asked the team; the first prompt was not
+  implemented as real API wiring. Only the mock data shape and screens were changed in this task.
+- Reshaped `src/data/suppliers.js` to the API response shape per the team's mapping; requests now
+  reference suppliers by numeric id. List/detail/card/landing/request screens read the new fields.
+  The list shows no `desc`, `hours` or `activeRequests`; sort is A-Z / Z-A only (§7.2).
+- Added admin mockup screens (static, in-memory `AdminSuppliersContext`): list, create, edit, soft
+  delete, reactivation of a matching soft-deleted supplier, name/type/location uniqueness (422),
+  Facility/Store and 24-hour hours handling, 0–10 JPEG/PNG photos ≤ 5 MB with reordering.
+  Demo controls gained an Admin role. Nothing calls the Supplier Service.
+- Verified: `vite build` passes; `oxlint` shows only fast-refresh/unused-var warnings (existing ones
+  plus the same fast-refresh kind in the new context file). Create, validation, duplicate, edit and
+  delete were exercised in the browser via scripted interaction. Not verified: visual layout (the
+  screenshot tool timed out), mobile widths, real photo upload rendering.
+
+**Files:**
+- `src/data/suppliers.js` (modified: rewritten to the contract shape)
+- `src/data/requests.js` (modified: numeric `supplierId`)
+- `src/components/SupplierCard.jsx`, `SupplierImage.jsx`, `RequestCard.jsx`, `TopNav.jsx`, `DemoControls.jsx` (modified)
+- `src/components/CategoryPills.jsx` (created)
+- `src/pages/Suppliers.jsx`, `SupplierDetail.jsx`, `Landing.jsx`, `CreateRequest.jsx` (modified)
+- `src/pages/AdminSuppliers.jsx`, `AdminSupplierForm.jsx` (created)
+- `src/context/AdminSuppliersContext.jsx` (created)
+- `src/App.jsx`, `src/main.jsx` (modified: routes, provider)
+
+**Deviations / questions raised for the team:**
+- Placeholder mock values, not team data: `type` ('Store' everywhere), `level` (1), identical hours Mon–Sun,
+  and `location` for the six suppliers that had no venue (old location text reused, because the API requires one).
+- `hours` was not in the team's resolution list; the list view now shows only open/closed and the
+  detail page shows per-day `openingHours`, as the API returns them.
+- `activeRequests` removed from the supplier UI (and the "Most errands" sort) rather than kept mocked.
+- The edit form must map `location`/`categories` names back to ids through the reference endpoints,
+  because the detail response carries names, not ids. The team may want to confirm this.
+- Token storage on the frontend (in memory vs elsewhere) is not recorded in `instructions.md`
+  (it records the hashed refresh token in the DB and an httpOnly refresh cookie); real login wiring
+  was not started.
+- Public supplier pages do not reflect admin changes (separate in-memory stores).
+
+**What I kept/changed/rejected: Kept all**
+
+**Author review: Congchen**
+
+---
+
+## 2026-09-30 — Supplier ids in the mock data; admin edit form uses them
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** refactor
+**Scope:** Implementation code (UI mockup only)
+**Governing decision:** Team decision in chat, 2026-09-30, recorded in `supplier-service/SupplierServiceArchitecture.md` §7.3 and §9 item 23.
+
+**Prompts (exact):**
+> 2. Update the API responses so that the name and ids are sent together. new location_id and faculty_id. for categories, since there can be multiple categories for a given supplier, the categories will be sent as a list of json, with the structure being  "categories": [{"category": "Food", "category_id": 1 }, {"category": "Drinks", "category_id":2}] for example
+
+**Key responses:**
+- Mock supplier objects now carry `location_id`, `faculty_id` and `categories` as `{category, category_id}` objects, matching the updated service responses. `CategoryPills`, both supplier lists, the landing chips and the admin list/store read the new shape.
+- The admin edit form pre-fills `locationId` and the category selection directly from those ids; the earlier name-to-id lookup against the reference lists is removed. The duplicate check in the mock store compares `location_id`.
+- Verified: `vite build` passes; in the browser the edit form for "Japanese" showed location "The Deck · Faculty of Arts & Social Sciences" and category "Canteen" selected. Other screens were not re-checked visually.
+
+**Files:**
+- `src/data/suppliers.js`, `src/components/CategoryPills.jsx`, `src/pages/Landing.jsx`, `src/pages/Suppliers.jsx`, `src/pages/AdminSuppliers.jsx`, `src/pages/AdminSupplierForm.jsx`, `src/context/AdminSuppliersContext.jsx` (modified)
+- `AI-NOTES.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+
+**Author review:**

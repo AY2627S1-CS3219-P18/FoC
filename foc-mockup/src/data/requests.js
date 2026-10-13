@@ -45,7 +45,7 @@ export const STATUS_LABELS = {
 export const requests = [
   {
     id: 'r1',
-    supplierId: 's1',
+    supplierId: 1,
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
@@ -61,7 +61,7 @@ export const requests = [
   },
   {
     id: 'r2',
-    supplierId: 's13',
+    supplierId: 13,
     description: 'Kopi-o kosong and a kaya toast set.',
     deliveryLocation: 'COM2 Level 3 Lounge',
     credits: 3,
@@ -77,7 +77,7 @@ export const requests = [
   },
   {
     id: 'r3',
-    supplierId: 's10',
+    supplierId: 10,
     description: 'Any 2 dishes cai fan, no pork. Whatever is left is fine.',
     deliveryLocation: 'Central Library',
     credits: 3,
@@ -93,7 +93,7 @@ export const requests = [
   },
   {
     id: 'r4',
-    supplierId: 's5',
+    supplierId: 5,
     description: 'Large ban mian, extra chilli. Please do not let it get soggy.',
     deliveryLocation: 'UTown Residence',
     credits: 5,
@@ -109,7 +109,7 @@ export const requests = [
   },
   {
     id: 'r5',
-    supplierId: 's6',
+    supplierId: 6,
     description: 'Mixed rice, one meat two veg. Gravy on the rice is fine.',
     deliveryLocation: 'Yusof Ishak House',
     credits: 4,
@@ -125,7 +125,7 @@ export const requests = [
   },
   {
     id: 'r6',
-    supplierId: 's1',
+    supplierId: 1,
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
@@ -141,7 +141,7 @@ export const requests = [
   },
   {
     id: 'r7',
-    supplierId: 's12',
+    supplierId: 12,
     description: 'Two prata kosong and one teh peng.',
     deliveryLocation: 'PGP Residence Block A',
     credits: 4,
@@ -157,7 +157,7 @@ export const requests = [
   },
   {
     id: 'r8',
-    supplierId: 's3',
+    supplierId: 3,
     description: 'Yong tau foo, dry, six pieces. Chilli and sweet sauce.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
@@ -177,7 +177,7 @@ export const requests = [
   },
   {
     id: 'r9',
-    supplierId: 's10',
+    supplierId: 10,
     description: 'Sliced fish soup, thick bee hoon, no milk.',
     deliveryLocation: 'i3 Building',
     credits: 5,
@@ -199,7 +199,7 @@ export const requests = [
   },
   {
     id: 'r10',
-    supplierId: 's11',
+    supplierId: 11,
     description: 'Nasi lemak set with extra sambal, and a bandung.',
     deliveryLocation: 'SDE4 Studio',
     credits: 6,
@@ -215,7 +215,7 @@ export const requests = [
   },
   {
     id: 'r11',
-    supplierId: 's6',
+    supplierId: 6,
     description: 'Any bubble tea, half sugar, less ice.',
     deliveryLocation: 'UTown Residence',
     credits: 3,
@@ -231,7 +231,7 @@ export const requests = [
   },
   {
     id: 'r12',
-    supplierId: 's8',
+    supplierId: 8,
     description: 'Iced milo and a tuna sandwich, if they still have it.',
     deliveryLocation: 'LT19',
     credits: 3,

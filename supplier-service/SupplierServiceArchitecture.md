@@ -76,7 +76,12 @@ Scope: 2026-09-30 update — recorded the team's Phase 4 decisions of 2026-09-30
        edit cycle) in §6.2, §6.4, §7, §8.1, §8.2 and §9 item 22, and updated §9 item 8. Tool: Claude
        Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were
        made by the AI tool.
-Author review:
+Author review: Congchen
+Scope: 2026-09-30 update — recorded the team's decision that supplier responses carry `location_id`,
+       `faculty_id` and `categories` as `{category, category_id}` objects (§7.3, §9 item 23). Tool:
+       Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions
+       were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Architecture
@@ -719,17 +724,25 @@ The response metadata supports pagination through `totalRecords`, `currPage`, `l
 ### 7.3 Request and response envelopes
 
 The following structures use the field names supplied for the API contract. `SupplierSummary` is
-the common user-facing list shape:
+the common user-facing list shape. Each supplier response carries `location_id` and `faculty_id`
+alongside the `location` and `faculty` text, and `categories` is a list of `{category, category_id}`
+objects, so a client can refill the admin edit form (`location_id`, `category_id`) without a second
+lookup:
 
 ```json
 {
   "id": 101,
   "name": "Campus Store",
   "type": "Store",
+  "location_id": 4,
   "location": "Central Library",
+  "faculty_id": 2,
   "faculty": "Computing",
   "level": 1,
-  "categories": ["Food", "Drinks"],
+  "categories": [
+    { "category": "Food", "category_id": 1 },
+    { "category": "Drinks", "category_id": 2 }
+  ],
   "photos": [
     {
       "photoId": 201,
@@ -756,10 +769,15 @@ the common user-facing list shape:
       "id": 101,
       "name": "Campus Store",
       "type": "Store",
+      "location_id": 4,
       "location": "Central Library",
+      "faculty_id": 2,
       "faculty": "Computing",
       "level": 1,
-      "categories": ["Food", "Drinks"],
+      "categories": [
+        { "category": "Food", "category_id": 1 },
+        { "category": "Drinks", "category_id": 2 }
+      ],
       "photos": [
         {
           "photoId": 201,
@@ -783,10 +801,15 @@ data item.
   "id": 101,
   "name": "Campus Store",
   "type": "Store",
+  "location_id": 4,
   "location": "Central Library",
+  "faculty_id": 2,
   "faculty": "Computing",
   "level": 1,
-  "categories": ["Food", "Drinks"],
+  "categories": [
+    { "category": "Food", "category_id": 1 },
+    { "category": "Drinks", "category_id": 2 }
+  ],
   "photos": [
     {
       "photoId": 201,
@@ -1280,6 +1303,12 @@ additional design decisions.
     (§6.2); (g) queue keys map to BullMQ as prefix plus name split at the last colon, and
     `PHOTO_STORE_ENDPOINT` is `http://host.docker.internal:9000` in development, the same string in
     the API and the worker (§8.1).
+
+23. Supplier response identifiers recorded (2026-09-30): every supplier response (user and admin,
+    list and detail) carries `location_id` and `faculty_id` beside `location` and `faculty`, and
+    `categories` is a list of `{category, category_id}` objects, for example
+    `[{"category": "Food", "category_id": 1}, {"category": "Drinks", "category_id": 2}]`
+    (§7.3). The admin edit form uses these ids for `location_id` and `category_id` on `PUT`.
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.
