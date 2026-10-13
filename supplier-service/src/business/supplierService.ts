@@ -7,11 +7,15 @@
  *        metadata over the fixed 50-entry page. How the isOpen filter is paged (in memory, over all
  *        rows matching the other filters) is an implementation choice listed in the Phase 1 plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): generalised list/detail assembly and
  *        added the admin list/detail workflows per Phase 2 plan Task 3 (Arch §7). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): returned location_id, faculty_id and categories as {category, category_id} objects in supplier responses. Per the team's
+ *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review: Congchen
  */
 import type {
   AdminSupplierRow,
@@ -91,12 +95,14 @@ export function createSupplierService(
           id: row.supplierId,
           name: row.name,
           type: row.type,
+          location_id: row.locationId,
           location: row.location,
+          faculty_id: row.facultyId,
           faculty: row.faculty,
           level: row.level,
           categories: categoryLinks
             .filter((link) => link.supplierId === row.supplierId)
-            .map((link) => link.category),
+            .map((link) => ({ category: link.category, category_id: link.categoryId })),
           photos: photos
             .filter((photo) => photo.supplierId === row.supplierId)
             .map((photo) => ({
@@ -215,7 +221,7 @@ export function createSupplierService(
     async listCategories(): Promise<{ categories: CategoryOption[] }> {
       const rows = await repo.listCategories();
       return {
-        categories: rows.map((row) => ({ category_id: row.categoryId, category: row.category })),
+        categories: rows.map((row) => ({ category: row.category, category_id: row.categoryId })),
       };
     },
   };

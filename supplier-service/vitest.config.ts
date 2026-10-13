@@ -7,17 +7,21 @@
  * Author review: Congchen
  * Scope (2026-09-29 update): Excluded *.minio.test.ts from the default suite (Phase 2 plan, Task 2).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): only run tests under the new test/
  *        folder. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): excluded *.seed.test.ts from the default run so
+ *        the seed (npm run seed) is not part of npm test. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
-    exclude: [...configDefaults.exclude, '**/*.minio.test.ts'],
+    exclude: [...configDefaults.exclude, '**/*.minio.test.ts', '**/*.seed.test.ts'],
     env: {
       PORT: '3002',
       NODE_ENV: 'test',

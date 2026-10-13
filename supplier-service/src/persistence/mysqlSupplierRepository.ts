@@ -6,11 +6,15 @@
  *        excluding supplier_desc (§6.3), location/category filters, A-Z/Z-A sort and fixed-size
  *        paging (§7.2). No requirements, architecture, schema, or API decisions were made by the AI
  *        tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added the admin read queries (no
  *        visibility filter) per Phase 2 plan Task 3. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): returned location_id, faculty_id and categories as {category, category_id} objects in supplier responses. Per the team's
+ *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review: Congchen
  */
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import type {
@@ -30,14 +34,16 @@ interface SupplierDbRow extends RowDataPacket {
   supplier_name: string;
   supplier_type: 'Store' | 'Facility';
   supplier_desc: string | null;
+  location_id: number;
   location: string;
+  faculty_id: number;
   faculty: string;
   level: number;
 }
 
 const SUPPLIER_COLUMNS = `
   s.supplier_id, s.supplier_name, s.supplier_type, s.supplier_desc,
-  l.location, f.faculty, l.level`;
+  s.location_id, l.location, f.faculty_id, f.faculty, l.level`;
 
 const SUPPLIER_FROM = `
   FROM supplier s
@@ -104,7 +110,9 @@ function toSupplierRow(row: SupplierDbRow): SupplierRow {
     name: row.supplier_name,
     type: row.supplier_type,
     desc: row.supplier_desc,
+    locationId: Number(row.location_id),
     location: row.location,
+    facultyId: Number(row.faculty_id),
     faculty: row.faculty,
     level: Number(row.level),
   };
@@ -206,7 +214,7 @@ export function createMysqlSupplierRepository(pool: Pool): SupplierRepository {
     async findCategoryLinks(supplierIds): Promise<CategoryLinkRow[]> {
       if (supplierIds.length === 0) return [];
       const [rows] = await pool.query<RowDataPacket[]>(
-        `SELECT cm.supplier_id, c.category_type
+        `SELECT cm.supplier_id, cm.category_id, c.category_type
          FROM supplier_category_map cm
          JOIN supplier_categories c ON c.category_id = cm.category_id
          WHERE cm.supplier_id IN (?)
@@ -215,6 +223,7 @@ export function createMysqlSupplierRepository(pool: Pool): SupplierRepository {
       );
       return rows.map((row) => ({
         supplierId: Number(row.supplier_id),
+        categoryId: Number(row.category_id),
         category: String(row.category_type),
       }));
     },

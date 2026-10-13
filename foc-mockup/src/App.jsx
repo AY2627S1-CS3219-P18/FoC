@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Added the three admin supplier routes (list, new, edit). No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useEffect } from 'react'
@@ -22,6 +27,8 @@ import RequestBoard from './pages/RequestBoard'
 import Activity from './pages/Activity'
 import Chat from './pages/Chat'
 import Wallet from './pages/Wallet'
+import AdminSuppliers from './pages/AdminSuppliers'
+import AdminSupplierForm from './pages/AdminSupplierForm'
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -52,6 +59,9 @@ export default function App() {
           <Route path="/chat" element={<Navigate to="/chat/r6" replace />} />
           <Route path="/chat/:id" element={<Chat />} />
           <Route path="/wallet" element={<Wallet />} />
+          <Route path="/admin/suppliers" element={<AdminSuppliers />} />
+          <Route path="/admin/suppliers/new" element={<AdminSupplierForm />} />
+          <Route path="/admin/suppliers/:id/edit" element={<AdminSupplierForm />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -29,6 +29,10 @@ Scope: 2026-09-30 update — documented the Phase 4 `DELETE /api/v1/admin/suppli
        requirements, architecture, schema, or API decisions were made by the AI tool; the change
        records the team's decisions of 2026-09-30.
 Author review:
+Scope: 2026-09-30 update — documented the OpenAPI file and the local seed (`npm run seed`). Tool: Claude
+       Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made
+       by the AI tool.
+Author review:
 -->
 
 # Supplier Service
@@ -148,3 +152,28 @@ See `SupplierServiceArchitecture.md` §6.2, §7 and §8.2 for the full contract.
 npm test               # everything except the MinIO tests; needs no Docker
 npm run test:minio     # tests of the real photo-store connection; needs the photo store running
 ```
+
+## API description
+
+[openapi.yaml](./openapi.yaml) records every endpoint in OpenAPI 3.0 form. It restates the contract in
+SupplierServiceArchitecture.md §7 and follows the implemented routes; update it with any contract change.
+
+## Seeding local data
+
+```bash
+docker compose up -d supplier-db        # from the repository root
+npm run migrate                         # with DB_HOST=localhost and the published DB port
+npm run seed                            # needs the photo store running as well
+```
+
+`npm run seed` is a test (`test/seed/seedSuppliers.seed.test.ts`) that creates the reference data and then
+each of the 14 frontend-mock suppliers through the real creation service: details go to MySQL, photos go to
+MinIO, and the location MinIO returns is stored in MySQL. It can be re-run; existing rows are skipped.
+`vitest.seed.config.ts` reads `SUPPLIER_DB_PORT` and `SUPPLIER_DB_PASSWORD` from the root `.env`, and every
+connection value can be overridden with the usual `DB_*` / `PHOTO_STORE_*` variables.
+
+- Photos must be JPEG or PNG and present under `frontend/public/images` (or `foc-mockup/public/images`);
+  a supplier whose image is missing or is `.webp` is created without a photo and the run reports it.
+- Stored photo locations start with `PHOTO_STORE_ENDPOINT` (default `http://host.docker.internal:9000`),
+  which must be the value the API and worker use. The machine running the seed and the browser must be able
+  to resolve and reach that name.

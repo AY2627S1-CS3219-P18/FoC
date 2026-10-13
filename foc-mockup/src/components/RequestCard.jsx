@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
+ * Scope: Dropped the venue-dependent location suffix now that qualifiedName always includes the supplier's location. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review: Congchen
  */
 
 import { useState } from 'react'
@@ -102,9 +107,6 @@ export default function RequestCard({ request }) {
           <div className="flex items-start justify-between gap-2">
             <h3 className="min-w-0 text-sm font-semibold text-ink">
               {qualifiedName(supplier)}
-              {!supplier.venue && (
-                <span className="font-normal text-ink-40"> · {supplier.location}</span>
-              )}
             </h3>
             {/* On mobile the pill sits beside the name; on desktop it moves right. */}
             <span className="shrink-0 sm:hidden">

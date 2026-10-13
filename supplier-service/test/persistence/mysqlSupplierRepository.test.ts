@@ -13,6 +13,9 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): updated rows for location_id, faculty_id and
+ *        category_id in supplier reads, per the team's decision in chat.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -38,7 +41,9 @@ describe('findVisiblePage', () => {
           supplier_name: 'Campus Store',
           supplier_type: 'Store',
           supplier_desc: null,
+          location_id: 4,
           location: 'Central Library',
+          faculty_id: 2,
           faculty: 'Computing',
           level: 1,
         },
@@ -54,7 +59,9 @@ describe('findVisiblePage', () => {
         name: 'Campus Store',
         type: 'Store',
         desc: null,
+        locationId: 4,
         location: 'Central Library',
+        facultyId: 2,
         faculty: 'Computing',
         level: 1,
       },
@@ -115,7 +122,9 @@ describe('findAllVisible', () => {
         supplier_name: 'Kiosk',
         supplier_type: 'Store',
         supplier_desc: null,
+        location_id: 4,
         location: 'Central Library',
+        faculty_id: 2,
         faculty: 'Computing',
         level: 1,
       },
@@ -145,7 +154,9 @@ describe('findVisibleById', () => {
         supplier_name: 'Gym',
         supplier_type: 'Facility',
         supplier_desc: 'Open gym',
+        location_id: 4,
         location: 'Sports Hall',
+        faculty_id: 2,
         faculty: 'Sports',
         level: 2,
       },
@@ -177,9 +188,9 @@ describe('detail lookups', () => {
   });
 
   it('maps category links', async () => {
-    const { pool } = fakePool([{ supplier_id: 1, category_type: 'Food' }]);
+    const { pool } = fakePool([{ supplier_id: 1, category_id: 2, category_type: 'Food' }]);
     expect(await createMysqlSupplierRepository(pool).findCategoryLinks([1])).toEqual([
-      { supplierId: 1, category: 'Food' },
+      { supplierId: 1, categoryId: 2, category: 'Food' },
     ]);
   });
 
@@ -223,7 +234,9 @@ describe('admin reads', () => {
     supplier_name: 'Old Kiosk',
     supplier_type: 'Store',
     supplier_desc: null,
+    location_id: 4,
     location: 'Central Library',
+    faculty_id: 2,
     faculty: 'Computing',
     level: 1,
     is_active: 0,
