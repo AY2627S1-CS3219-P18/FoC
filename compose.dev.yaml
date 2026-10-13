@@ -4,7 +4,7 @@
 # Author review: george-yeo
 # Scope (2026-10-12): Added the development order maintenance worker and its
 #        Redis-backed Compose dependencies.
-# Author review:
+# Author review: tng wen xi
 #
 # Dev override: hot reload via Compose Watch (Docker Compose >= 2.22).
 #   docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -42,7 +42,12 @@ services:
     build:
       target: dev
     restart: "no"
-    command: ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && exec npm run worker:dev"]
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma generate && npx prisma migrate deploy && exec npm run worker:dev",
+      ]
     environment:
       NODE_ENV: development
     develop:
