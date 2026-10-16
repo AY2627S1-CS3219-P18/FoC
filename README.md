@@ -158,4 +158,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 87 | 2026-09-26 | supplier-service | Photo Management and Concrete Schema | Added multipart photo saga, OAuth assumptions, normalized lookups, and MySQL schema |
 | 88 | 2026-10-02 | user-service | User Service: optional seeded normal test user | Added env-driven startup seeding of a normal user alongside the superadmin |
 | 89 | 2026-10-02 | frontend | Frontend: desktop Log out button | Added a Log out button to the desktop nav so accounts can be switched |
+| 90 | 2026-10-16 | credit-service | Week 7/8 catch-up: transfer, release, balance read and append-only enforcement | Transfer, release and balance endpoints; append-only enforced by database privilege |
 

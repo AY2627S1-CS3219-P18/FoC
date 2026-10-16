@@ -3062,3 +3062,104 @@ Earlier prompt of this stage (quoted in the entry "Supplier Service: OpenAPI des
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+---
+
+## 2026-10-16 — Week 7/8 catch-up: transfer, release, balance read and append-only enforcement
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug | docs
+**Scope:** Implementation code | Debugging | Refactor/Docs
+**Governing decision:** `credit-service/credit-service-context.md` §5 (write-path table, append-only), §6 (F19.3, F19.4, F19.5), §7 (NFR8.1.2, NFR8.2.3), §8 (API surface); six team decisions given in chat on 2026-10-16 and quoted below.
+
+**Prompts (exact):**
+
+> Implement the week-7/8 catch-up iteration for credit-service.
+> Read credit-service/CONTEXT.md first. Do not change requirements.
+>
+> TEAM DECISIONS MADE SINCE THE AUDIT — implement these as given
+>
+> 1. Order Service will send requestId on every credit call. Our existing request_id-keyed design stands; do not add a reservationId handle.
+> 2. Transfer takes courierId in the request body. Credit Service does not look couriers up and stores no courier reference of its own.
+> 3. Transfer error semantics: no reservation for that requestId → 404 RESERVATION_NOT_FOUND; already transferred → 409 ALREADY_TRANSFERRED; courier has no balance row → 404 COURIER_NOT_FOUND. Do NOT create a balance row here — credits may only enter the economy via F19.1.1.
+> 4. Release works for both cancellation and expiry. It takes only a requestId. No scheduler, no clock, no expiry detection in this service.
+> 5. GET /credits/balance/:userId: a user may read only their own balance unless they hold an elevated role. Mirror user-service's ROLE_RANK comparison rather than checking role === 'admin', so super admin is not denied. Auth is BLOCKED on the user-service public key, which is gitignored and absent — so write the authorization layer behind a clear seam and leave it disabled, with a TODO naming the blocker. Do not invent a key or a fallback that skips verification.
+> 6. The chosen async workflow is transfer-on-completion. Do NOT implement it this iteration — the outbox-vs-broker decision is still with the team. Design transfer so it can be driven by a retry later: keep it idempotent on requestId.
+>
+> BUILD
+> a. F19.3.1 / F19.3.2 — POST /credits/transfer […]
+> b. NFR8.1.2 — prove rollback on transfer specifically. Inject a failure mid-transaction and assert both balances and the log are unchanged.
+> c. F19.4.1 — POST /credits/release. Decrease reserved only; total is untouched. Log row. Idempotent on requestId.
+> d. F19.5.1 — GET /credits/balance/:userId returning total, reserved and unreserved.
+> e. NFR8.2.3 — create a named least-privilege role […] Then prove it: a DELETE against transaction_log as the app role must fail.
+> ALSO
+> f. Publish the API contract as credit-service/API.md […]
+> g. Point the test suite at a dedicated test database, as user-service does.
+>
+> VERIFY docker compose up, full suite green, and mutation-check the new work the way FOR UPDATE was checked: break it, confirm the test fails, restore. Report what you could not verify.
+>
+> Nothing outside credit-service/ without showing me the diff first.
+
+**Key responses:**
+
+Implemented all six decisions as given. Transfer reads the amount and the requester back from the reservation row rather than taking them from the caller, so it can only ever move exactly what was held; the courier comes from the body and no courier reference is stored. Release takes only a requestId and has no clock. Both are idempotent on requestId, each backed by a partial unique index — a new `transaction_log_one_release_per_request` was added to match the existing transfer and reservation indexes, implementing the team's idempotency instruction with the mechanism already decided in context §4.
+
+Two orderings no requirement covers were hit and are flagged rather than resolved: transfer-after-release and release-after-transfer. Both return 409 (`ALREADY_RELEASED` / `ALREADY_TRANSFERRED`); both are listed as INVENTED in API.md.
+
+The F19.5.1 authorization rule is implemented as a pure function mirroring user-service's `ROLE_RANK` (so `super admin` is not denied) and unit-tested. The middleware applying it is written but **not mounted**: verifying a User Service token needs its RS256 public key, which is git-ignored and absent. No key was fabricated and no verification-skipping path was written. The endpoint is therefore unauthenticated, stated in API.md, README.md and in the route file.
+
+NFR8.2.3 is now genuinely enforced. `grants.sql` holds the privilege matrix (`SELECT, INSERT, UPDATE` on balances; `SELECT, INSERT` only on transaction_log) and is applied both by the container bootstrap and by the test harness, so the two cannot drift. The service connects as `credit_app`, confirmed non-superuser.
+
+Verification actually run. `docker compose up` for credit-db and credit-service, both healthy. `npx tsc --noEmit` and `npm run build` exit 0. Full suite **48 tests in 7 files, all passing**. End-to-end over HTTP against the container: allocate → reserve → balance → transfer → duplicate transfer (409) → release-after-transfer (409) → courier balance, all correct, with the service confirmed connected as `credit_app`. Against the live `credit_db`, `DELETE FROM transaction_log` as `credit_app` fails with `permission denied for table transaction_log`; `pg_roles` shows `credit_app` with `rolsuper = false`.
+
+Mutation checks, each applied then restored:
+- `ROLLBACK` → `COMMIT` in the transaction helper: both NFR8.1.2 tests fail, and the partial commit drives `reserved_balance` to −8, tripping `balances_reserved_non_negative`.
+- Release also debiting total: 4 tests fail.
+- Granting DELETE/UPDATE on transaction_log: 2 append-only tests fail.
+- Removing the F19.3.2 unique index: **initially passed**, which exposed a weak test. The service-level guard and the CHECK constraint were masking the index. A direct database-level test (`tests/db/constraints.test.ts`) was added; the mutation is now detected. The concurrency test was also strengthened to assert *why* the losers lose, not just how many.
+
+A footgun was found and fixed during the work: the first version of globalSetup reset the password of the cluster-wide `credit_app` role, which would have broken a running container. The suite now uses a separate `credit_app_test` role with identical grants, and refuses to run as `credit_app`.
+
+**Could not verify:** the async transfer-on-completion workflow (not built this iteration, by instruction); any real inter-service call, since Order Service still wires `createStubCreditsClient()` and its `CreditsClient` contract does not match this API; the JWT verification path, which has no key; NFR8.2.1 and NFR8.2.2, which remain unmeasured and unimplemented.
+
+**Files:**
+
+- `credit-service/src/db/init.sql` (modified: release uniqueness index; append-only note)
+- `credit-service/src/db/grants.sql` (created)
+- `credit-service/src/db/grant-app-role.sh` (created)
+- `credit-service/src/db/queries/credits.queries.ts` (modified)
+- `credit-service/src/services/credits.service.ts` (modified)
+- `credit-service/src/controllers/credits.controller.ts` (modified)
+- `credit-service/src/routes/credits.routes.ts` (modified)
+- `credit-service/src/auth/roleRank.ts` (created)
+- `credit-service/src/middleware/requireBalanceAccess.ts` (created)
+- `credit-service/tests/services/transfer.test.ts` (created)
+- `credit-service/tests/services/balance.test.ts` (created)
+- `credit-service/tests/concurrency/transfer-rollback.test.ts` (created)
+- `credit-service/tests/db/append-only.test.ts` (created)
+- `credit-service/tests/db/constraints.test.ts` (created)
+- `credit-service/tests/setup/globalSetup.ts` (created)
+- `credit-service/tests/setup/env.ts` (modified)
+- `credit-service/tests/helpers/db.ts` (modified)
+- `credit-service/tests/services/credits.service.test.ts` (modified)
+- `credit-service/tests/concurrency/reserve.concurrency.test.ts` (modified)
+- `credit-service/vitest.config.ts` (modified)
+- `credit-service/.env.test` (created; no header constraint, values are throwaway)
+- `credit-service/.gitignore` (modified: un-ignore .env.test)
+- `credit-service/API.md` (created)
+- `credit-service/README.md` (modified)
+- `compose.yaml` (modified: app-role env, init mounts, service connects as credit_app)
+- `.env.example` (modified: CREDIT_APP_USER / CREDIT_APP_PASSWORD)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- **Invented, listed in full in API.md §"What was invented":** all request/response bodies and status codes; the `{ error: { code, message } }` envelope; `ALREADY_RELEASED` on transfer and `ALREADY_TRANSFERRED` on release; `GET /health`; the role name `credit_app`; `ELEVATED_ROLE = 'admin'` as the rank threshold. Self-transfer is deliberately not rejected.
+- **Order Service's client is incompatible with this API** — `reserve({ requesterId, amount }) → { reservationId }`, no requestId, no transfer method, wired to a stub. It must be rewritten against API.md.
+- **F19.5.1 ships unauthenticated.** Blocked on the public key reaching this service, and on context §3 open question 1 (local RS256 verification vs calling `GET /auth/verify`).
+- Applying the compose change required recreating the credit-db volume, since init scripts only run on an empty volume.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

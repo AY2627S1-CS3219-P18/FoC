@@ -101,6 +101,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS transaction_log_one_reservation_per_request
   ON transaction_log (request_id)
   WHERE transaction_type = 'reservation';
 
+-- F19.4.1 - release is idempotent on requestId (team decision 2026-10-16), enforced the
+-- same way as transfer and reservation.
+CREATE UNIQUE INDEX IF NOT EXISTS transaction_log_one_release_per_request
+  ON transaction_log (request_id)
+  WHERE transaction_type = 'release';
+
 -- Supports F19.5.2 ("records in which they are the originating or destination user").
 CREATE INDEX IF NOT EXISTS transaction_log_originating_user_idx
   ON transaction_log (originating_user_id, created_at DESC);
@@ -108,20 +114,14 @@ CREATE INDEX IF NOT EXISTS transaction_log_destination_user_idx
   ON transaction_log (destination_user_id, created_at DESC);
 
 -- ---------------------------------------------------------------------------
--- NFR8.2.3 - append-only transaction log.  NOT YET ENFORCED.  Week 7.
+-- NFR8.2.3 - append-only transaction log.
 --
--- context §5 specifies enforcement by `REVOKE UPDATE, DELETE` on the application
--- role. Two things are still undecided, so the statements are left inert rather
--- than guessed at:
+-- Enforced by privilege, not by application code (context §5). The tables above are
+-- owned by the bootstrap superuser; the service connects as a separate least-privilege
+-- role that is never granted UPDATE or DELETE on transaction_log.
 --
---   1. The application role has no name yet. The sibling services connect as the
---      `postgres` superuser, and a superuser bypasses REVOKE entirely, so a REVOKE
---      written today would enforce nothing.
---   2. Creating a dedicated least-privilege role changes compose.yaml and .env,
---      which are outside this service folder.
---
--- Once the team names the role, uncomment and substitute it:
---
---   REVOKE UPDATE, DELETE ON transaction_log FROM <application_role>;
---
+-- The grant matrix lives in grants.sql so that the container bootstrap
+-- (grant-app-role.sh) and the test harness (tests/setup/globalSetup.ts) apply exactly
+-- the same privileges. Role creation differs between the two only in where the
+-- password comes from.
 -- ---------------------------------------------------------------------------
