@@ -1198,6 +1198,39 @@ Verification actually run, against a real database this time. Docker Desktop was
 
 Concurrency results (NFR8.1.1): six simultaneous 4-credit reservations against a 20-credit balance left exactly five committed and one rejected with `INSUFFICIENT_UNRESERVED_CREDITS`, final state `reserved=20, total=20` with six log rows; ten concurrent 3-credit reservations kept `reserved` equal to three times the number of logged reservations; two simultaneous allocations for one user produced one success and one log row.
 
+## 2026-10-16 — Frontend: Docker Compose development setup
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, refactor, docs
+**Scope:** Boilerplate, Implementation code, Refactor/Docs
+**Governing decision:** Existing root Compose development workflow and frontend Vite proxy configuration.
+
+**Prompts (exact):**
+
+> can u set up the docker such that when i run `docker compose -f compose.yaml -f compose.dev.yaml up --build --watch` it will also run the frontend together with the backend
+
+**Key responses:**
+Added a frontend development Dockerfile and `.dockerignore`, a `frontend` service with Compose Watch sync/rebuild rules in `compose.dev.yaml`, and configurable Vite proxy targets so the container reaches the user and supplier services over the Compose network. Documented the command in the frontend README. `docker compose ... config --quiet`, `git diff --check`, and the frontend development image build passed. The image build reported eight npm audit vulnerabilities from the existing dependency tree; dependencies were not changed.
+
+**Files:**
+
+- `frontend/Dockerfile` (created)
+- `frontend/.dockerignore` (created)
+- `compose.dev.yaml` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
 Mutation check, to show the concurrency test is not vacuous: removing `FOR UPDATE` from `lockBalanceForUpdate` made the first concurrency test fail, and the failure was informative. All six requests passed the application-level comparison because without the lock they all read `reserved_balance = 0`; the sixth was stopped by the `balances_reserved_not_exceeding_total` CHECK constraint (SQLSTATE 23514) rather than by the service. So the row lock is what produces a clean 422, and the CHECK constraint is what prevents balance corruption if the lock is ever lost. The source was restored and the suite re-run green.
 
 NFR8.2.3 was confirmed still unenforced by deleting a `transaction_log` row while connected as the `credit` application role. Expected; it is a week 7 item.

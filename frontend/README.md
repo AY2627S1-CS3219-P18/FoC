@@ -77,6 +77,19 @@ whose image is missing or is `.webp` are created without a photo.
 
 ### Start the frontend
 
+To start the frontend together with the Compose backend services, run this from
+the repository root:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+```
+
+Open http://localhost:5173. The frontend container proxies API requests to the
+backend containers over the Compose network, and source changes are synced by
+Compose Watch.
+
+Alternatively, to run only the frontend directly on the host:
+
 ```bash
 cd frontend
 npm ci

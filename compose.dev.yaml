@@ -13,6 +13,36 @@
 # so file-change events fire reliably on Windows/WSL2 without polling.
 
 services:
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    restart: "no"
+    environment:
+      NODE_ENV: development
+      VITE_SUPPLIER_SERVICE_URL: http://supplier-service:3002
+      VITE_USER_SERVICE_URL: http://user-service:3001
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: sync+restart
+          path: ./frontend/index.html
+          target: /app/index.html
+        - action: sync+restart
+          path: ./frontend/vite.config.js
+          target: /app/vite.config.js
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+
   order-service:
     build:
       target: dev
