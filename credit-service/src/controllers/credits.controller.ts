@@ -6,11 +6,21 @@
 //    the method and path; the field names, validation rules and status codes are
 //    pending sign-off - see credit-service/README.md.
 //    Author review: Wee Jean
+//  2026-10-16: Week 7/8 catch-up - transfer, release and balance-read handlers.
+//    Bodies and status codes for the new endpoints follow the team's decisions of
+//    2026-10-16; anything not covered by them is flagged in credit-service/API.md.
+//    Author review:
 
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { AppError } from '../utils/AppError.js';
-import { allocateInitialCredits, reserveCredits } from '../services/credits.service.js';
+import {
+  allocateInitialCredits,
+  getBalance,
+  releaseCredits,
+  reserveCredits,
+  transferCredits,
+} from '../services/credits.service.js';
 
 // user_id and request_id are UUIDs owned by User Service and Order Service (context §3).
 const allocateSchema = z.object({
@@ -22,6 +32,21 @@ const reserveSchema = z.object({
   requestId: z.string().uuid(),
   // Credits are whole and positive; the balance CHECK constraints assume it.
   amount: z.number().int().positive(),
+});
+
+// Order Service sends requestId on every credit call (team decision 2026-10-16), so
+// there is no reservation handle to carry around.
+const transferSchema = z.object({
+  requestId: z.string().uuid(),
+  courierId: z.string().uuid(),
+});
+
+const releaseSchema = z.object({
+  requestId: z.string().uuid(),
+});
+
+const userIdParamSchema = z.object({
+  userId: z.string().uuid(),
 });
 
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
@@ -47,4 +72,25 @@ export async function postReserve(req: Request, res: Response): Promise<void> {
   const { userId, requestId, amount } = parseBody(reserveSchema, req.body);
   const result = await reserveCredits(userId, requestId, amount);
   res.status(201).json(result);
+}
+
+/** POST /credits/transfer — F19.3.1, F19.3.2 */
+export async function postTransfer(req: Request, res: Response): Promise<void> {
+  const { requestId, courierId } = parseBody(transferSchema, req.body);
+  const result = await transferCredits(requestId, courierId);
+  res.status(201).json(result);
+}
+
+/** POST /credits/release — F19.4.1 */
+export async function postRelease(req: Request, res: Response): Promise<void> {
+  const { requestId } = parseBody(releaseSchema, req.body);
+  const result = await releaseCredits(requestId);
+  res.status(201).json(result);
+}
+
+/** GET /credits/balance/:userId — F19.5.1. Unauthenticated; see requireBalanceAccess. */
+export async function getBalanceByUserId(req: Request, res: Response): Promise<void> {
+  const { userId } = parseBody(userIdParamSchema, req.params);
+  const balance = await getBalance(userId);
+  res.status(200).json({ balance });
 }
