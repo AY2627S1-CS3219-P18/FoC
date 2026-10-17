@@ -159,4 +159,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 88 | 2026-10-02 | user-service | User Service: optional seeded normal test user | Added env-driven startup seeding of a normal user alongside the superadmin |
 | 89 | 2026-10-02 | frontend | Frontend: desktop Log out button | Added a Log out button to the desktop nav so accounts can be switched |
 | 90 | 2026-10-16 | credit-service | Week 7/8 catch-up: transfer, release, balance read and append-only enforcement | Transfer, release and balance endpoints; append-only enforced by database privilege |
+| 91 | 2026-10-17 | user-service | Stage 13: Auth Distribution Plan — JWKS Recorded in instructions.md | Recorded the team's JWKS auth-distribution decisions as Stage 13 in instructions.md |
+| 92 | 2026-10-17 | user-service | Stage 13a: Per-Key Config + Sign/Verify by `kid` | Added JWT_KEY_ID config and kid-based sign/verify plus getJwks() in jwt.ts |
 

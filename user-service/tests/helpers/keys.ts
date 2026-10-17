@@ -2,6 +2,9 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - sign test JWTs with the throwaway keys
 // Author review:
+// 2026-10-17: Stage 13a - default signToken/signExpiredToken to the configured JWT_KEY_ID,
+//   since verifyAccessToken now looks keys up by the token header's kid.
+// Author review:
 import { generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import jwt from 'jsonwebtoken';
@@ -18,6 +21,7 @@ export function signToken(
     algorithm: 'RS256',
     subject: sub,
     expiresIn: '15m',
+    keyid: process.env.JWT_KEY_ID,
     ...options,
   });
 }
@@ -27,6 +31,7 @@ export function signExpiredToken(claims: { sub?: string; role?: string } = {}): 
   return jwt.sign({ role, exp: Math.floor(Date.now() / 1000) - 60 }, privateKey(), {
     algorithm: 'RS256',
     subject: sub,
+    keyid: process.env.JWT_KEY_ID,
   });
 }
 

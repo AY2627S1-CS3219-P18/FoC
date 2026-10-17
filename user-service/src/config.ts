@@ -8,6 +8,10 @@
 //    Author review:
 //  2026-10-02: Add optional TEST_USER_* env vars for a seeded normal user
 //    Author review: Congchen
+//  2026-10-17: Stage 13a - per-key env vars (JWT_KEY_ID, optional JWT_PREVIOUS_*) for
+//    JWKS-based key rotation. No requirements, architecture, schema, or API decisions were
+//    made by the AI tool — see instructions.md Stage 13 for the governing decision.
+//    Author review:
 
 import { z } from "zod";
 
@@ -22,8 +26,12 @@ const envSchema = z
     DB_USER: z.string().min(1),
     DB_PASSWORD: z.string().min(1),
 
+    JWT_KEY_ID: z.string().min(1),
     JWT_PRIVATE_KEY_PATH: z.string().min(1),
     JWT_PUBLIC_KEY_PATH: z.string().min(1),
+    // Set together only during a key-rotation overlap window (Stage 13).
+    JWT_PREVIOUS_KEY_ID: z.string().min(1).optional(),
+    JWT_PREVIOUS_PUBLIC_KEY_PATH: z.string().min(1).optional(),
     ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive(),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive(),
 
@@ -91,8 +99,11 @@ export const config = {
     password: env.DB_PASSWORD,
   },
   jwt: {
+    keyId: env.JWT_KEY_ID,
     privateKeyPath: env.JWT_PRIVATE_KEY_PATH,
     publicKeyPath: env.JWT_PUBLIC_KEY_PATH,
+    previousKeyId: env.JWT_PREVIOUS_KEY_ID,
+    previousPublicKeyPath: env.JWT_PREVIOUS_PUBLIC_KEY_PATH,
     accessTokenTtlMinutes: env.ACCESS_TOKEN_TTL_MINUTES,
     refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
   },
