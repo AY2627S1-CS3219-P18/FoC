@@ -2359,4 +2359,142 @@ Validation / errors:
 Concurrency:
 
 - Two concurrent `confirm-password-change` calls with the correct OTP → exactly one `200`, the other `400 INVALID_OTP`, password changed once
+
+## Stage 13: Auth Distribution — JWKS Instead of `GET /auth/verify`
+
+> **Scope**: Replace the current inter-service auth pattern — `supplier-service` (and, going
+> forward, `order-service` and `credit-service`) calling `GET /auth/verify` on `user-service`
+> for every request — with each consuming service verifying the access token itself, locally,
+> against `user-service`'s public key. `user-service` publishes its public key(s) at a JWKS
+> endpoint instead of answering a per-request verify call. This stage only covers `user-service`
+> (signing/publishing side) and a guide for implementers; it does not implement verification
+> inside `order-service`, `supplier-service`, or `credit-service` — see Stage 13d.
+>
+> This supersedes the auth pattern documented in `SupplierServiceArchitecture.md §7` and
+> `SupplierServiceSpec.md`; both get updated as part of this stage (Stage 13c).
+
+### Design decisions (already made, do not change)
+
+| Rule                                     | Value                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signing algorithm                        | RS256, unchanged. `user-service` keeps signing with its private key; nothing about `signAccessToken`'s claims changes.                                                                                                                                                                                                                               |
+| Key pair for this stage                  | Reuse the existing `user-service/keys/private.pem` / `public.pem` (RSA-2048) as the first key published via JWKS. No new key pair is generated for this stage.                                                                                                                                                                                       |
+| Distribution mechanism                   | JWKS. `user-service` exposes its public key(s) at a new, unauthenticated endpoint; consuming services fetch and cache them instead of calling an endpoint per request.                                                                                                                                                                               |
+| JWKS endpoint                            | `GET /auth/.well-known/jwks.json` on `user-service`, mounted on the existing `/auth` router. Public, no `authenticate` middleware. Returns `{ keys: [...] }`, standard JWK format (RFC 7517).                                                                                                                                                        |
+| Token claims                             | Unchanged (`sub` → `user_id`, `role`). No `aud` claim. The only addition is `kid` in the **JWT header** (not the payload), identifying which key signed the token.                                                                                                                                                                                   |
+| Key rotation mechanism                   | Smooth transfer via JWKS: when rotating, the new key's public half is published under a new `kid` and signing cuts over to it; the just-retired key's public half stays published under its own `kid` (as the "previous" key) until its most recently issued tokens (max lifetime: `ACCESS_TOKEN_TTL_MINUTES`) have all expired, then it is dropped. |
+| Key/kid configuration                    | One set of env vars per key, not a keystore file. Current signing key: `JWT_KEY_ID`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (the last two already exist). Previous key, set only during a rotation overlap window: `JWT_PREVIOUS_KEY_ID`, `JWT_PREVIOUS_PUBLIC_KEY_PATH` (optional; no private key needed for a retired key).                 |
+| Access token lifetime                    | Unchanged — `ACCESS_TOKEN_TTL_MINUTES` (currently 15). Not part of this stage.                                                                                                                                                                                                                                                                       |
+| Cutover                                  | Instant/hard cutover. `GET /auth/verify` is removed in this stage, not deprecated alongside the new endpoint. There is no dual-support window at the API level (the key-rotation overlap above is a separate, narrower concept — it overlaps _keys_ in the JWKS, not _verification methods_).                                                        |
+| Services in scope for consuming the JWKS | `order-service`, `supplier-service`, `credit-service` — all three.                                                                                                                                                                                                                                                                                   |
+| Who implements the consuming side        | Not this stage. Stage 13d is a guide only; each service's own implementer writes and owns their verification code.                                                                                                                                                                                                                                   |
+
+---
+
+### Stage 13a: Per-Key Config + Signing/Verification by `kid`
+
+#### Add to `user-service/src/config.ts`
+
+- `JWT_KEY_ID` (required) — the `kid` for the current signing key.
+- `JWT_PREVIOUS_KEY_ID` (optional) and `JWT_PREVIOUS_PUBLIC_KEY_PATH` (optional) — set together
+  only during a rotation overlap window; both absent otherwise.
+- Expose these under `config.jwt` alongside the existing `privateKeyPath` / `publicKeyPath`.
+
+#### Change `user-service/src/utils/jwt.ts`
+
+- Load the current key as `{ kid: config.jwt.keyId, privateKey, publicKey }` from the existing
+  paths.
+- If both `JWT_PREVIOUS_KEY_ID` and `JWT_PREVIOUS_PUBLIC_KEY_PATH` are set, also load a previous
+  key as `{ kid, publicKey }` (no private key).
+- `signAccessToken` — same claims as today; add the `keyid` sign option (`jsonwebtoken`'s
+  built-in way of setting the JWT header's `kid`) set to the current key's `kid`.
+- `verifyAccessToken` — decode the token's header first to read `kid`, look it up against the
+  known keys (current, and previous if loaded), and verify with whichever key's public half
+  matches. An unknown or missing `kid` is treated as an invalid token (same `401` behavior as
+  any other verification failure today — no new error shape).
+- Add `getJwks()` — returns `{ keys: [...] }`: for each known public key, export it as a JWK
+  (Node's `crypto.createPublicKey(pem).export({ format: 'jwk' })` already yields `{ kty, n, e }`
+  for an RSA key — no extra dependency needed) and add `kid`, `use: 'sig'`, `alg: 'RS256'`.
+
+#### Verification
+
+- A token signed by the current key verifies and its `kid` round-trips through `getJwks()`'s
+  output.
+- A token with no `kid` header, or a `kid` that matches neither known key, fails verification
+  the same way a bad-signature token does today.
+- With `JWT_PREVIOUS_KEY_ID` / `JWT_PREVIOUS_PUBLIC_KEY_PATH` unset (the normal case), `getJwks()`
+  returns exactly one key.
+
+---
+
+### Stage 13b: JWKS Endpoint
+
+#### Add to `user-service/src/controllers/auth.controller.ts`
+
+- `jwks` — `asyncHandler`, no auth check, calls `getJwks()` and returns `200` with its result
+  directly.
+
+#### Add to `user-service/src/routes/auth.routes.ts`
+
+```ts
+router.get("/.well-known/jwks.json", authController.jwks);
+```
+
+#### Remove from `user-service/src/routes/auth.routes.ts` and `auth.controller.ts`
+
+- `router.get('/verify', authController.verify)` and the `verify` controller itself (Stage 13c
+  covers the knock-on test/doc updates this removal needs).
+
+#### Verification
+
+- `GET /auth/.well-known/jwks.json` requires no `Authorization` header and returns `200` with
+  the current key in JWK format.
+- `GET /auth/verify` no longer exists (`404`).
+
+---
+
+### Stage 13c: Remove `GET /auth/verify` — Tests and Docs
+
+#### `user-service` tests
+
+- `tests/controllers/auth.controller.test.ts` — remove the `describe('GET /auth/verify', ...)`
+  block. The two unrelated tests that reuse `GET /auth/verify` purely as a "is this access token
+  still valid" check (one under `POST /auth/logout`, one under password reset) need a different
+  authenticated route to check against instead — `GET /users/me` already exists and is
+  `authenticate`-protected.
+- `tests/middleware/authenticate.test.ts` — remove the
+  `describe('authenticate and GET /auth/verify agree on the same token', ...)` block (the thing
+  it was cross-checking against no longer exists).
+- Add coverage for the new behavior: the JWKS endpoint's shape and public-access, and
+  `verifyAccessToken`/`signAccessToken` round-tripping by `kid` (Stage 13a's verification bullets
+  above, as actual test cases).
+
+#### Docs
+
+- `supplier-service/SupplierServiceArchitecture.md §7` and `supplier-service/SupplierServiceSpec.md`
+  — remove/replace the description of calling `GET /auth/verify`; point at the JWKS flow and the
+  Stage 13d guide instead.
+- Root `README.md` — same, wherever it describes the current auth-via-API-call pattern.
+
+---
+
+### Stage 13d: Guide for `order-service` / `supplier-service` / `credit-service` Implementers
+
+This is documentation, not implementation — write a guide (not code) for whoever implements
+token verification in each of the three consuming services. It must cover, at minimum:
+
+- Fetching the JWKS from `GET {USER_SERVICE_URL}/auth/.well-known/jwks.json`.
+- Caching keys by `kid` and a reasonable refetch strategy for a `kid` not currently in the
+  cache (so key rotation doesn't require restarting every consuming service).
+- Verifying the token's signature (RS256) against the matched key, and reading `sub` → `user_id`
+  and `role` off the verified payload — the same two fields `GET /auth/verify` used to return.
+- Rejecting with `401` on a missing/invalid/unverifiable token, consistent with how
+  `user-service`'s own `authenticate` middleware already behaves.
+- Noting that `supplier-service/src/middleware/authenticate.ts` currently calls the
+  now-removed `GET /auth/verify` and must be rewritten by its implementer following this guide —
+  this stage does not rewrite it.
+
+Each service's own implementer writes and owns that service's verification code; this guide
+only tells them how, per the decisions in this stage.
+
 - Running `POST /auth/login` with the OLD password in a loop while the reset completes → no non-revoked refresh token survives from an old-password login after the change commits
