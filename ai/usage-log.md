@@ -3365,3 +3365,85 @@ None against the 13a spec. The pre-existing `email.service.test.ts` failure and 
 
 **What I kept/changed/rejected:**
 Accepted all changes
+
+## 2026-10-17 — Stage 13b/13c: JWKS Endpoint, Remove `GET /auth/verify`, Test Cleanup
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 13b: JWKS Endpoint" and "Stage 13c: Remove `GET /auth/verify` — Tests and Docs" sections (user-service tests subsection only — see Deviations below for the Docs subsection).
+
+**Prompts (exact):**
+
+> let's start the next stage
+
+> do not touch anything that isn't user service. i will update the owner of the supplier service for changes that he needs to make.
+
+**Key responses:**
+Did 13b and 13c together in one branch/PR rather than shipping 13b alone with a known-red test suite, since 13c is the direct, non-optional fallout of 13b's removal (not an independently useful change) — flagged this packaging choice to the user rather than treating it as a design decision. Implemented:
+
+- `auth.controller.ts`: removed the `verify` handler (and its now-unused `verifyAccessToken` import); added `jwks`, calling `getJwks()` from Stage 13a.
+- `auth.routes.ts`: removed `router.get('/verify', ...)`; added `router.get('/.well-known/jwks.json', authController.jwks)`.
+- `tests/controllers/auth.controller.test.ts`: replaced the `describe('GET /auth/verify', ...)` block with `describe('GET /auth/.well-known/jwks.json', ...)` (no-auth-required, JWK shape, `kid` round-trips with a freshly signed token) and a one-line `describe('GET /auth/verify', ...)` confirming it now `404`s. The two unrelated tests that reused `GET /auth/verify` purely as an "is this token still valid" check (under `POST /auth/logout` and under password reset) now check `GET /users/me` instead. Dropped `tamperSignature`/`signWithOtherKey` from this file's imports (no longer used here) and `app` from `authenticate.test.ts`'s imports (same reason).
+- `tests/middleware/authenticate.test.ts`: removed the `describe('authenticate and GET /auth/verify agree on the same token', ...)` block; the `authenticate middleware` describe block above it is untouched.
+
+When asked to start this stage, mid-implementation the user said not to touch anything outside `user-service` — they're notifying the supplier-service owner directly instead. This cuts the "Docs" part of Stage 13c's own spec (updating `supplier-service/SupplierServiceArchitecture.md §7` and `SupplierServiceSpec.md`), so that was skipped entirely; `instructions.md` was updated in place to record the scope correction (see Deviations). Checked root `README.md` for the auth-contract prose Stage 13c's spec also named — it has none (only two historical Log-index rows mentioning the old endpoint, left as-is since they describe what was true at the time).
+
+Verification actually run: `tsc --noEmit` (both `src` and `tests/tsconfig.json`) and `eslint .`, all clean. `npx vitest run`: 533 passed, 1 failed — the same pre-existing, unrelated `email.service.test.ts` failure already confirmed in the Stage 13a entry above (re-confirmed here since the test count changed: was 543/1 before this stage's test removals, now 533/1, consistent with removing 9 `GET /auth/verify`-era tests and adding 3 new ones net).
+
+**Files:**
+
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/middleware/authenticate.test.ts` (modified)
+- `instructions.md` (modified: recorded the Stage 13c scope correction — supplier-service docs are out of scope here)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+Per the user's instruction above, the "Docs" subsection of Stage 13c's written spec (updating `supplier-service/SupplierServiceArchitecture.md §7` and `SupplierServiceSpec.md`) was **not done** — the user is handling that by notifying the supplier-service owner directly. `instructions.md` Stage 13's scope note and Stage 13c's "Docs" subsection were both edited in place to record this correction, rather than silently diverging from the written plan.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-10-17 — Stage 13d: JWKS Verification Guide for Order/Supplier/Credit Implementers
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `instructions.md` "Stage 13d: Guide for `order-service` / `supplier-service` / `credit-service` Implementers" section.
+
+**Prompts (exact):**
+
+> wait, i still want you to write instructions for the owners of the other services for me, just don't put it in the code / docs that they have.
+
+> can you add "verify with RS256 only, never trust the token's alg header."
+
+**Key responses:**
+Per the user's "user-service only" scope rule from the previous task, placed the guide under
+`user-service/docs/` (user-service is what publishes the JWKS contract this guide documents)
+rather than inside `order-service/`, `supplier-service/`, or `credit-service/` — none of those
+services' files were touched. The guide covers: the `GET /auth/.well-known/jwks.json` contract
+and response shape; that the JWKS may list more than one key during a rotation overlap and
+callers must not assume exactly one; the verify steps (cache by `kid`, refetch once on an
+unknown `kid`, verify RS256, read `sub`/`role`); that `supplier-service`'s existing
+`authenticate.ts` now calls a `404`ing endpoint and must be rewritten; and, per Stage 13d's own
+instruction not to pick an implementation for them, named two common library shapes
+(`jsonwebtoken`+`jwks-rsa`, or `jose`) without choosing one — each service's implementer makes
+that call themselves. Added the user's verbatim algorithm-pinning instruction to the signature-
+verification step (never trust the token's own `alg` header — pin `RS256` via the library's own
+allow-list option, e.g. `jsonwebtoken`'s `algorithms: ['RS256']`), guarding against algorithm-
+confusion attacks.
+
+**Files:**
+
+- `user-service/docs/jwks-verification-guide.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
