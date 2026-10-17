@@ -2371,7 +2371,9 @@ Concurrency:
 > inside `order-service`, `supplier-service`, or `credit-service` — see Stage 13d.
 >
 > This supersedes the auth pattern documented in `SupplierServiceArchitecture.md §7` and
-> `SupplierServiceSpec.md`; both get updated as part of this stage (Stage 13c).
+> `SupplierServiceSpec.md`. **Scope correction (2026-10-17):** those two docs are *not* updated
+> as part of this stage — the user-service owner only touches `user-service` and this file;
+> updating the supplier-service docs is left to that service's own owner.
 
 ### Design decisions (already made, do not change)
 
@@ -2471,10 +2473,12 @@ router.get("/.well-known/jwks.json", authController.jwks);
 
 #### Docs
 
-- `supplier-service/SupplierServiceArchitecture.md §7` and `supplier-service/SupplierServiceSpec.md`
-  — remove/replace the description of calling `GET /auth/verify`; point at the JWKS flow and the
-  Stage 13d guide instead.
-- Root `README.md` — same, wherever it describes the current auth-via-API-call pattern.
+**Scope correction (2026-10-17):** out of scope for this stage. `supplier-service/SupplierServiceArchitecture.md §7`
+and `supplier-service/SupplierServiceSpec.md` still describe calling `GET /auth/verify`; the
+user-service owner does not touch them — the user is notifying the supplier-service owner
+directly to update them, pointing at the JWKS flow and the Stage 13d guide. (Root `README.md`
+was checked and has no such contract-description prose to update — only historical Log-index
+rows mentioning the old endpoint, which stay as-is.)
 
 ---
 
