@@ -3649,3 +3649,285 @@ Earlier prompt of this stage (quoted in the entry "Supplier Service: OpenAPI des
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+---
+
+## 2026-10-16 — Week 7/8 catch-up: transfer, release, balance read and append-only enforcement
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug | docs
+**Scope:** Implementation code | Debugging | Refactor/Docs
+**Governing decision:** `credit-service/credit-service-context.md` §5 (write-path table, append-only), §6 (F19.3, F19.4, F19.5), §7 (NFR8.1.2, NFR8.2.3), §8 (API surface); six team decisions given in chat on 2026-10-16 and quoted below.
+
+**Prompts (exact):**
+
+> Implement the week-7/8 catch-up iteration for credit-service.
+> Read credit-service/CONTEXT.md first. Do not change requirements.
+>
+> TEAM DECISIONS MADE SINCE THE AUDIT — implement these as given
+>
+> 1. Order Service will send requestId on every credit call. Our existing request_id-keyed design stands; do not add a reservationId handle.
+> 2. Transfer takes courierId in the request body. Credit Service does not look couriers up and stores no courier reference of its own.
+> 3. Transfer error semantics: no reservation for that requestId → 404 RESERVATION_NOT_FOUND; already transferred → 409 ALREADY_TRANSFERRED; courier has no balance row → 404 COURIER_NOT_FOUND. Do NOT create a balance row here — credits may only enter the economy via F19.1.1.
+> 4. Release works for both cancellation and expiry. It takes only a requestId. No scheduler, no clock, no expiry detection in this service.
+> 5. GET /credits/balance/:userId: a user may read only their own balance unless they hold an elevated role. Mirror user-service's ROLE_RANK comparison rather than checking role === 'admin', so super admin is not denied. Auth is BLOCKED on the user-service public key, which is gitignored and absent — so write the authorization layer behind a clear seam and leave it disabled, with a TODO naming the blocker. Do not invent a key or a fallback that skips verification.
+> 6. The chosen async workflow is transfer-on-completion. Do NOT implement it this iteration — the outbox-vs-broker decision is still with the team. Design transfer so it can be driven by a retry later: keep it idempotent on requestId.
+>
+> BUILD
+> a. F19.3.1 / F19.3.2 — POST /credits/transfer […]
+> b. NFR8.1.2 — prove rollback on transfer specifically. Inject a failure mid-transaction and assert both balances and the log are unchanged.
+> c. F19.4.1 — POST /credits/release. Decrease reserved only; total is untouched. Log row. Idempotent on requestId.
+> d. F19.5.1 — GET /credits/balance/:userId returning total, reserved and unreserved.
+> e. NFR8.2.3 — create a named least-privilege role […] Then prove it: a DELETE against transaction_log as the app role must fail.
+> ALSO
+> f. Publish the API contract as credit-service/API.md […]
+> g. Point the test suite at a dedicated test database, as user-service does.
+>
+> VERIFY docker compose up, full suite green, and mutation-check the new work the way FOR UPDATE was checked: break it, confirm the test fails, restore. Report what you could not verify.
+>
+> Nothing outside credit-service/ without showing me the diff first.
+
+**Key responses:**
+
+Implemented all six decisions as given. Transfer reads the amount and the requester back from the reservation row rather than taking them from the caller, so it can only ever move exactly what was held; the courier comes from the body and no courier reference is stored. Release takes only a requestId and has no clock. Both are idempotent on requestId, each backed by a partial unique index — a new `transaction_log_one_release_per_request` was added to match the existing transfer and reservation indexes, implementing the team's idempotency instruction with the mechanism already decided in context §4.
+
+Two orderings no requirement covers were hit and are flagged rather than resolved: transfer-after-release and release-after-transfer. Both return 409 (`ALREADY_RELEASED` / `ALREADY_TRANSFERRED`); both are listed as INVENTED in API.md.
+
+The F19.5.1 authorization rule is implemented as a pure function mirroring user-service's `ROLE_RANK` (so `super admin` is not denied) and unit-tested. The middleware applying it is written but **not mounted**: verifying a User Service token needs its RS256 public key, which is git-ignored and absent. No key was fabricated and no verification-skipping path was written. The endpoint is therefore unauthenticated, stated in API.md, README.md and in the route file.
+
+NFR8.2.3 is now genuinely enforced. `grants.sql` holds the privilege matrix (`SELECT, INSERT, UPDATE` on balances; `SELECT, INSERT` only on transaction_log) and is applied both by the container bootstrap and by the test harness, so the two cannot drift. The service connects as `credit_app`, confirmed non-superuser.
+
+Verification actually run. `docker compose up` for credit-db and credit-service, both healthy. `npx tsc --noEmit` and `npm run build` exit 0. Full suite **48 tests in 7 files, all passing**. End-to-end over HTTP against the container: allocate → reserve → balance → transfer → duplicate transfer (409) → release-after-transfer (409) → courier balance, all correct, with the service confirmed connected as `credit_app`. Against the live `credit_db`, `DELETE FROM transaction_log` as `credit_app` fails with `permission denied for table transaction_log`; `pg_roles` shows `credit_app` with `rolsuper = false`.
+
+Mutation checks, each applied then restored:
+
+- `ROLLBACK` → `COMMIT` in the transaction helper: both NFR8.1.2 tests fail, and the partial commit drives `reserved_balance` to −8, tripping `balances_reserved_non_negative`.
+- Release also debiting total: 4 tests fail.
+- Granting DELETE/UPDATE on transaction_log: 2 append-only tests fail.
+- Removing the F19.3.2 unique index: **initially passed**, which exposed a weak test. The service-level guard and the CHECK constraint were masking the index. A direct database-level test (`tests/db/constraints.test.ts`) was added; the mutation is now detected. The concurrency test was also strengthened to assert _why_ the losers lose, not just how many.
+
+A footgun was found and fixed during the work: the first version of globalSetup reset the password of the cluster-wide `credit_app` role, which would have broken a running container. The suite now uses a separate `credit_app_test` role with identical grants, and refuses to run as `credit_app`.
+
+**Could not verify:** the async transfer-on-completion workflow (not built this iteration, by instruction); any real inter-service call, since Order Service still wires `createStubCreditsClient()` and its `CreditsClient` contract does not match this API; the JWT verification path, which has no key; NFR8.2.1 and NFR8.2.2, which remain unmeasured and unimplemented.
+
+**Files:**
+
+- `credit-service/src/db/init.sql` (modified: release uniqueness index; append-only note)
+- `credit-service/src/db/grants.sql` (created)
+- `credit-service/src/db/grant-app-role.sh` (created)
+- `credit-service/src/db/queries/credits.queries.ts` (modified)
+- `credit-service/src/services/credits.service.ts` (modified)
+- `credit-service/src/controllers/credits.controller.ts` (modified)
+- `credit-service/src/routes/credits.routes.ts` (modified)
+- `credit-service/src/auth/roleRank.ts` (created)
+- `credit-service/src/middleware/requireBalanceAccess.ts` (created)
+- `credit-service/tests/services/transfer.test.ts` (created)
+- `credit-service/tests/services/balance.test.ts` (created)
+- `credit-service/tests/concurrency/transfer-rollback.test.ts` (created)
+- `credit-service/tests/db/append-only.test.ts` (created)
+- `credit-service/tests/db/constraints.test.ts` (created)
+- `credit-service/tests/setup/globalSetup.ts` (created)
+- `credit-service/tests/setup/env.ts` (modified)
+- `credit-service/tests/helpers/db.ts` (modified)
+- `credit-service/tests/services/credits.service.test.ts` (modified)
+- `credit-service/tests/concurrency/reserve.concurrency.test.ts` (modified)
+- `credit-service/vitest.config.ts` (modified)
+- `credit-service/.env.test` (created; no header constraint, values are throwaway)
+- `credit-service/.gitignore` (modified: un-ignore .env.test)
+- `credit-service/API.md` (created)
+- `credit-service/README.md` (modified)
+- `compose.yaml` (modified: app-role env, init mounts, service connects as credit_app)
+- `.env.example` (modified: CREDIT_APP_USER / CREDIT_APP_PASSWORD)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+- **Invented, listed in full in API.md §"What was invented":** all request/response bodies and status codes; the `{ error: { code, message } }` envelope; `ALREADY_RELEASED` on transfer and `ALREADY_TRANSFERRED` on release; `GET /health`; the role name `credit_app`; `ELEVATED_ROLE = 'admin'` as the rank threshold. Self-transfer is deliberately not rejected.
+- **Order Service's client is incompatible with this API** — `reserve({ requesterId, amount }) → { reservationId }`, no requestId, no transfer method, wired to a stub. It must be rewritten against API.md.
+- **F19.5.1 ships unauthenticated.** Blocked on the public key reaching this service, and on context §3 open question 1 (local RS256 verification vs calling `GET /auth/verify`).
+- Applying the compose change required recreating the credit-db volume, since init scripts only run on an empty volume.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-10-17 — Stage 13: Auth Distribution Plan — JWKS Recorded in instructions.md
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The decisions themselves were made by the user in chat (quoted below); this task only formatted them into `instructions.md` as a new stage. Nothing in `instructions.md` Stage 13 was originated by the AI tool.
+
+**Prompts (exact):**
+
+> first read agents.md to find out what you can and can't do. keep that in mind.
+>
+> if i told you to convert my authentication method from making an API call to giving each individual service a public PKC key, what other info do you need for you to do that, while complying with the rules in agents.md? list them out so i can help you out.
+
+> 1. Is it alright to put a new stage 13 in instructions.md detailing the changes that should happen, and telling it what to ignore from previous parts?
+> 2. Currently using RS256. Basically when user service issues a JWT (using refresh / login), it will sign it (it has access to the private key). All other services will hold the public key.
+> 3. I would think you would have the answer to this…?
+> 4. Let's go with JWKS, since we want to rotate our keys.
+> 5. All 3 services (order, supplier and credit). But don't implement their part for them. Help me come up with a guide for the implementors of those parts on how to access the JWKS endpoint and how to verify using the resulting public key.
+> 6. On top of what is already in the token payload, add kid and aud.
+> 7. Is the token lifetime not already set in the code?
+> 8. Key rotation - let's do rotation once every 3 months. Link it to JWKT to allow for smooth transfer of keys.
+> 9. Let's instantly switch to the new local verification.
+> 10. Wouldn't you know better?
+>
+> do let me know if youre still missing information!
+
+> 1: Let's do this
+> 3: Let's continue with what we have.
+> 7: Let's stick with what we have.
+> 10: For documentation, remind me later after we're done implementing.
+>
+> New
+>
+> 1. Yes, put in the header I mean.
+> 2. Scratch that. We don't need aud.
+> 3. Let's do with auth.
+> 4. Let's do env vars per key.
+> 5. Let's remove the endpoint, and update hte docs accordingly.
+
+> put the plan into stage 13 in instructions.md
+
+**Key responses:**
+Before answering, read `AGENTS.md` and classified the request: converting the auth scheme from an inter-service API call to JWKS-distributed public keys is an authentication-scheme/security-tradeoff decision under AGENTS.md §2.1, so declined to pick the scheme and instead listed the open decisions needed (algorithm, key distribution mechanism, scope, claims, token lifetime, rotation, migration plan, existing code to replace). Where the user deferred a decision back to the AI ("I would think you would have the answer to this", "Wouldn't you know better?"), did not choose for them — instead looked up the relevant facts in the existing codebase and reported them: the existing key pair at `user-service/keys/{private,public}.pem` is RSA-2048 (confirmed with `openssl rsa -noout -text`), `ACCESS_TOKEN_TTL_MINUTES=15` is already set in `user-service/.env`/`config.ts`, and the only existing inter-service-API-call auth consumer is `supplier-service/src/middleware/authenticate.ts` calling `GET /auth/verify` (`order-service` and `credit-service` have no auth middleware yet). Once every open item had an explicit team decision, wrote `instructions.md` Stage 13 (13a–13d) in the same design-decisions-table-plus-sub-stage format as Stages 8–12, encoding only what was decided — including a clarification that `kid` means the standard JWT header field, not a payload claim (per the user's follow-up), and that Stage 13d is a guide for the order/supplier/credit implementers, not code written on their behalf.
+
+**Files:**
+
+- `instructions.md` (modified: added Stage 13, sub-stages 13a–13d)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — every open design/security point (§2.1) was referred back to the user and resolved by them before being written down; see the quoted prompts above for exactly which.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-10-17 — Stage 13a: Per-Key Config + Sign/Verify by `kid`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 13: Auth Distribution — JWKS Instead of `GET /auth/verify`" design-decisions table (key/kid configuration, token claims, signing algorithm, key pair for this stage rows) and "Stage 13a: Per-Key Config + Sign/Verify by `kid`" section.
+
+**Prompts (exact):**
+
+> do you know the proper git workflow (branching etc)? can access the history for the previous stages i did for more information
+
+> yes correct. go ahead
+
+**Key responses:**
+Confirmed the git workflow against actual history (`git log --merges`, branch list) rather than only memory, then branched `feat/stage-13a-jwt-key-config` from an up-to-date `main`. Implemented exactly the 13a spec:
+
+- `config.ts`: added required `JWT_KEY_ID` and optional `JWT_PREVIOUS_KEY_ID` / `JWT_PREVIOUS_PUBLIC_KEY_PATH` to the env schema, exposed under `config.jwt`.
+- `jwt.ts`: loads the current signing key as `{ kid, privateKey, publicKey }` and, if both previous-key env vars are set, a previous verification-only key. `signAccessToken` now sets the JWT header `kid` via `jsonwebtoken`'s `keyid` option (claims unchanged — no `aud`, per the user's revised decision). `verifyAccessToken` decodes the header first, looks the key up by `kid` among known keys, and verifies against the match; an unknown/missing `kid` fails the same way a bad signature already did. Added `getJwks()`, exporting each known public key via `crypto.createPublicKey(pem).export({format:'jwk'})` (no new dependency) plus `kid`/`use`/`alg`.
+- `.env` / `.env.example` / `.env.test`: added `JWT_KEY_ID` (`.env`/`.env.example`: `2026-10`, local/gitignored for `.env`; `.env.test`: `test-key`), and documented the optional `JWT_PREVIOUS_*` pair as comments in `.env.example`.
+- `tests/helpers/keys.ts`: `signToken`/`signExpiredToken` now default to `keyid: process.env.JWT_KEY_ID`, since hand-crafted test tokens need a `kid` the new `verifyAccessToken` can look up too.
+
+Verification actually run: `tsc --noEmit` and `eslint .` both clean. `npx vitest run` (the `npm test` script runs Vitest in watch mode, which never exits, so used `vitest run` directly): 543 passed, 1 failed (`email.service.test.ts`, an unrelated OTP-template test). Confirmed that failure pre-exists on the unmodified branch by `git stash`-ing this stage's changes and rerunning just that file (same failure, same assertion), then `git stash pop` to restore. Running the real test DB required `docker compose up -d user-db`, which initially failed on an unrelated missing `CREDIT_APP_PASSWORD` in the repo-root `.env` (gitignored, local-only); filled it and four other already-stale vars from the already-published `.env.example` defaults, not a Stage 13a decision.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/.env.example` (modified; no header constraint beyond what's already there, listed for completeness)
+- `user-service/.env.test` (modified)
+- `user-service/.env` (modified; gitignored, local-only, not committed)
+- `user-service/tests/helpers/keys.ts` (modified)
+- `.env` (root; modified: added `CREDIT_APP_USER`/`CREDIT_APP_PASSWORD`/`SUPPLIER_*` from `.env.example`'s existing defaults so `docker compose` would run at all; gitignored, local-only, not committed, unrelated to Stage 13a's own change)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None against the 13a spec. The pre-existing `email.service.test.ts` failure and the stale root `.env` are environment gaps unrelated to this stage, not spec deviations (see Key responses).
+
+**What I kept/changed/rejected:**
+Accepted all changes
+
+## 2026-10-17 — Stage 13b/13c: JWKS Endpoint, Remove `GET /auth/verify`, Test Cleanup
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Stage 13b: JWKS Endpoint" and "Stage 13c: Remove `GET /auth/verify` — Tests and Docs" sections (user-service tests subsection only — see Deviations below for the Docs subsection).
+
+**Prompts (exact):**
+
+> let's start the next stage
+
+> do not touch anything that isn't user service. i will update the owner of the supplier service for changes that he needs to make.
+
+**Key responses:**
+Did 13b and 13c together in one branch/PR rather than shipping 13b alone with a known-red test suite, since 13c is the direct, non-optional fallout of 13b's removal (not an independently useful change) — flagged this packaging choice to the user rather than treating it as a design decision. Implemented:
+
+- `auth.controller.ts`: removed the `verify` handler (and its now-unused `verifyAccessToken` import); added `jwks`, calling `getJwks()` from Stage 13a.
+- `auth.routes.ts`: removed `router.get('/verify', ...)`; added `router.get('/.well-known/jwks.json', authController.jwks)`.
+- `tests/controllers/auth.controller.test.ts`: replaced the `describe('GET /auth/verify', ...)` block with `describe('GET /auth/.well-known/jwks.json', ...)` (no-auth-required, JWK shape, `kid` round-trips with a freshly signed token) and a one-line `describe('GET /auth/verify', ...)` confirming it now `404`s. The two unrelated tests that reused `GET /auth/verify` purely as an "is this token still valid" check (under `POST /auth/logout` and under password reset) now check `GET /users/me` instead. Dropped `tamperSignature`/`signWithOtherKey` from this file's imports (no longer used here) and `app` from `authenticate.test.ts`'s imports (same reason).
+- `tests/middleware/authenticate.test.ts`: removed the `describe('authenticate and GET /auth/verify agree on the same token', ...)` block; the `authenticate middleware` describe block above it is untouched.
+
+When asked to start this stage, mid-implementation the user said not to touch anything outside `user-service` — they're notifying the supplier-service owner directly instead. This cuts the "Docs" part of Stage 13c's own spec (updating `supplier-service/SupplierServiceArchitecture.md §7` and `SupplierServiceSpec.md`), so that was skipped entirely; `instructions.md` was updated in place to record the scope correction (see Deviations). Checked root `README.md` for the auth-contract prose Stage 13c's spec also named — it has none (only two historical Log-index rows mentioning the old endpoint, left as-is since they describe what was true at the time).
+
+Verification actually run: `tsc --noEmit` (both `src` and `tests/tsconfig.json`) and `eslint .`, all clean. `npx vitest run`: 533 passed, 1 failed — the same pre-existing, unrelated `email.service.test.ts` failure already confirmed in the Stage 13a entry above (re-confirmed here since the test count changed: was 543/1 before this stage's test removals, now 533/1, consistent with removing 9 `GET /auth/verify`-era tests and adding 3 new ones net).
+
+**Files:**
+
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/middleware/authenticate.test.ts` (modified)
+- `instructions.md` (modified: recorded the Stage 13c scope correction — supplier-service docs are out of scope here)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+Per the user's instruction above, the "Docs" subsection of Stage 13c's written spec (updating `supplier-service/SupplierServiceArchitecture.md §7` and `SupplierServiceSpec.md`) was **not done** — the user is handling that by notifying the supplier-service owner directly. `instructions.md` Stage 13's scope note and Stage 13c's "Docs" subsection were both edited in place to record this correction, rather than silently diverging from the written plan.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+## 2026-10-17 — Stage 13d: JWKS Verification Guide for Order/Supplier/Credit Implementers
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `instructions.md` "Stage 13d: Guide for `order-service` / `supplier-service` / `credit-service` Implementers" section.
+
+**Prompts (exact):**
+
+> wait, i still want you to write instructions for the owners of the other services for me, just don't put it in the code / docs that they have.
+
+> can you add "verify with RS256 only, never trust the token's alg header."
+
+**Key responses:**
+Per the user's "user-service only" scope rule from the previous task, placed the guide under
+`user-service/docs/` (user-service is what publishes the JWKS contract this guide documents)
+rather than inside `order-service/`, `supplier-service/`, or `credit-service/` — none of those
+services' files were touched. The guide covers: the `GET /auth/.well-known/jwks.json` contract
+and response shape; that the JWKS may list more than one key during a rotation overlap and
+callers must not assume exactly one; the verify steps (cache by `kid`, refetch once on an
+unknown `kid`, verify RS256, read `sub`/`role`); that `supplier-service`'s existing
+`authenticate.ts` now calls a `404`ing endpoint and must be rewritten; and, per Stage 13d's own
+instruction not to pick an implementation for them, named two common library shapes
+(`jsonwebtoken`+`jwks-rsa`, or `jose`) without choosing one — each service's implementer makes
+that call themselves. Added the user's verbatim algorithm-pinning instruction to the signature-
+verification step (never trust the token's own `alg` header — pin `RS256` via the library's own
+allow-list option, e.g. `jsonwebtoken`'s `algorithms: ['RS256']`), guarding against algorithm-
+confusion attacks.
+
+**Files:**
+
+- `user-service/docs/jwks-verification-guide.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.

@@ -13,3 +13,5 @@ coverage/
 .env
 .env.*
 !.env.example
+# Committed: throwaway local test values, no secrets.
+!.env.test

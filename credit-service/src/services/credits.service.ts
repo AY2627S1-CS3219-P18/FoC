@@ -10,14 +10,22 @@
 import { INITIAL_ALLOCATION_CREDITS } from '../domain/constants.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
+import pool from '../db/pool.js';
 import {
   PG_UNIQUE_VIOLATION,
+  creditCourierForTransfer,
+  debitRequesterForTransfer,
+  decreaseReservedBalance,
+  findReservation,
+  hasTransactionOfType,
   increaseReservedBalance,
   insertInitialBalance,
   insertTransaction,
   isPgError,
   lockBalanceForUpdate,
+  lockTwoBalancesForUpdate,
   pgConstraint,
+  readBalance,
   type BalanceRow,
   type TransactionRow,
 } from '../db/queries/credits.queries.js';
@@ -141,4 +149,185 @@ export async function reserveCredits(
 
     return { balance: toBalanceView(balance), transaction };
   });
+}
+
+/**
+ * F19.3.1 - move the reserved credits from the requester to the courier.
+ * F19.3.2 - at most one transfer per request.
+ *
+ * The amount and the requester are read back from the reservation row, not taken from
+ * the caller, so a transfer can only ever move exactly what was held. The courier comes
+ * from the request body: Credit Service does not look couriers up and keeps no courier
+ * reference of its own (team decision 2026-10-16).
+ *
+ * Idempotent on requestId, so a later retry of a failed completion is safe to send.
+ */
+export async function transferCredits(
+  requestId: string,
+  courierId: string,
+): Promise<CreditOperationResult> {
+  return withTransaction(async (client) => {
+    const reservation = await findReservation(client, requestId);
+    if (!reservation) {
+      throw new AppError(
+        404,
+        'No credits are reserved for this request.',
+        'RESERVATION_NOT_FOUND',
+      );
+    }
+
+    if (await hasTransactionOfType(client, requestId, 'transfer')) {
+      throw new AppError(
+        409,
+        'Credits for this request have already been transferred.',
+        'ALREADY_TRANSFERRED',
+      );
+    }
+
+    // Not specified by any requirement; see API.md. Released credits are back in the
+    // requester's unreserved balance, so transferring them would move credits that are
+    // no longer held and drive reserved_balance negative.
+    if (await hasTransactionOfType(client, requestId, 'release')) {
+      throw new AppError(
+        409,
+        'Credits for this request have already been released.',
+        'ALREADY_RELEASED',
+      );
+    }
+
+    const { requesterId, amount } = reservation;
+    const locked = await lockTwoBalancesForUpdate(client, requesterId, courierId);
+
+    if (!locked.has(courierId)) {
+      // Deliberately not created here: credits may only enter the economy through
+      // F19.1.1 (team decision 2026-10-16).
+      throw new AppError(404, 'The courier has no credit balance.', 'COURIER_NOT_FOUND');
+    }
+    if (!locked.has(requesterId)) {
+      throw new AppError(
+        404,
+        'The requester has no credit balance.',
+        'BALANCE_NOT_FOUND',
+      );
+    }
+
+    const requesterBalance = await debitRequesterForTransfer(client, requesterId, amount);
+    await creditCourierForTransfer(client, courierId, amount);
+
+    let transaction: TransactionRow;
+    try {
+      transaction = await insertTransaction(client, {
+        transactionType: 'transfer',
+        originatingUserId: requesterId,
+        destinationUserId: courierId,
+        amount,
+        requestId,
+      });
+    } catch (err) {
+      // F19.3.2 under concurrency: two completions racing both pass the check above,
+      // and the unique index settles it. The throw rolls back both balance updates.
+      if (
+        isPgError(err, PG_UNIQUE_VIOLATION) &&
+        pgConstraint(err) === 'transaction_log_one_transfer_per_request'
+      ) {
+        throw new AppError(
+          409,
+          'Credits for this request have already been transferred.',
+          'ALREADY_TRANSFERRED',
+        );
+      }
+      throw err;
+    }
+
+    // The requester's balance is returned: it is the wallet the caller debited.
+    return { balance: toBalanceView(requesterBalance), transaction };
+  });
+}
+
+/**
+ * F19.4.1 - return the reserved credits to the requester when a request is cancelled
+ * or expires.
+ *
+ * Takes only a requestId. Credit Service has no clock and does not detect expiry; the
+ * caller decides why the credits are coming back (team decision 2026-10-16), so both
+ * cancellation and expiry arrive here identically.
+ *
+ * Reserved falls by the amount; total is untouched (context §5).
+ */
+export async function releaseCredits(requestId: string): Promise<CreditOperationResult> {
+  return withTransaction(async (client) => {
+    const reservation = await findReservation(client, requestId);
+    if (!reservation) {
+      throw new AppError(
+        404,
+        'No credits are reserved for this request.',
+        'RESERVATION_NOT_FOUND',
+      );
+    }
+
+    if (await hasTransactionOfType(client, requestId, 'release')) {
+      throw new AppError(
+        409,
+        'Credits for this request have already been released.',
+        'ALREADY_RELEASED',
+      );
+    }
+
+    // Not specified by any requirement; see API.md. Transferred credits belong to the
+    // courier and are no longer the requester's to reclaim.
+    if (await hasTransactionOfType(client, requestId, 'transfer')) {
+      throw new AppError(
+        409,
+        'Credits for this request have already been transferred.',
+        'ALREADY_TRANSFERRED',
+      );
+    }
+
+    const { requesterId, amount } = reservation;
+    const current = await lockBalanceForUpdate(client, requesterId);
+    if (!current) {
+      throw new AppError(404, 'No credit balance exists for this user.', 'BALANCE_NOT_FOUND');
+    }
+
+    const balance = await decreaseReservedBalance(client, requesterId, amount);
+
+    let transaction: TransactionRow;
+    try {
+      transaction = await insertTransaction(client, {
+        transactionType: 'release',
+        originatingUserId: requesterId,
+        destinationUserId: null,
+        amount,
+        requestId,
+      });
+    } catch (err) {
+      if (
+        isPgError(err, PG_UNIQUE_VIOLATION) &&
+        pgConstraint(err) === 'transaction_log_one_release_per_request'
+      ) {
+        throw new AppError(
+          409,
+          'Credits for this request have already been released.',
+          'ALREADY_RELEASED',
+        );
+      }
+      throw err;
+    }
+
+    return { balance: toBalanceView(balance), transaction };
+  });
+}
+
+/**
+ * F19.5.1 - read a user's total, reserved and unreserved balance.
+ *
+ * No transaction and no lock: this is a point-in-time read, and holding a lock would
+ * make a read block the writes it is reporting on.
+ */
+export async function getBalance(userId: string): Promise<BalanceView> {
+  const row = await readBalance(pool, userId);
+  if (!row) {
+    throw new AppError(404, 'No credit balance exists for this user.', 'BALANCE_NOT_FOUND');
+  }
+  return toBalanceView(row);
 }
