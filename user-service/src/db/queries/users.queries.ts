@@ -18,6 +18,9 @@
 // Author review:
 // 27/09/2026: Stage 12d - updateEmail
 // Author review:
+// 2026-10-19: findPublicSummariesByIds for the public lookup (GET /users/public).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -170,6 +173,19 @@ export async function updatePasswordHash(
     `UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`,
     [userId, passwordHash],
   );
+}
+
+// Only id and username are selected, so no other column can reach a caller even by
+// accident. Unknown ids simply do not come back.
+export async function findPublicSummariesByIds(
+  ids: string[],
+  db: Queryable = pool,
+): Promise<{ id: string; username: string }[]> {
+  const result = await db.query<{ id: string; username: string }>(
+    `SELECT id, username FROM users WHERE id = ANY($1::uuid[])`,
+    [ids],
+  );
+  return result.rows;
 }
 
 export async function listAllUsers(db: Queryable = pool): Promise<UserRow[]> {
