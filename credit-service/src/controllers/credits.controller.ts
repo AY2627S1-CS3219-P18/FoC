@@ -6,6 +6,9 @@
 //    the method and path; the field names, validation rules and status codes are
 //    pending sign-off - see credit-service/README.md.
 //    Author review: Wee Jean
+//  2026-10-19: Week 9 - transaction history handlers (F19.5.2, F20.2).
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 //  2026-10-16: Week 7/8 catch-up - transfer, release and balance-read handlers.
 //    Bodies and status codes for the new endpoints follow the team's decisions of
 //    2026-10-16; anything not covered by them is flagged in credit-service/API.md.
@@ -16,7 +19,9 @@ import { z } from 'zod';
 import { AppError } from '../utils/AppError.js';
 import {
   allocateInitialCredits,
+  getAllTransactions,
   getBalance,
+  getTransactionsForUser,
   releaseCredits,
   reserveCredits,
   transferCredits,
@@ -93,4 +98,17 @@ export async function getBalanceByUserId(req: Request, res: Response): Promise<v
   const { userId } = parseBody(userIdParamSchema, req.params);
   const balance = await getBalance(userId);
   res.status(200).json({ balance });
+}
+
+/** GET /credits/transactions — F19.5.2. Scoped to the caller. */
+export async function getMyTransactions(req: Request, res: Response): Promise<void> {
+  // req.user is set by requireAuth, which runs first on this route.
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+  res.status(200).json(await getTransactionsForUser(req.user!.userId, cursor));
+}
+
+/** GET /credits/transactions/all — F20.2, F20.2.1. Gated on rank >= admin. */
+export async function getEveryTransaction(req: Request, res: Response): Promise<void> {
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+  res.status(200).json(await getAllTransactions(cursor));
 }

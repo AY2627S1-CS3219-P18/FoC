@@ -152,6 +152,10 @@ services:
       # The least-privilege role, not the owner (NFR8.2.3).
       DB_USER: ${CREDIT_APP_USER}
       DB_PASSWORD: ${CREDIT_APP_PASSWORD}
+      # Origin the JWKS key set is fetched from, for local token verification. Same value
+      # supplier-service already uses. No depends_on: the fetch is lazy and the key set is
+      # refetched on an unknown kid, so a cold start recovers on its own.
+      USER_SERVICE_URL: http://user-service:3001
     ports:
       - "${CREDIT_SERVICE_PORT:-3003}:3003"
     volumes:
