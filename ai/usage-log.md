@@ -3447,3 +3447,84 @@ None.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+## 2026-10-19 — Credit Service D3 iteration 2: JWKS auth, transaction history, frontend wiring, public user lookup
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** `credit-service/credit-service-context.md` §3 (open question 1, now resolved), §6 (F19.5.1, F19.5.2), §7 (NFR8.2.1), §8 (API surface), §10 items 7–9; `user-service/docs/jwks-verification-guide.md` (the JWKS contract this service now consumes); ten team decisions given in chat on 2026-10-19 and quoted below.
+
+**Prompts (exact):**
+
+> Implement JWKS auth, transaction history, and frontend wiring for credit-service. Read credit-service/CONTEXT.md first.
+>
+> TEAM DECISIONS — implement these as given, do not revisit
+>
+> 1. Credit Service verifies access tokens itself against user-service's JWKS at GET /auth/.well-known/jwks.json. No calls to a verify endpoint; that endpoint is gone.
+> 2. Use jose. Pin RS256 — never trust the token's alg header. Cache by kid, refetch once on an unknown kid.
+> 3. A transport failure reaching the JWKS is 503 IDENTITY_PROVIDER_UNAVAILABLE. Every other failure — bad signature, expired, wrong alg, malformed, unknown kid after a refetch — is 401.
+> 4. Do not invent a key or a fallback that skips verification.
+> 5. F19.5.2: GET /credits/transactions returns the caller's own history. Keyset pagination, 20 a page, newest first.
+> 6. F20.2: GET /credits/transactions/all is the administrator view. Elevated role only, same field set.
+> 7. Administrator means rank >= admin, by the same ROLE_RANK comparison user-service uses, so super admin is not denied.
+> 8. The frontend resolves counterparty names. Credit Service returns UUIDs only and stores no user display data. Do not add names to the API response.
+> 9. Work in frontend/ only. foc-mockup/ is the frozen D1 artefact — do not touch it.
+> 10. Do not containerise the frontend. Out of scope; another owner.
+
+> Three changes, then the PR. Read credit-service/CONTEXT.md first.
+>
+> ## 1. Public user lookup — user-service (NOT my service)
+> ## 2. Errand ID on transaction rows — frontend Wallet page
+> ## 3. Switch counterparty resolution to the new endpoint
+>
+> Touch only what this endpoint needs; do not refactor anything else in user-service, and follow its existing conventions for routes, controllers and validation rather than importing credit-service's patterns.
+>
+> Leave `Author review:` blank in the file headers; I sign those. Show me the diff for anything outside credit-service/ before applying — user-service/ and frontend/ both count.
+
+**Key responses:**
+
+_Auth (decisions 1–4, 7)._ `src/auth/verifyAccessToken.ts` builds one process-level `createRemoteJWKSet` over `USER_SERVICE_URL` + `/auth/.well-known/jwks.json`; jose does the `kid` cache and the refetch-on-miss, and `algorithms: ['RS256']` pins the algorithm at the verify call rather than trusting the token header. The 503-vs-401 split in decision 3 is an explicit allowlist (`isKeySetUnreachable`): `JWKSTimeout`, the connect-level errno codes, and `TypeError: fetch failed`. Anything not on that list — an unknown `kid` that survives the refetch included — falls through to 401, so a cryptographic failure can never be reported as an availability problem. `src/middleware/auth.ts` splits `requireAuth` / `requireElevated` / `requireSelfOrElevated`; the seam left disabled last iteration in `requireBalanceAccess.ts` is now a composed handler pair rather than a TODO.
+
+_History (decisions 5–6, 8)._ Keyset pagination on `(created_at DESC, transaction_id DESC)` behind an opaque base64url cursor, because OFFSET skips or repeats rows as new transactions land at the head. The administrator view reuses the same row shape, so the two endpoints cannot drift. No display names anywhere in the response, per decision 8.
+
+_Frontend (decisions 9–10)._ `restoreSession()` was already broken before this change and had to be repaired first: it read `sub` and `role` from `/users/me` and from `/auth/refresh`, and neither response carries them, so every reload silently dropped the session. It now decodes those two claims from the access token itself. The Wallet page then reads the real balance and a lazily paged history.
+
+_Public lookup (second prompt)._ `GET /users` and `GET /users/:id` are both `authorize('admin')`, so decision 8 was only half-implementable: an ordinary user could never resolve a counterparty's name. Added `GET /users/public?ids=` and `GET /users/public/:id`, `authenticate` only — id and username, nothing else. Route order is load-bearing and carries a comment saying so: `/public` must precede `/:id`, or the literal "public" is captured as an id. The batch is capped at 50. Followed user-service's own conventions throughout (zod in the controller, `asyncHandler`, `AppError`, a thin service over a query function) rather than importing credit-service's patterns, per the instruction above.
+
+_Errand reference._ Every row with a `request_id` now shows it, transfers included. Before, a transfer showed only its counterparty, so a reservation and the transfer that settles it read as two unrelated movements of the same credits.
+
+**Verification actually run:**
+
+- credit-service `npx vitest run`: 9 files, **75 passed**.
+- user-service `npx vitest run`: **533 passed, 16 failed**, and the new `tests/controllers/users.public.controller.test.ts` passes in full (15 tests). Every other suite passes. The 16 failures are in two files this task did not touch: one is the pre-existing `email.service.test.ts` failure already recorded in the Stage 13a and 13b/13c entries above, and the other 15 are the whole of `config.test.ts`, which `spawnSync`s `node_modules/.bin/tsx` directly. On Windows that path is an extensionless shell shim, so the spawn fails with `ENOENT` and every case in the file reports `status null`. Reproduced outside vitest; it is a host-platform issue, not a regression.
+- End-to-end over HTTP against the running containers, 12 checks all passing: a non-admin resolves a counterparty name while `GET /users/:id` still refuses that same caller with 403; an admin still resolves; 51 ids rejected with 400 and exactly 50 accepted; an unknown id omitted rather than raising; no token refused with 401; the body carries `id` and `username` only; a non-UUID rejected; the single-id form resolves, and 404s on an unknown id.
+- In a browser as a non-admin: one page of 20 rows carrying two distinct counterparty ids produced **exactly one** `GET /users/public` request with both ids, not twenty. Transfer rows render as `To superadmin · Errand 9dd8f3ea` directly above `Reservation · Errand 9dd8f3ea`.
+- Outage: with `foc-user-service` stopped, the wallet still rendered 20 rows, the balance and every errand reference; names degraded to shortened ids (`To e1944b04`); the only failed request was the swallowed 502 on the lookup, and there were no page errors.
+
+**Files:**
+
+- `credit-service/src/auth/verifyAccessToken.ts` (created)
+- `credit-service/src/middleware/auth.ts` (created)
+- `credit-service/src/types/express.d.ts` (created)
+- `credit-service/tests/helpers/jwks.ts`, `tests/http/auth.test.ts`, `tests/http/transactions.test.ts` (created)
+- `credit-service/src/config.ts`, `src/controllers/credits.controller.ts`, `src/db/queries/credits.queries.ts`, `src/middleware/requireBalanceAccess.ts`, `src/routes/credits.routes.ts`, `src/services/credits.service.ts` (modified)
+- `credit-service/API.md`, `credit-service/credit-service-context.md`, `.env.example`, `.env.test`, `package.json`, `package-lock.json` (modified)
+- `compose.yaml` (modified: `USER_SERVICE_URL` for credit-service)
+- `frontend/src/api/credits.js` (created)
+- `frontend/src/api/auth.js`, `frontend/src/pages/Wallet.jsx`, `frontend/vite.config.js` (modified)
+- `user-service/src/routes/users.routes.ts`, `src/controllers/users.controller.ts`, `src/services/users.service.ts`, `src/db/queries/users.queries.ts` (modified)
+- `user-service/tests/controllers/users.public.controller.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **A new user-service endpoint was needed before decision 8 could work at all.** Decision 8 puts counterparty-name resolution in the frontend, but every existing lookup route is admin-only, so for an ordinary user the decision was unimplementable. `GET /users/public` closes that gap; its shape (id + username, a batch of up to 50, unknown ids omitted) was specified by the user in the second prompt above, not chosen by the AI tool.
+2. **The top-nav credit pill is still mock data.** `DemoContext` feeds it from `src/data`, not from Credit Service, so it can disagree with the Wallet page on the same screen. Out of scope here — flagged for whoever owns the shell.
+3. **`order-service/src/clients/credits.client.ts` does not match `API.md`.** It is a stub with an incompatible contract (`reserve({ requesterId, amount }) → { reservationId }`, no `requestId`, no transfer method). Not touched — another owner.
+4. **`config.test.ts` cannot pass on Windows.** All 15 of its cases spawn `node_modules/.bin/tsx`, which has no executable extension, so `spawnSync` returns `ENOENT` and `status null` on a Windows host. Unrelated to this task and left alone, but worth a fix (`shell: true`, or spawning `tsx.cmd` on win32) by whoever owns that file.
+5. **No `Author review:` signatures.** Left blank in every header per the instruction above, and per AGENTS.md §4.1.
+
+**What I kept/changed/rejected:**
+Accepted all changes. `frontend/package-lock.json` was additionally reverted: its only diff was seven incidental `"peer": true` annotations from a local `npm ci`, with no dependency change.

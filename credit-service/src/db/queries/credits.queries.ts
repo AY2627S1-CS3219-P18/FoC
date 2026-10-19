@@ -286,3 +286,58 @@ export function pgConstraint(err: unknown): string | undefined {
   }
   return undefined;
 }
+
+export const TRANSACTION_PAGE_SIZE = 20;
+
+const TRANSACTION_COLUMNS = `transaction_id, transaction_type, originating_user_id,
+       destination_user_id, amount, created_at, request_id`;
+
+export interface TransactionCursor {
+  createdAt: string;
+  transactionId: string;
+}
+
+/**
+ * One page of the log, newest first.
+ *
+ * Keyset pagination on (created_at, transaction_id): the cursor names the last row of
+ * the previous page and the next page starts strictly after it. The log is append-only
+ * and grows at the head, so OFFSET would shift rows between requests and a reader
+ * paging backwards through history would see duplicates. The tie-break on
+ * transaction_id keeps the order total when two rows share a timestamp.
+ *
+ * `userId` null means every user's rows (F20.2); otherwise rows where that user is the
+ * originating or destination party (F19.5.2).
+ *
+ * Fetches one row more than the page size so the caller can tell whether another page
+ * exists without a second COUNT query.
+ */
+export async function listTransactions(
+  client: Queryable,
+  userId: string | null,
+  cursor: TransactionCursor | null,
+  limit: number = TRANSACTION_PAGE_SIZE,
+): Promise<TransactionRow[]> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (userId !== null) {
+    params.push(userId);
+    conditions.push(`(originating_user_id = $${params.length} OR destination_user_id = $${params.length})`);
+  }
+  if (cursor) {
+    params.push(cursor.createdAt, cursor.transactionId);
+    conditions.push(`(created_at, transaction_id) < ($${params.length - 1}, $${params.length})`);
+  }
+  params.push(limit + 1);
+
+  const { rows } = await client.query<TransactionRow>(
+    `SELECT ${TRANSACTION_COLUMNS}
+       FROM transaction_log
+      ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+      ORDER BY created_at DESC, transaction_id DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  return rows;
+}

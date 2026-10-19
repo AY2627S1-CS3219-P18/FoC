@@ -32,6 +32,30 @@ export function toPublicUser(row: UserRow): PublicUser {
   return rest;
 }
 
+/** Everything a caller without a role may see about another user: who they are, nothing else. */
+export interface PublicUserSummary {
+  id: string;
+  username: string;
+}
+
+/**
+ * Display names for a batch of ids.
+ *
+ * Unknown ids are left out of the result rather than raising: a caller resolving a page
+ * of references should not have the whole page fail because one user was deleted.
+ */
+export async function listPublicUsers(ids: string[]): Promise<PublicUserSummary[]> {
+  return userQueries.findPublicSummariesByIds(ids);
+}
+
+export async function getPublicUserById(id: string): Promise<PublicUserSummary> {
+  const [row] = await userQueries.findPublicSummariesByIds([id]);
+  if (!row) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  return row;
+}
+
 export async function listUsers(): Promise<PublicUser[]> {
   const rows = await userQueries.listAllUsers();
   return rows.map(toPublicUser);

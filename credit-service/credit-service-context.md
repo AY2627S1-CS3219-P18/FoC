@@ -58,10 +58,11 @@ service's database.
 
 **Open questions with other teams — do not assume answers:**
 
-1. How Credit Service authenticates callers. If User Service issues JWTs with a role
-   claim, Credit verifies locally and reads the role from the token. If it issues
-   opaque session tokens, Credit must call User Service per request. This blocks
-   F19.5.2 and F20.2.1.
+1. ~~How Credit Service authenticates callers.~~ **RESOLVED — User Service publishes a
+   JWKS at `/auth/.well-known/jwks.json` (2026-10-17) and Credit Service verifies RS256
+   tokens locally, reading `sub` and `role` from the token. `GET /auth/verify` no longer
+   exists.** See `user-service/docs/jwks-verification-guide.md`. No longer blocks
+   F19.5.2 or F20.2.1.
 2. Whether User Service calls `POST /credits/allocate` after OTP verification, or
    Credit Service subscribes to a registration event.
 
@@ -228,10 +229,24 @@ These are unresolved in the backlog. Flag them; do not fill them in.
 3. **No FR covers the failed-transfer terminal state** referenced in §9.
 4. **No FR covers admin credit adjustment**, though NFR3.2.1 in User Service requires
    OTP before "direct credit balance adjustments".
-5. **F19.5.2 and F20.2 do not state whether the field sets differ** between a user's
-   view and an administrator's — only that the row scope differs.
+5. ~~**F19.5.2 and F20.2 do not state whether the field sets differ** between a user's
+   view and an administrator's — only that the row scope differs.~~
+   **RESOLVED — team decision, 2026-10-19: the field sets are identical.** The only
+   difference is row scope: a user sees rows where they are the originating or
+   destination user; an administrator sees all rows.
 6. **"Auditors" appear in no User Service role definition** but were referenced in an
    earlier version of F20.2.1.
+7. **RESOLVED on creation — team decision, 2026-10-19: pagination is 20 records per
+   page, ordered `created_at DESC`.** Cursor or offset was left to the implementer;
+   keyset cursors were used. Recorded here because neither F19.5.2 nor F20.2 states a
+   page size or an ordering.
+8. **RESOLVED on creation — team decision, 2026-10-19: "administrator" means rank >=
+   `admin`**, so `super admin` is included. Mirrors `ROLE_RANK` in
+   `user-service/src/middleware/authorize.ts`. Recorded here because F20.2.1 says "the
+   administrator role", which reads as exclusive.
+9. **RESOLVED on creation — team decision, 2026-10-19: counterparty ids are resolved by
+   the frontend** against User Service. Credit Service returns UUIDs only and stores no
+   user display data.
 
 ## 11. Working rules
 

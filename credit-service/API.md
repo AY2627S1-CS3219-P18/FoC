@@ -5,6 +5,9 @@
      against. Methods and paths are the team's (credit-service-context.md §8); items
      marked INVENTED were not covered by any requirement or team decision.
      Author review:
+   2026-10-19: Week 9 - JWKS authentication, the two transaction-history endpoints,
+     and the pagination contract.
+     Author review:
 -->
 
 # Credit Service API
@@ -15,12 +18,39 @@ Base URL in compose: `http://credit-service:3003`. Published on the host at
 All ids are **UUID**. `requestId` is sent on every credit call, and Credit Service keys
 everything on it — there is no reservation handle (team decision 2026-10-16).
 
-> ### ⚠️ No authentication
-> No endpoint authenticates its caller. The F19.5.1 authorization rule is implemented in
-> `src/middleware/requireBalanceAccess.ts` but **is not mounted**, because verifying a
-> User Service token needs its RS256 public key and that key is git-ignored and absent
-> from the repository. **Any caller can currently read any balance and move any
-> credits.** Do not deploy outside the compose network.
+## Authentication
+
+Read endpoints require a User Service access token:
+
+```
+Authorization: Bearer <token>
+```
+
+Tokens are verified **locally** against User Service's JWKS at
+`{USER_SERVICE_URL}/auth/.well-known/jwks.json`, per
+`user-service/docs/jwks-verification-guide.md`. The key set is cached and refetched once
+on an unknown `kid`; **RS256 is pinned** and the token's own `alg` header is never
+trusted. The two claims used are `sub` (the user id) and `role`.
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | Missing or non-`Bearer` header, bad signature, unknown `kid`, expired token |
+| 403 | `FORBIDDEN` | Authenticated, but not permitted to read this |
+| 503 | `IDENTITY_PROVIDER_UNAVAILABLE` | The JWKS endpoint could not be reached |
+
+**503 is deliberately not 401.** A User Service outage has to be distinguishable from a
+bad credential, or every caller is told to log in again during an incident they cannot
+fix. Only transport failures map to 503; anything else about the token is a 401.
+
+**"Administrator" means rank >= `admin`**, using the same `ROLE_RANK`
+(`user` 0, `admin` 1, `super admin` 2) as `user-service/src/middleware/authorize.ts`, so
+super admin is included.
+
+> ### ⚠️ The four write endpoints are unauthenticated
+> `POST /credits/allocate`, `/reserve`, `/transfer` and `/release` take no token. They are
+> called by other services, not browsers, and **service-to-service authentication is not
+> specified anywhere in the backlog**. This was not a team decision — see
+> "What was invented". Do not expose them outside the compose network.
 
 ## Conventions
 
@@ -169,12 +199,8 @@ never stored.
 |---|---|---|
 | 404 | `BALANCE_NOT_FOUND` | No balance row for this user |
 
-**Authorization is specified but not enforced.** The rule — a user may read only their
-own balance unless they hold a role ranked at or above `admin` — lives in
-`src/auth/roleRank.ts` and is unit-tested. The middleware that would apply it is written
-and unmounted. Until then this endpoint is open; see the warning at the top.
-
-When it is enforced it will add `401 UNAUTHORIZED` and `403 FORBIDDEN`.
+**Requires a token.** A user may read only their own balance unless they hold a role
+ranked at or above `admin`. Adds `401`, `403` and `503` from the Authentication table.
 
 ---
 
@@ -185,12 +211,70 @@ required by the healthcheck pattern the sibling services use.
 
 ---
 
-## Not implemented
+## `GET /credits/transactions` — F19.5.2
 
-| Endpoint | Requirement | Blocked on |
+The caller's own records: every row where they are the originating **or** the
+destination user. Scoped to `sub` from the token — there is no user parameter, so one
+user cannot ask for another's history.
+
+```
+GET /credits/transactions
+GET /credits/transactions?cursor=<opaque>
+```
+
+**`200`**
+
+```jsonc
+{
+  "transactions": [
+    {
+      "transaction_id": "<uuid>",
+      "transaction_type": "allocation | reservation | transfer | release",
+      "originating_user_id": "<uuid>|null",
+      "destination_user_id": "<uuid>|null",
+      "amount": 4,
+      "created_at": "2026-10-19T14:00:00.000Z",
+      "request_id": "<uuid>|null"
+    }
+  ],
+  "nextCursor": "<opaque string>|null"
+}
+```
+
+| Status | Code | When |
 |---|---|---|
-| `GET /credits/transactions` | F19.5.2 | Authentication (public key); and §10.5 — the field set is unspecified |
-| `GET /credits/transactions/all` | F20.2, F20.2.1 | Authentication and the admin role check; same field-set gap |
+| 400 | `INVALID_CURSOR` | The cursor is malformed |
+
+## `GET /credits/transactions/all` — F20.2, F20.2.1
+
+Every user's records. **Identical response shape and field set** to the endpoint above;
+the only difference is row scope (team decision 2026-10-19). Requires rank >= `admin`.
+
+Same query parameters, same `400 INVALID_CURSOR`, plus `403 FORBIDDEN` for a caller
+below `admin`.
+
+## Pagination
+
+**20 records per page, `created_at DESC`**, tie-broken by `transaction_id`.
+
+**Keyset, not offset.** The cursor names the last row of the page you just read, and the
+next page starts strictly after it. The log is append-only and grows at the head, so with
+`OFFSET` a row inserted between two requests shifts everything down and the reader sees a
+duplicate; keyset is stable under concurrent writes. It also lets Postgres seek on the
+existing `(user, created_at DESC)` indexes rather than counting rows it then discards.
+
+The cursor is **opaque** — base64url of `created_at|transaction_id`. Treat it as a token;
+do not construct one. `nextCursor` is `null` on the last page, which is how you know to
+stop.
+
+The trade-off: there is no page count and no jumping to page N. Neither is needed for an
+infinite-scroll history, and both would require a `COUNT(*)` over the whole log.
+
+### Counterparty names are not resolved here
+
+Rows carry `originating_user_id` and `destination_user_id` as UUIDs only. Credit Service
+stores no user display data and does not call User Service. Resolve names client-side
+(team decision 2026-10-19).
 
 ---
 
@@ -204,6 +288,12 @@ requirement or a recorded team decision. Listed so it can be ratified or replace
 3. **`ALREADY_RELEASED` on transfer and `ALREADY_TRANSFERRED` on release.** No
    requirement states what happens when the two orderings collide.
 4. **`GET /health`.**
+4b. **The four write endpoints take no token.** Service-to-service authentication is
+   unspecified in the backlog; leaving them open was the agent's call, not the team's.
+4c. **`INVALID_CURSOR` (400)** and the opaque cursor format. Decision 5 left the cursor
+   shape to the implementer.
+4d. **`IDENTITY_PROVIDER_UNAVAILABLE`** as the 503 code name. Decision 3 required a
+   distinct code but did not name it.
 5. **Self-transfer is not rejected.** If `courierId` equals the requester, the arithmetic
    nets out to a release. No requirement forbids it, and Order Service's F3.2.1 prevents
    it upstream, so Credit Service does not second-guess the caller.

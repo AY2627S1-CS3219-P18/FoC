@@ -163,4 +163,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 92 | 2026-10-17 | user-service | Stage 13a: Per-Key Config + Sign/Verify by `kid` | Added JWT_KEY_ID config and kid-based sign/verify plus getJwks() in jwt.ts |
 | 93 | 2026-10-17 | user-service | Stage 13b/13c: JWKS Endpoint, Remove GET /auth/verify, Test Cleanup | Added GET /auth/.well-known/jwks.json, removed GET /auth/verify, updated tests |
 | 94 | 2026-10-17 | user-service | Stage 13d: JWKS Verification Guide for Order/Supplier/Credit Implementers | Wrote a JWKS-consumption guide under user-service/docs, no other services' files touched |
+| 95 | 2026-10-19 | credit-service | Credit Service D3 iteration 2: JWKS auth, transaction history, frontend wiring, public user lookup | JWKS token verification, paged transaction history, the Wallet page on the live API, and a public user lookup in user-service |
 
