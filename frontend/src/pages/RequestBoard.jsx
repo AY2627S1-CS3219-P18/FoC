@@ -4,63 +4,88 @@
  * Scope: Generated UI mockup component RequestBoard.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: tng wen xi
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-16
+ * Scope: Replaced demo request data with the order-service GET /orders response and added loading
+ *        and error states. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review: tng wen xi
  */
 
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Search } from 'lucide-react'
-import RequestCard from '../components/RequestCard'
-import EmptyState from '../components/EmptyState'
-import Button from '../components/Button'
-import { useDemo } from '../context/DemoContext'
-import { minutesUntil } from '../data/requests'
-import { getSupplier, matchesQuery } from '../data/suppliers'
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search } from "lucide-react";
+import RequestCard from "../components/RequestCard";
+import EmptyState from "../components/EmptyState";
+import Button from "../components/Button";
+import { useApiNotice } from "../components/ApiNotice";
+import { useApi } from "../api/useApi";
+import { listOrders } from "../api/orders";
+import { minutesUntil } from "../data/requests";
 
-const FILTERS = ['All', 'Near me', '3+ credits', 'Expiring soon']
-const NEAR_ME = ['COM1 Basement', 'COM2 Level 3 Lounge', 'LT19', 'Central Library']
+const FILTERS = ["All", "Near me", "3+ credits", "Expiring soon"];
+const NEAR_ME = [
+  "COM1 Basement",
+  "COM2 Level 3 Lounge",
+  "LT19",
+  "Central Library",
+];
+const EMPTY_ORDERS = [];
 
 // Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 validation, F3.5.1/F3.5.2 updates.
 export default function RequestBoard() {
-  const { requests } = useDemo()
-  const navigate = useNavigate()
-  const [filter, setFilter] = useState('All')
-  const [query, setQuery] = useState('')
+  const navigate = useNavigate();
+  const [filter, setFilter] = useState("All");
+  const [query, setQuery] = useState("");
+  const { data, loading, error, reload } = useApi(() => listOrders(), []);
+  const notice = useApiNotice({ loading: loading && !data, error }, "errands");
+  const requests = data?.orders ?? EMPTY_ORDERS;
 
   // The board shows live errands only: everything past delivery lives in My activity.
   const board = useMemo(
-    () => requests.filter((r) => r.status === 'open' || r.status === 'accepted'),
+    () =>
+      requests.filter((r) => r.status === "open" || r.status === "accepted"),
     [requests],
-  )
+  );
 
   const shown = useMemo(
     () =>
       board.filter((r) => {
-        // "Places" means either end of the errand: the stall it comes from, or where it goes.
         if (query.trim()) {
-          const supplier = getSupplier(r.supplierId)
-          const hitsSupplier = matchesQuery(supplier, query)
-          const hitsDropoff = r.deliveryLocation
-            .toLowerCase()
-            .includes(query.trim().toLowerCase())
-          if (!hitsSupplier && !hitsDropoff) return false
+          const q = query.trim().toLowerCase();
+          const searchable = [r.description, r.deliveryLocation, r.supplierId]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (!searchable.includes(q)) return false;
         }
-        if (filter === 'Near me') return NEAR_ME.includes(r.deliveryLocation)
-        if (filter === '3+ credits') return r.credits >= 3
-        if (filter === 'Expiring soon') return minutesUntil(r.expiresAt) <= 45
-        return true
+        if (filter === "Near me") return NEAR_ME.includes(r.deliveryLocation);
+        if (filter === "3+ credits") return r.credits >= 3;
+        if (filter === "Expiring soon") {
+          return (
+            r.status === "open" &&
+            r.completeBy &&
+            minutesUntil(r.completeBy) <= 45
+          );
+        }
+        return true;
       }),
     [board, filter, query],
-  )
+  );
 
-  const openCount = board.filter((r) => r.status === 'open').length
+  const openCount = board.filter((r) => r.status === "open").length;
 
   return (
     <div className="page-width page-gutter py-8 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Find errands</h1>
+      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
+        Find errands
+      </h1>
       <p className="mt-1.5 text-base text-ink-70">
         <span className="tnum">{openCount}</span> open near you
       </p>
+
+      {notice}
 
       <div className="relative mt-5">
         <Search
@@ -86,10 +111,10 @@ export default function RequestBoard() {
             onClick={() => setFilter(f)}
             aria-pressed={filter === f}
             className={
-              'h-11 md:h-10 shrink-0 rounded-pill border px-4 text-sm font-medium transition-colors duration-150 ' +
+              "h-11 md:h-10 shrink-0 rounded-pill border px-4 text-sm font-medium transition-colors duration-150 " +
               (filter === f
-                ? 'border-ink bg-ink text-white'
-                : 'border-line bg-surface text-ink-70 hover:border-ink hover:text-ink')
+                ? "border-ink bg-ink text-white"
+                : "border-line bg-surface text-ink-70 hover:border-ink hover:text-ink")
             }
           >
             {f}
@@ -101,34 +126,47 @@ export default function RequestBoard() {
       <div className="mt-6">
         <div className="h-px w-full bg-blue" aria-hidden="true" />
         <p className="mt-2 flex items-center gap-2 text-xs text-ink-40">
-          <span className="foc-pulse inline-block h-1.5 w-1.5 rounded-pill bg-blue" aria-hidden="true" />
+          <span
+            className="foc-pulse inline-block h-1.5 w-1.5 rounded-pill bg-blue"
+            aria-hidden="true"
+          />
           Updating live
         </p>
       </div>
 
-      <div className="mt-4 space-y-3">
-        {shown.map((r) => (
-          <RequestCard key={r.id} request={r} />
-        ))}
-      </div>
+      {!notice && (
+        <div className="mt-4 space-y-3">
+          {shown.map((r) => (
+            <RequestCard key={r.id} request={r} />
+          ))}
+        </div>
+      )}
 
-      {shown.length === 0 && (
+      {!notice && shown.length === 0 && (
         <div className="mt-4">
           <EmptyState
-            title={query.trim() ? 'No errands match that search' : 'No open errands right now'}
+            title={
+              query.trim()
+                ? "No errands match that search"
+                : "No open errands right now"
+            }
             body={
               query.trim()
-                ? 'Try a stall, a venue like The Deck, or a drop-off point.'
-                : 'Check back in a bit, or post one yourself.'
+                ? "Try a stall, a venue like The Deck, or a drop-off point."
+                : "Check back in a bit, or post one yourself."
             }
             action={
-              <Button variant="secondary" size="sm" onClick={() => navigate('/requests/new')}>
-                Post an errand
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => (error ? reload() : navigate("/requests/new"))}
+              >
+                {error ? "Try again" : "Post an errand"}
               </Button>
             }
           />
         </div>
       )}
     </div>
-  )
+  );
 }

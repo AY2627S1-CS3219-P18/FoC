@@ -11,6 +11,11 @@
 #
 # Compose Watch copies changed files into the container rather than bind-mounting,
 # so file-change events fire reliably on Windows/WSL2 without polling.
+#
+# Scope (2026-10-19): Added the credit-service proxy target for the frontend's
+# environment-configured Vite proxy. No requirements, architecture, schema, or
+# API decisions were made by the AI tool.
+# Author review: tng wen xi
 
 services:
   frontend:
@@ -22,6 +27,8 @@ services:
       NODE_ENV: development
       VITE_SUPPLIER_SERVICE_URL: http://supplier-service:3002
       VITE_USER_SERVICE_URL: http://user-service:3001
+      VITE_CREDIT_SERVICE_URL: http://credit-service:3003
+      VITE_ORDER_SERVICE_URL: http://order-service:3000
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     develop:

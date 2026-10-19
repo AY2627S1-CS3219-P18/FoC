@@ -1816,6 +1816,39 @@ I kept all changes
 **Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
 
+## 2026-10-16 — Frontend: order-service request board
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Existing order-service `GET /orders` contract in `order-service/src/routes/orders.routes.ts` and `order-service/src/controllers/orders.controller.ts`
+
+**Prompts (exact):**
+
+> can u help me implement the frontend for getting the orders from order-service instead of the way it is rn?
+
+**Key responses:**
+
+Replaced the RequestBoard's demo request source with the order-service list endpoint, added the frontend API client and development proxy target, and kept the existing card layout compatible with order-service records when supplier/requester records are not joined. Added loading, error, retry, and logged-out states through the existing API notice pattern. Verification: `npm run build` passed; `npm run lint` passed with pre-existing warnings; `git diff --check` passed.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (created)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `compose.dev.yaml` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-09-26 — Supplier Service: Photo Management and Concrete Schema
 
 **Tool:** Codex (model: GPT-5)
@@ -3959,7 +3992,9 @@ Accepted all changes.
 > Three changes, then the PR. Read credit-service/CONTEXT.md first.
 >
 > ## 1. Public user lookup — user-service (NOT my service)
+>
 > ## 2. Errand ID on transaction rows — frontend Wallet page
+>
 > ## 3. Switch counterparty resolution to the new endpoint
 >
 > Touch only what this endpoint needs; do not refactor anything else in user-service, and follow its existing conventions for routes, controllers and validation rather than importing credit-service's patterns.
@@ -4012,3 +4047,37 @@ _Errand reference._ Every row with a `request_id` now shows it, transfers includ
 
 **What I kept/changed/rejected:**
 Accepted all changes. `frontend/package-lock.json` was additionally reverted: its only diff was seven incidental `"peer": true` annotations from a local `npm ci`, with no dependency change.
+
+## 2026-10-19 — Frontend: Restore Docker Vite proxy targets
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor/Docs
+**Governing decision:** Existing Compose development workflow and frontend Vite proxy configuration.
+
+**Prompts (exact):**
+
+> frontend-1 | 12:24:57 PM [vite] http proxy error: /auth/refresh
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+> frontend-1 | at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16)
+> frontend-1 | 12:24:58 PM [vite] http proxy error: /auth/refresh
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+> frontend-1 | 12:25:05 PM [vite] http proxy error: /auth/login
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+
+**Key responses:**
+The frontend container had the correct `VITE_USER_SERVICE_URL` environment variable, but `vite.config.js` hardcoded `localhost` targets. Restored environment-configured targets with localhost fallbacks for host-run Vite and added the Compose credit-service target. Verification was run by inspecting the resolved Compose environment and service status; frontend rebuild and proxy smoke testing remain to be run after the configuration change.
+
+**Files:**
+
+- `frontend/vite.config.js` (modified)
+- `compose.dev.yaml` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
