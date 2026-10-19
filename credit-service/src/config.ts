@@ -4,6 +4,9 @@
 //    zod-validated pattern as user-service/src/config.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review: Wee Jean
+//  2026-10-19: Week 9 - USER_SERVICE_URL, the origin the JWKS key set is fetched from.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { z } from 'zod';
 
@@ -16,6 +19,10 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1),
   DB_USER: z.string().min(1),
   DB_PASSWORD: z.string().min(1),
+
+  // Origin of user-service, used only to build the JWKS URL. Same value compose already
+  // gives supplier-service.
+  USER_SERVICE_URL: z.string().url(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -39,4 +46,7 @@ export const config = {
     user: env.DB_USER,
     password: env.DB_PASSWORD,
   },
+  userServiceUrl: env.USER_SERVICE_URL,
+  // Published by user-service; see user-service/docs/jwks-verification-guide.md.
+  jwksUrl: new URL('/auth/.well-known/jwks.json', env.USER_SERVICE_URL),
 } as const;

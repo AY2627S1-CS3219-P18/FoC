@@ -6,6 +6,9 @@
 //    The error `code` strings and the HTTP statuses they map to are NOT team-decided;
 //    they are pending sign-off - see credit-service/README.md.
 //    Author review: Wee Jean
+//  2026-10-19: Week 9 - transaction history for F19.5.2 and F20.2, keyset-paginated.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { INITIAL_ALLOCATION_CREDITS } from '../domain/constants.js';
 import { withTransaction } from '../db/transaction.js';
@@ -23,10 +26,13 @@ import {
   insertTransaction,
   isPgError,
   lockBalanceForUpdate,
+  listTransactions,
   lockTwoBalancesForUpdate,
   pgConstraint,
   readBalance,
+  TRANSACTION_PAGE_SIZE,
   type BalanceRow,
+  type TransactionCursor,
   type TransactionRow,
 } from '../db/queries/credits.queries.js';
 
@@ -330,4 +336,60 @@ export async function getBalance(userId: string): Promise<BalanceView> {
     throw new AppError(404, 'No credit balance exists for this user.', 'BALANCE_NOT_FOUND');
   }
   return toBalanceView(row);
+}
+
+export interface TransactionPage {
+  transactions: TransactionRow[];
+  /** Opaque; pass back as ?cursor= to get the next page. null on the last page. */
+  nextCursor: string | null;
+}
+
+/**
+ * The cursor is base64 of "<createdAt ISO>|<transactionId>". Opaque so callers treat it
+ * as a token rather than building their own, which would couple them to the ordering.
+ */
+function encodeCursor(row: TransactionRow): string {
+  return Buffer.from(`${row.created_at.toISOString()}|${row.transaction_id}`).toString('base64url');
+}
+
+function decodeCursor(cursor: string | undefined): TransactionCursor | null {
+  if (!cursor) return null;
+  const [createdAt, transactionId] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+  if (!createdAt || !transactionId || Number.isNaN(Date.parse(createdAt))) {
+    throw new AppError(400, 'Malformed pagination cursor.', 'INVALID_CURSOR');
+  }
+  return { createdAt, transactionId };
+}
+
+async function page(userId: string | null, cursor: string | undefined): Promise<TransactionPage> {
+  const rows = await listTransactions(pool, userId, decodeCursor(cursor));
+  // listTransactions fetches one extra row purely to answer "is there more?".
+  const hasMore = rows.length > TRANSACTION_PAGE_SIZE;
+  const transactions = hasMore ? rows.slice(0, TRANSACTION_PAGE_SIZE) : rows;
+  const last = transactions[transactions.length - 1];
+  return {
+    transactions,
+    nextCursor: hasMore && last ? encodeCursor(last) : null,
+  };
+}
+
+/**
+ * F19.5.2 - the caller's own records: rows where they are the originating or the
+ * destination user.
+ */
+export function getTransactionsForUser(
+  userId: string,
+  cursor?: string,
+): Promise<TransactionPage> {
+  return page(userId, cursor);
+}
+
+/**
+ * F20.2 - every user's records, for audit.
+ *
+ * Same field set as the user view; only the row scope differs (team decision
+ * 2026-10-19). Access is gated by middleware, not here.
+ */
+export function getAllTransactions(cursor?: string): Promise<TransactionPage> {
+  return page(null, cursor);
 }
