@@ -50,6 +50,10 @@
  * Scope (2026-10-20): `failed` status - GET /orders/mine leaves failed orders out.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): F18.1.1 - edit returns 409 ORDER_NOT_EDITABLE unless the request is
+ *        open; edit fixtures carry status `open`.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -154,6 +158,7 @@ describe('PATCH /orders/:id/edit', () => {
     const updatedOrder = {
       id: orderId,
       requesterId,
+      status: 'open',
       description: 'Updated description',
       version: 4,
     };
@@ -176,7 +181,7 @@ describe('PATCH /orders/:id/edit', () => {
 
     expect(res.body).toEqual(updatedOrder);
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: orderId, version: 3 },
+      where: { id: orderId, version: 3, status: 'open' },
       data: {
         description: 'Updated description',
         version: { increment: 1 },
@@ -202,12 +207,30 @@ describe('PATCH /orders/:id/edit', () => {
       });
   });
 
+  it('409 ORDER_NOT_EDITABLE when the order is no longer open (F18.1.1)', async () => {
+    await request(
+      appWith(async () => [], {
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          requesterId,
+          status: 'accepted',
+          version: 3,
+        }),
+      }),
+    )
+      .patch(`/orders/${orderId}/edit`)
+      .set('authorization', bearer(requesterId))
+      .send({ description: 'Updated description' })
+      .expect(409, { message: 'Only open requests can be edited.' });
+  });
+
   it('409 when the order changed before the edit was saved', async () => {
     await request(
       appWith(async () => [], {
         findUniqueOrThrow: async () => ({
           id: orderId,
           requesterId,
+          status: 'open',
           version: 3,
         }),
         updateMany: async () => ({ count: 0 }),

@@ -43,6 +43,12 @@
  *        retries-exhausted path, as cancellation did before).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details are optional on
+ *        create (a missing field is no longer rejected); edit is refused with
+ *        ORDER_NOT_EDITABLE unless the request is open, and the versioned write also
+ *        requires `open`.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -157,7 +163,7 @@ export const createOrder = async (
     errors.push(...validateCompleteBy(requestPayload.completeBy));
   }
   if (
-    requestPayload.additionalDetails === undefined ||
+    requestPayload.additionalDetails !== undefined &&
     !validateAdditionalDetails(requestPayload.additionalDetails)
   ) {
     errors.push(ErrorCode.INVALID_ADDITIONAL_DETAILS);
@@ -247,8 +253,15 @@ export const editOrder = async (
       };
     }
 
+    // F18.1.1: only open requests can be edited.
+    if (order.status !== 'open') {
+      return { ok: false, errors: [ErrorCode.ORDER_NOT_EDITABLE] };
+    }
+
+    // `status: 'open'` in the guard too: an accept that lands between the read and this
+    // write makes the edit a version conflict instead of editing an accepted order.
     const { count } = await prisma.orderRequest.updateMany({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         ...payload,
         version: { increment: 1 },

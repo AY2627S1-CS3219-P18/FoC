@@ -33,6 +33,10 @@
  * Scope (2026-10-20): Frontend integration - GET /orders/mine?as=requester|courier.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): F18.1.1 - ORDER_NOT_EDITABLE maps to 409, like the
+ *        other state conflicts.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -207,5 +211,6 @@ function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
   if (errors.includes(ErrorCode.ORDER_CONFLICT)) return 409;
   if (errors.includes(ErrorCode.ORDER_EXPIRED)) return 409;
+  if (errors.includes(ErrorCode.ORDER_NOT_EDITABLE)) return 409;
   return 400;
 }

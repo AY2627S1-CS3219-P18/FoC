@@ -5026,3 +5026,51 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service: F18.1.1 edit only when open; F9.1.1 optional additional details
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** debug | refactor
+**Scope:** Implementation code | Debugging
+**Governing decision:** `docs/FoC-ProductBacklog.md` F18.1.1 ("requesters are only able to edit requests that are 'open'") and F9.1.1 ("Additional details [optional]"); George Yeo's instruction in chat, 2026-10-20 (quoted below). George had earlier confirmed that Wen Xi's order code may be edited.
+
+**Prompts (exact):**
+
+> [attached excerpt of my previous reply: "Wen Xi’s code: editOrder doesn’t check that the order is open, and create rejects a missing additionalDetails. The frontend sends null to work around it."]
+> wait quickly fix that violation of the FR
+
+**Key responses:**
+
+- **F18.1.1:**
+  - `editOrder` returns `ORDER_NOT_EDITABLE` (HTTP 409, "Only open requests can be edited.") unless the request is `open`.
+  - The versioned `updateMany` also requires `status: 'open'`, so an accept that lands between the read and the write shows up as a version conflict instead of editing an accepted order.
+  - The code name and the 409 follow the existing state-conflict codes; flagged below.
+- **F9.1.1:** `createOrder` no longer rejects a missing `additionalDetails`; it is stored as `null`. A non-text value is still `INVALID_ADDITIONAL_DETAILS`. The frontend keeps sending `null` for empty details, and the stale workaround comment was removed.
+- **Tests:**
+  - unit: edit is refused for each non-open status; there is a 409 controller case; create succeeds without `additionalDetails`;
+  - the edit fixtures now carry `status: 'open'`;
+  - the missing-fields case no longer expects `INVALID_ADDITIONAL_DETAILS`.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint 0 warnings, prettier clean, unit tests 524/524, build OK. The order-service e2e suite (27 tests) ran 7 times against a local Postgres 17. Five runs passed in full; two runs each had one failure, in different tests both times:
+    - `realtime.e2e-spec.ts` › token-expiry disconnect;
+    - `credit-saga.e2e-spec.ts` › last transient failure.
+    Neither failure reproduced in 4 further consecutive runs.
+  - frontend: `vite build` OK.
+- **Not verified:** the edit route from the browser (the Edit button is not wired).
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Flagged for George's review:** the `ORDER_NOT_EDITABLE` name, its message, and the 409 status, picked by convention after `ORDER_EXPIRED`/`INVALID_TRANSITION`.
+2. **Two intermittent e2e failures** were seen once each and have not been diagnosed. The token-expiry test uses a 1-second `exp` and may be timing-sensitive.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

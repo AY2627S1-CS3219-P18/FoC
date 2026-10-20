@@ -219,7 +219,6 @@ function RequestForm({ order }) {
         deliveryLocationId: Number(locationId),
         credits: offer,
         ...(deadline && { completeBy: deadline.toISOString() }),
-        // The service rejects a missing additionalDetails but accepts null.
         additionalDetails: extra.trim() || null,
       })
       const outcome = await reservationOutcome(order.id, watch)

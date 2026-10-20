@@ -15,6 +15,10 @@
  *        value, invalid cursor), named by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): F18.1.1 - ORDER_NOT_EDITABLE for editing a request that
+ *        is not open, named by convention.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -37,6 +41,7 @@ export enum ErrorCode {
   COMPLETE_BY_IN_PAST = 'COMPLETE_BY_IN_PAST',
   DEADLINE_NOT_REACHED = 'DEADLINE_NOT_REACHED',
   ORDER_EXPIRED = 'ORDER_EXPIRED',
+  ORDER_NOT_EDITABLE = 'ORDER_NOT_EDITABLE',
   UNKNOWN_QUERY_PARAMETER = 'UNKNOWN_QUERY_PARAMETER',
   INVALID_QUERY_PARAMETER = 'INVALID_QUERY_PARAMETER',
   INVALID_CURSOR = 'INVALID_CURSOR',
@@ -71,6 +76,7 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.DEADLINE_NOT_REACHED]:
     'An ongoing request can only be cancelled after its complete-by time has passed.',
   [ErrorCode.ORDER_EXPIRED]: 'This request has expired.',
+  [ErrorCode.ORDER_NOT_EDITABLE]: 'Only open requests can be edited.',
   [ErrorCode.UNKNOWN_QUERY_PARAMETER]: 'Unknown query parameter.',
   [ErrorCode.INVALID_QUERY_PARAMETER]: 'Invalid query parameter value.',
   [ErrorCode.INVALID_CURSOR]:

@@ -52,6 +52,10 @@
  *        cancelled is no longer a transition.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details optional on
+ *        create; edit refused unless the request is open.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -171,6 +175,15 @@ describe('createOrder: validation', () => {
     });
   });
 
+  it('treats additional details as optional (F9.1.1)', async () => {
+    const { additionalDetails: _omitted, ...withoutDetails } = valid;
+    const { result, create } = await run(withoutDetails);
+    expect(result.ok).toBe(true);
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ additionalDetails: null }),
+    });
+  });
+
   it('reports every missing required field, without queueing a reservation', async () => {
     const { result, create, outbox } = await run({});
     expect(result).toEqual({
@@ -180,7 +193,6 @@ describe('createOrder: validation', () => {
         ErrorCode.MISSING_DESCRIPTION,
         ErrorCode.MISSING_DELIVERY_LOCATION,
         ErrorCode.MISSING_CREDITS_OFFERED,
-        ErrorCode.INVALID_ADDITIONAL_DETAILS,
       ],
     });
     expect(outbox.createMany).not.toHaveBeenCalled();
@@ -291,6 +303,7 @@ describe('editOrder', () => {
     const order = {
       id: 'order-1',
       requesterId: REQUESTER,
+      status: 'open',
       version: 3,
     } as OrderRequest;
     const findUniqueOrThrow = vi.fn(async () => order);
@@ -349,7 +362,7 @@ describe('editOrder', () => {
     ).resolves.toEqual({ ok: true, order: updatedOrder });
 
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
         version: { increment: 1 },
@@ -373,6 +386,28 @@ describe('editOrder', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'pending',
+    'accepted',
+    'picked_up',
+    'delivered',
+    'completed',
+    'cancelled',
+    'expired',
+    'failed',
+  ] as const)('refuses to edit a %s request (F18.1.1)', async (status) => {
+    const { prisma, updateMany, order } = prismaWithEdit();
+    order.status = status;
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, { description: 'x' }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_NOT_EDITABLE],
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('returns ORDER_CONFLICT when the fetched version is stale', async () => {
     const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit({
       updatedRows: 0,
@@ -388,7 +423,7 @@ describe('editOrder', () => {
     });
 
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
         version: { increment: 1 },
