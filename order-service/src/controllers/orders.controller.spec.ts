@@ -30,6 +30,9 @@
  *        GET /orders/active coverage.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Frontend integration - GET /orders/mine coverage.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #11 - GET /orders coverage for the new listing (default
  *        filter + ordering, 400s); body uses deliveryLocationId.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -290,6 +293,42 @@ describe('GET /orders', () => {
       .get('/orders')
       .set('authorization', bearer(USER))
       .expect(500, { message: 'Internal server error.' });
+  });
+});
+
+describe('GET /orders/mine', () => {
+  const me = '0192f0c4-0000-7000-8000-00000000000a';
+
+  it.each([
+    [{}, { requesterId: me }],
+    [{ as: 'requester' }, { requesterId: me }],
+    [{ as: 'courier' }, { courierId: me }],
+  ])('%o -> where %o, every status, newest first', async (query, where) => {
+    const findMany = vi.fn(async () => []);
+    await request(appWith(findMany))
+      .get('/orders/mine')
+      .query(query)
+      .set('authorization', bearer(me))
+      .expect(200, { ok: true, orders: [] });
+    expect(findMany).toHaveBeenCalledWith({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+    });
+  });
+
+  it.each([
+    [{ as: 'admin' }, 'Invalid query parameter value. (as)'],
+    [{ status: 'open' }, 'Unknown query parameter. (status)'],
+  ])('400 for %o', async (query, message) => {
+    await request(appWith())
+      .get('/orders/mine')
+      .query(query)
+      .set('authorization', bearer(me))
+      .expect(400, { message });
+  });
+
+  it('401 without a token', async () => {
+    await request(appWith()).get('/orders/mine').expect(401);
   });
 });
 

@@ -17,6 +17,12 @@
  *        picked_up / delivered orders, from issue #6's scope).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Frontend integration - listMyOrders for the caller's own orders
+ *        (George, 2026-10-20: add an authenticated endpoint), as requester (default, all
+ *        statuses including pending) or as courier, newest first. The `as` parameter and
+ *        ordering are by convention.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -318,5 +324,19 @@ export function listActiveDeliveries(
       status: { in: ['accepted', 'picked_up', 'delivered'] },
     },
     orderBy: orderByFor('completeBy', 'asc'),
+  });
+}
+
+export type MyOrdersRole = 'requester' | 'courier';
+
+/** The caller's own orders in every status, newest first (Activity page tabs). */
+export function listMyOrders(
+  prisma: PrismaClient,
+  userId: string,
+  as: MyOrdersRole,
+): Promise<OrderRequest[]> {
+  return prisma.orderRequest.findMany({
+    where: as === 'courier' ? { courierId: userId } : { requesterId: userId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
 }

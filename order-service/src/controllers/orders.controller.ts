@@ -30,6 +30,9 @@
  *        other handlers.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Frontend integration - GET /orders/mine?as=requester|courier.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -39,6 +42,7 @@ import * as ordersService from '../services/orders.service.js';
 import { isUuid } from '../utils/validation.js';
 import {
   listActiveDeliveries,
+  listMyOrders,
   listOrders,
 } from '../services/order-listing.service.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
@@ -100,6 +104,31 @@ export const getActiveDeliveries =
       return;
     }
     const orders = await listActiveDeliveries(prisma, courierId);
+    res.status(200).json({ ok: true, orders });
+  };
+
+/** The caller's own orders: `?as=requester` (default) or `?as=courier`. */
+export const getMyOrders =
+  (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const unknown = Object.keys(req.query).filter((k) => k !== 'as');
+    const as = req.query.as ?? 'requester';
+    if (unknown.length || (as !== 'requester' && as !== 'courier')) {
+      const param = unknown[0] ?? 'as';
+      const code = unknown.length
+        ? ErrorCode.UNKNOWN_QUERY_PARAMETER
+        : ErrorCode.INVALID_QUERY_PARAMETER;
+      res.status(400).json({ message: `${ErrorMessage[code]} (${param})` });
+      return;
+    }
+    const userId = req.user?.user_id;
+    if (!isUuid(userId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const orders = await listMyOrders(prisma, userId, as);
     res.status(200).json({ ok: true, orders });
   };
 

@@ -11,7 +11,8 @@
  * Author review:
  * Scope (2026-10-20): Issue #6 - GET /orders/active (F12.1.3, path by convention under
  *        /orders); writes receive the order-event publisher. Authentication is applied to
- *        all of /orders by Wen Xi's middleware in app.ts.
+ *        all of /orders by Wen Xi's middleware in app.ts. Frontend integration -
+ *        GET /orders/mine.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -36,6 +37,7 @@ export function ordersRouter(
 
   router.get('/', ordersController.getOrders(prisma));
   router.get('/active', ordersController.getActiveDeliveries(prisma));
+  router.get('/mine', ordersController.getMyOrders(prisma));
   router.post('/', ordersController.createOrder(prisma));
   router.post('/:id/accept', transition('accepted'));
   router.post('/:id/pickup', transition('picked_up'));
