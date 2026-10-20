@@ -7,6 +7,10 @@
  *        Credit-service and Redis are faked (HTTP client and BullMQ queue stand-ins).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #5 - concurrent accepts against the real database: exactly
+ *        one courier wins (F12.2.1), the rest get ORDER_CONFLICT or INVALID_TRANSITION.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Added coverage for the re-drive of transient credit_release
  *        dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -327,5 +331,40 @@ describe('release dead-letter re-drive (e2e)', () => {
       where: { id: result.order.id },
     });
     expect(order.creditReleasedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('accept (e2e)', () => {
+  it('exactly one of many concurrent accepts wins (F12.2.1)', async () => {
+    const h = harness(() => ({ ok: true }));
+    const result = await createOrder(prisma, REQUESTER, payload);
+    if (!result.ok) throw new Error('create failed');
+    await h.drain(); // open
+
+    const couriers = Array.from(
+      { length: 8 },
+      (_, i) =>
+        `0192f0c4-0000-7000-8000-0000000001${String(i).padStart(2, '0')}`,
+    );
+    const outcomes = await Promise.all(
+      couriers.map((c) =>
+        transitionOrder(prisma, result.order.id, 'accepted', c),
+      ),
+    );
+
+    const winners = outcomes.filter((o) => o.ok);
+    expect(winners).toHaveLength(1);
+    for (const o of outcomes.filter((x) => !x.ok)) {
+      expect(['ORDER_CONFLICT', 'INVALID_TRANSITION']).toContain(
+        (o as { error: string }).error,
+      );
+    }
+    const order = await prisma.orderRequest.findUniqueOrThrow({
+      where: { id: result.order.id },
+    });
+    expect(order.status).toBe('accepted');
+    expect(couriers).toContain(order.courierId);
+    expect(order.acceptedAt).toBeInstanceOf(Date);
+    expect(await prisma.outbox.count()).toBe(0); // accepting queues no credit task
   });
 });

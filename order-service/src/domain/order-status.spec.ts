@@ -6,6 +6,11 @@
  *        (F11–F17); no requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issues #4/#5 - matrix now covers `pending` (system-only exits) and
+ *        F11.2.2 (accepting past complete-by is ORDER_EXPIRED).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -29,6 +34,7 @@ const COURIER = '0192f0c4-0000-7000-8000-00000000000b';
 const STRANGER = '0192f0c4-0000-7000-8000-00000000000c';
 
 const STATUSES = [
+  'pending',
   'open',
   'accepted',
   'picked_up',
@@ -52,6 +58,8 @@ const ACTOR_FOR: Record<ActorRole, string> = {
  * catches accidental edits to ALLOWED_TRANSITIONS. Key: "from>to" → roles.
  */
 const SPEC: Record<string, ActorRole[]> = {
+  'pending>open': ['system'], // issue #4: reservation confirmed
+  'pending>cancelled': ['system'], // issue #4: reservation failed
   'open>accepted': ['other'], // F11.1, F11.2.1 (not the requester)
   'open>expired': ['system'], // F16.1
   'open>cancelled': ['requester'], // F17.1
@@ -70,7 +78,7 @@ function orderIn(
   return {
     id: '0192f0c4-0000-7000-8000-000000000001',
     requesterId: REQUESTER,
-    courierId: status === 'open' ? null : COURIER,
+    courierId: status === 'open' || status === 'pending' ? null : COURIER,
     status,
     completeBy,
     version: 0,
@@ -109,7 +117,10 @@ describe('checkTransition: every from × to × role', () => {
     const expected = !allowedRoles
       ? { ok: false, error: ErrorCode.INVALID_TRANSITION }
       : allowedRoles.includes(role)
-        ? { ok: true }
+        ? // orderIn defaults complete-by to the past, so an allowed accept is expired.
+          to === 'accepted'
+          ? { ok: false, error: ErrorCode.ORDER_EXPIRED }
+          : { ok: true }
         : { ok: false, error: ErrorCode.FORBIDDEN };
 
     expect(checkTransition(orderIn(from), to, ACTOR_FOR[role], NOW)).toEqual(
@@ -162,6 +173,48 @@ describe('checkTransition: F17.2 cancelling an ongoing request', () => {
     expect(
       checkTransition(orderIn('accepted', FUTURE), 'cancelled', COURIER, NOW),
     ).toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+  });
+});
+
+describe('checkTransition: F11.2.2 accepting an expired request', () => {
+  it('rejects acceptance once complete-by has passed, before the sweep runs', () => {
+    expect(
+      checkTransition(orderIn('open', PAST), 'accepted', STRANGER, NOW),
+    ).toEqual({
+      ok: false,
+      error: ErrorCode.ORDER_EXPIRED,
+    });
+  });
+
+  it('rejects acceptance at exactly the complete-by time (same boundary as the sweep)', () => {
+    expect(
+      checkTransition(orderIn('open', NOW), 'accepted', STRANGER, NOW),
+    ).toEqual({
+      ok: false,
+      error: ErrorCode.ORDER_EXPIRED,
+    });
+  });
+
+  it('allows acceptance before complete-by, and with no complete-by at all', () => {
+    expect(
+      checkTransition(orderIn('open', FUTURE), 'accepted', STRANGER, NOW),
+    ).toEqual({
+      ok: true,
+    });
+    expect(
+      checkTransition(orderIn('open', null), 'accepted', STRANGER, NOW),
+    ).toEqual({
+      ok: true,
+    });
+  });
+
+  it('a requester accepting their own expired order still gets FORBIDDEN (role first)', () => {
+    expect(
+      checkTransition(orderIn('open', PAST), 'accepted', REQUESTER, NOW),
+    ).toEqual({
+      ok: false,
+      error: ErrorCode.FORBIDDEN,
+    });
   });
 });
 

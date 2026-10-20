@@ -5,6 +5,12 @@
  *        payloads. No requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #5 - ORDER_EXPIRED for accepting an order past its
+ *        complete-by (George: expired = past completeBy if set; 409). Name and message
+ *        follow the existing codes' convention.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -26,6 +32,7 @@ export enum ErrorCode {
   ORDER_CONFLICT = 'ORDER_CONFLICT',
   COMPLETE_BY_IN_PAST = 'COMPLETE_BY_IN_PAST',
   DEADLINE_NOT_REACHED = 'DEADLINE_NOT_REACHED',
+  ORDER_EXPIRED = 'ORDER_EXPIRED',
   INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
   CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
   INVALID_STATUS = 'INVALID_STATUS',
@@ -56,6 +63,7 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.COMPLETE_BY_IN_PAST]: 'Complete-by time must be in the future.',
   [ErrorCode.DEADLINE_NOT_REACHED]:
     'An ongoing request can only be cancelled after its complete-by time has passed.',
+  [ErrorCode.ORDER_EXPIRED]: 'This request has expired.',
   [ErrorCode.INSUFFICIENT_CREDITS]:
     'You do not have enough credits for this request.',
   [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:

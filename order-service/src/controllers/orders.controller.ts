@@ -12,6 +12,10 @@
  *        requester cancellation releases the persisted reservation.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #5 - ORDER_EXPIRED maps to 409 (George: self-accept 403,
+ *        every other accept rejection 409).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #4 - POST /orders answers 202 with the `pending` order (George,
  *        2026-10-20); credit calls moved to the worker, so no credit client here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -136,5 +140,6 @@ function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
   if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
   if (errors.includes(ErrorCode.ORDER_CONFLICT)) return 409;
+  if (errors.includes(ErrorCode.ORDER_EXPIRED)) return 409;
   return 400;
 }

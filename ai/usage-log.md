@@ -4526,3 +4526,59 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service #5: Accept request + validation
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Issue #5's scope (GitHub, AY2627S1-CS3219-P18/FoC #5) and George Yeo's decisions in chat, 2026-10-19 (quoted below). The route follows the existing `POST /orders/:id/<action>` transition routes from PR #110.
+
+**Prompts (exact):**
+
+> #5 - when order is accepted, perform validation as stated, then do optimistic locking, if fail return fail error code, so user can retry or perform new action, no automatic retries
+
+> #5 expired means past completeBy (if not null), the status codes just use the usual codes 5xx 4xx, on accept, open -> accepted -> picked_up -> delivered, and past completeBy, requester can transition accepted and picked_up but not delivered to cancelled
+
+> #5 self-accept is 403, rest 409
+
+> build a new branch on top of this one
+
+**Key responses:**
+
+- **Route:** `POST /orders/:id/accept`, using the existing generic transition controller and `transitionOrder`. The optimistic lock is the existing version-conditional `updateMany`; there are no automatic retries. On success, `courierId` = actor and `acceptedAt` = server time.
+- **Expiry (F11.2.2):** `checkTransition` now rejects accepting an order at or past its `completeBy` with a new `ORDER_EXPIRED` error, even before the minute-by-minute expiry sweep has marked it `expired`. It uses the same `lte now` boundary as the sweep. The role check runs first, so a requester accepting their own expired order still gets 403.
+- **Status codes:**
+  - self-accept → 403 `FORBIDDEN` (existing `open→accepted: ['other']` rule);
+  - past complete-by → 409 `ORDER_EXPIRED` (new mapping);
+  - expired, cancelled, pending or already-assigned order → 409 `INVALID_TRANSITION` (existing);
+  - lost race → 409 `ORDER_CONFLICT` (existing).
+- **Domain spec:** the exhaustive matrix now covers `pending` (system-only exits from issue #4).
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 392/392;
+  - `test:e2e` 12/12 against a local Postgres 17, including 8 concurrent accepts on one order producing exactly one winner;
+  - build OK.
+
+**Files:**
+
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- `ORDER_EXPIRED` (code name and the message "This request has expired.") was named by convention.
+- Running the role check before the expiry check is an ordering choice; it was made so the requester's 403 is stable.
+- Notifying the accepting user and propagating the change to viewers (F12.1.2, F12.1.5) is issue #6 and is not done here.
+- Auth still uses the `x-user-id` header, as in all existing routes.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

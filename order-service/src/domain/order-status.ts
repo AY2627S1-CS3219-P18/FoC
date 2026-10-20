@@ -7,6 +7,11 @@
  *        to requester cancellation of ongoing orders only.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #5 - F11.2.2: an order past its complete-by cannot be
+ *        accepted even before the expiry sweep has run (George: expired = past
+ *        completeBy if set).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type {
@@ -48,7 +53,8 @@ export type TransitionCheck =
       error:
         | ErrorCode.INVALID_TRANSITION
         | ErrorCode.FORBIDDEN
-        | ErrorCode.DEADLINE_NOT_REACHED;
+        | ErrorCode.DEADLINE_NOT_REACHED
+        | ErrorCode.ORDER_EXPIRED;
     };
 
 export function checkTransition(
@@ -61,6 +67,12 @@ export function checkTransition(
   if (!allowedRoles) return { ok: false, error: ErrorCode.INVALID_TRANSITION };
   if (!allowedRoles.includes(roleOf(order, actorId)))
     return { ok: false, error: ErrorCode.FORBIDDEN };
+
+  // F11.2.2: past its complete-by, an order is expired even if the minute-by-minute
+  // expiry sweep has not marked it yet. Same boundary as the sweep (lte now).
+  if (to === 'accepted' && order.completeBy && now >= order.completeBy) {
+    return { ok: false, error: ErrorCode.ORDER_EXPIRED };
+  }
 
   // F17.2: an ongoing (accepted / picked_up) order can only be cancelled after its
   // complete-by deadline. Open and pending orders are not "ongoing".

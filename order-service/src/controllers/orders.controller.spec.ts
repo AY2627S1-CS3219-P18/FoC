@@ -25,6 +25,11 @@
  *        HTTP coverage.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #5 - POST /orders/:id/accept HTTP coverage: 200 with the
+ *        courier assigned; 403 self-accept; 409 for expired, cancelled, pending, already
+ *        assigned, and lost optimistic-lock race.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #4 - POST /orders now answers 202 with a `pending` order and
  *        an outbox reserve task (no credit call in the request path); dropped the
  *        422/503 credit cases that moved to the worker; fakes gained $transaction/outbox.
@@ -269,6 +274,117 @@ describe('GET /orders', () => {
     const res = await request(appWith(findMany)).get('/orders').expect(500);
 
     expect(res.body).toEqual({ ok: false, errors: {} });
+  });
+});
+
+describe('POST /orders/:id/accept', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+  const otherCourier = '0192f0c4-0000-7000-8000-00000000000c';
+
+  const openOrder = {
+    id: orderId,
+    status: 'open',
+    requesterId,
+    courierId: null,
+    completeBy: null,
+    version: 1,
+  };
+
+  function acceptApp(current: object, updatedRows = 1) {
+    const updateMany = vi.fn(async () => ({ count: updatedRows }));
+    const app = appWith(async () => [], {
+      findUnique: async () => current,
+      updateMany,
+      findUniqueOrThrow: async () => ({
+        ...current,
+        status: 'accepted',
+        courierId,
+        version: 2,
+      }),
+    });
+    return { app, updateMany };
+  }
+
+  it('200: assigns the accepting user as courier (F12.1.1, F12.1.4)', async () => {
+    const { app, updateMany } = acceptApp(openOrder);
+    const res = await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', courierId)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      ok: true,
+      order: { id: orderId, status: 'accepted', courierId },
+    });
+    // F12.2.1: conditional on the version read, with the server's clock.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 1 },
+      data: {
+        status: 'accepted',
+        version: { increment: 1 },
+        courierId,
+        acceptedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('403 when the requester accepts their own order (F11.2.1)', async () => {
+    const { app, updateMany } = acceptApp(openOrder);
+    await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', requesterId)
+      .expect(403);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('409 when the order is past its complete-by (F11.2.2)', async () => {
+    const { app, updateMany } = acceptApp({
+      ...openOrder,
+      completeBy: new Date('2000-01-01T00:00:00.000Z'),
+    });
+    const res = await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', courierId)
+      .expect(409);
+    expect(res.body).toMatchObject({ ok: false, error: 'ORDER_EXPIRED' });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['expired', { status: 'expired' }],
+    ['cancelled', { status: 'cancelled' }],
+    ['still pending its credit reservation', { status: 'pending' }],
+    [
+      'already assigned (F11.2.3)',
+      { status: 'accepted', courierId: otherCourier },
+    ],
+  ])('409 when the order is %s', async (_name, override) => {
+    const { app, updateMany } = acceptApp({ ...openOrder, ...override });
+    const res = await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', courierId)
+      .expect(409);
+    expect(res.body).toMatchObject({ ok: false, error: 'INVALID_TRANSITION' });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('409 to the loser of a concurrent accept (F12.2.1)', async () => {
+    const { app } = acceptApp(openOrder, 0);
+    const res = await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', courierId)
+      .expect(409);
+    expect(res.body).toMatchObject({ ok: false, error: 'ORDER_CONFLICT' });
+  });
+
+  it('401 when the authenticated identity is not a user id', async () => {
+    const { app } = acceptApp(openOrder);
+    await request(app)
+      .post(`/orders/${orderId}/accept`)
+      .set('x-user-id', 'not-a-uuid') // the test authenticate stub copies this to req.user
+      .expect(401);
   });
 });
 

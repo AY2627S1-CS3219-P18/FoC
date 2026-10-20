@@ -5,6 +5,10 @@
  *        the worker).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #5 - POST /orders/:id/accept, following the existing
+ *        POST /orders/:id/<action> transition routes.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -15,6 +19,10 @@ export function ordersRouter(prisma: PrismaClient): Router {
   const router = Router();
   router.post('/', ordersController.createOrder(prisma));
   router.get('/', ordersController.getOrders(prisma));
+  router.post(
+    '/:id/accept',
+    ordersController.transitionOrder(prisma, 'accepted'),
+  );
   router.post(
     '/:id/pickup',
     ordersController.transitionOrder(prisma, 'picked_up'),
