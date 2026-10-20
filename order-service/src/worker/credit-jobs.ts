@@ -23,6 +23,11 @@
  *        re-drive can select transient release failures only (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - both reservation failure paths (credit-service
+ *        rejection, retries exhausted) settle pending -> failed with the reason, published as
+ *        order:failed (George, 2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
@@ -73,7 +78,7 @@ export function createCreditJobProcessor({
   /** Publishes the order event (with `reason` on a failure) once committed. */
   async function settle(
     orderId: string,
-    to: 'open' | 'cancelled',
+    to: 'open' | 'failed',
     {
       releaseCredits = false,
       reason,
@@ -115,7 +120,7 @@ export function createCreditJobProcessor({
 
     if (result.kind === 'permanent') {
       // Nothing was reserved, so nothing to release.
-      await settle(requestId, 'cancelled', { reason: result.code });
+      await settle(requestId, 'failed', { reason: result.code });
       return;
     }
 
@@ -124,8 +129,8 @@ export function createCreditJobProcessor({
     }
 
     // Out of retries. The reserve may still have committed on credit-service's side
-    // without us hearing back, so queue a release with the cancellation.
-    await settle(requestId, 'cancelled', {
+    // without us hearing back, so queue a release with the failure.
+    await settle(requestId, 'failed', {
       releaseCredits: true,
       reason: RESERVE_RETRIES_EXHAUSTED,
     });

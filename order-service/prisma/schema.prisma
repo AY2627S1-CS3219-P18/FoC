@@ -33,6 +33,7 @@ enum RequestStatus {
   completed
   cancelled
   expired
+  failed
 }
 
 model OrderRequest {

@@ -4,6 +4,9 @@
  * Scope: Issues #6/#59 - unit tests for the order-change -> event/rooms mapping.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - pending -> failed publishes order:failed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { OrderRequest } from '../generated/prisma/client.js';
@@ -70,19 +73,19 @@ describe('eventsForTransition', () => {
     ]);
   });
 
-  it('pending -> cancelled: only the requester hears, with the reason', () => {
+  it('pending -> failed: order:failed to the requester only, with the reason', () => {
     expect(
       eventsForTransition(
-        order('cancelled'),
+        order('failed'),
         'pending',
         'INSUFFICIENT_UNRESERVED_CREDITS',
       ),
     ).toEqual([
       {
-        name: 'order:cancelled',
+        name: 'order:failed',
         rooms: [`user:${R}`],
         payload: {
-          ...thin('cancelled'),
+          ...thin('failed'),
           reason: 'INSUFFICIENT_UNRESERVED_CREDITS',
         },
       },

@@ -38,6 +38,11 @@
  *        transaction commits (best-effort; REST stays the source of truth).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Author review:
+ * Scope (2026-10-20): `failed` status - moving to `failed` can queue a credit release (the
+ *        retries-exhausted path, as cancellation did before).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -354,7 +359,7 @@ function creditTasksFor(
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
-  const endsOrder = to === 'cancelled' || to === 'expired';
+  const endsOrder = to === 'cancelled' || to === 'expired' || to === 'failed';
   if (!endsOrder) return [];
   if (FUNDED_STATUSES.has(order.status) || options.releaseCredits) {
     return [buildReleaseTask(order.id)];

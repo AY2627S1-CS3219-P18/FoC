@@ -11,6 +11,10 @@
  *        F11.2.2 (accepting past complete-by is ORDER_EXPIRED).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - the matrix covers `failed`; pending -> failed (system
+ *        only) replaces pending -> cancelled.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -42,6 +46,7 @@ const STATUSES = [
   'completed',
   'expired',
   'cancelled',
+  'failed',
 ] as RequestStatus[];
 
 const ROLES: ActorRole[] = ['requester', 'courier', 'system', 'other'];
@@ -59,7 +64,7 @@ const ACTOR_FOR: Record<ActorRole, string> = {
  */
 const SPEC: Record<string, ActorRole[]> = {
   'pending>open': ['system'], // issue #4: reservation confirmed
-  'pending>cancelled': ['system'], // issue #4: reservation failed
+  'pending>failed': ['system'], // reservation failed (George, 2026-10-20)
   'open>accepted': ['other'], // F11.1, F11.2.1 (not the requester)
   'open>expired': ['system'], // F16.1
   'open>cancelled': ['requester'], // F17.1

@@ -12,6 +12,11 @@
  *        completeBy if set).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - a failed reservation moves pending -> failed
+ *        (system only) instead of pending -> cancelled (George, 2026-10-20: "the transition is
+ *        only pending -> failed"); failed is terminal.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type {
@@ -29,7 +34,7 @@ const ALLOWED_TRANSITIONS: Record<
   Partial<Record<RequestStatus, readonly ActorRole[]>>
 > = {
   // Reservation outcome is applied by the worker only (issue #4).
-  pending: { open: ['system'], cancelled: ['system'] },
+  pending: { open: ['system'], failed: ['system'] },
   open: { accepted: ['other'], expired: ['system'], cancelled: ['requester'] },
   accepted: { picked_up: ['courier'], cancelled: ['requester'] },
   picked_up: { delivered: ['courier'], cancelled: ['requester'] },
@@ -37,6 +42,7 @@ const ALLOWED_TRANSITIONS: Record<
   completed: {},
   expired: {},
   cancelled: {},
+  failed: {},
 };
 
 export function roleOf(order: OrderRequest, actorId: ActorId): ActorRole {

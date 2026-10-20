@@ -47,6 +47,9 @@
  *        422/503 credit cases that moved to the worker; fakes gained $transaction/outbox.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - GET /orders/mine leaves failed orders out.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -303,7 +306,7 @@ describe('GET /orders/mine', () => {
     [{}, { requesterId: me }],
     [{ as: 'requester' }, { requesterId: me }],
     [{ as: 'courier' }, { courierId: me }],
-  ])('%o -> where %o, every status, newest first', async (query, where) => {
+  ])('%o -> where %o, failed left out, newest first', async (query, where) => {
     const findMany = vi.fn(async () => []);
     await request(appWith(findMany))
       .get('/orders/mine')
@@ -311,7 +314,7 @@ describe('GET /orders/mine', () => {
       .set('authorization', bearer(me))
       .expect(200, { ok: true, orders: [] });
     expect(findMany).toHaveBeenCalledWith({
-      where,
+      where: { ...where, status: { not: 'failed' } },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     });
   });

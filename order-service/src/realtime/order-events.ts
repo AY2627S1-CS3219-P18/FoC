@@ -12,6 +12,11 @@
  *        derived by convention from those room purposes and flagged for review.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - a failed reservation publishes `order:failed` with
+ *        its reason to the requester (George, 2026-10-20: "add the new event"), replacing
+ *        order:cancelled from pending.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type {
@@ -27,6 +32,7 @@ export type OrderEventName =
   | 'order:completed'
   | 'order:cancelled'
   | 'order:expired'
+  | 'order:failed'
   | 'order:edited';
 
 /** The fields a listing card shows (order:created only). Ids are plain JSON numbers. */
@@ -163,17 +169,16 @@ export function eventsForTransition(
           closeOrderRoom: id,
         },
       ];
+    case 'failed':
+      // Reservation failed: only the requester ever saw this order.
+      return [
+        {
+          name: 'order:failed',
+          rooms: [requester],
+          payload: payloadOf(order, reason ? { reason } : {}),
+        },
+      ];
     case 'cancelled':
-      if (from === 'pending') {
-        // Reservation failed: only the requester ever saw this order.
-        return [
-          {
-            name: 'order:cancelled',
-            rooms: [requester],
-            payload: payloadOf(order, reason ? { reason } : {}),
-          },
-        ];
-      }
       return [
         {
           name: 'order:cancelled',

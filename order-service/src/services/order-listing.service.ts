@@ -23,6 +23,11 @@
  *        ordering are by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - GET /orders?status=failed is rejected like pending
+ *        (400 INVALID_STATUS), and GET /orders/mine leaves failed orders out (George,
+ *        2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -59,9 +64,11 @@ interface FilterDef<T> {
 
 const filter = <T>(def: FilterDef<T>) => def;
 
-/** Every status except `pending`, which stays hidden until its credits are reserved. */
+/** Every status except `pending` (hidden until its credits are reserved) and `failed`
+ *  (its reservation never went through); both are INVALID_STATUS. */
+const UNLISTED_STATUSES: ReadonlySet<string> = new Set(['pending', 'failed']);
 const LISTABLE_STATUSES: ReadonlySet<string> = new Set(
-  Object.values(RequestStatus).filter((s) => s !== 'pending'),
+  Object.values(RequestStatus).filter((s) => !UNLISTED_STATUSES.has(s)),
 );
 
 const parseNonNegativeInt = (raw: string): number | undefined =>
@@ -336,7 +343,10 @@ export function listMyOrders(
   as: MyOrdersRole,
 ): Promise<OrderRequest[]> {
   return prisma.orderRequest.findMany({
-    where: as === 'courier' ? { courierId: userId } : { requesterId: userId },
+    where: {
+      ...(as === 'courier' ? { courierId: userId } : { requesterId: userId }),
+      status: { not: 'failed' }, // failed reservations are not shown (George, 2026-10-20)
+    },
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
 }

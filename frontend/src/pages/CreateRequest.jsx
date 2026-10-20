@@ -46,6 +46,11 @@
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - the reservation outcome is order:created or
+ *        order:failed (with its reason); the re-check treats an order missing from
+ *        /orders/mine as failed, since that list leaves failed orders out.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -73,7 +78,7 @@ async function reservationOutcome(orderId, watch) {
   const viaSocket = watch
     .next(
       (name, p) =>
-        p?.orderId === orderId && (name === 'order:created' || name === 'order:cancelled'),
+        p?.orderId === orderId && (name === 'order:created' || name === 'order:failed'),
     )
     .then(({ payload }) => ({ status: payload.status, reason: payload.reason }))
   const viaRecheck = (async () => {
@@ -83,7 +88,9 @@ async function reservationOutcome(orderId, watch) {
       try {
         const { orders } = await listMyOrders('requester')
         const order = orders.find((o) => o.id === orderId)
-        if (order && order.status !== 'pending') return { status: order.status }
+        // /orders/mine leaves failed orders out, so a just-created order missing from it has failed.
+        if (!order) return { status: 'failed' }
+        if (order.status !== 'pending') return { status: order.status }
       } catch {
         // keep waiting; the socket may still deliver
       }
@@ -212,7 +219,7 @@ function RequestForm({ order }) {
         additionalDetails: extra.trim() || null,
       })
       const outcome = await reservationOutcome(order.id, watch)
-      if (outcome.status === 'cancelled') {
+      if (outcome.status === 'failed') {
         setPostError(reserveFailureMessage(outcome.reason))
       } else {
         navigate('/activity')

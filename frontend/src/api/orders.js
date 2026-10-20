@@ -33,11 +33,14 @@
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - reserve-failure reasons arrive on order:failed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
 
-// 202 with the `pending` order; the outcome arrives later as order:created / order:cancelled.
+// 202 with the `pending` order; the outcome arrives later as order:created / order:failed.
 // payload: { supplierId, description, deliveryLocationId, credits, completeBy?, additionalDetails? }
 export const createOrder = (payload) => request('/orders', { method: 'POST', json: payload })
 
@@ -89,7 +92,7 @@ export function orderErrorMessage(error, action) {
   return (typeof code === 'string' && table[code]) || error?.message || 'Something went wrong.'
 }
 
-// order:cancelled `reason` when the credit reservation failed (credit-service code, or the
+// order:failed `reason` when the credit reservation failed (credit-service code, or the
 // worker's own code after its retries ran out).
 const REASON_TEXT = {
   INSUFFICIENT_UNRESERVED_CREDITS: 'You don’t have enough unreserved credits for this offer.',

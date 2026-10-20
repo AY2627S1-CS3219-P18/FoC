@@ -5,6 +5,9 @@
  *        cursor handling and 400 cases (the Prisma query is asserted, not run).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - status=failed is rejected as INVALID_STATUS.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -104,6 +107,12 @@ describe('listOrders: 400 cases', () => {
     [
       'pending is hidden',
       { status: 'pending' },
+      ErrorCode.INVALID_STATUS,
+      'status',
+    ],
+    [
+      'failed is not listable',
+      { status: 'failed' },
       ErrorCode.INVALID_STATUS,
       'status',
     ],

@@ -10,6 +10,10 @@
  *        payload) instead of the removed log-only notifier.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - reservation failures settle to `failed` and publish
+ *        order:failed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError } from 'bullmq';
@@ -144,7 +148,7 @@ describe('credit_reserve', () => {
     expect(t.outbox.createMany).not.toHaveBeenCalled();
   });
 
-  it('cancels without a release and passes the failure on a permanent failure', async () => {
+  it('fails the order without a release and passes the reason on a permanent failure', async () => {
     const t = setup('pending', {
       ok: false,
       kind: 'permanent',
@@ -153,11 +157,11 @@ describe('credit_reserve', () => {
     });
     await t.processJob(job('credit_reserve', reservePayload));
 
-    expect(t.row()?.status).toBe('cancelled');
+    expect(t.row()?.status).toBe('failed');
     expect(t.outbox.createMany).not.toHaveBeenCalled();
     expect(t.published).toEqual([
       expect.objectContaining({
-        name: 'order:cancelled',
+        name: 'order:failed',
         rooms: [`user:${REQUESTER}`],
         payload: expect.objectContaining({
           reason: 'INSUFFICIENT_UNRESERVED_CREDITS',
@@ -180,7 +184,7 @@ describe('credit_reserve', () => {
     expect(t.published).toEqual([]);
   });
 
-  it('on the last attempt cancels, queues a release, notifies, and fails the job', async () => {
+  it('on the last attempt fails the order, queues a release, notifies, and fails the job', async () => {
     const t = setup('pending', {
       ok: false,
       kind: 'transient',
@@ -191,7 +195,7 @@ describe('credit_reserve', () => {
       t.processJob(job('credit_reserve', reservePayload, { attemptsMade: 4 })),
     ).rejects.toThrow('retries exhausted');
 
-    expect(t.row()?.status).toBe('cancelled');
+    expect(t.row()?.status).toBe('failed');
     expect(t.outbox.createMany).toHaveBeenCalledWith({
       data: [
         {
@@ -203,7 +207,7 @@ describe('credit_reserve', () => {
     });
     expect(t.published).toEqual([
       expect.objectContaining({
-        name: 'order:cancelled',
+        name: 'order:failed',
         payload: expect.objectContaining({
           reason: 'RESERVE_RETRIES_EXHAUSTED',
         }),

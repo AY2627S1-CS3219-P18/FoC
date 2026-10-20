@@ -20,6 +20,9 @@
  *        dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - reservation failures end in `failed`.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -162,7 +165,7 @@ describe('credit reservation saga (e2e)', () => {
     ]);
   });
 
-  it('cancels without a release on a permanent failure', async () => {
+  it('fails the order without a release on a permanent failure', async () => {
     const h = harness(() => ({
       ok: false,
       kind: 'permanent',
@@ -177,11 +180,11 @@ describe('credit reservation saga (e2e)', () => {
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: result.order.id },
     });
-    expect(order.status).toBe('cancelled');
+    expect(order.status).toBe('failed');
     expect(await prisma.outbox.count()).toBe(0); // no release queued
   });
 
-  it('on the last transient failure cancels and queues a release that then runs', async () => {
+  it('on the last transient failure fails the order and queues a release that then runs', async () => {
     const h = harness(() => ({
       ok: false,
       kind: 'transient',
@@ -194,7 +197,7 @@ describe('credit reservation saga (e2e)', () => {
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: result.order.id },
     });
-    expect(order.status).toBe('cancelled');
+    expect(order.status).toBe('failed');
 
     const jobs = await h.drain(); // relays and runs the queued release
     expect(jobs.map((j) => j.taskName)).toEqual(['credit_release']);

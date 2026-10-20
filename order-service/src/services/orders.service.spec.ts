@@ -48,6 +48,10 @@
  *        to order-listing.service.spec.ts with the new listing.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - pending orders settle to `failed`; pending ->
+ *        cancelled is no longer a transition.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -803,7 +807,7 @@ describe('transitionOrder', () => {
     expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
   });
 
-  it('cancels a pending order without a release unless asked (permanent reserve failure)', async () => {
+  it('fails a pending order without a release unless asked (permanent reserve failure)', async () => {
     const { prisma } = prismaWithTransition({
       status: 'pending',
       requesterId,
@@ -811,12 +815,12 @@ describe('transitionOrder', () => {
     });
 
     await expect(
-      transitionOrder(prisma, orderId, 'cancelled', 'system'),
+      transitionOrder(prisma, orderId, 'failed', 'system'),
     ).resolves.toMatchObject({ ok: true });
     expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
   });
 
-  it('cancels a pending order with a release when asked (reserve retries exhausted)', async () => {
+  it('fails a pending order with a release when asked (reserve retries exhausted)', async () => {
     const { prisma } = prismaWithTransition({
       status: 'pending',
       requesterId,
@@ -824,7 +828,7 @@ describe('transitionOrder', () => {
     });
 
     await expect(
-      transitionOrder(prisma, orderId, 'cancelled', 'system', new Date(), {
+      transitionOrder(prisma, orderId, 'failed', 'system', new Date(), {
         releaseCredits: true,
       }),
     ).resolves.toMatchObject({ ok: true });
@@ -841,8 +845,11 @@ describe('transitionOrder', () => {
     });
 
     await expect(
-      transitionOrder(prisma, orderId, 'cancelled', requesterId),
+      transitionOrder(prisma, orderId, 'failed', requesterId),
     ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+    await expect(
+      transitionOrder(prisma, orderId, 'cancelled', 'system'),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });
     await expect(
       transitionOrder(prisma, orderId, 'accepted', courierId),
     ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });

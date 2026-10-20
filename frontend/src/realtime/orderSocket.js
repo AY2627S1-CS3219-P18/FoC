@@ -8,6 +8,9 @@
  *        set up. Events are the thin order events listed below.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): `failed` status - listens for order:failed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef } from 'react'
@@ -23,6 +26,7 @@ export const ORDER_EVENTS = [
   'order:completed',
   'order:cancelled',
   'order:expired',
+  'order:failed',
   'order:edited',
 ]
 
