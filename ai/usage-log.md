@@ -1054,6 +1054,36 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-20 — Frontend: Live activity from microservices
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service `GET /orders` and transition routes, plus Supplier Service requester read endpoints
+
+**Prompts (exact):**
+
+> seems like what's shown on the card is from the options selected in the demo. now i dont want a demo anymore, i want the data shown to be from the microservices straight.
+
+**Key responses:**
+Replaced Activity's DemoContext request list with live Order Service data, filtered by the authenticated session ID. Supplier details are loaded from the Supplier Service, and status actions now call the Order Service transition endpoints before refreshing the list. The UI no longer uses demo request, supplier, or user records for Activity cards; unavailable user names are represented by role labels because the Order Service response contains IDs only. Frontend lint completed with existing warnings and the production build passed after fixing an invalid `qualifiedName` import.
+
+**Files:**
+
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-20 — Order Service: Integer supplier identifiers
 
 **Tool:** Copilot SDK (model: unspecified by runtime)

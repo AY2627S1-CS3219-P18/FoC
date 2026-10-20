@@ -17,3 +17,16 @@ import { request } from "./http";
 export const createOrder = (payload) =>
   request("/orders", { method: "POST", json: payload });
 export const listOrders = (status) => request("/orders", { query: { status } });
+
+const TRANSITION_PATHS = {
+  picked_up: "pickup",
+  delivered: "deliver",
+  completed: "complete",
+  cancelled: "cancel",
+};
+
+export const transitionOrder = (id, status) => {
+  const path = TRANSITION_PATHS[status];
+  if (!path) throw new Error("Unsupported order status transition");
+  return request(`/orders/${id}/${path}`, { method: "POST" });
+};
