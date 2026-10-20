@@ -5074,3 +5074,74 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service + Frontend: rebase onto PR #115 (Wen Xi's auth, supplier ids, edit page)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** George Yeo's choices in chat, 2026-10-20 (quoted below), after Wen Xi's PR #115 was merged into `main` (commits `10af4a5`, `de8fe1a`, `10dc6d2`, `b1bb1cd`, `4dc1344`).
+
+**Prompts (exact):**
+
+> hold on wenxi has made changes now, ive updated main, we need to undo anything she has already fixed/done
+
+> 1. ok throw away ours
+> 2. keep hers
+> 3. ok lets use int instead
+> 4. do a
+>
+>
+> yes make it clean
+
+**Key responses:**
+
+- **Branches:** the six stacked branches were rebased onto `main` (`62c5d67`) commit by commit, with order-service and frontend checks at each branch tip. The pre-rebase heads are kept locally as `backup/<branch>`.
+- **1. Supplier-service auth:** the local throwaway branch `tmp/supplier-jwks-local` was deleted. Wen Xi's `10af4a5` replaces it.
+- **2. Order-service auth (hers kept):**
+  - Removed from #6: `jose`, `src/auth/verify-access-token.ts` and its spec, `src/middleware/auth.ts`, the per-route `requireAuth`, and our `express.d.ts`.
+  - Her middleware now covers all of `/orders`, the listing included.
+  - Her token check was moved, unchanged, into an exported `createTokenVerifier`, which also returns `exp`. The Socket.IO handshake uses it. The `identity_provider_unavailable` connect error is gone; any failure is "unauthorized".
+  - `getActiveDeliveries` and `getMyOrders` use her `req.user.user_id` + `isUuid` check.
+  - The test helper now publishes a local JWKS and signs tokens with node:crypto, so the e2e suite runs through her verifier.
+  - The token-expiry e2e test now uses a 2 s `exp` instead of 1 s, which fixes the intermittent failure noted in the F18.1.1 entry.
+- **3. supplierId:** her INTEGER column (`20261020211000_supplier_id_integer`) and her create validation were kept. The BIGINT migration `20261020140000_supplier_id_bigint`, the BIGINT conversions and the edit-time supplier validation were dropped. That frontend-branch commit is now only "GET /orders/mine". `deliveryLocationId` stays BIGINT (#11).
+- **4. Frontend (option a):**
+  - Kept our create, board, card and activity implementations.
+  - Carried over her edit page onto our form: `/requests/:id/edit` loads the errand from `/orders/mine` and saves with `PATCH /orders/:id/edit`. Her route in `App.jsx` is unchanged, and our Activity Edit button now opens it.
+  - Her disclosure entries were kept in the headers of the four replaced files, with a note that their implementation was replaced.
+- **Docs:** the #6 and frontend-integration entries above were corrected to describe what their rebased commits now contain. README log-index rows for our entries were renumbered after Wen Xi's (112 onwards).
+- **Verification in the AI workspace, at the final branch tip:**
+  - order-service: tsc clean, oxlint 0, prettier clean, 516/516 unit tests, 27/27 e2e, build OK.
+  - frontend: `vite build` OK; oxlint shows only warnings that were already there in files we did not change.
+  - **Browser end-to-end** (Playwright/Chromium against Vite, with the real order-service app and Socket.IO behind Wen Xi's JWKS auth, a fake user-service publishing a JWKS, a simulated credit worker and a stub supplier-service). Each check below passed:
+    - `/orders` without a token → 401, with a token → 200;
+    - post → My activity;
+    - the board receives the card live;
+    - edit page prefilled → save → My activity and the courier's board both show the change;
+    - accept → pickup → deliver → complete;
+    - a failed reservation shows its reason and stays out of My activity.
+- **Not verified:** a live user-service or supplier-service, and the Redis paths.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts`, `order-service/src/app.ts`, `order-service/src/server.ts`, `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/realtime/socket-server.ts`, `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/helpers/tokens.ts`, `order-service/test/realtime.e2e-spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/src/auth/verify-access-token.ts`, `order-service/src/auth/verify-access-token.spec.ts`, `order-service/src/middleware/auth.ts`, `order-service/prisma/migrations/20261020140000_supplier_id_bigint/migration.sql` (removed from the rebased stack)
+- `order-service/package.json`, `order-service/package-lock.json` (`jose` removed; no header possible)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/pages/Activity.jsx`, `frontend/src/components/RequestCard.jsx`, `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **`GET /orders` now needs a token** (her middleware). The board is only shown to signed-in users, so the frontend is unaffected.
+2. **Edit doesn't validate `supplierId`** (her code as merged). A non-integer value reaches the database. Not changed.
+3. **Migration order on an existing local database:** her `20261020211000` may already be applied, and ours (`20261020100000`, `120000`, `160000`) have earlier timestamps. `prisma migrate deploy` applies them anyway; `migrate dev` may report the ordering. `20261020120000_listing_filters` deletes order rows.
+4. **She edited the already-applied `20260927111937_create_requests` migration.** Databases that ran the original may show a checksum or drift warning.
+5. Picked by convention: the shape of the extracted `createTokenVerifier`, and the 2 s test token.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
