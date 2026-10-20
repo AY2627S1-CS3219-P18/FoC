@@ -9,12 +9,16 @@
  *        Redis refuses so order is kept.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): startRelay now delegates to the shared startScheduledTask.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { Queue, Worker, type ConnectionOptions } from 'bullmq';
+import type { ConnectionOptions } from 'bullmq';
 import type { DeadLetterRepository } from '../db/dead-letter.repository.js';
 import type { OutboxRepository } from '../db/outbox.repository.js';
-import { splitQueueKey, type JobQueue } from '../queue/bull-queue.js';
+import type { JobQueue } from '../queue/bull-queue.js';
+import { startScheduledTask } from '../queue/scheduled-task.js';
 import { queueKeyForTask } from '../queue/tasks.js';
 
 const BATCH_SIZE = 100;
@@ -84,46 +88,20 @@ export function createOutboxRelay({
 }
 
 /** Runs `relayOnce` every second with a BullMQ job scheduler (ticks never pile up). */
-export async function startRelay(
+export function startRelay(
   connection: ConnectionOptions,
   relayOnce: () => Promise<number>,
   log: (message: string) => void = console.error,
 ): Promise<{ close(): Promise<void> }> {
-  const { prefix, name } = splitQueueKey(OUTBOX_RELAY_QUEUE_KEY);
-
-  const queue = new Queue(name, { connection, prefix });
-  try {
-    await queue.upsertJobScheduler(
-      SCHEDULER_ID,
-      { every: OUTBOX_RELAY_INTERVAL_MS },
-      {
-        name: 'outbox_relay',
-        opts: { attempts: 1, removeOnComplete: true, removeOnFail: true },
-      },
-    );
-  } catch (error) {
-    await queue.close();
-    throw error;
-  }
-
-  const worker = new Worker(
-    name,
-    async () => {
-      await relayOnce();
+  return startScheduledTask(
+    connection,
+    {
+      queueKey: OUTBOX_RELAY_QUEUE_KEY,
+      schedulerId: SCHEDULER_ID,
+      jobName: 'outbox_relay',
+      everyMs: OUTBOX_RELAY_INTERVAL_MS,
     },
-    { connection, prefix, concurrency: 1 },
+    relayOnce,
+    log,
   );
-  worker.on('error', (error) =>
-    log(`[${OUTBOX_RELAY_QUEUE_KEY}] worker error: ${error.message}`),
-  );
-  worker.on('failed', (_job, error) =>
-    log(`[${OUTBOX_RELAY_QUEUE_KEY}] relay tick failed: ${error.message}`),
-  );
-
-  return {
-    async close() {
-      await worker.close();
-      await queue.close();
-    },
-  };
 }

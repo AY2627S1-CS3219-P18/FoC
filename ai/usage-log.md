@@ -4474,3 +4474,55 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service #4: Automatic re-drive of transient credit-release dead letters
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo's decisions in chat, 2026-10-20 (quoted below), following a local test in which a release dead-lettered during a credit-service outage.
+
+**Prompts (exact):**
+
+> lets do b
+
+> 1. only transient ones
+> 2. restart the retries for each dead letter release every minute
+> 3. no limit, go indefinitely
+> 4. yes, only credit_release
+
+**Key responses:**
+
+- `src/worker/release-redrive.ts` runs every minute on a BullMQ job scheduler (`queue:order:release-redrive`) in the order-worker container. It selects `dead_letter_jobs` rows where the task is `credit_release`, the status is `UNRESOLVED`, and the trace contains the transient-release failure message.
+- For each row it runs one transaction:
+  - claims the row (`UNRESOLVED` → `REDRIVEN`, guarded so two passes cannot re-drive it twice);
+  - inserts a fresh `credit_release` outbox row.
+- The relay then enqueues the new row as a new job with a full set of retries. If that job also runs out, it is dead-lettered again and re-driven on a later pass, with no limit.
+- Permanent release rejections and `credit_reserve` dead letters are never re-driven.
+- `startRelay`'s scheduler code was factored into `src/queue/scheduled-task.ts` and reused.
+- The `REDRIVEN` status value and the queue key were named by convention.
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 328/328;
+  - `test:e2e` 11/11 against a local Postgres 17, including 3 new re-drive cases (re-drive + no double re-drive, permanent and reserve rows left alone, re-driven release completing end to end);
+  - build OK.
+- **Not verified:** the scheduler against a real Redis.
+
+**Files:**
+
+- `order-service/src/worker/release-redrive.ts` (created)
+- `order-service/src/queue/scheduled-task.ts` (created)
+- `order-service/src/worker/outbox-relay.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- During a long credit-service outage, each stuck release adds a new dead-letter row per cycle (about one per minute plus the job's own retry time). The old rows are kept as `REDRIVEN`, so the table grows until the outage ends.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

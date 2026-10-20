@@ -7,6 +7,10 @@
  *        Credit-service and Redis are faked (HTTP client and BullMQ queue stand-ins).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Added coverage for the re-drive of transient credit_release
+ *        dead letters (George, 2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -28,6 +32,7 @@ import {
   type CreditJob,
 } from '../src/worker/credit-jobs.js';
 import { createOutboxRelay } from '../src/worker/outbox-relay.js';
+import { createReleaseRedrive } from '../src/worker/release-redrive.js';
 
 // Requires a migrated Postgres at DATABASE_URL (e.g. `docker compose up -d order-db`).
 loadDotenv({ quiet: true });
@@ -238,5 +243,89 @@ describe('credit reservation saga (e2e)', () => {
         payload: { x: 1 },
       }),
     ]);
+  });
+});
+
+describe('release dead-letter re-drive (e2e)', () => {
+  const redriveOnce = createReleaseRedrive({ prisma, log: () => {} });
+  const transientTrace =
+    'Error: Credit release failed (transient): fetch failed\n    at release (...)';
+
+  async function deadLetter(
+    taskName: string,
+    errorTrace: string,
+    requestId: string,
+  ) {
+    return prisma.deadLetterJob.create({
+      data: {
+        jobId: 'outbox-99',
+        taskName,
+        payload: { requestId },
+        errorTrace,
+        failedAt: new Date(),
+      },
+    });
+  }
+
+  it('re-drives a transient release failure as a fresh outbox row and marks it REDRIVEN', async () => {
+    const result = await createOrder(prisma, REQUESTER, payload);
+    if (!result.ok) throw new Error('create failed');
+    const dl = await deadLetter(
+      'credit_release',
+      transientTrace,
+      result.order.id,
+    );
+
+    await expect(redriveOnce()).resolves.toBe(1);
+
+    expect(
+      await prisma.deadLetterJob.findUniqueOrThrow({ where: { id: dl.id } }),
+    ).toMatchObject({ status: 'REDRIVEN' });
+    const rows = await prisma.outbox.findMany({
+      where: { taskName: 'credit_release' },
+    });
+    expect(rows).toEqual([
+      expect.objectContaining({ payload: { requestId: result.order.id } }),
+    ]);
+    // A second pass finds nothing left to re-drive.
+    await expect(redriveOnce()).resolves.toBe(0);
+  });
+
+  it('leaves permanent release failures and reserve dead letters alone', async () => {
+    await deadLetter(
+      'credit_release',
+      'UnrecoverableError: Credit release rejected: 409 ALREADY_TRANSFERRED',
+      REQUESTER,
+    );
+    await deadLetter(
+      'credit_reserve',
+      'Error: Credit reserve retries exhausted: fetch failed',
+      REQUESTER,
+    );
+
+    await expect(redriveOnce()).resolves.toBe(0);
+    expect(await prisma.outbox.count()).toBe(0);
+    expect(
+      await prisma.deadLetterJob.count({ where: { status: 'UNRESOLVED' } }),
+    ).toBe(2);
+  });
+
+  it('a re-driven release runs to completion once credit-service is back', async () => {
+    const h = harness(() => ({ ok: true }));
+    const result = await createOrder(prisma, REQUESTER, payload);
+    if (!result.ok) throw new Error('create failed');
+    await h.drain(); // order is open
+    await prisma.outbox.deleteMany();
+    await deadLetter('credit_release', transientTrace, result.order.id);
+
+    await redriveOnce();
+    const jobs = await h.drain();
+
+    expect(jobs.map((j) => j.taskName)).toEqual(['credit_release']);
+    expect(h.releaseMock).toHaveBeenCalledWith({ requestId: result.order.id });
+    const order = await prisma.orderRequest.findUniqueOrThrow({
+      where: { id: result.order.id },
+    });
+    expect(order.creditReleasedAt).toBeInstanceOf(Date);
   });
 });

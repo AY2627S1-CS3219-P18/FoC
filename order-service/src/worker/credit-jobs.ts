@@ -14,6 +14,10 @@
  *        (UPPER_SNAKE like credit-service's codes).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Exported the transient-release message so the dead-letter
+ *        re-drive can select transient release failures only (George, 2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
@@ -31,6 +35,9 @@ import {
 } from '../queue/tasks.js';
 
 export const RESERVE_RETRIES_EXHAUSTED = 'RESERVE_RETRIES_EXHAUSTED';
+
+/** Start of the error a transient release failure throws; the re-drive matches on it. */
+export const TRANSIENT_RELEASE_FAILURE = 'Credit release failed (transient)';
 
 export interface CreditJobDeps {
   prisma: PrismaClient;
@@ -157,7 +164,7 @@ export function createCreditJobProcessor({
         `Credit release rejected: ${result.status ?? ''} ${result.code}`.trim(),
       );
     }
-    throw new Error(`Credit release failed (transient): ${result.code}`);
+    throw new Error(`${TRANSIENT_RELEASE_FAILURE}: ${result.code}`);
   }
 
   return async function processCreditJob(job: CreditJob): Promise<void> {

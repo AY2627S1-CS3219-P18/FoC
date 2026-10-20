@@ -18,6 +18,10 @@
  *        (George, 2026-10-20). Maintenance no longer calls credit-service directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Also runs the minute-by-minute re-drive of transient
+ *        credit_release dead letters (George, 2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -36,6 +40,10 @@ import {
   isFinalFailure,
 } from './worker/credit-jobs.js';
 import { createLogNotifier } from './notifications/notifier.js';
+import {
+  createReleaseRedrive,
+  startReleaseRedrive,
+} from './worker/release-redrive.js';
 
 loadDotenv({ quiet: true });
 
@@ -82,6 +90,11 @@ const relay = await startRelay(
   }),
 );
 
+const redrive = await startReleaseRedrive(
+  connection,
+  createReleaseRedrive({ prisma }),
+);
+
 const creditQueue = splitQueueKey(CREDIT_QUEUE_KEY);
 const creditWorker = new Worker(
   creditQueue.name,
@@ -114,7 +127,12 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`${signal} received, shutting down maintenance worker`);
   try {
     // Stop taking new jobs and let the active ones finish.
-    await Promise.all([worker.close(), creditWorker.close(), relay.close()]);
+    await Promise.all([
+      worker.close(),
+      creditWorker.close(),
+      relay.close(),
+      redrive.close(),
+    ]);
     await queue.close();
     await jobQueue.close();
     await prisma.$disconnect();
