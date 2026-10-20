@@ -5105,7 +5105,7 @@ tng wen xi
   - `getActiveDeliveries` and `getMyOrders` use her `req.user.user_id` + `isUuid` check.
   - The test helper now publishes a local JWKS and signs tokens with node:crypto, so the e2e suite runs through her verifier.
   - The token-expiry e2e test now uses a 2 s `exp` instead of 1 s, which fixes the intermittent failure noted in the F18.1.1 entry.
-- **3. supplierId:** her INTEGER column (`20261020211000_supplier_id_integer`) and her create validation were kept. The BIGINT migration `20261020140000_supplier_id_bigint`, the BIGINT conversions and the edit-time supplier validation were dropped. That frontend-branch commit is now only "GET /orders/mine". `deliveryLocationId` stays BIGINT (#11).
+- **3. supplierId:** her INTEGER column (`20261020211000_supplier_id_integer`) and her create validation were kept. The BIGINT migration `20261020140000_supplier_id_bigint`, the BIGINT conversions and the edit-time supplier validation were dropped. That frontend-branch commit is now only "GET /orders/mine". `deliveryLocationId` was later matched to INTEGER as well (see the next entry).
 - **4. Frontend (option a):**
   - Kept our create, board, card and activity implementations.
   - Carried over her edit page onto our form: `/requests/:id/edit` loads the errand from `/orders/mine` and saves with `PATCH /orders/:id/edit`. Her route in `App.jsx` is unchanged, and our Activity Edit button now opens it.
@@ -5137,10 +5137,58 @@ tng wen xi
 **Deviations / questions raised for the team:**
 
 1. **`GET /orders` now needs a token** (her middleware). The board is only shown to signed-in users, so the frontend is unaffected.
-2. **Edit doesn't validate `supplierId`** (her code as merged). A non-integer value reaches the database. Not changed.
+2. **Edit didn't validate `supplierId`** (her code as merged). This is fixed in the next entry.
 3. **Migration order on an existing local database:** her `20261020211000` may already be applied, and ours (`20261020100000`, `120000`, `160000`) have earlier timestamps. `prisma migrate deploy` applies them anyway; `migrate dev` may report the ordering. `20261020120000_listing_filters` deletes order rows.
 4. **She edited the already-applied `20260927111937_create_requests` migration.** Databases that ran the original may show a checksum or drift warning.
 5. Picked by convention: the shape of the extracted `createTokenVerifier`, and the 2 s test token.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-10-20 — Order Service: deliveryLocationId as INTEGER; full edit validation
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo in chat, 2026-10-20 (quoted below), following his choice of INTEGER for `supplierId`. F18.1.2 ("edit 'open' requests' fields in accordance to F9.1.1"), `docs/FoC-ProductBacklog.md`.
+
+**Prompts (exact):**
+
+> ok lets match deliveryLocationId to int to match, and also validate the edit
+
+**Key responses:**
+
+- **`deliveryLocationId` INTEGER** (folded into the #11 commit, so that PR shows the final shape):
+  - the migration `20261020120000_listing_filters` adds the column as `INTEGER`, and the schema is `Int`;
+  - the BigInt conversions in create and edit, the BigInt `location` filter parser and the Express `json replacer` were removed;
+  - fixtures and seeds now use plain numbers;
+  - `isPositiveSafeInteger` became `isPositiveInt` (1 to 2,147,483,647, the INTEGER range).
+  - The later commits were rebased onto it: the #6 listing card no longer converts the id, and fixtures were updated.
+- **Edit validation** (new commit at the top of the stack): `PATCH /orders/:id/edit` now validates every editable field with create's rules, before any database query:
+  - `supplierId` (`isPositiveInt`) → `INVALID_SUPPLIER`;
+  - `description` (non-empty text) → `INVALID_DESCRIPTION`;
+  - `additionalDetails` (text or null) → `INVALID_ADDITIONAL_DETAILS`;
+  - `deliveryLocationId` and `completeBy`, as before.
+  - Create's `supplierId` check also uses `isPositiveInt`, so an id beyond the INTEGER range is a 400 rather than a database error.
+- **Verification in the AI workspace:**
+  - at the #11 tip: tsc clean, unit 418/418, e2e 20/20;
+  - at #6: unit 433/433, e2e 27/27;
+  - at the final tip: tsc clean, oxlint 0, prettier clean, unit 524/524 (new edit-validation cases), e2e 27/27, build OK.
+
+**Files:**
+
+- `order-service/prisma/migrations/20261020120000_listing_filters/migration.sql`, `order-service/prisma/schema.prisma`, `order-service/prisma/seed.ts` (modified, in the #11 commit)
+- `order-service/src/utils/validation.ts`, `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts`, `order-service/src/app.ts` (modified, in the #11 commit)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified, in the #11 commit)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts`, `order-service/src/worker/credit-jobs.spec.ts`, `order-service/test/realtime.e2e-spec.ts` (modified, in the #6 commit)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Applying the migration change to a local database:** the #11 migration was edited in place (the stack is unmerged). A database that already ran it as BIGINT needs `npx prisma migrate reset`.
+2. **Picked by convention:** the INTEGER upper bound in `isPositiveInt`, and applying it to create's `supplierId` too.
 
 **What I kept/changed/rejected:**
 

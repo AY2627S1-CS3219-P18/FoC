@@ -49,6 +49,12 @@
  *        requires `open`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Edit validates every editable field with create's rules: supplierId
+ *        (positive INTEGER id), description (non-empty text), additionalDetails (text or
+ *        null), alongside the existing location and complete-by checks; create's supplierId
+ *        check also caps at the INTEGER range (George, 2026-10-20: "validate the edit").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -133,10 +139,7 @@ export const createOrder = async (
   console.log('VALIDATING PAYLOAD');
   if (!requestPayload.supplierId) {
     errors.push(ErrorCode.MISSING_SUPPLIER);
-  } else if (
-    !Number.isInteger(requestPayload.supplierId) ||
-    requestPayload.supplierId <= 0
-  ) {
+  } else if (!isPositiveInt(requestPayload.supplierId)) {
     errors.push(ErrorCode.INVALID_SUPPLIER);
   }
   if (!requestPayload.description) {
@@ -219,8 +222,20 @@ export const editOrder = async (
       continue;
     }
 
-    // Validate fields
-    if (key == 'deliveryLocationId') {
+    // Validate fields with the same rules as create (F18.1.2: edit in accordance with F9.1.1)
+    if (key == 'supplierId') {
+      if (!isPositiveInt(value)) {
+        errors.push(ErrorCode.INVALID_SUPPLIER);
+      }
+    } else if (key == 'description') {
+      if (!isNonEmptyString(value)) {
+        errors.push(ErrorCode.INVALID_DESCRIPTION);
+      }
+    } else if (key == 'additionalDetails') {
+      if (value !== null && typeof value !== 'string') {
+        errors.push(ErrorCode.INVALID_ADDITIONAL_DETAILS);
+      }
+    } else if (key == 'deliveryLocationId') {
       if (!isPositiveInt(value)) {
         errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
       }

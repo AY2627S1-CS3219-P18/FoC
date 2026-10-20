@@ -56,6 +56,9 @@
  *        create; edit refused unless the request is open.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Edit validation cases for every editable field.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -330,6 +333,54 @@ describe('editOrder', () => {
       errors: [ErrorCode.INVALID_FIELD],
     });
     expect(findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['supplierId not an id', { supplierId: 'abc' }, ErrorCode.INVALID_SUPPLIER],
+    ['supplierId zero', { supplierId: 0 }, ErrorCode.INVALID_SUPPLIER],
+    [
+      'supplierId beyond INTEGER',
+      { supplierId: 2_147_483_648 },
+      ErrorCode.INVALID_SUPPLIER,
+    ],
+    ['description empty', { description: '  ' }, ErrorCode.INVALID_DESCRIPTION],
+    ['description not text', { description: 5 }, ErrorCode.INVALID_DESCRIPTION],
+    [
+      'additionalDetails not text',
+      { additionalDetails: 5 },
+      ErrorCode.INVALID_ADDITIONAL_DETAILS,
+    ],
+    [
+      'deliveryLocationId not an id',
+      { deliveryLocationId: 'COM1' },
+      ErrorCode.INVALID_DELIVERY_LOCATION,
+    ],
+  ])(
+    'rejects %s before querying the database',
+    async (_name, payload, code) => {
+      const findUniqueOrThrow = vi.fn();
+      const prisma = {
+        orderRequest: { findUniqueOrThrow },
+      } as unknown as PrismaClient;
+
+      await expect(
+        editOrder(prisma, REQUESTER, 'order-1', payload as never),
+      ).resolves.toEqual({ ok: false, errors: [code] });
+      expect(findUniqueOrThrow).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts null additionalDetails and a valid supplierId', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        supplierId: 3,
+        additionalDetails: null,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalled();
   });
 
   it('rejects editing credits, which are fixed at creation (issue #4)', async () => {
