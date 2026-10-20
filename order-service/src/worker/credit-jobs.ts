@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issue #4 - worker handlers for the credit_reserve / credit_release jobs,
  *        implementing George's saga decisions (2026-10-19/20):
- *        - reserve ok (incl. RESERVATION_ALREADY_EXISTS): pending -> open, notify requester;
+ *        - reserve ok (incl. RESERVATION_ALREADY_EXISTS): pending -> open (order:created);
  *        - reserve permanent failure (422/404): pending -> cancelled, no release, notify
  *          with credit-service's code;
  *        - reserve transient failure: retry; on the last attempt cancel, queue a release
@@ -12,6 +12,11 @@
  *          permanent: dead-letter without retries.
  *        Failure reason string RESERVE_RETRIES_EXHAUSTED is named by convention
  *        (UPPER_SNAKE like credit-service's codes).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-10-20): Issue #6 - reservation outcomes are published as order events
+ *        (order:created on success, order:cancelled with the reason on failure) through
+ *        transitionOrder, replacing the log-only notifier from issue #4.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-10-20): Exported the transient-release message so the dead-letter
@@ -25,7 +30,7 @@ import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { SYSTEM_ACTOR } from '../domain/order-status.js';
 import type { OrderRequest } from '../generated/prisma/client.js';
-import type { Notifier } from '../notifications/notifier.js';
+import type { OrderEventPublisher } from '../realtime/order-events.js';
 import { transitionOrder } from '../services/orders.service.js';
 import {
   CREDIT_RELEASE_TASK,
@@ -42,7 +47,7 @@ export const TRANSIENT_RELEASE_FAILURE = 'Credit release failed (transient)';
 export interface CreditJobDeps {
   prisma: PrismaClient;
   credits: CreditsClient;
-  notifier: Notifier;
+  events?: OrderEventPublisher;
   clock?: () => Date;
   log?: (message: string) => void;
 }
@@ -60,29 +65,19 @@ function isLastAttempt(job: CreditJob): boolean {
 export function createCreditJobProcessor({
   prisma,
   credits,
-  notifier,
+  events,
   clock = () => new Date(),
   log = console.error,
 }: CreditJobDeps) {
-  async function notifyRequester(
-    order: OrderRequest,
-    event: 'order:created' | 'order:cancelled',
-    reason?: string,
-  ): Promise<void> {
-    await notifier.notify(order.requesterId, event, {
-      orderId: order.id,
-      status: order.status,
-      version: order.version,
-      occurredAt: order.updatedAt.toISOString(),
-      ...(reason !== undefined && { reason }),
-    });
-  }
-
   /** Moves a pending order to `to`; resolves to the updated order, or null if it had moved on. */
+  /** Publishes the order event (with `reason` on a failure) once committed. */
   async function settle(
     orderId: string,
     to: 'open' | 'cancelled',
-    releaseCredits = false,
+    {
+      releaseCredits = false,
+      reason,
+    }: { releaseCredits?: boolean; reason?: string } = {},
   ): Promise<OrderRequest | null> {
     const result = await transitionOrder(
       prisma,
@@ -90,7 +85,7 @@ export function createCreditJobProcessor({
       to,
       SYSTEM_ACTOR,
       clock(),
-      { releaseCredits },
+      { releaseCredits, events, reason },
     );
     if (result.ok) return result.order;
     // Not pending any more (a duplicate job already settled it) or the order is gone.
@@ -114,16 +109,13 @@ export function createCreditJobProcessor({
     const result = await credits.reserve(job.data);
 
     if (result.ok) {
-      const opened = await settle(requestId, 'open');
-      if (opened) await notifyRequester(opened, 'order:created');
+      await settle(requestId, 'open');
       return;
     }
 
     if (result.kind === 'permanent') {
       // Nothing was reserved, so nothing to release.
-      const cancelled = await settle(requestId, 'cancelled');
-      if (cancelled)
-        await notifyRequester(cancelled, 'order:cancelled', result.code);
+      await settle(requestId, 'cancelled', { reason: result.code });
       return;
     }
 
@@ -133,14 +125,10 @@ export function createCreditJobProcessor({
 
     // Out of retries. The reserve may still have committed on credit-service's side
     // without us hearing back, so queue a release with the cancellation.
-    const cancelled = await settle(requestId, 'cancelled', true);
-    if (cancelled) {
-      await notifyRequester(
-        cancelled,
-        'order:cancelled',
-        RESERVE_RETRIES_EXHAUSTED,
-      );
-    }
+    await settle(requestId, 'cancelled', {
+      releaseCredits: true,
+      reason: RESERVE_RETRIES_EXHAUSTED,
+    });
     // Fail the job so the dead-letter handler records it.
     throw new Error(`Credit reserve retries exhausted: ${result.code}`);
   }

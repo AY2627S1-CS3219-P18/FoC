@@ -28,12 +28,14 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "bullmq": "^6.3.13",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
     "ioredis": "^5.11.1",
     "pg": "^8.23.0",
     "prisma": "^7.10.0",
+    "socket.io": "^4.8.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -45,6 +47,7 @@
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.9",
+    "socket.io-client": "^4.8.4",
     "supertest": "^7.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.2",

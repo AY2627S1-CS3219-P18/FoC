@@ -18,6 +18,11 @@
  *        (George, 2026-10-20). Maintenance no longer calls credit-service directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #6 - order events from the worker (reservation outcomes,
+ *        expiry, auto-completion) are published to Redis pub/sub for the API to emit
+ *        (George, 2026-10-20: plain Redis, no extra dependency).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Also runs the minute-by-minute re-drive of transient
  *        credit_release dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -39,7 +44,8 @@ import {
   createCreditJobProcessor,
   isFinalFailure,
 } from './worker/credit-jobs.js';
-import { createLogNotifier } from './notifications/notifier.js';
+import { Redis } from 'ioredis';
+import { createRedisEventPublisher } from './realtime/socket-sink.js';
 import {
   createReleaseRedrive,
   startReleaseRedrive,
@@ -54,9 +60,11 @@ const queue = new Queue(queueName, { connection });
 const prisma = createPrismaClient(env.DATABASE_URL);
 const credits = createHttpCreditsClient(env.CREDIT_SERVICE_URL);
 const deadLetters = createDeadLetterRepository(prisma);
+const redis = new Redis({ host: env.REDIS_HOST, port: env.REDIS_PORT });
+const events = createRedisEventPublisher(redis);
 
 async function processMaintenanceJob(_job: Job): Promise<void> {
-  const result = await runRequestMaintenance(prisma);
+  const result = await runRequestMaintenance(prisma, new Date(), events);
   if (result.completed > 0 || result.expired > 0) {
     console.log(
       `Request maintenance: completed ${result.completed}, expired ${result.expired}`,
@@ -98,7 +106,7 @@ const redrive = await startReleaseRedrive(
 const creditQueue = splitQueueKey(CREDIT_QUEUE_KEY);
 const creditWorker = new Worker(
   creditQueue.name,
-  createCreditJobProcessor({ prisma, credits, notifier: createLogNotifier() }),
+  createCreditJobProcessor({ prisma, credits, events }),
   { connection, prefix: creditQueue.prefix, concurrency: 1 },
 );
 creditWorker.on('error', (error) => {
@@ -135,6 +143,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     ]);
     await queue.close();
     await jobQueue.close();
+    redis.disconnect();
     await prisma.$disconnect();
   } catch (error) {
     console.error('Failed to shut down maintenance worker cleanly:', error);

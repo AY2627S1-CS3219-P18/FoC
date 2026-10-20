@@ -42,6 +42,10 @@ import {
 } from '../src/worker/credit-jobs.js';
 import { createOutboxRelay } from '../src/worker/outbox-relay.js';
 import { createReleaseRedrive } from '../src/worker/release-redrive.js';
+import type {
+  OrderEvent,
+  OrderEventPublisher,
+} from '../src/realtime/order-events.js';
 import {
   listOrders,
   PAGE_SIZE,
@@ -72,7 +76,10 @@ function harness(
     reserve: vi.fn(async () => reserve()),
     release: releaseMock,
   };
-  const notify = vi.fn(async () => {});
+  const published: OrderEvent[] = [];
+  const events: OrderEventPublisher = {
+    publish: async (batch) => void published.push(...batch),
+  };
   const relayOnce = createOutboxRelay({
     outbox: createOutboxRepository(prisma),
     queue: {
@@ -85,7 +92,7 @@ function harness(
   const processJob = createCreditJobProcessor({
     prisma,
     credits,
-    notifier: { notify },
+    events,
     log: () => {},
   });
   async function drain(attemptsMade = 0) {
@@ -103,7 +110,7 @@ function harness(
     }
     return jobs;
   }
-  return { releaseMock, notify, drain };
+  return { releaseMock, published, drain };
 }
 
 beforeEach(async () => {
@@ -147,11 +154,12 @@ describe('credit reservation saga (e2e)', () => {
     });
     expect(order).toMatchObject({ status: 'open', version: 1 });
     expect(await prisma.outbox.count()).toBe(0);
-    expect(h.notify).toHaveBeenCalledWith(
-      REQUESTER,
-      'order:created',
-      expect.objectContaining({ orderId: order.id, status: 'open' }),
-    );
+    expect(h.published).toEqual([
+      expect.objectContaining({
+        name: 'order:created',
+        payload: expect.objectContaining({ orderId: order.id, status: 'open' }),
+      }),
+    ]);
   });
 
   it('cancels without a release on a permanent failure', async () => {

@@ -4667,3 +4667,160 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service #6/#59: Socket.IO order events, JWT auth, active deliveries
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issues #6 and #59 (GitHub, AY2627S1-CS3219-P18/FoC) and George Yeo's decisions in chat, 2026-10-19/20 (quoted below).
+
+**Prompts (exact):**
+
+> #6 - this will use redis + socket, with a central notifying controller
+
+> #59 - this is same socket system, and frontend work
+
+> #6 lets use socket.IO
+
+> we will auth like credit-service does since its not service/admin critical like supplier service
+> for socket, we will auth handshake payload by socket.io, and disconnect at exp and set callback to auth and reconnect after 15mins
+
+> #6 we are sharing redis, using pub/sub for notifications since they are not critical, if client reconnects they will receive their backlog of notifications anyway (currently no backlog system yet so ignore that)
+
+> 1. Event names and payloads
+> Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
+> Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
+> Clients discard events whose version is ≤ the version they already hold.
+> Event names and payload types live in a shared types file used by both frontend and backend.
+> 2. Rooms
+> Room	Joined by	Purpose
+> user:{id}	Server, automatically at connect (from the JWT)	Personal updates, e.g. your order was accepted
+> order:{id}	Server, from the DB (active orders where the user is requester or courier)	Status changes for that order
+> listing	Client emits listing:subscribe / listing:unsubscribe	Open-request feed for couriers on the browse screen
+>
+> Clients never join a room by name directly. All order: joins are authorized server-side.
+>
+> 3. Where the notifying controller lives
+> The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
+> Emits happen only after the DB transaction commits, never inside it.
+> 4. Multi-instance fan-out
+> Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
+> Clients use transports: ["websocket"], so no sticky sessions are needed.
+> Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
+> 5. 15-minute socket lifetime and reconnection
+> Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
+> Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
+> Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
+> After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
+> Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
+> 6. 2-second latency requirement
+> Definition: from DB commit to event received by the client, for connected clients.
+> Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
+> Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
+
+> 1. outbox too
+> 2. do what congchen does
+> 3. yes
+> 4. by redis
+> 5. make events in redis
+> 6. make events and pass failure
+> 7. just follow convention this isnt part of design decisions
+> 8. what do you mean
+> 9.same
+> 10. defer
+> 11. resolved by client
+> 12. 2s
+> 13. yes
+> 14. what refresh flow, the 15min is for the socket not the JWT
+> 15. can we make a foreign table to map the bigint to uuid
+> 16. no it will not thats supplier service job on client
+> 17. no keep it personal md for nkw
+
+> do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
+
+> 1. b, no need for dependency
+> 2. can you explain more? what happens if we dont change to JWT
+> 3. as NFR
+> 4. skip for now
+> 5. later
+
+> ok switch to JWT too
+
+**Key responses:**
+
+- **Auth** (rebased 2026-10-20 onto Wen Xi's `src/middleware/authenticate.ts`, merged in PR #115; George: "keep hers"):
+  - REST uses her JWKS middleware on all of `/orders` (the listing included). Any token problem, including an unreachable JWKS, returns 401.
+  - Her token check was moved into an exported `createTokenVerifier` (same checks), which also returns `exp`. The Socket.IO handshake uses it.
+  - `GET /orders/active` uses the same `req.user.user_id` check as her handlers.
+  - The original version of this commit used `jose`, a per-route `requireAuth`, a public listing and a 503 for an unreachable JWKS. That was dropped in the rebase.
+- **Socket.IO** (`src/realtime/socket-server.ts`), in the order-service process on the same HTTP server, websocket transport only:
+  - The handshake `auth.token` is verified in `io.use()` with Wen Xi's verifier. Any failure → `connect_error` "unauthorized".
+  - The socket is disconnected at the token's `exp`.
+  - On connect the server joins `user:{id}` and the `order:{id}` rooms of the user's active orders (open/accepted/picked_up/delivered) from the DB, then emits `ready`.
+  - `listing:subscribe` / `listing:unsubscribe` join or leave `listing`.
+  - The Redis adapter runs over order-redis.
+- **Events** (`src/realtime/order-events.ts`, `socket-sink.ts`):
+  - Every committed transition and edit produces `order:created | accepted | pickedUp | delivered | completed | cancelled | expired | edited`.
+  - Payloads are thin. `order:created` adds the listing-card fields; reservation failures add `reason`.
+  - The courier joins `order:{id}` on accept, and order rooms are emptied at terminal states.
+  - Each event is a single emit to the union of its rooms, so a socket in several of those rooms receives it once.
+  - API writes emit directly through the adapter after commit.
+  - The worker (reservation outcomes, expiry, auto-complete) publishes to a plain Redis pub/sub channel with ioredis. Each API replica subscribes and emits locally.
+  - Publishing is best-effort.
+  - The log-only `Notifier` from #4 was removed.
+- **Active deliveries:** `GET /orders/active` (F12.1.3) returns the caller's accepted/picked_up/delivered orders as courier.
+- **Config:**
+  - `USER_SERVICE_URL` already came with Wen Xi's middleware.
+  - order-service in compose got `REDIS_HOST/PORT`.
+  - The e2e config now runs files sequentially (shared DB).
+- **Dependencies added:**
+  - `socket.io` and `@socket.io/redis-adapter` (decided);
+  - `ioredis` (already present via BullMQ, now declared);
+  - dev: `socket.io-client` (tests).
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 440/440;
+  - `test:e2e` 27/27 against a local Postgres 17, run 3× in parallel mode and once sequentially. This includes 7 Socket.IO tests with a real server and real RS256 tokens: handshake rejection, disconnect at expiry, join on accept, room closed after completion, rooms rebuilt on reconnect, listing unsubscribe, one delivery per socket, and NFR5.1.1 (client request sent → server broadcast) asserted under 2 s;
+  - build OK;
+  - the compiled `dist/server.js` booted and answered `/health`, the public listing, 401 with no or bad token, and 503 with the JWKS unreachable.
+- **Not verified:** the Redis adapter and the worker → API pub/sub path against a real Redis (unit-tested with fakes only), and calls against a live user-service.
+
+- **After the rebase onto Wen Xi's auth (2026-10-20):** tsc, oxlint and prettier are clean, and the unit and e2e suites pass at this commit. The test helper now publishes a local JWKS so that the e2e suite exercises her verifier. The verification list above is from the original commit.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts` (modified: verifier extracted, Wen Xi's file)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts` (created)
+- `order-service/src/realtime/socket-server.ts`, `order-service/src/realtime/socket-sink.ts`, `order-service/src/realtime/socket-sink.spec.ts` (created)
+- `order-service/src/notifications/notifier.ts` (deleted)
+- `order-service/src/app.ts`, `order-service/src/app.spec.ts`, `order-service/src/server.ts`, `order-service/src/worker.ts` (modified)
+- `order-service/src/routes/orders.routes.ts`, `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/config/env.ts`, `order-service/.env.example` (modified)
+- `order-service/test/helpers/tokens.ts`, `order-service/test/realtime.e2e-spec.ts` (created)
+- `order-service/test/health.e2e-spec.ts`, `order-service/test/credit-saga.e2e-spec.ts`, `order-service/vitest.config.e2e.ts` (modified)
+- `order-service/package.json`, `order-service/package-lock.json` (modified; no header possible)
+- `compose.yaml`, `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the per-event room mapping;
+   - the camelCase `order:pickedUp` name;
+   - joining the courier to the order room on accept and emptying order rooms at terminal states;
+   - the `ready` event after room setup;
+   - the `order-events` channel name;
+   - the active-status set;
+   - the `GET /orders/active` path;
+   - `order:edited` (George asked for edit events);
+   - `GET /orders` now requiring a token: this comes from Wen Xi's middleware, which George chose to keep.
+2. **NFR5.1.1 measured as written** (client request sent → server broadcasts), per George. His earlier DB-commit → client-received definition is not used.
+3. **Deferred by George:** the load test (N), the shared types file, and the frontend socket client. The frontend still has no Socket.IO client, and its Vite proxy has no `/socket.io` websocket route.
+4. **Curl testing now needs a real user-service access token** (`Authorization: Bearer …`).
+
+**What I kept/changed/rejected:**
+
+**Author review:**

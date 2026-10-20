@@ -25,14 +25,23 @@
  *        parameters (previously an invalid status answered 500).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #6 - writes publish order events; GET /orders/active lists
+ *        the caller's active deliveries (F12.1.3), with the same req.user check as the
+ *        other handlers.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
 import type { PrismaClient } from '../db/prisma.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
-import { isUuid } from '../utils/validation.js';
 import * as ordersService from '../services/orders.service.js';
-import { listOrders } from '../services/order-listing.service.js';
+import { isUuid } from '../utils/validation.js';
+import {
+  listActiveDeliveries,
+  listOrders,
+} from '../services/order-listing.service.js';
+import type { OrderEventPublisher } from '../realtime/order-events.js';
 import { RequestStatus } from '../generated/prisma/enums.js';
 
 export const createOrder =
@@ -79,8 +88,23 @@ export const getOrders =
     res.status(200).json(result);
   };
 
-export const editOrder =
+/** F12.1.3: the caller's active deliveries (as courier). */
+export const getActiveDeliveries =
   (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const courierId = req.user?.user_id;
+    if (!isUuid(courierId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const orders = await listActiveDeliveries(prisma, courierId);
+    res.status(200).json({ ok: true, orders });
+  };
+
+export const editOrder =
+  (prisma: PrismaClient, events?: OrderEventPublisher): RequestHandler =>
   async (req, res) => {
     const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
@@ -97,6 +121,7 @@ export const editOrder =
       actorId,
       orderId,
       payload,
+      events,
     );
     if (result.ok) {
       res.status(200).json(result.order);
@@ -111,7 +136,11 @@ export const editOrder =
   };
 
 export const transitionOrder =
-  (prisma: PrismaClient, newStatus: RequestStatus): RequestHandler =>
+  (
+    prisma: PrismaClient,
+    newStatus: RequestStatus,
+    events?: OrderEventPublisher,
+  ): RequestHandler =>
   async (req, res) => {
     const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
@@ -130,6 +159,7 @@ export const transitionOrder =
       newStatus,
       actorId,
       new Date(),
+      { events },
     );
 
     if (response.ok) {

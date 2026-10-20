@@ -34,6 +34,10 @@
  *        order-listing.service.ts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #6 - transitions and edits publish order events after the
+ *        transaction commits (best-effort; REST stays the source of truth).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -54,6 +58,12 @@ import {
   type ActorId,
 } from '../domain/order-status.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
+import {
+  eventsForEdit,
+  eventsForTransition,
+  publishSafely,
+  type OrderEventPublisher,
+} from '../realtime/order-events.js';
 import { ErrorCode } from '../constants/errors.js';
 import {
   isIsoDateString,
@@ -189,6 +199,7 @@ export const editOrder = async (
   actorId: ActorId,
   orderId: string,
   payload: EditOrderPayload,
+  events?: OrderEventPublisher,
 ): Promise<EditOrderResult> => {
   const errors: ErrorCode[] = [];
   for (const [key, value] of Object.entries(payload)) {
@@ -245,6 +256,7 @@ export const editOrder = async (
     const updatedOrder = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: order.id },
     });
+    if (events) await publishSafely(events, eventsForEdit(updatedOrder));
     return { ok: true, order: updatedOrder };
   } catch (error) {
     if (
@@ -263,6 +275,7 @@ export type TransitionResult =
 export async function runRequestMaintenance(
   prisma: PrismaClient,
   now: Date = new Date(),
+  events?: OrderEventPublisher,
 ): Promise<{ completed: number; expired: number }> {
   console.log(
     'Running runRequestMaintenance, current time:',
@@ -292,6 +305,7 @@ export async function runRequestMaintenance(
       'completed',
       SYSTEM_ACTOR,
       now,
+      { events },
     );
     if (result.ok) completed += 1;
   }
@@ -306,6 +320,7 @@ export async function runRequestMaintenance(
       'expired',
       SYSTEM_ACTOR,
       now,
+      { events },
     );
     if (result.ok) expired += 1;
   }
@@ -327,6 +342,10 @@ export interface TransitionOptions {
    * committed on credit-service's side without us hearing back (George, 2026-10-19).
    */
   releaseCredits?: boolean;
+  /** Where to publish the resulting order event once the change has committed. */
+  events?: OrderEventPublisher;
+  /** Reason carried on the event (a failed reservation's code). */
+  reason?: string;
 }
 
 /** Credit tasks that must commit together with moving `order` to `to`. */
@@ -382,5 +401,12 @@ export const transitionOrder = async (
   const updated = await prisma.orderRequest.findUniqueOrThrow({
     where: { id: order.id },
   });
+  // After commit: subscribers never see a change that might still roll back.
+  if (options.events) {
+    await publishSafely(
+      options.events,
+      eventsForTransition(updated, order.status, options.reason),
+    );
+  }
   return { ok: true, order: updated };
 };

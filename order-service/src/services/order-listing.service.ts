@@ -13,6 +13,10 @@
  *        convention and flagged for review.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #6 - listActiveDeliveries for F12.1.3 (courier's accepted /
+ *        picked_up / delivered orders, from issue #6's scope).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -301,4 +305,18 @@ export async function listOrders(
       : null;
 
   return { ok: true, orders, nextCursor };
+}
+
+/** F12.1.3: orders the courier has accepted and not yet finished, soonest-expiring first. */
+export function listActiveDeliveries(
+  prisma: PrismaClient,
+  courierId: string,
+): Promise<OrderRequest[]> {
+  return prisma.orderRequest.findMany({
+    where: {
+      courierId,
+      status: { in: ['accepted', 'picked_up', 'delivered'] },
+    },
+    orderBy: orderByFor('completeBy', 'asc'),
+  });
 }

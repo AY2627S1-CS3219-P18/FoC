@@ -14,6 +14,9 @@
 # Scope (2026-10-20): Issue #4 - CREDIT_SERVICE_URL on order-worker. No requirements,
 #        architecture, schema, or API decisions were made by the AI tool.
 # Author review:
+# Scope (2026-10-20): Issue #6 - REDIS_HOST/PORT and USER_SERVICE_URL on order-service.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -49,6 +52,9 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
+      # Issue #6: Socket.IO Redis adapter + worker events.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
       USER_SERVICE_URL: http://user-service:3001
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"

@@ -5,6 +5,14 @@
  *        JWKS contract, including cached key lookup and rotation refresh. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Issue #6 - moved the token check out of the middleware into an exported
+ *        createTokenVerifier (same checks, same 401 behaviour) so the Socket.IO handshake
+ *        reuses it (George, 2026-10-20: keep Wen Xi's auth); it also returns `exp` for the
+ *        disconnect-at-expiry rule. createAuthenticate optionally takes a verifier.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -90,7 +98,21 @@ const keysFromJwks = (body: unknown): Map<string, KeyObject> => {
   return keys;
 };
 
-export function createAuthenticate(userServiceUrl: string): RequestHandler {
+/** The verified identity: the JWT `sub`, `role` and `exp` (seconds since the epoch). */
+export interface VerifiedToken {
+  user_id: string;
+  role: string;
+  exp: number;
+}
+
+export type TokenVerifier = (token: string) => Promise<VerifiedToken>;
+
+/**
+ * Verifies an RS256 access token against the User Service JWKS (cached, refreshed on an
+ * unknown key id). Rejects on any failure. Shared by the REST middleware and the Socket.IO
+ * handshake.
+ */
+export function createTokenVerifier(userServiceUrl: string): TokenVerifier {
   let cache: CachedKeys | null = null;
   let refreshPromise: Promise<Map<string, KeyObject>> | null = null;
 
@@ -120,6 +142,46 @@ export function createAuthenticate(userServiceUrl: string): RequestHandler {
     return refreshPromise;
   };
 
+  return async (token) => {
+    const { header, payload, signature, signingInput } = readTokenParts(token);
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string') {
+      throw new Error('Unsupported token');
+    }
+
+    let keys = await fetchKeys();
+    let key = keys.get(header.kid);
+    if (!key) {
+      keys = await fetchKeys(true);
+      key = keys.get(header.kid);
+    }
+    if (!key) throw new Error('Unknown key id');
+
+    const verifier = createVerify('RSA-SHA256');
+    verifier.update(signingInput);
+    verifier.end();
+    if (!verifier.verify(key, signature)) throw new Error('Invalid signature');
+
+    if (
+      typeof payload.sub !== 'string' ||
+      !payload.sub ||
+      typeof payload.exp !== 'number' ||
+      payload.exp <= Math.floor(Date.now() / 1000)
+    ) {
+      throw new Error('Invalid claims');
+    }
+
+    return {
+      user_id: payload.sub,
+      role: typeof payload.role === 'string' ? payload.role : '',
+      exp: payload.exp,
+    };
+  };
+}
+
+export function createAuthenticate(
+  userServiceUrl: string,
+  verifyToken: TokenVerifier = createTokenVerifier(userServiceUrl),
+): RequestHandler {
   return async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -128,40 +190,10 @@ export function createAuthenticate(userServiceUrl: string): RequestHandler {
     }
 
     try {
-      const token = authHeader.slice('Bearer '.length).trim();
-      const { header, payload, signature, signingInput } =
-        readTokenParts(token);
-      if (header.alg !== 'RS256' || typeof header.kid !== 'string') {
-        throw new Error('Unsupported token');
-      }
-
-      let keys = await fetchKeys();
-      let key = keys.get(header.kid);
-      if (!key) {
-        keys = await fetchKeys(true);
-        key = keys.get(header.kid);
-      }
-      if (!key) throw new Error('Unknown key id');
-
-      const verifier = createVerify('RSA-SHA256');
-      verifier.update(signingInput);
-      verifier.end();
-      if (!verifier.verify(key, signature))
-        throw new Error('Invalid signature');
-
-      if (
-        typeof payload.sub !== 'string' ||
-        !payload.sub ||
-        typeof payload.exp !== 'number' ||
-        payload.exp <= Math.floor(Date.now() / 1000)
-      ) {
-        throw new Error('Invalid claims');
-      }
-
-      req.user = {
-        user_id: payload.sub,
-        role: typeof payload.role === 'string' ? payload.role : '',
-      };
+      const { user_id, role } = await verifyToken(
+        authHeader.slice('Bearer '.length).trim(),
+      );
+      req.user = { user_id, role };
       next();
     } catch {
       unauthorized(res);

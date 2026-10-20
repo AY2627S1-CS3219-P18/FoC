@@ -25,6 +25,11 @@
  *        HTTP coverage.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #6 - requests carry a bearer token (a stub stands in for
+ *        Wen Xi's JWKS middleware, which covers all of /orders including the listing);
+ *        GET /orders/active coverage.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #11 - GET /orders coverage for the new listing (default
  *        filter + ordering, 400s); body uses deliveryLocationId.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -44,6 +49,7 @@
 import request from 'supertest';
 import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
+import { bearer } from '../../test/helpers/tokens.js';
 import type { PrismaClient } from '../db/prisma.js';
 
 const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
@@ -83,8 +89,17 @@ function appWith(
       ...orderRequestOverrides,
     },
   } as unknown as PrismaClient;
+  // Stands in for Wen Xi's JWKS middleware: the bearer token is the user id itself
+  // (x-user-id is accepted too); no identity -> 401 as the real middleware answers.
   const authenticate: RequestHandler = (req, res, next) => {
-    const userId = req.get('x-user-id') ?? USER;
+    const auth = req.get('authorization');
+    const userId = auth?.startsWith('Bearer ')
+      ? auth.slice('Bearer '.length)
+      : req.get('x-user-id');
+    if (!userId) {
+      res.status(401).json({ message: 'Unauthorized', code: 'UNAUTHORIZED' });
+      return;
+    }
     req.user = { user_id: userId, role: 'user' };
     next();
   };
@@ -100,7 +115,7 @@ describe('POST /orders', () => {
     const app = appWith();
     const res = await request(app)
       .post('/orders')
-      .set('x-user-id', USER)
+      .set('authorization', bearer(USER))
       .send(body)
       .expect(202);
     expect(res.body).toMatchObject({ credits: 4, status: 'pending' });
@@ -118,7 +133,7 @@ describe('POST /orders', () => {
   it('400 when complete-by is in the past', async () => {
     await request(appWith())
       .post('/orders')
-      .set('x-user-id', USER)
+      .set('authorization', bearer(USER))
       .send({ ...body, completeBy: '2000-01-01T00:00:00.000Z' })
       .expect(400, { message: 'Complete-by time must be in the future.' });
   });
@@ -149,7 +164,7 @@ describe('PATCH /orders/:id/edit', () => {
       }),
     )
       .patch(`/orders/${orderId}/edit`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .send({ description: 'Updated description' })
       .expect(200);
 
@@ -174,7 +189,7 @@ describe('PATCH /orders/:id/edit', () => {
       }),
     )
       .patch(`/orders/${orderId}/edit`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .send({ description: 'Updated description' })
       .expect(403, {
         message: 'You are not allowed to perform this action.',
@@ -193,7 +208,7 @@ describe('PATCH /orders/:id/edit', () => {
       }),
     )
       .patch(`/orders/${orderId}/edit`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .send({ description: 'Updated description' })
       .expect(409, {
         message:
@@ -204,7 +219,7 @@ describe('PATCH /orders/:id/edit', () => {
   it('returns a user-facing validation message for unsupported fields', async () => {
     await request(appWith())
       .patch('/orders/order-1/edit')
-      .set('x-user-id', USER)
+      .set('authorization', bearer(USER))
       .send({ unsupported: true })
       .expect(400, {
         message: 'Payload contains an unsupported field.',
@@ -219,7 +234,10 @@ describe('GET /orders', () => {
 
   it('200 with { ok, orders, nextCursor }', async () => {
     const findMany = vi.fn(async () => orders);
-    const res = await request(appWith(findMany)).get('/orders').expect(200);
+    const res = await request(appWith(findMany))
+      .get('/orders')
+      .set('authorization', bearer(USER))
+      .expect(200);
 
     expect(res.body).toEqual({
       ok: true,
@@ -232,7 +250,10 @@ describe('GET /orders', () => {
 
   it('defaults to open orders, soonest-expiring first, 51 rows to detect a next page', async () => {
     const findMany = vi.fn(async () => []);
-    await request(appWith(findMany)).get('/orders').expect(200);
+    await request(appWith(findMany))
+      .get('/orders')
+      .set('authorization', bearer(USER))
+      .expect(200);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { AND: [{ status: 'open' }] },
@@ -254,6 +275,7 @@ describe('GET /orders', () => {
     const findMany = vi.fn(async () => []);
     await request(appWith(findMany))
       .get('/orders')
+      .set('authorization', bearer(USER))
       .query(query)
       .expect(400, { message });
     expect(findMany).not.toHaveBeenCalled();
@@ -266,7 +288,37 @@ describe('GET /orders', () => {
     });
     await request(appWith(findMany))
       .get('/orders')
+      .set('authorization', bearer(USER))
       .expect(500, { message: 'Internal server error.' });
+  });
+});
+
+describe('GET /orders/active (F12.1.3)', () => {
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  it("returns the caller's accepted, picked-up and delivered orders", async () => {
+    const findMany = vi.fn(async () => [{ id: 'o-1', status: 'accepted' }]);
+    const res = await request(appWith(findMany))
+      .get('/orders/active')
+      .set('authorization', bearer(courierId))
+      .expect(200);
+
+    expect(res.body).toEqual({
+      ok: true,
+      orders: [{ id: 'o-1', status: 'accepted' }],
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          courierId,
+          status: { in: ['accepted', 'picked_up', 'delivered'] },
+        },
+      }),
+    );
+  });
+
+  it('401 without a token', async () => {
+    await request(appWith()).get('/orders/active').expect(401);
   });
 });
 
@@ -304,7 +356,7 @@ describe('POST /orders/:id/accept', () => {
     const { app, updateMany } = acceptApp(openOrder);
     const res = await request(app)
       .post(`/orders/${orderId}/accept`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(200);
 
     expect(res.body).toMatchObject({
@@ -327,7 +379,7 @@ describe('POST /orders/:id/accept', () => {
     const { app, updateMany } = acceptApp(openOrder);
     await request(app)
       .post(`/orders/${orderId}/accept`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .expect(403);
     expect(updateMany).not.toHaveBeenCalled();
   });
@@ -339,7 +391,7 @@ describe('POST /orders/:id/accept', () => {
     });
     const res = await request(app)
       .post(`/orders/${orderId}/accept`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(409);
     expect(res.body).toMatchObject({ ok: false, error: 'ORDER_EXPIRED' });
     expect(updateMany).not.toHaveBeenCalled();
@@ -357,7 +409,7 @@ describe('POST /orders/:id/accept', () => {
     const { app, updateMany } = acceptApp({ ...openOrder, ...override });
     const res = await request(app)
       .post(`/orders/${orderId}/accept`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(409);
     expect(res.body).toMatchObject({ ok: false, error: 'INVALID_TRANSITION' });
     expect(updateMany).not.toHaveBeenCalled();
@@ -367,7 +419,7 @@ describe('POST /orders/:id/accept', () => {
     const { app } = acceptApp(openOrder, 0);
     const res = await request(app)
       .post(`/orders/${orderId}/accept`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(409);
     expect(res.body).toMatchObject({ ok: false, error: 'ORDER_CONFLICT' });
   });
@@ -407,7 +459,7 @@ describe('POST /orders/:id/pickup', () => {
       }),
     )
       .post(`/orders/${orderId}/pickup`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(200);
 
     expect(res.body).toMatchObject({
@@ -429,7 +481,7 @@ describe('POST /orders/:id/pickup', () => {
       }),
     )
       .post(`/orders/${orderId}/pickup`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .expect(403, { ok: false, error: 'FORBIDDEN' });
   });
 
@@ -446,7 +498,7 @@ describe('POST /orders/:id/pickup', () => {
       }),
     )
       .post(`/orders/${orderId}/deliver`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(409, { ok: false, error: 'INVALID_TRANSITION' });
   });
 });
@@ -477,7 +529,7 @@ describe('POST /orders/:id/cancel', () => {
       }),
     )
       .post(`/orders/${orderId}/cancel`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .expect(200);
 
     expect(res.body).toMatchObject({
@@ -508,7 +560,7 @@ describe('POST /orders/:id/cancel', () => {
       }),
     )
       .post(`/orders/${orderId}/cancel`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .expect(200);
 
     expect(res.body).toMatchObject({
@@ -531,7 +583,7 @@ describe('POST /orders/:id/cancel', () => {
       }),
     )
       .post(`/orders/${orderId}/cancel`)
-      .set('x-user-id', requesterId)
+      .set('authorization', bearer(requesterId))
       .expect(400, { ok: false, error: 'DEADLINE_NOT_REACHED' });
   });
 
@@ -549,7 +601,7 @@ describe('POST /orders/:id/cancel', () => {
       }),
     )
       .post(`/orders/${orderId}/cancel`)
-      .set('x-user-id', courierId)
+      .set('authorization', bearer(courierId))
       .expect(403, { ok: false, error: 'FORBIDDEN' });
   });
 });
