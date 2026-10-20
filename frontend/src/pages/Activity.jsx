@@ -37,6 +37,10 @@
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
+ *        Wallet.jsx does, so a reload while signed in no longer opens it.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -95,12 +99,12 @@ async function loadActivity() {
 
 // Order F3.4.2 active requests, F5 cancellation, F6 editing, F1.4.1 / F4.1.3 credit outcomes.
 export default function Activity() {
-  const { role, isLoggedIn, requireLogin } = useDemo()
+  const { role, isLoggedIn, sessionReady, requireLogin } = useDemo()
 
   // Gated when logged out (§9): the page stays visible behind the scrim.
   useEffect(() => {
-    if (!isLoggedIn) requireLogin('You need an account to see your activity.')
-  }, [isLoggedIn, requireLogin])
+    if (sessionReady && !isLoggedIn) requireLogin('You need an account to see your activity.')
+  }, [sessionReady, isLoggedIn, requireLogin])
   const [tab, setTab] = useState(role === 'courier' ? 'deliveries' : 'errands')
   const { data, loading, error, reload } = useApi(loadActivity, [])
   // Orders returned by an action, shown until the next fetch replaces `data`.

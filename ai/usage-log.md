@@ -4946,3 +4946,83 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service: `failed` status for failed reservations; login prompt on reload
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** George Yeo's decisions in chat, 2026-10-20 (quoted below). The previous decision that a failed reservation goes to `cancelled` (issue #4 entry above) is replaced by `failed`.
+
+**Prompts (exact):**
+
+> can we create a new status for orders? called failed
+> the transition is only pending -> failed
+> i dont want to see failed orders in my activity, because i see the cancelled orders from the BALANCE_NOT_FOUND ones early
+>
+> is that a good idea?
+
+> add the new event
+> filter out from /mine
+> yes reject, invalid status
+> new branch
+
+> when i reload the page on the create errand page, why does it prompt me to log in again? even though im logged in
+
+**Key responses:**
+
+- **Declined:** "is that a good idea?" asks for a design judgement and trade-off analysis (schema change), which the policy prohibits. I gave the facts and the implementation impact instead, and asked four questions. George answered them.
+- **`failed` status, commit 1:**
+  - **Schema and transitions:**
+    - `failed` added to `RequestStatus`, with the hand-written migration `20261020160000_failed_status` (`ALTER TYPE ... ADD VALUE`);
+    - transition `pending → failed` (system only), and `failed` is terminal;
+    - `pending → cancelled` was removed, because its only producers (the reservation failures) now go to `failed`. Flagged below.
+  - **Worker:** both failure paths in `credit-jobs.ts` settle to `failed`: credit-service rejecting the reserve, and retries exhausted. The retries-exhausted path still queues a credit release, so `failed` joins `cancelled`/`expired` in the release check.
+  - **Event:** a new `order:failed` event, with `reason`, sent to `user:{requester}` only. It replaces `order:cancelled` from `pending`.
+  - **Listing:** `GET /orders?status=failed` returns 400 `INVALID_STATUS`, the same as `pending`.
+  - **`/orders/mine`:** `GET /orders/mine` leaves out `failed` orders for both `as` values.
+  - **Frontend:**
+    - the post form waits for `order:created` or `order:failed`;
+    - its `/orders/mine` re-check treats a just-created order that is missing from the list as failed, since that list now leaves failed orders out;
+    - the socket client listens for `order:failed`.
+- **Login prompt on reload, commit 2:**
+  - Post an errand, My activity and Chat opened the login prompt before the session had been restored from the refresh cookie on a hard reload, and nothing closed it.
+  - The prompt now waits for `sessionReady`, the same pattern `Wallet.jsx` already uses.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint 0 warnings, prettier clean, 514/514 unit tests, 27/27 e2e against a local Postgres 17 (all 6 migrations applied), build OK.
+  - frontend: `vite build` OK, and oxlint reports no warnings in the changed files.
+  - **Browser end-to-end** (Playwright/Chromium against Vite, with the real order-service app and Socket.IO, a simulated credit worker that now settles failures to `failed`, and stub user and supplier services). Each check below passed:
+    - the full post → accept → pickup → deliver → complete flow;
+    - a rejected reservation shows its reason;
+    - the failed order is absent from My activity;
+    - with WebSocket blocked, the re-check reports the failure after about 5.4 s;
+    - reloading Post an errand while signed in no longer opens the login prompt.
+  - API checks: `GET /orders?status=failed` → 400; `/orders/mine` omitted the failed order.
+- **Not verified:** the logged-out case (the prompt still opens once the restore finds no session) was not run in a browser. The Redis path is unchanged and untested.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261020160000_failed_status/migration.sql` (created)
+- `order-service/src/domain/order-status.ts`, `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts` (modified)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/realtime/orderSocket.js`, `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/Activity.jsx`, `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention, flagged for George's review:**
+   - removing `pending → cancelled`;
+   - `order:failed` going to the requester's user room only;
+   - the `/orders/mine` filter applying to `as=courier` too (a failed order never has a courier);
+   - treating "missing from /orders/mine" as failed in the frontend re-check (that path has no reason, so it shows the generic message).
+2. Existing `cancelled` rows that came from failed reservations are not migrated to `failed`. They stay in History until the local data is reset.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

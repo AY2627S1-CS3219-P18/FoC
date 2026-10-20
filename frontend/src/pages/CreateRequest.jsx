@@ -51,6 +51,10 @@
  *        /orders/mine as failed, since that list leaves failed orders out.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
+ *        Wallet.jsx does, so a reload while signed in no longer opens it.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -149,13 +153,13 @@ export default function CreateRequest() {
 function RequestForm({ order }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { credits, isLoggedIn, requireLogin } = useDemo()
+  const { credits, isLoggedIn, sessionReady, requireLogin } = useDemo()
   const isEdit = order !== null
 
   // Gated when logged out (§9): the page stays visible behind the scrim.
   useEffect(() => {
-    if (!isLoggedIn) requireLogin('You need an account to post an errand.')
-  }, [isLoggedIn, requireLogin])
+    if (sessionReady && !isLoggedIn) requireLogin('You need an account to post an errand.')
+  }, [sessionReady, isLoggedIn, requireLogin])
 
   const [supplierId, setSupplierId] = useState(
     isEdit ? String(order.supplierId) : params.get('supplier') || '',
