@@ -9,62 +9,155 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Tool: GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna), date: 2026-10-20
+ * Scope: Replaced User Service /auth/verify mocks with JWKS and locally signed RS256 token
+ *        coverage for the authenticate middleware. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
-import express from 'express';
-import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { errorHandler } from '../../src/middleware/errorHandler.js';
-import { authenticate } from '../../src/middleware/authenticate.js';
+import { generateKeyPairSync, createSign } from "node:crypto";
+import express from "express";
+import request from "supertest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { errorHandler } from "../../src/middleware/errorHandler.js";
+import { authenticate } from "../../src/middleware/authenticate.js";
 
 function buildApp(): express.Express {
   const app = express();
   app.use(authenticate);
-  app.get('/whoami', (req, res) => res.json({ user: req.user }));
+  app.get("/whoami", (req, res) => res.json({ user: req.user }));
   app.use(errorHandler);
   return app;
 }
 
-describe('authenticate', () => {
+const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+});
+const jwk = publicKey.export({ format: "jwk" });
+let keyNumber = 0;
+
+function token(
+  overrides: Record<string, unknown> = {},
+  kid = `test-${++keyNumber}`,
+): string {
+  const header = { alg: "RS256", typ: "JWT", kid };
+  const payload = {
+    sub: "u-1",
+    role: "admin",
+    exp: Math.floor(Date.now() / 1000) + 300,
+    ...overrides,
+  };
+  const encode = (value: unknown) =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  const signingInput = `${encode(header)}.${encode(payload)}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(signingInput);
+  signer.end();
+  return `${signingInput}.${signer.sign(privateKey).toString("base64url")}`;
+}
+
+function jwksResponse(kid: string): Response {
+  return new Response(
+    JSON.stringify({
+      keys: [{ ...jwk, kid, kty: "RSA", alg: "RS256", use: "sig" }],
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+}
+
+describe("authenticate", () => {
   const app = buildApp();
 
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('rejects a request with no Authorization header', async () => {
-    const res = await request(app).get('/whoami');
+  it("rejects a request with no Authorization header", async () => {
+    const res = await request(app).get("/whoami");
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('Unauthorized');
+    expect(res.body.error).toBe("Unauthorized");
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('rejects a request whose header is not a Bearer token', async () => {
-    const res = await request(app).get('/whoami').set('Authorization', 'Basic abc123');
+  it("rejects a request whose header is not Bearer", async () => {
+    const res = await request(app)
+      .get("/whoami")
+      .set("Authorization", "Basic abc123");
     expect(res.status).toBe(401);
   });
 
-  it('rejects when the User Service reports the token invalid', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 401 }));
-    const res = await request(app).get('/whoami').set('Authorization', 'Bearer bad-token');
+  it("rejects when the JWKS endpoint is unreachable", async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error("ECONNREFUSED"));
+    const res = await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token()}`);
     expect(res.status).toBe(401);
   });
 
-  it('attaches the resolved identity when the User Service confirms the token', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ user_id: 'u-1', role: 'admin' }), { status: 200 }),
-    );
-    const res = await request(app).get('/whoami').set('Authorization', 'Bearer good-token');
+  it("verifies a token locally and attaches its identity", async () => {
+    const kid = `valid-${++keyNumber}`;
+    vi.mocked(fetch).mockResolvedValue(jwksResponse(kid));
+    const res = await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token({}, kid)}`);
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ user_id: 'u-1', role: 'admin' });
+    expect(res.body.user).toEqual({ user_id: "u-1", role: "admin" });
+    expect(fetch).toHaveBeenCalledWith(
+      "http://user-service:3001/auth/.well-known/jwks.json",
+    );
   });
 
-  it('maps a network failure reaching the User Service to 500', async () => {
-    vi.mocked(fetch).mockRejectedValue(new Error('ECONNREFUSED'));
-    const res = await request(app).get('/whoami').set('Authorization', 'Bearer good-token');
-    expect(res.status).toBe(500);
+  it("uses the cached JWKS for subsequent tokens", async () => {
+    const kid = `cached-${++keyNumber}`;
+    vi.mocked(fetch).mockResolvedValue(jwksResponse(kid));
+    await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token({}, kid)}`);
+    const res = await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token({}, kid)}`);
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refetches JWKS once when a token has an unknown kid", async () => {
+    const knownKid = `known-${++keyNumber}`;
+    const newKid = `new-${++keyNumber}`;
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jwksResponse(knownKid))
+      .mockResolvedValueOnce(jwksResponse(newKid));
+    await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token({}, knownKid)}`);
+    const res = await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${token({}, newKid)}`);
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects expired and incorrectly signed tokens", async () => {
+    const kid = `invalid-${++keyNumber}`;
+    vi.mocked(fetch).mockResolvedValue(jwksResponse(kid));
+    const expired = await request(app)
+      .get("/whoami")
+      .set(
+        "Authorization",
+        `Bearer ${token({ exp: Math.floor(Date.now() / 1000) - 1 }, kid)}`,
+      );
+    expect(expired.status).toBe(401);
+
+    const invalid = token({}, kid).replace(/.$/, "x");
+    const invalidResponse = await request(app)
+      .get("/whoami")
+      .set("Authorization", `Bearer ${invalid}`);
+    expect(invalidResponse.status).toBe(401);
   });
 });

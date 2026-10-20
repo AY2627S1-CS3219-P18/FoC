@@ -333,6 +333,46 @@ I accepted all changes.
 **Author review:**
 tng wen xi
 
+## 2026-10-20 — Supplier Service: JWKS token verification
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor | generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `user-service/docs/jwks-verification-guide.md`; the User Service JWKS
+endpoint and RS256 token contract documented there.
+
+**Prompts (exact):**
+
+> read the guide and make the relevant edits in supplier service
+
+**Key responses:**
+Replaced the Supplier Service's per-request `/auth/verify` call with cached JWKS retrieval, `kid`
+lookup with one refresh on a cache miss, RS256-only local signature verification, required
+`sub`/`role` claims, and expiry validation. Updated middleware tests to generate and verify real
+RS256 tokens, and aligned the Supplier Service README, OpenAPI description, architecture, and
+implementation spec with the JWKS contract. Verification: `npm run build` passed and all 26
+Supplier Service middleware tests passed.
+
+**Files:**
+
+- `supplier-service/src/middleware/authenticate.ts` (modified)
+- `supplier-service/test/middleware/authenticate.test.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `supplier-service/openapi.yaml` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-13 — order-service: Credit reservation tracking for automatic expiry
 
 **Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
