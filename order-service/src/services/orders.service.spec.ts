@@ -12,7 +12,7 @@
  * Author review: tng wen xi
  * Scope (2026-10-07): Added transitionOrder unit coverage for missing orders,
  *        forbidden actors, invalid edges, optimistic-lock conflicts, and success.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-08): Added F17 cancellation transition coverage for open and
  *        deadline-reached requests, including deadline and actor failures.
  * Author review: tng wen xi
@@ -36,12 +36,31 @@
  * Scope (2026-10-13): Updated fixtures for persisted reservation identifiers
  *        and credit release inputs.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - createOrder now writes a pending order + credit_reserve
+ *        outbox row in one transaction; cancel/expire of a funded order queues a
+ *        credit_release outbox row in the transition's transaction instead of releasing
+ *        inline by reservationId; `credits` is no longer editable. Rewrote the affected
+ *        cases and added fakes for $transaction and outbox.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Issue #11 - fixtures use deliveryLocationId; getOrders cases moved
+ *        to order-listing.service.spec.ts with the new listing.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): `failed` status - pending orders settle to `failed`; pending ->
+ *        cancelled is no longer a transition.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details optional on
+ *        create; edit refused unless the request is open.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Edit validation cases for every editable field.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
  */
 
-import type {
-  CreditsClient,
-  ReserveResult,
-} from '../clients/credits.client.js';
 import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -53,7 +72,6 @@ import type { CreateOrderPayload } from '../types/orders.js';
 import {
   createOrder,
   editOrder,
-  getOrders,
   runRequestMaintenance,
   transitionOrder,
 } from './orders.service.js';
@@ -69,38 +87,60 @@ const OTHER_USER = '0192f0c4-7a1e-7c3a-9b2d-4f5e6a7b8c9d';
 const valid: CreateOrderPayload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
-  deliveryLocation: 'COM1 Basement',
+  deliveryLocationId: 12,
   credits: 4,
   additionalDetails: null,
 };
 
 function fakes({
-  reserve = async (): Promise<ReserveResult> => ({
-    ok: true,
-    reservationId: 'res-1',
-  }),
   create = async ({ data }: { data: object }): Promise<object> => ({
     id: 'generated',
+    version: 0,
     ...data,
   }),
+  createOutbox = async (): Promise<{ count: number }> => ({ count: 1 }),
 }: {
-  reserve?: CreditsClient['reserve'];
   create?: (args: { data: object }) => Promise<object>;
+  createOutbox?: (args: { data: object[] }) => Promise<{ count: number }>;
 } = {}) {
-  const credits = { reserve: vi.fn(reserve), release: vi.fn(async () => {}) };
   const orderRequest = { create: vi.fn(create) };
+  const outbox = { createMany: vi.fn(createOutbox) };
+  const $transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prisma),
+  );
+  const prisma = { orderRequest, outbox, $transaction };
   return {
-    prisma: { orderRequest } as unknown as PrismaClient,
-    credits,
+    prisma: prisma as unknown as PrismaClient,
+    outbox,
+    $transaction,
     create: orderRequest.create,
   };
 }
+
+type OutboxFake = { createMany: ReturnType<typeof vi.fn> };
+
+/** Adds an interactive-$transaction fake (runs the callback on the same client) and an outbox. */
+function withTx(fake: object): PrismaClient {
+  const outbox: OutboxFake = { createMany: vi.fn(async () => ({ count: 1 })) };
+  const prisma: Record<string, unknown> = { outbox, ...fake };
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prisma),
+  );
+  return prisma as unknown as PrismaClient;
+}
+
+function outboxOf(prisma: PrismaClient): OutboxFake {
+  return (prisma as unknown as { outbox: OutboxFake }).outbox;
+}
+
+const releaseRow = (requestId: string, version: number) => ({
+  data: [{ taskName: 'credit_release', payload: { requestId }, version }],
+});
 
 // Simulates an untyped JSON body (what Express actually hands us).
 async function run(payload: object, deps: ReturnType<typeof fakes> = fakes()) {
   const result = await createOrder(
     deps.prisma,
-    deps.credits,
     REQUESTER,
     payload as unknown as CreateOrderPayload,
   );
@@ -129,17 +169,26 @@ describe('createOrder: validation', () => {
         requesterId: REQUESTER,
         supplierId: SUPPLIER,
         description: '1x chicken rice',
-        deliveryLocation: 'COM1 Basement',
+        deliveryLocationId: 12,
         credits: 4,
         completeBy: new Date(LATER),
         additionalDetails: null,
-        reservationId: 'res-1',
+        status: 'pending',
       }),
     });
   });
 
-  it('reports every missing required field, without reserving credits', async () => {
-    const { result, create, credits } = await run({});
+  it('treats additional details as optional (F9.1.1)', async () => {
+    const { additionalDetails: _omitted, ...withoutDetails } = valid;
+    const { result, create } = await run(withoutDetails);
+    expect(result.ok).toBe(true);
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ additionalDetails: null }),
+    });
+  });
+
+  it('reports every missing required field, without queueing a reservation', async () => {
+    const { result, create, outbox } = await run({});
     expect(result).toEqual({
       ok: false,
       errors: [
@@ -147,10 +196,9 @@ describe('createOrder: validation', () => {
         ErrorCode.MISSING_DESCRIPTION,
         ErrorCode.MISSING_DELIVERY_LOCATION,
         ErrorCode.MISSING_CREDITS_OFFERED,
-        ErrorCode.INVALID_ADDITIONAL_DETAILS,
       ],
     });
-    expect(credits.reserve).not.toHaveBeenCalled();
+    expect(outbox.createMany).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -171,8 +219,8 @@ describe('createOrder: validation', () => {
       ErrorCode.INVALID_DESCRIPTION,
     ],
     [
-      'deliveryLocation not text',
-      { deliveryLocation: {} },
+      'deliveryLocationId not an id',
+      { deliveryLocationId: 'COM1 Basement' },
       ErrorCode.INVALID_DELIVERY_LOCATION,
     ],
     ['credits 0', { credits: 0 }, ErrorCode.INVALID_CREDITS_OFFERED],
@@ -205,9 +253,9 @@ describe('createOrder: validation', () => {
       ErrorCode.INVALID_ADDITIONAL_DETAILS,
     ],
   ])('rejects %s', async (_name, override, code) => {
-    const { result, create, credits } = await run({ ...valid, ...override });
+    const { result, create, outbox } = await run({ ...valid, ...override });
     expect(result).toEqual({ ok: false, errors: [code] });
-    expect(credits.reserve).not.toHaveBeenCalled();
+    expect(outbox.createMany).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -221,89 +269,34 @@ describe('createOrder: validation', () => {
   });
 });
 
-describe('createOrder: credit reservation (F9.1.2)', () => {
-  it('reserves the offered credits before creating the request', async () => {
+describe('createOrder: pending order + reserve task (issue #4)', () => {
+  it('creates the order as pending and queues its reservation in the same transaction', async () => {
     const deps = fakes();
-    const order: string[] = [];
-    deps.credits.reserve.mockImplementation(async () => {
-      order.push('reserve');
-      return { ok: true, reservationId: 'res-1' };
-    });
-    deps.create.mockImplementation(async ({ data }) => {
-      order.push('create');
-      return { id: 'generated', ...data };
-    });
-
     const { result } = await run(valid, deps);
 
     expect(result.ok).toBe(true);
-    expect(deps.credits.reserve).toHaveBeenCalledWith({
-      requesterId: REQUESTER,
-      requestId: expect.any(String),
-      amount: 4,
+    expect(deps.$transaction).toHaveBeenCalledTimes(1);
+    expect(deps.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: 'pending', credits: 4 }),
     });
-    expect(order).toEqual(['reserve', 'create']);
-  });
-
-  it('does not create the request when credits are insufficient', async () => {
-    const { result, create } = await run(
-      valid,
-      fakes({
-        reserve: async () => ({ ok: false, reason: 'INSUFFICIENT_CREDITS' }),
-      }),
-    );
-    expect(result).toEqual({
-      ok: false,
-      errors: [ErrorCode.INSUFFICIENT_CREDITS],
-    });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('does not create the request when credit-service says unavailable', async () => {
-    const { result, create } = await run(
-      valid,
-      fakes({ reserve: async () => ({ ok: false, reason: 'UNAVAILABLE' }) }),
-    );
-    expect(result).toEqual({
-      ok: false,
-      errors: [ErrorCode.CREDIT_SERVICE_UNAVAILABLE],
-    });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('treats a crashing credit-service call as unavailable', async () => {
-    const { result, create } = await run(
-      valid,
-      fakes({
-        reserve: async () => {
-          throw new Error('ECONNREFUSED');
+    // F9.1.2: approval waits on credit-service; the order id is the requestId.
+    expect(deps.outbox.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          taskName: 'credit_reserve',
+          payload: { requestId: 'generated', userId: REQUESTER, amount: 4 },
+          version: 0,
         },
-      }),
-    );
-    expect(result).toEqual({
-      ok: false,
-      errors: [ErrorCode.CREDIT_SERVICE_UNAVAILABLE],
+      ],
     });
-    expect(create).not.toHaveBeenCalled();
   });
 
-  it('releases the reservation if saving the request fails', async () => {
+  it('surfaces a failed outbox write (the transaction rolls the order back)', async () => {
     const deps = fakes({
-      create: async () => {
+      createOutbox: async () => {
         throw new Error('db down');
       },
     });
-    await expect(run(valid, deps)).rejects.toThrow('db down');
-    expect(deps.credits.release).toHaveBeenCalledWith('res-1');
-  });
-
-  it('still surfaces the original error if releasing also fails', async () => {
-    const deps = fakes({
-      create: async () => {
-        throw new Error('db down');
-      },
-    });
-    deps.credits.release.mockRejectedValue(new Error('credit-service down'));
     await expect(run(valid, deps)).rejects.toThrow('db down');
   });
 });
@@ -313,6 +306,7 @@ describe('editOrder', () => {
     const order = {
       id: 'order-1',
       requesterId: REQUESTER,
+      status: 'open',
       version: 3,
     } as OrderRequest;
     const findUniqueOrThrow = vi.fn(async () => order);
@@ -331,13 +325,73 @@ describe('editOrder', () => {
 
     await expect(
       editOrder(prisma, REQUESTER, 'order-1', {
-        credits: 4,
+        description: 'Updated description',
         unsupported: true,
       } as never),
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.INVALID_FIELD],
     });
+    expect(findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['supplierId not an id', { supplierId: 'abc' }, ErrorCode.INVALID_SUPPLIER],
+    ['supplierId zero', { supplierId: 0 }, ErrorCode.INVALID_SUPPLIER],
+    [
+      'supplierId beyond INTEGER',
+      { supplierId: 2_147_483_648 },
+      ErrorCode.INVALID_SUPPLIER,
+    ],
+    ['description empty', { description: '  ' }, ErrorCode.INVALID_DESCRIPTION],
+    ['description not text', { description: 5 }, ErrorCode.INVALID_DESCRIPTION],
+    [
+      'additionalDetails not text',
+      { additionalDetails: 5 },
+      ErrorCode.INVALID_ADDITIONAL_DETAILS,
+    ],
+    [
+      'deliveryLocationId not an id',
+      { deliveryLocationId: 'COM1' },
+      ErrorCode.INVALID_DELIVERY_LOCATION,
+    ],
+  ])(
+    'rejects %s before querying the database',
+    async (_name, payload, code) => {
+      const findUniqueOrThrow = vi.fn();
+      const prisma = {
+        orderRequest: { findUniqueOrThrow },
+      } as unknown as PrismaClient;
+
+      await expect(
+        editOrder(prisma, REQUESTER, 'order-1', payload as never),
+      ).resolves.toEqual({ ok: false, errors: [code] });
+      expect(findUniqueOrThrow).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts null additionalDetails and a valid supplierId', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        supplierId: 3,
+        additionalDetails: null,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalled();
+  });
+
+  it('rejects editing credits, which are fixed at creation (issue #4)', async () => {
+    const findUniqueOrThrow = vi.fn();
+    const prisma = {
+      orderRequest: { findUniqueOrThrow },
+    } as unknown as PrismaClient;
+
+    await expect(
+      editOrder(prisma, REQUESTER, 'order-1', { credits: 8 }),
+    ).resolves.toEqual({ ok: false, errors: [ErrorCode.INVALID_FIELD] });
     expect(findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
@@ -359,7 +413,7 @@ describe('editOrder', () => {
     ).resolves.toEqual({ ok: true, order: updatedOrder });
 
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
         version: { increment: 1 },
@@ -383,6 +437,28 @@ describe('editOrder', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'pending',
+    'accepted',
+    'picked_up',
+    'delivered',
+    'completed',
+    'cancelled',
+    'expired',
+    'failed',
+  ] as const)('refuses to edit a %s request (F18.1.1)', async (status) => {
+    const { prisma, updateMany, order } = prismaWithEdit();
+    order.status = status;
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, { description: 'x' }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_NOT_EDITABLE],
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('returns ORDER_CONFLICT when the fetched version is stale', async () => {
     const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit({
       updatedRows: 0,
@@ -398,7 +474,7 @@ describe('editOrder', () => {
     });
 
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
         version: { increment: 1 },
@@ -429,135 +505,15 @@ describe('editOrder', () => {
   });
 });
 
-describe('getOrders', () => {
-  const orders = [
-    { id: 'open-1', status: 'open', description: 'Chicken rice' },
-    { id: 'accepted-1', status: 'accepted', description: 'Coffee' },
-    { id: 'delivered-1', status: 'delivered', description: 'Textbooks' },
-  ];
-
-  function prismaWithFindMany() {
-    const findMany = vi.fn();
-    const prisma = {
-      orderRequest: { findMany },
-    } as unknown as PrismaClient;
-    return { findMany, prisma };
-  }
-
-  it('returns all orders when no status filter is provided', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    findMany.mockResolvedValue(orders);
-
-    await expect(getOrders(prisma, undefined)).resolves.toEqual({
-      ok: true,
-      orders,
-    });
-
-    expect(findMany).toHaveBeenCalledWith({ where: undefined });
-  });
-
-  it.each([
-    ['open', [orders[0]]],
-    ['accepted', [orders[1]]],
-    ['delivered', [orders[2]]],
-  ] as const)(
-    'passes the %s status filter to Prisma',
-    async (status, result) => {
-      const { findMany, prisma } = prismaWithFindMany();
-      findMany.mockResolvedValue(result);
-
-      await expect(getOrders(prisma, status)).resolves.toEqual({
-        ok: true,
-        orders: result,
-      });
-      expect(findMany).toHaveBeenCalledWith({ where: { status } });
-    },
-  );
-
-  it('returns an empty list when no orders match the status filter', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    findMany.mockResolvedValue([]);
-
-    await expect(getOrders(prisma, 'cancelled')).resolves.toEqual({
-      ok: true,
-      orders: [],
-    });
-    expect(findMany).toHaveBeenCalledWith({ where: { status: 'cancelled' } });
-  });
-
-  it('returns an invalid-status result without querying the database', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-
-    await expect(getOrders(prisma, 'not-a-status' as never)).resolves.toEqual({
-      ok: false,
-      errors: 'Status provided is invalid.',
-    });
-    expect(findMany).not.toHaveBeenCalled();
-  });
-
-  it('returns database errors in the result', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    const error = new Error('db down');
-    findMany.mockRejectedValue(error);
-
-    await expect(getOrders(prisma, undefined)).resolves.toEqual({
-      ok: false,
-      errors: error,
-    });
-  });
-});
-
 describe('runRequestMaintenance', () => {
-  it('releases a persisted reservation after expiring an open request', async () => {
+  it('queues a credit release in the same transaction as the expiry', async () => {
     const open = {
       id: 'open-order',
       status: 'open',
       requesterId: REQUESTER,
       courierId: null,
       version: 2,
-      reservationId: 'reservation-1',
       completeBy: new Date('2026-10-12T11:00:00.000Z'),
-    } as OrderRequest;
-    const findMany = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([open]);
-    const findUnique = vi
-      .fn()
-      .mockResolvedValueOnce(open)
-      .mockResolvedValueOnce({ ...open, status: 'expired' });
-    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const release = vi.fn().mockResolvedValue(undefined);
-    const prisma = {
-      orderRequest: {
-        findMany,
-        findUnique,
-        updateMany,
-        findUniqueOrThrow: vi.fn(),
-      },
-    } as unknown as PrismaClient;
-    const now = new Date('2026-10-12T12:00:00.000Z');
-
-    await expect(
-      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
-    ).resolves.toEqual({ completed: 0, expired: 1 });
-
-    expect(release).toHaveBeenCalledWith('reservation-1');
-    expect(updateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: open.id, status: 'expired', creditReleasedAt: null },
-      data: { creditReleasedAt: now },
-    });
-  });
-
-  it('expires at the exact delivery deadline and skips credit release without a reservation', async () => {
-    const open = {
-      id: 'open-order',
-      status: 'open',
-      requesterId: REQUESTER,
-      courierId: null,
-      version: 2,
-      reservationId: null,
-      completeBy: new Date('2026-10-12T12:00:00.000Z'),
     } as OrderRequest;
     const findMany = vi
       .fn()
@@ -565,8 +521,7 @@ describe('runRequestMaintenance', () => {
       .mockResolvedValueOnce([open]);
     const findUnique = vi.fn().mockResolvedValueOnce(open);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const release = vi.fn();
-    const prisma = {
+    const prisma = withTx({
       orderRequest: {
         findMany,
         findUnique,
@@ -576,18 +531,51 @@ describe('runRequestMaintenance', () => {
           status: 'expired',
         }),
       },
-    } as unknown as PrismaClient;
+    });
     const now = new Date('2026-10-12T12:00:00.000Z');
 
-    await expect(
-      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
-    ).resolves.toEqual({ completed: 0, expired: 1 });
+    await expect(runRequestMaintenance(prisma, now)).resolves.toEqual({
+      completed: 0,
+      expired: 1,
+    });
 
-    expect(release).not.toHaveBeenCalled();
-    expect(updateMany).toHaveBeenNthCalledWith(1, {
+    expect(updateMany).toHaveBeenCalledWith({
       where: { id: open.id, version: open.version },
       data: { status: 'expired', version: { increment: 1 } },
     });
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith(
+      releaseRow(open.id, 3),
+    );
+  });
+
+  it('expires at the exact delivery deadline', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      completeBy: new Date('2026-10-12T12:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
+    const prisma = withTx({
+      orderRequest: {
+        findMany,
+        findUnique: vi.fn().mockResolvedValueOnce(open),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...open,
+          status: 'expired',
+        }),
+      },
+    });
+
+    await expect(
+      runRequestMaintenance(prisma, new Date('2026-10-12T12:00:00.000Z')),
+    ).resolves.toEqual({ completed: 0, expired: 1 });
   });
 
   it('does not expire an open request before its delivery deadline', async () => {
@@ -597,13 +585,13 @@ describe('runRequestMaintenance', () => {
       .mockResolvedValueOnce([]);
     const findUnique = vi.fn();
     const updateMany = vi.fn();
-    const prisma = {
+    const prisma = withTx({
       orderRequest: {
         findMany,
         findUnique,
         updateMany,
       },
-    } as unknown as PrismaClient;
+    });
 
     await expect(
       runRequestMaintenance(prisma, new Date('2026-10-12T11:59:59.999Z')),
@@ -613,78 +601,32 @@ describe('runRequestMaintenance', () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
-  it('does not release credits when expiry loses the optimistic-lock race', async () => {
+  it('queues no release when expiry loses the optimistic-lock race', async () => {
     const open = {
       id: 'open-order',
       status: 'open',
       requesterId: REQUESTER,
       courierId: null,
       version: 2,
-      reservationId: 'reservation-1',
       completeBy: new Date('2026-10-12T11:00:00.000Z'),
     } as OrderRequest;
     const findMany = vi
       .fn()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([open]);
-    const findUnique = vi.fn().mockResolvedValueOnce(open);
-    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
-    const release = vi.fn();
-    const prisma = {
-      orderRequest: { findMany, findUnique, updateMany },
-    } as unknown as PrismaClient;
-
-    await expect(
-      runRequestMaintenance(
-        prisma,
-        { reserve: vi.fn(), release },
-        new Date('2026-10-12T12:00:00.000Z'),
-      ),
-    ).resolves.toEqual({ completed: 0, expired: 0 });
-
-    expect(release).not.toHaveBeenCalled();
-  });
-
-  it('propagates an expiry credit-release failure after the request is expired', async () => {
-    const open = {
-      id: 'open-order',
-      status: 'open',
-      requesterId: REQUESTER,
-      courierId: null,
-      version: 2,
-      reservationId: 'reservation-1',
-      completeBy: new Date('2026-10-12T11:00:00.000Z'),
-    } as OrderRequest;
-    const findMany = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([open]);
-    const findUnique = vi.fn().mockResolvedValueOnce(open);
-    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const releaseError = new Error('credit service unavailable');
-    const release = vi.fn().mockRejectedValue(releaseError);
-    const prisma = {
+    const prisma = withTx({
       orderRequest: {
         findMany,
-        findUnique,
-        updateMany,
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          ...open,
-          status: 'expired',
-        }),
+        findUnique: vi.fn().mockResolvedValueOnce(open),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
-    } as unknown as PrismaClient;
+    });
 
     await expect(
-      runRequestMaintenance(
-        prisma,
-        { reserve: vi.fn(), release },
-        new Date('2026-10-12T12:00:00.000Z'),
-      ),
-    ).rejects.toBe(releaseError);
+      runRequestMaintenance(prisma, new Date('2026-10-12T12:00:00.000Z')),
+    ).resolves.toEqual({ completed: 0, expired: 0 });
 
-    expect(release).toHaveBeenCalledWith('reservation-1');
-    expect(updateMany).toHaveBeenCalledTimes(1);
+    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
   });
 
   it('uses system transitions for delivered and expired requests', async () => {
@@ -713,14 +655,14 @@ describe('runRequestMaintenance', () => {
       .mockResolvedValueOnce(open)
       .mockResolvedValueOnce({ ...open, status: 'expired' });
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const prisma = {
+    const prisma = withTx({
       orderRequest: {
         findMany,
         findUnique,
         updateMany,
         findUniqueOrThrow: vi.fn(),
       },
-    } as unknown as PrismaClient;
+    });
     const now = new Date('2026-10-12T12:00:00.000Z');
 
     await expect(runRequestMaintenance(prisma, now)).resolves.toEqual({
@@ -768,13 +710,13 @@ describe('runRequestMaintenance', () => {
       .fn()
       .mockResolvedValueOnce([delivered])
       .mockResolvedValueOnce([]);
-    const prisma = {
+    const prisma = withTx({
       orderRequest: {
         findMany,
         findUnique: vi.fn().mockResolvedValue(delivered),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
-    } as unknown as PrismaClient;
+    });
 
     await expect(
       runRequestMaintenance(prisma, new Date('2026-10-12T12:00:00.000Z')),
@@ -803,7 +745,7 @@ describe('transitionOrder', () => {
     };
 
     return {
-      prisma: { orderRequest } as unknown as PrismaClient,
+      prisma: withTx({ orderRequest }),
       orderRequest,
     };
   }
@@ -893,18 +835,12 @@ describe('transitionOrder', () => {
     expect(result).toMatchObject({ ok: true });
   });
 
-  it('releases the reservation after a successful cancellation', async () => {
-    const { prisma, orderRequest } = prismaWithTransition({
+  it('queues a credit release with a successful cancellation of a funded order', async () => {
+    const { prisma } = prismaWithTransition({
       status: 'open',
       requesterId,
       courierId: null,
-      reservationId: 'reservation-1',
     });
-    const release = vi.fn().mockResolvedValue(undefined);
-    const credits: CreditsClient = {
-      reserve: vi.fn(),
-      release,
-    };
 
     await expect(
       transitionOrder(
@@ -913,28 +849,23 @@ describe('transitionOrder', () => {
         'cancelled',
         requesterId,
         new Date('2026-10-13T12:00:00.000Z'),
-        credits,
       ),
     ).resolves.toMatchObject({ ok: true });
 
-    expect(release).toHaveBeenCalledWith('reservation-1');
-    expect(orderRequest.updateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: orderId, status: 'cancelled', creditReleasedAt: null },
-      data: { creditReleasedAt: new Date('2026-10-13T12:00:00.000Z') },
-    });
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith(
+      releaseRow(orderId, 4),
+    );
   });
 
-  it('does not release credits when cancellation loses the optimistic-lock race', async () => {
+  it('queues no release when cancellation loses the optimistic-lock race', async () => {
     const { prisma, orderRequest } = prismaWithTransition(
       {
         status: 'open',
         requesterId,
         courierId: null,
-        reservationId: 'reservation-1',
       },
       { updatedRows: 0 },
     );
-    const release = vi.fn().mockResolvedValue(undefined);
 
     await expect(
       transitionOrder(
@@ -943,12 +874,72 @@ describe('transitionOrder', () => {
         'cancelled',
         requesterId,
         new Date('2026-10-13T12:00:00.000Z'),
-        { reserve: vi.fn(), release },
       ),
     ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_CONFLICT });
 
-    expect(release).not.toHaveBeenCalled();
+    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
     expect(orderRequest.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('queues no credit task for transitions that do not end the order', async () => {
+    const { prisma } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    await transitionOrder(prisma, orderId, 'accepted', courierId);
+
+    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
+  });
+
+  it('fails a pending order without a release unless asked (permanent reserve failure)', async () => {
+    const { prisma } = prismaWithTransition({
+      status: 'pending',
+      requesterId,
+      courierId: null,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'failed', 'system'),
+    ).resolves.toMatchObject({ ok: true });
+    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
+  });
+
+  it('fails a pending order with a release when asked (reserve retries exhausted)', async () => {
+    const { prisma } = prismaWithTransition({
+      status: 'pending',
+      requesterId,
+      courierId: null,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'failed', 'system', new Date(), {
+        releaseCredits: true,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith(
+      releaseRow(orderId, 4),
+    );
+  });
+
+  it('only lets the system settle a pending order', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'pending',
+      requesterId,
+      courierId: null,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'failed', requesterId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+    await expect(
+      transitionOrder(prisma, orderId, 'cancelled', 'system'),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });
+    await expect(
+      transitionOrder(prisma, orderId, 'accepted', courierId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
   });
 
   it('cancels at the exact complete-by deadline', async () => {
@@ -1013,31 +1004,6 @@ describe('transitionOrder', () => {
       expect(orderRequest.updateMany).not.toHaveBeenCalled();
     },
   );
-
-  it('propagates a release failure after cancellation', async () => {
-    const { prisma, orderRequest } = prismaWithTransition({
-      status: 'open',
-      requesterId,
-      courierId: null,
-      reservationId: 'reservation-1',
-    });
-    const releaseError = new Error('credit service unavailable');
-    const release = vi.fn().mockRejectedValue(releaseError);
-
-    await expect(
-      transitionOrder(
-        prisma,
-        orderId,
-        'cancelled',
-        requesterId,
-        new Date('2026-10-13T12:00:00.000Z'),
-        { reserve: vi.fn(), release },
-      ),
-    ).rejects.toBe(releaseError);
-
-    expect(release).toHaveBeenCalledWith('reservation-1');
-    expect(orderRequest.updateMany).toHaveBeenCalledTimes(1);
-  });
 
   it('rejects cancelling a non-open order before its complete-by deadline', async () => {
     const { prisma, orderRequest } = prismaWithTransition({

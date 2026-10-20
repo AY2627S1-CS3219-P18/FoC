@@ -5,6 +5,12 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Login prompt waits for the session restore (sessionReady), as Wallet.jsx does, so a
+ *        reload while signed in no longer opens it.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
  */
 
 import { useEffect, useState } from 'react'
@@ -18,12 +24,12 @@ import { useDemo } from '../context/DemoContext'
 // Nice-to-have: real-time chat and translation. Translations are hardcoded in messages.js.
 export default function Chat() {
   const { id } = useParams()
-  const { currentUser, requests, isLoggedIn, requireLogin } = useDemo()
+  const { currentUser, requests, isLoggedIn, sessionReady, requireLogin } = useDemo()
 
   // Gated when logged out (§9): the page stays visible behind the scrim.
   useEffect(() => {
-    if (!isLoggedIn) requireLogin('You need an account to open this chat.')
-  }, [isLoggedIn, requireLogin])
+    if (sessionReady && !isLoggedIn) requireLogin('You need an account to open this chat.')
+  }, [sessionReady, isLoggedIn, requireLogin])
   const [autoTranslate, setAutoTranslate] = useState(false)
   const [translated, setTranslated] = useState({})
 

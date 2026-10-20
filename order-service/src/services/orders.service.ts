@@ -21,14 +21,49 @@
  * Scope (2026-10-13): Released the persisted reservation after successful
  *        requester cancellation.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 per George's decisions (2026-10-19/20) - createOrder
+ *        writes a `pending` order and its credit_reserve outbox row in one transaction
+ *        (no credit call in the request path); cancel/expire of a funded order writes a
+ *        credit_release outbox row in the same transaction as the status change,
+ *        replacing the inline reservationId release; `credits` is no longer editable.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Issue #11 - deliveryLocationId (supplier location id) replaces the
+ *        free-text deliveryLocation on create and edit; getOrders moved to
+ *        order-listing.service.ts.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Issue #6 - transitions and edits publish order events after the
+ *        transaction commits (best-effort; REST stays the source of truth).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Author review: george-yeo
+ * Scope (2026-10-20): `failed` status - moving to `failed` can queue a credit release (the
+ *        retries-exhausted path, as cancellation did before).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details are optional on
+ *        create (a missing field is no longer rejected); edit is refused with
+ *        ORDER_NOT_EDITABLE unless the request is open, and the versioned write also
+ *        requires `open`.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Edit validates every editable field with create's rules: supplierId
+ *        (positive INTEGER id), description (non-empty text), additionalDetails (text or
+ *        null), alongside the existing location and complete-by checks; create's supplierId
+ *        check also caps at the INTEGER range (George, 2026-10-20: "validate the edit").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
  */
 
-import type {
-  CreditsClient,
-  ReserveResult,
-} from '../clients/credits.client.js';
-import { createStubCreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
+import { insertOutboxRows } from '../db/outbox.repository.js';
+import {
+  buildReleaseTask,
+  buildReserveTask,
+  type OutboxTask,
+} from '../queue/tasks.js';
 import {
   Prisma,
   RequestStatus,
@@ -40,14 +75,25 @@ import {
   type ActorId,
 } from '../domain/order-status.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
-import { ErrorCode, ErrorMessage } from '../constants/errors.js';
-import { isIsoDateString, isNonEmptyString } from '../utils/validation.js';
+import {
+  eventsForEdit,
+  eventsForTransition,
+  publishSafely,
+  type OrderEventPublisher,
+} from '../realtime/order-events.js';
+import { ErrorCode } from '../constants/errors.js';
+import {
+  isIsoDateString,
+  isNonEmptyString,
+  isPositiveInt,
+} from '../utils/validation.js';
 
+// `credits` is deliberately absent: credit-service allows one reservation per
+// request, so the offer is fixed at creation (George, 2026-10-20).
 const EDITABLE_ORDER_FIELDS = new Set([
   'supplierId',
   'description',
-  'deliveryLocation',
-  'credits',
+  'deliveryLocationId',
   'completeBy',
   'additionalDetails',
 ]);
@@ -57,9 +103,6 @@ export type CreateOrderResult =
 
 export type EditOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
-
-export type GetOrderResult =
-  { ok: true; orders: OrderRequest[] } | { ok: false; errors: any };
 
 const validateCredits = (credits: number) => {
   return Number.isInteger(credits) && credits > 0;
@@ -88,7 +131,6 @@ const validateAdditionalDetails = (additionalDetails: string | null) => {
 
 export const createOrder = async (
   prisma: PrismaClient,
-  credits: CreditsClient,
   requesterId: string,
   requestPayload: CreateOrderPayload,
 ): Promise<CreateOrderResult> => {
@@ -97,10 +139,7 @@ export const createOrder = async (
   console.log('VALIDATING PAYLOAD');
   if (!requestPayload.supplierId) {
     errors.push(ErrorCode.MISSING_SUPPLIER);
-  } else if (
-    !Number.isInteger(requestPayload.supplierId) ||
-    requestPayload.supplierId <= 0
-  ) {
+  } else if (!isPositiveInt(requestPayload.supplierId)) {
     errors.push(ErrorCode.INVALID_SUPPLIER);
   }
   if (!requestPayload.description) {
@@ -108,9 +147,12 @@ export const createOrder = async (
   } else if (!isNonEmptyString(requestPayload.description)) {
     errors.push(ErrorCode.INVALID_DESCRIPTION);
   }
-  if (!requestPayload.deliveryLocation) {
+  if (
+    requestPayload.deliveryLocationId === undefined ||
+    requestPayload.deliveryLocationId === null
+  ) {
     errors.push(ErrorCode.MISSING_DELIVERY_LOCATION);
-  } else if (!isNonEmptyString(requestPayload.deliveryLocation)) {
+  } else if (!isPositiveInt(requestPayload.deliveryLocationId)) {
     errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
   }
   if (requestPayload.credits === undefined || requestPayload.credits === null) {
@@ -124,7 +166,7 @@ export const createOrder = async (
     errors.push(...validateCompleteBy(requestPayload.completeBy));
   }
   if (
-    requestPayload.additionalDetails === undefined ||
+    requestPayload.additionalDetails !== undefined &&
     !validateAdditionalDetails(requestPayload.additionalDetails)
   ) {
     errors.push(ErrorCode.INVALID_ADDITIONAL_DETAILS);
@@ -134,56 +176,35 @@ export const createOrder = async (
     return { ok: false, errors };
   }
 
-  // use temporary stub for credit reservation
-  const orderId = crypto.randomUUID();
-  const reservation = await credits
-    .reserve({
-      requesterId,
-      requestId: orderId,
-      amount: requestPayload.credits,
-    })
-    .catch((err: unknown): ReserveResult => {
-      console.error('Credit reservation failed:', err);
-      return { ok: false, reason: 'UNAVAILABLE' };
-    });
-  if (!reservation.ok) {
-    return {
-      ok: false,
-      errors: [
-        reservation.reason === 'INSUFFICIENT_CREDITS'
-          ? ErrorCode.INSUFFICIENT_CREDITS
-          : ErrorCode.CREDIT_SERVICE_UNAVAILABLE,
-      ],
-    };
-  }
-
+  // Issue #4: the order starts `pending` and is hidden until credit-service confirms
+  // the reservation. The reserve call itself happens in the worker; here we only
+  // commit the order and its outbox task together, so neither can exist without
+  // the other. The order id is the reservation's idempotency key (requestId).
   console.log('CREATING REQUEST');
-  let order: OrderRequest;
-  try {
-    order = await prisma.orderRequest.create({
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.orderRequest.create({
       data: {
-        id: orderId,
         requesterId,
         supplierId: requestPayload.supplierId,
         description: requestPayload.description,
-        deliveryLocation: requestPayload.deliveryLocation,
+        deliveryLocationId: requestPayload.deliveryLocationId,
         credits: requestPayload.credits,
         completeBy: requestPayload.completeBy
           ? new Date(requestPayload.completeBy)
           : null,
         additionalDetails: requestPayload.additionalDetails ?? null,
-        reservationId: reservation.reservationId,
+        status: 'pending',
       },
     });
-  } catch (err) {
-    await credits.release(reservation.reservationId).catch((releaseErr) => {
-      console.error(
-        `Failed to release reservation ${reservation.reservationId}:`,
-        releaseErr,
-      ); // TODO(team): consider retrying release if it fails, or logging to a monitoring system
-    });
-    throw err;
-  }
+    await insertOutboxRows(tx, created.version, [
+      buildReserveTask({
+        requestId: created.id,
+        userId: requesterId,
+        amount: created.credits,
+      }),
+    ]);
+    return created;
+  });
   return { ok: true, order };
 };
 
@@ -192,6 +213,7 @@ export const editOrder = async (
   actorId: ActorId,
   orderId: string,
   payload: EditOrderPayload,
+  events?: OrderEventPublisher,
 ): Promise<EditOrderResult> => {
   const errors: ErrorCode[] = [];
   for (const [key, value] of Object.entries(payload)) {
@@ -200,10 +222,22 @@ export const editOrder = async (
       continue;
     }
 
-    // Validate fields
-    if (key == 'credits') {
-      if (typeof value != 'number' || !validateCredits(value)) {
-        errors.push(ErrorCode.INVALID_CREDITS_OFFERED);
+    // Validate fields with the same rules as create (F18.1.2: edit in accordance with F9.1.1)
+    if (key == 'supplierId') {
+      if (!isPositiveInt(value)) {
+        errors.push(ErrorCode.INVALID_SUPPLIER);
+      }
+    } else if (key == 'description') {
+      if (!isNonEmptyString(value)) {
+        errors.push(ErrorCode.INVALID_DESCRIPTION);
+      }
+    } else if (key == 'additionalDetails') {
+      if (value !== null && typeof value !== 'string') {
+        errors.push(ErrorCode.INVALID_ADDITIONAL_DETAILS);
+      }
+    } else if (key == 'deliveryLocationId') {
+      if (!isPositiveInt(value)) {
+        errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
       }
     } else if (key == 'completeBy') {
       if (typeof value != 'string' && value != null) {
@@ -234,8 +268,15 @@ export const editOrder = async (
       };
     }
 
+    // F18.1.1: only open requests can be edited.
+    if (order.status !== 'open') {
+      return { ok: false, errors: [ErrorCode.ORDER_NOT_EDITABLE] };
+    }
+
+    // `status: 'open'` in the guard too: an accept that lands between the read and this
+    // write makes the edit a version conflict instead of editing an accepted order.
     const { count } = await prisma.orderRequest.updateMany({
-      where: { id: order.id, version: order.version },
+      where: { id: order.id, version: order.version, status: 'open' },
       data: {
         ...payload,
         version: { increment: 1 },
@@ -248,6 +289,7 @@ export const editOrder = async (
     const updatedOrder = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: order.id },
     });
+    if (events) await publishSafely(events, eventsForEdit(updatedOrder));
     return { ok: true, order: updatedOrder };
   } catch (error) {
     if (
@@ -260,53 +302,14 @@ export const editOrder = async (
   }
 };
 
-export const getOrders = async (
-  prisma: PrismaClient,
-  statusFilter: RequestStatus | undefined,
-): Promise<GetOrderResult> => {
-  if (
-    statusFilter !== undefined &&
-    !Object.values(RequestStatus).includes(statusFilter)
-  ) {
-    const errorCode = ErrorCode.INVALID_STATUS;
-    return {
-      ok: false,
-      errors: ErrorMessage[errorCode],
-    };
-  }
-  try {
-    const orders = await prisma.orderRequest.findMany({
-      where: statusFilter
-        ? {
-            status: statusFilter,
-          }
-        : undefined,
-    });
-
-    return {
-      ok: true,
-      orders: orders,
-    };
-  } catch (error) {
-    // TODO: retry and log
-    return {
-      ok: false,
-      errors: error,
-    };
-  }
-};
-
 export type TransitionResult =
   { ok: true; order: OrderRequest } | { ok: false; error: ErrorCode };
 
 export async function runRequestMaintenance(
   prisma: PrismaClient,
-  creditsOrNow: CreditsClient | Date = createStubCreditsClient(),
-  maybeNow: Date = new Date(),
+  now: Date = new Date(),
+  events?: OrderEventPublisher,
 ): Promise<{ completed: number; expired: number }> {
-  const credits =
-    creditsOrNow instanceof Date ? createStubCreditsClient() : creditsOrNow;
-  const now = creditsOrNow instanceof Date ? creditsOrNow : maybeNow;
   console.log(
     'Running runRequestMaintenance, current time:',
     now.toISOString(),
@@ -335,10 +338,13 @@ export async function runRequestMaintenance(
       'completed',
       SYSTEM_ACTOR,
       now,
+      { events },
     );
     if (result.ok) completed += 1;
   }
 
+  // Expiring a funded order queues its credit release in the same transaction
+  // (see transitionOrder), so nothing here talks to credit-service directly.
   let expired = 0;
   for (const order of openOrders) {
     const result = await transitionOrder(
@@ -347,20 +353,46 @@ export async function runRequestMaintenance(
       'expired',
       SYSTEM_ACTOR,
       now,
+      { events },
     );
-    if (!result.ok) continue;
-
-    if (order.reservationId) {
-      await credits.release(order.reservationId);
-      await prisma.orderRequest.updateMany({
-        where: { id: order.id, status: 'expired', creditReleasedAt: null },
-        data: { creditReleasedAt: now },
-      });
-    }
-    expired += 1;
+    if (result.ok) expired += 1;
   }
 
   return { completed, expired };
+}
+
+/** Statuses in which credit-service holds a reservation for the order. */
+const FUNDED_STATUSES: ReadonlySet<RequestStatus> = new Set([
+  'open',
+  'accepted',
+  'picked_up',
+]);
+
+export interface TransitionOptions {
+  /**
+   * Queue a credit release even though the order is not yet funded. Used by the
+   * reservation saga when it gives up after transient failures: the reserve may have
+   * committed on credit-service's side without us hearing back (George, 2026-10-19).
+   */
+  releaseCredits?: boolean;
+  /** Where to publish the resulting order event once the change has committed. */
+  events?: OrderEventPublisher;
+  /** Reason carried on the event (a failed reservation's code). */
+  reason?: string;
+}
+
+/** Credit tasks that must commit together with moving `order` to `to`. */
+function creditTasksFor(
+  order: OrderRequest,
+  to: RequestStatus,
+  options: TransitionOptions,
+): OutboxTask[] {
+  const endsOrder = to === 'cancelled' || to === 'expired' || to === 'failed';
+  if (!endsOrder) return [];
+  if (FUNDED_STATUSES.has(order.status) || options.releaseCredits) {
+    return [buildReleaseTask(order.id)];
+  }
+  return [];
 }
 
 export const transitionOrder = async (
@@ -369,7 +401,7 @@ export const transitionOrder = async (
   to: RequestStatus,
   actorId: ActorId,
   now: Date = new Date(),
-  credits: CreditsClient = createStubCreditsClient(),
+  options: TransitionOptions = {},
 ): Promise<TransitionResult> => {
   const order = await prisma.orderRequest.findUnique({
     where: { id: orderId },
@@ -379,29 +411,35 @@ export const transitionOrder = async (
   const check = checkTransition(order, to, actorId, now);
   if (!check.ok) return check;
 
-  // use versioning to prevent data race by updating only on row with same version as found order
-  const { count } = await prisma.orderRequest.updateMany({
-    where: { id: order.id, version: order.version },
-    data: {
-      status: to,
-      version: { increment: 1 },
-      ...(to === 'accepted' && { courierId: actorId, acceptedAt: now }),
-      ...(to === 'delivered' && { deliveredAt: now }),
-    },
+  const tasks = creditTasksFor(order, to, options);
+
+  // use versioning to prevent data race by updating only on row with same version as found order;
+  // any credit task commits in the same transaction, so a lost race writes nothing.
+  const applied = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.orderRequest.updateMany({
+      where: { id: order.id, version: order.version },
+      data: {
+        status: to,
+        version: { increment: 1 },
+        ...(to === 'accepted' && { courierId: actorId, acceptedAt: now }),
+        ...(to === 'delivered' && { deliveredAt: now }),
+      },
+    });
+    if (count === 0) return false;
+    await insertOutboxRows(tx, order.version + 1, tasks);
+    return true;
   });
-  if (count === 0) return { ok: false, error: ErrorCode.ORDER_CONFLICT };
+  if (!applied) return { ok: false, error: ErrorCode.ORDER_CONFLICT };
 
   const updated = await prisma.orderRequest.findUniqueOrThrow({
     where: { id: order.id },
   });
-
-  if (to === 'cancelled' && order.reservationId) {
-    await credits.release(order.reservationId);
-    await prisma.orderRequest.updateMany({
-      where: { id: order.id, status: 'cancelled', creditReleasedAt: null },
-      data: { creditReleasedAt: now },
-    });
+  // After commit: subscribers never see a change that might still roll back.
+  if (options.events) {
+    await publishSafely(
+      options.events,
+      eventsForTransition(updated, order.status, options.reason),
+    );
   }
-
   return { ok: true, order: updated };
 };

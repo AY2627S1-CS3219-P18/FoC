@@ -4319,3 +4319,887 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-10-20 — Order Service #4: Credit reservation saga (pending orders, outbox, worker reserve/release)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo's design decisions for issue #4, given in chat on 2026-10-19 and 2026-10-20 (quoted below; kept in his personal notes, not yet written into the repo). Credit contract: `credit-service/API.md`. Outbox/relay/dead-letter mirrored from `supplier-service/SupplierServiceArchitecture.md` §8.1 and its `src/queue`, `src/worker`, `src/persistence` code, per the decision "do what congchen does".
+
+**Prompts (exact):**
+
+> #4 - when an order request created, i will produce the order object first, then use the id as idmpkey to pass into credit service to reserve, if fails perform compensation and send notification by event bus (redis) and socket, by the saga pattern
+
+> #4 order status is set to pending (new state) at creation, while the reserving from credit service, if it fails once, we notify user failure and to retry, if success pending -> open, this happens async, so on frontend the button will have loading spinner while reply is not received yet
+
+> #4 go to cancelled, retries make a new order, pending is hidden yes
+
+> #4 what do you mean release? if the reservation fails that means no credits is reserved so no further action needs to be done other than cancelling the order, yes drop adjust
+
+> #4 if reserve keeps failing then we will release, there is no recovering orders in pending, they will automaticalyl retry with bullmq and on mega failure it is cancelled + released credits back
+
+> 1. only transient
+> 2. 5 attempts at powers of 2
+> 3. how can we resolve this properly?
+> 4. yes success
+> 5. yes final outcome only
+> 6. separate worker container
+
+> ok lets do the same dead_letter_jobs solution, what else is pending
+
+> 1. outbox too
+> 2. do what congchen does
+> 3. yes
+> 4. by redis
+> 5. make events in redis
+> 6. make events and pass failure
+> 7. just follow convention this isnt part of design decisions
+> 8. what do you mean
+> 9.same
+> 10. defer
+> 11. resolved by client
+> 12. 2s
+> 13. yes
+> 14. what refresh flow, the 15min is for the socket not the JWT
+> 15. can we make a foreign table to map the bigint to uuid
+> 16. no it will not thats supplier service job on client
+> 17. no keep it personal md for nkw
+
+> ok we dont have to literally plan every single little detail now, you can just do it based on convention
+
+> lets begin coding, keep me in the loop, and if any gaps appear inform me immediately and wait for my decision
+
+> 1. drop the reservationId column first, then do a
+> 2. return 202
+> 3. what are the options
+> 4. is it better to keep some sort of adapter to access credit api? or should we connect directly to credit api? i lean toward adapter if thats convention
+> 5. success
+
+> 3. no timeout
+> 4. a
+>
+> verification a
+
+> 1. use a string code that makes sense
+> 2. admin will handle
+>
+>
+> 5. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
+
+> 6. ok then drop the results we dont need it for now
+>
+>
+> 2. ok lets just make credits non-editable for now
+>
+>
+> make the contract now for weejean and make it succinct and simple, no sources from who
+
+> ok lets start coding
+
+**Key responses:**
+
+- **Schema / migration** (`20261020100000_credit_reservation_saga`, hand-written): `pending` added to `RequestStatus`; `requests.reservationId` dropped; `outbox` and `dead_letter_jobs` tables with supplier-service's column set in order-service's naming style. Applied cleanly to a fresh Postgres 17 together with the two earlier migrations.
+- **Create:** `createOrder` writes the order as `pending` and a `credit_reserve` outbox row (`{ requestId: order.id, userId, amount }`) in one Prisma interactive transaction; no credit call in the request path. `POST /orders` answers **202**.
+- **State machine:** `pending → open` and `pending → cancelled` are system-only; the F17.2 deadline rule no longer applies to `pending`.
+- **Release:** cancelling or expiring a funded order (`open`/`accepted`/`picked_up`) writes a `credit_release` outbox row in the same transaction as the status change, replacing Wen Xi's inline `credits.release(order.reservationId)` in `transitionOrder` and `runRequestMaintenance` (edit approved by George). A lost optimistic-lock race writes nothing.
+- **Credit client:** real HTTP client for `POST /credits/reserve` and `/credits/release` per `API.md`, no timeout. Reserve `409 RESERVATION_ALREADY_EXISTS` = success; release `404 RESERVATION_NOT_FOUND` / `409 ALREADY_RELEASED` = success; 5xx and connection errors = transient; other 4xx = permanent. The stub remains for unit tests only; the API process no longer holds a credit client.
+- **Worker (order-worker container):** outbox relay on a 1 s BullMQ job scheduler (enqueue as `outbox-<id>`, delete only after a successful enqueue, dead-letter unroutable rows, stop the tick if Redis refuses), plus a worker on `queue:order:credit`:
+  - reserve ok → `pending → open` + notify;
+  - permanent → `pending → cancelled`, no release, notify with credit-service's code;
+  - transient → retry (5 attempts, BullMQ exponential backoff);
+  - last attempt → cancel + queued release + notify, then the job fails and is written to `dead_letter_jobs`;
+  - release ok → stamp `creditReleasedAt`; transient → retry; permanent → dead-letter without retries.
+- **Notifications:** `Notifier.notify(userId, event, payload)` port, log-only until issue #6.
+- **Edit:** `credits` removed from the editable fields, so it now returns `INVALID_FIELD`.
+- **Config:** `CREDIT_SERVICE_URL` in `env.ts`, both `.env.example` files and the `order-worker` block of `compose.yaml`.
+- **Verification run in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint --type-aware` clean (0 warnings);
+  - `vitest run` 328/328;
+  - `test:e2e` 8/8 against a local Postgres 17 (new `test/credit-saga.e2e-spec.ts` runs the saga with real transactions; credit-service and Redis are faked);
+  - `npm run build` OK;
+  - `prisma/seed.ts` ran against the migrated DB.
+  - The Prisma client was generated with `PRISMA_SCHEMA_ENGINE_BINARY=/bin/true`, because the schema-engine download is blocked there.
+- **Not verified:**
+  - `src/worker.ts` against a real Redis/BullMQ (no Redis available);
+  - `prisma migrate dev` / drift check (engine unavailable);
+  - calls against a running credit-service.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261020100000_credit_reservation_saga/migration.sql` (created)
+- `order-service/prisma/seed.ts` (modified)
+- `order-service/src/clients/credits.client.ts` (modified)
+- `order-service/src/clients/credits.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/services/orders.transition.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts`, `order-service/src/app.spec.ts`, `order-service/src/server.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/db/outbox.repository.ts`, `order-service/src/db/dead-letter.repository.ts` (created)
+- `order-service/src/queue/tasks.ts`, `order-service/src/queue/bull-queue.ts` (created)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (created)
+- `order-service/src/worker/outbox-relay.ts`, `order-service/src/worker/outbox-relay.spec.ts` (created)
+- `order-service/src/notifications/notifier.ts` (created)
+- `order-service/test/health.e2e-spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (created)
+- `order-service/.env.example`, `.env.example`, `compose.yaml` (modified)
+- `ai/usage-log.md`, `README.md` (modified: this entry and its Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review, not decided:**
+   - new tables use order-service's camelCase column names;
+   - queue key `queue:order:credit`, with task names `credit_reserve` / `credit_release` following supplier-service's convention;
+   - 1 s base for the powers-of-2 backoff (1/2/4/8 s);
+   - events `order:created` (reservation succeeded) and `order:cancelled` with a `reason` (reservation failed), following the `order:<pastTenseVerb>` convention;
+   - failure reason `RESERVE_RETRIES_EXHAUSTED`;
+   - `CREDIT_SERVICE_URL` default `http://localhost:3003`.
+2. **`pending` orders are still returned by `GET /orders` when no status filter is given.** Hiding them is part of issue #11 (default filter `open`).
+3. **Not touched, raised to George:**
+   - `editOrder` does not check that the order is `open` (F18.1.1);
+   - `createOrder` validates `supplierId` as a UUID while supplier-service ids are BIGINT;
+   - nothing calls `POST /credits/allocate` (user-service TODO);
+   - transfer on completion is not implemented (the queue contract is pending Wee Jean).
+4. **Wen Xi's code changed with George's approval:** the cancel/expire release paths, the seed, and `credits` editability.
+5. **Decisions are not yet written in the repo.** The governing decision above is chat-only.
+
+**What I kept/changed/rejected:**
+I set the design: create as `pending`, reserve asynchronously, return 202 with a frontend spinner, use outbox and dead letters the same way as Congchen’s supplier-service, and run the worker in its own container. I also changed failure handling from “a failed reserve has nothing to release, just cancel” to “if reserve keeps failing then we will release,” limited retries to transient errors at 5 attempts with powers-of-2 backoff, rejected a timeout, made credits non-editable rather than adjusting the reservation, dropped the transfer result queue, and told Claude not to push at all after its one push attempt was refused with a 403.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service #4: Automatic re-drive of transient credit-release dead letters
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo's decisions in chat, 2026-10-20 (quoted below), following a local test in which a release dead-lettered during a credit-service outage.
+
+**Prompts (exact):**
+
+> lets do b
+
+> 1. only transient ones
+> 2. restart the retries for each dead letter release every minute
+> 3. no limit, go indefinitely
+> 4. yes, only credit_release
+
+**Key responses:**
+
+- `src/worker/release-redrive.ts` runs every minute on a BullMQ job scheduler (`queue:order:release-redrive`) in the order-worker container. It selects `dead_letter_jobs` rows where the task is `credit_release`, the status is `UNRESOLVED`, and the trace contains the transient-release failure message.
+- For each row it runs one transaction:
+  - claims the row (`UNRESOLVED` → `REDRIVEN`, guarded so two passes cannot re-drive it twice);
+  - inserts a fresh `credit_release` outbox row.
+- The relay then enqueues the new row as a new job with a full set of retries. If that job also runs out, it is dead-lettered again and re-driven on a later pass, with no limit.
+- Permanent release rejections and `credit_reserve` dead letters are never re-driven.
+- `startRelay`'s scheduler code was factored into `src/queue/scheduled-task.ts` and reused.
+- The `REDRIVEN` status value and the queue key were named by convention.
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 328/328;
+  - `test:e2e` 11/11 against a local Postgres 17, including 3 new re-drive cases (re-drive + no double re-drive, permanent and reserve rows left alone, re-driven release completing end to end);
+  - build OK.
+- **Not verified:** the scheduler against a real Redis.
+
+**Files:**
+
+- `order-service/src/worker/release-redrive.ts` (created)
+- `order-service/src/queue/scheduled-task.ts` (created)
+- `order-service/src/worker/outbox-relay.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- During a long credit-service outage, each stuck release adds a new dead-letter row per cycle (about one per minute plus the job's own retry time). The old rows are kept as `REDRIVEN`, so the table grows until the outage ends.
+
+**What I kept/changed/rejected:**
+Claude set out the options for release dead letters, and I picked automatic re-drive of transient failures only, every minute, with no limit.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service #5: Accept request + validation
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Issue #5's scope (GitHub, AY2627S1-CS3219-P18/FoC #5) and George Yeo's decisions in chat, 2026-10-19 (quoted below). The route follows the existing `POST /orders/:id/<action>` transition routes from PR #110.
+
+**Prompts (exact):**
+
+> #5 - when order is accepted, perform validation as stated, then do optimistic locking, if fail return fail error code, so user can retry or perform new action, no automatic retries
+
+> #5 expired means past completeBy (if not null), the status codes just use the usual codes 5xx 4xx, on accept, open -> accepted -> picked_up -> delivered, and past completeBy, requester can transition accepted and picked_up but not delivered to cancelled
+
+> #5 self-accept is 403, rest 409
+
+> build a new branch on top of this one
+
+**Key responses:**
+
+- **Route:** `POST /orders/:id/accept`, using the existing generic transition controller and `transitionOrder`. The optimistic lock is the existing version-conditional `updateMany`; there are no automatic retries. On success, `courierId` = actor and `acceptedAt` = server time.
+- **Expiry (F11.2.2):** `checkTransition` now rejects accepting an order at or past its `completeBy` with a new `ORDER_EXPIRED` error, even before the minute-by-minute expiry sweep has marked it `expired`. It uses the same `lte now` boundary as the sweep. The role check runs first, so a requester accepting their own expired order still gets 403.
+- **Status codes:**
+  - self-accept → 403 `FORBIDDEN` (existing `open→accepted: ['other']` rule);
+  - past complete-by → 409 `ORDER_EXPIRED` (new mapping);
+  - expired, cancelled, pending or already-assigned order → 409 `INVALID_TRANSITION` (existing);
+  - lost race → 409 `ORDER_CONFLICT` (existing).
+- **Domain spec:** the exhaustive matrix now covers `pending` (system-only exits from issue #4).
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 392/392;
+  - `test:e2e` 12/12 against a local Postgres 17, including 8 concurrent accepts on one order producing exactly one winner;
+  - build OK.
+
+**Files:**
+
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+- `ORDER_EXPIRED` (code name and the message "This request has expired.") was named by convention.
+- Running the role check before the expiry check is an ordering choice; it was made so the requester's 403 is stable.
+- Notifying the accepting user and propagating the change to viewers (F12.1.2, F12.1.5) is issue #6 and is not done here.
+- Auth still uses the `x-user-id` header, as in all existing routes.
+
+**What I kept/changed/rejected:**
+I set the rules (403 for self-accept, 409 for everything else, no automatic retry), and Claude only implemented them.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service #11: Listing filters, keyset pagination, location ids
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issue #11's scope (GitHub, AY2627S1-CS3219-P18/FoC #11) and George Yeo's decisions in chat, 2026-10-19/20 (quoted below).
+
+**Prompts (exact):**
+
+> #11 - this is simple registry of filters mapped to the prisma function to filter
+
+> #11 add indexes to credits, completeBy, and deliveryLocation too
+
+> #11 we can do exact, since delivery location is supplied by supplier service so its not freeform input, listing paginate at 50, default status filter? what is that mean, 400 status
+
+> also i am changing order service to take ids from supplier service instead
+
+> #11 default is open
+
+> do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
+
+> 1. oh right, lets update the column now, do a
+> 2. do b, rest api
+> 3. soonest expiring first, the user can configure the sorting operation too
+> 4. match expiresAfter, so if no completeBy it would match expiresAfter=Never
+> 5. invalid status
+
+> 1. a
+> 2. match supplier, convert it
+> 3. ok we will update the frontend later
+
+**Key responses:**
+
+- **Schema / migration** (`20261020120000_listing_filters`, hand-written):
+  - deletes existing order rows (dev data; free-text locations cannot be mapped to ids);
+  - replaces `deliveryLocation` TEXT with `deliveryLocationId` INTEGER (the supplier-service location id; INTEGER to match `supplierId`, George 2026-10-20 — originally BIGINT);
+  - adds single-column indexes on `credits`, `completeBy` and `deliveryLocationId`.
+  - The migration applied cleanly to a fresh Postgres 17 together with all earlier migrations.
+- **API:**
+  - Create and edit take `deliveryLocationId` (a positive integer within INTEGER range).
+  - The column is INTEGER, so it serialises as a JSON number. (An earlier version of this commit used BIGINT and an Express `json replacer`; both were dropped when George matched it to `supplierId`.)
+  - The seed uses location ids 1–9.
+- **Listing** (`GET /orders`, new `services/order-listing.service.ts`):
+  - **Filter registry:** each query parameter maps to a parse step and a Prisma `where` builder, and the conditions are AND-ed: `status`, `location` (exact id), `minCredits`, `maxCredits`, `expiresBefore` and `expiresAfter`. `expiresAfter` also matches orders with no `completeBy`.
+  - **Defaults:** `status=open`; `pending` is rejected as an invalid status.
+  - **400s:** unknown or repeated parameters, invalid values, `minCredits` > `maxCredits`, and invalid or mismatched cursors. An invalid status previously returned 500.
+  - **Pagination:** keyset cursor, 50 per page (51 rows fetched to detect a next page). The response is `{ ok, orders, nextCursor }`.
+  - **Sorting:** `sort` ∈ `completeBy | credits | createdAt` and `order` ∈ `asc | desc`, defaulting to `completeBy asc`. Orders with no complete-by come last ascending and first descending, with id as the tie-breaker.
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 418/418;
+  - `test:e2e` 20/20 against a local Postgres 17, including 130 seeded orders walked page by page for all 6 sort/order combinations (no gaps, no duplicates, ordering matches an independent JS sort), combined filters, and pending orders hidden;
+  - build OK;
+  - seed ran.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma`, `order-service/prisma/seed.ts` (modified)
+- `order-service/prisma/migrations/20261020120000_listing_filters/migration.sql` (created)
+- `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts` (created)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/constants/errors.ts`, `order-service/src/types/orders.ts`, `order-service/src/utils/validation.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the query parameter names;
+   - the sortable fields;
+   - id as the tie-breaker and the null placement;
+   - the opaque base64url cursor;
+   - the error codes `UNKNOWN_QUERY_PARAMETER`, `INVALID_QUERY_PARAMETER` and `INVALID_CURSOR`;
+   - the 400 for `minCredits` > `maxCredits`;
+   - inclusive credit bounds and exclusive expiry bounds;
+   - the `{ message }` error body.
+2. **Frontend now out of date** (George: "we will update the frontend later"). It still sends and displays free-text `deliveryLocation`, and `frontend/src/api/orders.js` ignores `nextCursor`.
+3. **`supplierId` still validated as a UUID,** while supplier ids are BIGINT. This was left as is pending George's decision on the mapping.
+
+**What I kept/changed/rejected:**
+I added the indexes on credits, completeBy and deliveryLocation, set default `open`, exact location match, `expiresAfter` including orders with no deadline, and 400 for an invalid status, moved `deliveryLocation` from free text to supplier-service ids, and today changed BIGINT to INTEGER.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service #6/#59: Socket.IO order events, JWT auth, active deliveries
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issues #6 and #59 (GitHub, AY2627S1-CS3219-P18/FoC) and George Yeo's decisions in chat, 2026-10-19/20 (quoted below).
+
+**Prompts (exact):**
+
+> #6 - this will use redis + socket, with a central notifying controller
+
+> #59 - this is same socket system, and frontend work
+
+> #6 lets use socket.IO
+
+> we will auth like credit-service does since its not service/admin critical like supplier service
+> for socket, we will auth handshake payload by socket.io, and disconnect at exp and set callback to auth and reconnect after 15mins
+
+> #6 we are sharing redis, using pub/sub for notifications since they are not critical, if client reconnects they will receive their backlog of notifications anyway (currently no backlog system yet so ignore that)
+
+> 1. Event names and payloads
+> Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
+> Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
+> Clients discard events whose version is ≤ the version they already hold.
+> Event names and payload types live in a shared types file used by both frontend and backend.
+> 2. Rooms
+> Room	Joined by	Purpose
+> user:{id}	Server, automatically at connect (from the JWT)	Personal updates, e.g. your order was accepted
+> order:{id}	Server, from the DB (active orders where the user is requester or courier)	Status changes for that order
+> listing	Client emits listing:subscribe / listing:unsubscribe	Open-request feed for couriers on the browse screen
+>
+> Clients never join a room by name directly. All order: joins are authorized server-side.
+>
+> 3. Where the notifying controller lives
+> The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
+> Emits happen only after the DB transaction commits, never inside it.
+> 4. Multi-instance fan-out
+> Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
+> Clients use transports: ["websocket"], so no sticky sessions are needed.
+> Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
+> 5. 15-minute socket lifetime and reconnection
+> Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
+> Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
+> Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
+> After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
+> Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
+> 6. 2-second latency requirement
+> Definition: from DB commit to event received by the client, for connected clients.
+> Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
+> Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
+
+> 1. outbox too
+> 2. do what congchen does
+> 3. yes
+> 4. by redis
+> 5. make events in redis
+> 6. make events and pass failure
+> 7. just follow convention this isnt part of design decisions
+> 8. what do you mean
+> 9.same
+> 10. defer
+> 11. resolved by client
+> 12. 2s
+> 13. yes
+> 14. what refresh flow, the 15min is for the socket not the JWT
+> 15. can we make a foreign table to map the bigint to uuid
+> 16. no it will not thats supplier service job on client
+> 17. no keep it personal md for nkw
+
+> do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
+
+> 1. b, no need for dependency
+> 2. can you explain more? what happens if we dont change to JWT
+> 3. as NFR
+> 4. skip for now
+> 5. later
+
+> ok switch to JWT too
+
+**Key responses:**
+
+- **Auth** (rebased 2026-10-20 onto Wen Xi's `src/middleware/authenticate.ts`, merged in PR #115; George: "keep hers"):
+  - REST uses her JWKS middleware on all of `/orders` (the listing included). Any token problem, including an unreachable JWKS, returns 401.
+  - Her token check was moved into an exported `createTokenVerifier` (same checks), which also returns `exp`. The Socket.IO handshake uses it.
+  - `GET /orders/active` uses the same `req.user.user_id` check as her handlers.
+  - The original version of this commit used `jose`, a per-route `requireAuth`, a public listing and a 503 for an unreachable JWKS. That was dropped in the rebase.
+- **Socket.IO** (`src/realtime/socket-server.ts`), in the order-service process on the same HTTP server, websocket transport only:
+  - The handshake `auth.token` is verified in `io.use()` with Wen Xi's verifier. Any failure → `connect_error` "unauthorized".
+  - The socket is disconnected at the token's `exp`.
+  - On connect the server joins `user:{id}` and the `order:{id}` rooms of the user's active orders (open/accepted/picked_up/delivered) from the DB, then emits `ready`.
+  - `listing:subscribe` / `listing:unsubscribe` join or leave `listing`.
+  - The Redis adapter runs over order-redis.
+- **Events** (`src/realtime/order-events.ts`, `socket-sink.ts`):
+  - Every committed transition and edit produces `order:created | accepted | pickedUp | delivered | completed | cancelled | expired | edited`.
+  - Payloads are thin. `order:created` adds the listing-card fields; reservation failures add `reason`.
+  - The courier joins `order:{id}` on accept, and order rooms are emptied at terminal states.
+  - Each event is a single emit to the union of its rooms, so a socket in several of those rooms receives it once.
+  - API writes emit directly through the adapter after commit.
+  - The worker (reservation outcomes, expiry, auto-complete) publishes to a plain Redis pub/sub channel with ioredis. Each API replica subscribes and emits locally.
+  - Publishing is best-effort.
+  - The log-only `Notifier` from #4 was removed.
+- **Active deliveries:** `GET /orders/active` (F12.1.3) returns the caller's accepted/picked_up/delivered orders as courier.
+- **Config:**
+  - `USER_SERVICE_URL` already came with Wen Xi's middleware.
+  - order-service in compose got `REDIS_HOST/PORT`.
+  - The e2e config now runs files sequentially (shared DB).
+- **Dependencies added:**
+  - `socket.io` and `@socket.io/redis-adapter` (decided);
+  - `ioredis` (already present via BullMQ, now declared);
+  - dev: `socket.io-client` (tests).
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 440/440;
+  - `test:e2e` 27/27 against a local Postgres 17, run 3× in parallel mode and once sequentially. This includes 7 Socket.IO tests with a real server and real RS256 tokens: handshake rejection, disconnect at expiry, join on accept, room closed after completion, rooms rebuilt on reconnect, listing unsubscribe, one delivery per socket, and NFR5.1.1 (client request sent → server broadcast) asserted under 2 s;
+  - build OK;
+  - the compiled `dist/server.js` booted and answered `/health`, the public listing, 401 with no or bad token, and 503 with the JWKS unreachable.
+- **Not verified:** the Redis adapter and the worker → API pub/sub path against a real Redis (unit-tested with fakes only), and calls against a live user-service.
+
+- **After the rebase onto Wen Xi's auth (2026-10-20):** tsc, oxlint and prettier are clean, and the unit and e2e suites pass at this commit. The test helper now publishes a local JWKS so that the e2e suite exercises her verifier. The verification list above is from the original commit.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts` (modified: verifier extracted, Wen Xi's file)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts` (created)
+- `order-service/src/realtime/socket-server.ts`, `order-service/src/realtime/socket-sink.ts`, `order-service/src/realtime/socket-sink.spec.ts` (created)
+- `order-service/src/notifications/notifier.ts` (deleted)
+- `order-service/src/app.ts`, `order-service/src/app.spec.ts`, `order-service/src/server.ts`, `order-service/src/worker.ts` (modified)
+- `order-service/src/routes/orders.routes.ts`, `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/config/env.ts`, `order-service/.env.example` (modified)
+- `order-service/test/helpers/tokens.ts`, `order-service/test/realtime.e2e-spec.ts` (created)
+- `order-service/test/health.e2e-spec.ts`, `order-service/test/credit-saga.e2e-spec.ts`, `order-service/vitest.config.e2e.ts` (modified)
+- `order-service/package.json`, `order-service/package-lock.json` (modified; no header possible)
+- `compose.yaml`, `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the per-event room mapping;
+   - the camelCase `order:pickedUp` name;
+   - joining the courier to the order room on accept and emptying order rooms at terminal states;
+   - the `ready` event after room setup;
+   - the `order-events` channel name;
+   - the active-status set;
+   - the `GET /orders/active` path;
+   - `order:edited` (George asked for edit events);
+   - `GET /orders` now requiring a token: this comes from Wen Xi's middleware, which George chose to keep.
+2. **NFR5.1.1 measured as written** (client request sent → server broadcasts), per George. His earlier DB-commit → client-received definition is not used.
+3. **Deferred by George:** the load test (N), the shared types file, and the frontend socket client. The frontend still has no Socket.IO client, and its Vite proxy has no `/socket.io` websocket route.
+4. **Curl testing now needs a real user-service access token** (`Authorization: Bearer …`).
+
+**What I kept/changed/rejected:**
+I chose Socket.IO and designed the rooms and events, chose JWT after Claude flagged the `x-user-id` identity problem, and in the rebase rejected Claude’s `jose` verifier, public listing and 503 behaviour in favour of Wen Xi’s middleware, while Claude flagged the room mapping and event names as conventions for me to review.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Frontend: Order Service integration (create, live board, activity, Socket.IO client)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issues #4, #5, #6, #11 and #59 (GitHub, AY2627S1-CS3219-P18/FoC), the Socket.IO design George Yeo gave in chat (quoted in the #6/#59 entry above), and George's answers below.
+
+**Prompts (exact):**
+
+> ok make a new branch now and connect up the frontend
+
+> 1. what do you mean uuid, i thought we already changed it to bigint
+
+> 1. ok change to bigint too, A
+> 2. yes add it A
+> 3. hide them first
+> 4. ok
+
+**Key responses:**
+
+- **Rebased onto PR #115 (Wen Xi), 2026-10-20.** George kept her INTEGER `supplierId` (her migration `20261020211000_supplier_id_integer`), so the BIGINT change originally made here was dropped. He also kept this frontend, with her edit page carried over (see below).
+- **Backend, commit 1 (order-service):**
+  - New `GET /orders/mine?as=requester|courier` returns the caller's own orders, newest first, in every status (George: "yes add it A"). The path and the `as` parameter were picked by convention.
+- **Frontend, commit 2:**
+  - **Socket.IO client** (`src/realtime/orderSocket.js`, new dependency `socket.io-client`):
+    - one connection per signed-in session, opened and closed from `DemoContext`;
+    - websocket transport; `auth` is a callback that sends the in-memory access token, refreshing it first when it is missing or within 30 s of expiry;
+    - reconnects on `io server disconnect` (token expiry); one forced refresh and retry on an `unauthorized` connect error; retries after 5 s on `identity_provider_unavailable`;
+    - reference-counted `listing:subscribe`, re-sent after every `ready`;
+    - hooks `useOrderEvents` and `useSocketReady`, and `watchOrderEvents` for a reply that may arrive before the HTTP response.
+  - **API clients** (`src/api/orders.js`):
+    - create, filtered and cursor-paged listing, `mine`, `active`, and accept/pickup/deliver/complete/cancel;
+    - user-facing wording for the error codes and for the reserve-failure reasons.
+  - `http.js` exposes `getAccessToken()`, and `ApiError` keeps the response body, because transition errors carry their code as `error`.
+  - **Lookups** (`src/api/lookups.js`), each fetched once per id per page load:
+    - supplier via `GET /api/v1/suppliers/:id`;
+    - display name via user-service `GET /users/public/:id`;
+    - location name from supplier-service's location reference list.
+  - **Post an errand** (`CreateRequest.jsx`):
+    - the delivery location picker uses the supplier-service location ids;
+    - `POST /orders` (202), then a spinner until `order:created`, which goes to My activity, or `order:cancelled`, which shows the reason and keeps the form;
+    - fallback: `/orders/mine` is re-checked every 5 s if no event arrives;
+    - the stay-open and schedule fields stay hidden (George: "hide them first"; they were already commented out), and their unused state was removed;
+    - empty additional details are sent as `null`, because the service rejects a missing field (see deviations).
+  - **Find errands** (`RequestBoard.jsx`, `RequestCard.jsx`):
+    - queries `status=open` with the service's filters and sorts: "3+ credits" → `minCredits=3`, "Expiring soon" → `expiresBefore=now+45 min`, a drop-off point picker → `location` (replaces the name-based "Near me" chip), and a sort picker for deliver-by, most credits, or newest;
+    - "Load more" pages through `nextCursor`;
+    - live updates from the `listing` feed: created → inserted in sort order if it matches the filters; accepted → "Taken"; cancelled/expired → removed; edited → refetch. A version guard ignores stale events, and the board refetches after every reconnect;
+    - Accept calls the real route and shows 403 own-errand or 409 taken/expired/conflict text;
+    - text search filters the loaded page in the browser only (the service has no text search).
+  - **My activity** (`Activity.jsx`):
+    - errands come from `/orders/mine` with `pending` hidden;
+    - deliveries come from `/orders/active` plus the closed orders from `/orders/mine?as=courier`;
+    - pick up, deliver, complete and cancel call their routes and show the rejection;
+    - cancel on an accepted or picked-up errand appears only once deliver-by has passed (F17.2);
+    - the lists refetch on order events and after a reconnect;
+    - timeline stamps come from `createdAt`/`acceptedAt`/`deliveredAt`.
+  - **Vite proxy:** `/socket.io` (ws) → order service.
+  - **Edit page (Wen Xi's, carried over after the rebase):**
+    - `/requests/:id/edit` loads the errand from `/orders/mine` and mounts the same form with the errand's fields, hiding the offer.
+    - Saving sends `PATCH /orders/:id/edit` with the location id, `completeBy` (or `null`) and details (or `null`).
+    - The Activity Edit button opens the page.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint clean, 447 unit and 27 e2e tests passing, build OK.
+  - frontend: `vite build` OK, and oxlint reports no warnings in the changed files.
+  - **Browser end-to-end** (Playwright/Chromium against Vite). Backends:
+    - the real order-service app and Socket.IO server on Postgres 17, with the in-memory adapter (no Redis available);
+    - a simulated credit worker;
+    - stub user and supplier services.
+
+    Each check below passed:
+    - post → spinner → My activity (≈0.3–0.45 s);
+    - another user's board receives the card live;
+    - own errand not acceptable;
+    - accept → requester's activity updates live;
+    - pickup and deliver → requester sees Delivered live;
+    - complete → both sides move it to History;
+    - a reservation failure shows its reason;
+    - 55 orders page as 50 + "Load more";
+    - credit and location filters, and credit sort;
+    - cancel removes the card live;
+    - with WebSocket blocked, a post settles through the re-check (~5.1 s);
+    - with 35 s tokens, the board is still live after the server's expiry disconnect.
+- **Not verified:** a live user-service or supplier-service, and the Redis adapter or worker pub/sub path.
+
+**Files:**
+
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts`, `order-service/src/routes/orders.routes.ts` (modified)
+- `frontend/src/realtime/orderSocket.js`, `frontend/src/api/lookups.js` (created)
+- `frontend/src/api/orders.js`, `frontend/src/api/http.js`, `frontend/src/context/DemoContext.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/pages/RequestBoard.jsx`, `frontend/src/components/RequestCard.jsx`, `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/package.json`, `frontend/package-lock.json` (modified; no header possible)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the `/orders/mine?as=` path, parameter and ordering;
+   - the 5 s re-check fallback while posting;
+   - the token-refresh threshold (30 s);
+   - one forced refresh on `unauthorized`;
+   - the 5 s retry on `identity_provider_unavailable`;
+   - "Near me" replaced by a drop-off point picker;
+   - the sort labels;
+   - browser-only text search;
+   - the requester and courier names from `/users/public/:id`;
+   - the user-facing error and reason wording;
+   - a duplicate "Deliver by" cell in the expanded card changed to "Posted".
+2. **Backend inconsistency (Wen Xi's validation):** `createOrder` treats a missing `additionalDetails` as invalid even though the code marks it optional. The frontend sends `null` instead; the service was not changed.
+3. **Not wired, left as they were:**
+   - the Edit button on an open errand (F18 editing UI);
+   - Chat and the demo controls (still demo data);
+   - the credit pill and Wallet (George: leave alone). The post form's "insufficient credits" check still uses the demo balance, and the real check is the reservation outcome.
+4. **Pre-existing, not changed:** pages that require login open the login prompt before the session has been restored on a hard reload.
+5. **Migrations delete order rows:** `20261020120000_listing_filters` deletes existing orders, so local data is lost.
+
+**What I kept/changed/rejected:**
+I corrected Claude on `supplierId` (I thought it was already BIGINT), asked for `/orders/mine` and for the stay-open and schedule fields to be hidden, and in the rebase kept Claude’s frontend over Wen Xi’s but kept her edit page, while replacing “Near me” and the search behaviour were Claude’s calls, flagged for me.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service: `failed` status for failed reservations; login prompt on reload
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** George Yeo's decisions in chat, 2026-10-20 (quoted below). The previous decision that a failed reservation goes to `cancelled` (issue #4 entry above) is replaced by `failed`.
+
+**Prompts (exact):**
+
+> can we create a new status for orders? called failed
+> the transition is only pending -> failed
+> i dont want to see failed orders in my activity, because i see the cancelled orders from the BALANCE_NOT_FOUND ones early
+>
+> is that a good idea?
+
+> add the new event
+> filter out from /mine
+> yes reject, invalid status
+> new branch
+
+> when i reload the page on the create errand page, why does it prompt me to log in again? even though im logged in
+
+**Key responses:**
+
+- **Declined:** "is that a good idea?" asks for a design judgement and trade-off analysis (schema change), which the policy prohibits. I gave the facts and the implementation impact instead, and asked four questions. George answered them.
+- **`failed` status, commit 1:**
+  - **Schema and transitions:**
+    - `failed` added to `RequestStatus`, with the hand-written migration `20261020160000_failed_status` (`ALTER TYPE ... ADD VALUE`);
+    - transition `pending → failed` (system only), and `failed` is terminal;
+    - `pending → cancelled` was removed, because its only producers (the reservation failures) now go to `failed`. Flagged below.
+  - **Worker:** both failure paths in `credit-jobs.ts` settle to `failed`: credit-service rejecting the reserve, and retries exhausted. The retries-exhausted path still queues a credit release, so `failed` joins `cancelled`/`expired` in the release check.
+  - **Event:** a new `order:failed` event, with `reason`, sent to `user:{requester}` only. It replaces `order:cancelled` from `pending`.
+  - **Listing:** `GET /orders?status=failed` returns 400 `INVALID_STATUS`, the same as `pending`.
+  - **`/orders/mine`:** `GET /orders/mine` leaves out `failed` orders for both `as` values.
+  - **Frontend:**
+    - the post form waits for `order:created` or `order:failed`;
+    - its `/orders/mine` re-check treats a just-created order that is missing from the list as failed, since that list now leaves failed orders out;
+    - the socket client listens for `order:failed`.
+- **Login prompt on reload, commit 2:**
+  - Post an errand, My activity and Chat opened the login prompt before the session had been restored from the refresh cookie on a hard reload, and nothing closed it.
+  - The prompt now waits for `sessionReady`, the same pattern `Wallet.jsx` already uses.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint 0 warnings, prettier clean, 514/514 unit tests, 27/27 e2e against a local Postgres 17 (all 6 migrations applied), build OK.
+  - frontend: `vite build` OK, and oxlint reports no warnings in the changed files.
+  - **Browser end-to-end** (Playwright/Chromium against Vite, with the real order-service app and Socket.IO, a simulated credit worker that now settles failures to `failed`, and stub user and supplier services). Each check below passed:
+    - the full post → accept → pickup → deliver → complete flow;
+    - a rejected reservation shows its reason;
+    - the failed order is absent from My activity;
+    - with WebSocket blocked, the re-check reports the failure after about 5.4 s;
+    - reloading Post an errand while signed in no longer opens the login prompt.
+  - API checks: `GET /orders?status=failed` → 400; `/orders/mine` omitted the failed order.
+- **Not verified:** the logged-out case (the prompt still opens once the restore finds no session) was not run in a browser. The Redis path is unchanged and untested.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261020160000_failed_status/migration.sql` (created)
+- `order-service/src/domain/order-status.ts`, `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts` (modified)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/realtime/orderSocket.js`, `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/Activity.jsx`, `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention, flagged for George's review:**
+   - removing `pending → cancelled`;
+   - `order:failed` going to the requester's user room only;
+   - the `/orders/mine` filter applying to `as=courier` too (a failed order never has a courier);
+   - treating "missing from /orders/mine" as failed in the frontend re-check (that path has no reason, so it shows the generic message).
+2. Existing `cancelled` rows that came from failed reservations are not migrated to `failed`. They stay in History until the local data is reset.
+
+**What I kept/changed/rejected:**
+I asked whether `failed` was a good idea, and after Claude declined to judge the policy and only listed the impact, I decided on a new `order:failed` event, filtered out of `/mine`, with `INVALID_STATUS` on the listing, while removing `pending → cancelled` was Claude’s convention call.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service: F18.1.1 edit only when open; F9.1.1 optional additional details
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** debug | refactor
+**Scope:** Implementation code | Debugging
+**Governing decision:** `docs/FoC-ProductBacklog.md` F18.1.1 ("requesters are only able to edit requests that are 'open'") and F9.1.1 ("Additional details [optional]"); George Yeo's instruction in chat, 2026-10-20 (quoted below). George had earlier confirmed that Wen Xi's order code may be edited.
+
+**Prompts (exact):**
+
+> [attached excerpt of my previous reply: "Wen Xi’s code: editOrder doesn’t check that the order is open, and create rejects a missing additionalDetails. The frontend sends null to work around it."]
+> wait quickly fix that violation of the FR
+
+**Key responses:**
+
+- **F18.1.1:**
+  - `editOrder` returns `ORDER_NOT_EDITABLE` (HTTP 409, "Only open requests can be edited.") unless the request is `open`.
+  - The versioned `updateMany` also requires `status: 'open'`, so an accept that lands between the read and the write shows up as a version conflict instead of editing an accepted order.
+  - The code name and the 409 follow the existing state-conflict codes; flagged below.
+- **F9.1.1:** `createOrder` no longer rejects a missing `additionalDetails`; it is stored as `null`. A non-text value is still `INVALID_ADDITIONAL_DETAILS`. The frontend keeps sending `null` for empty details, and the stale workaround comment was removed.
+- **Tests:**
+  - unit: edit is refused for each non-open status; there is a 409 controller case; create succeeds without `additionalDetails`;
+  - the edit fixtures now carry `status: 'open'`;
+  - the missing-fields case no longer expects `INVALID_ADDITIONAL_DETAILS`.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint 0 warnings, prettier clean, unit tests 524/524, build OK. The order-service e2e suite (27 tests) ran 7 times against a local Postgres 17. Five runs passed in full; two runs each had one failure, in different tests both times:
+    - `realtime.e2e-spec.ts` › token-expiry disconnect;
+    - `credit-saga.e2e-spec.ts` › last transient failure.
+    Neither failure reproduced in 4 further consecutive runs.
+  - frontend: `vite build` OK.
+- **Not verified:** the edit route from the browser (the Edit button is not wired).
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Flagged for George's review:** the `ORDER_NOT_EDITABLE` name, its message, and the 409 status, picked by convention after `ORDER_EXPIRED`/`INVALID_TRANSITION`.
+2. **Two intermittent e2e failures** were seen once each and have not been diagnosed. The token-expiry test uses a 1-second `exp` and may be timing-sensitive.
+
+**What I kept/changed/rejected:**
+I told Claude to fix the F18.1.1 and F9.1.1 violations it had found in Wen Xi’s code, and returning `ORDER_NOT_EDITABLE` with a 409 was Claude’s convention call.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service + Frontend: rebase onto PR #115 (Wen Xi's auth, supplier ids, edit page)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** George Yeo's choices in chat, 2026-10-20 (quoted below), after Wen Xi's PR #115 was merged into `main` (commits `10af4a5`, `de8fe1a`, `10dc6d2`, `b1bb1cd`, `4dc1344`).
+
+**Prompts (exact):**
+
+> hold on wenxi has made changes now, ive updated main, we need to undo anything she has already fixed/done
+
+> 1. ok throw away ours
+> 2. keep hers
+> 3. ok lets use int instead
+> 4. do a
+>
+>
+> yes make it clean
+
+**Key responses:**
+
+- **Branches:** the six stacked branches were rebased onto `main` (`62c5d67`) commit by commit, with order-service and frontend checks at each branch tip. The pre-rebase heads are kept locally as `backup/<branch>`.
+- **1. Supplier-service auth:** the local throwaway branch `tmp/supplier-jwks-local` was deleted. Wen Xi's `10af4a5` replaces it.
+- **2. Order-service auth (hers kept):**
+  - Removed from #6: `jose`, `src/auth/verify-access-token.ts` and its spec, `src/middleware/auth.ts`, the per-route `requireAuth`, and our `express.d.ts`.
+  - Her middleware now covers all of `/orders`, the listing included.
+  - Her token check was moved, unchanged, into an exported `createTokenVerifier`, which also returns `exp`. The Socket.IO handshake uses it. The `identity_provider_unavailable` connect error is gone; any failure is "unauthorized".
+  - `getActiveDeliveries` and `getMyOrders` use her `req.user.user_id` + `isUuid` check.
+  - The test helper now publishes a local JWKS and signs tokens with node:crypto, so the e2e suite runs through her verifier.
+  - The token-expiry e2e test now uses a 2 s `exp` instead of 1 s, which fixes the intermittent failure noted in the F18.1.1 entry.
+- **3. supplierId:** her INTEGER column (`20261020211000_supplier_id_integer`) and her create validation were kept. The BIGINT migration `20261020140000_supplier_id_bigint`, the BIGINT conversions and the edit-time supplier validation were dropped. That frontend-branch commit is now only "GET /orders/mine". `deliveryLocationId` was later matched to INTEGER as well (see the next entry).
+- **4. Frontend (option a):**
+  - Kept our create, board, card and activity implementations.
+  - Carried over her edit page onto our form: `/requests/:id/edit` loads the errand from `/orders/mine` and saves with `PATCH /orders/:id/edit`. Her route in `App.jsx` is unchanged, and our Activity Edit button now opens it.
+  - Her disclosure entries were kept in the headers of the four replaced files, with a note that their implementation was replaced.
+- **Docs:** the #6 and frontend-integration entries above were corrected to describe what their rebased commits now contain. README log-index rows for our entries were renumbered after Wen Xi's (112 onwards).
+- **Verification in the AI workspace, at the final branch tip:**
+  - order-service: tsc clean, oxlint 0, prettier clean, 516/516 unit tests, 27/27 e2e, build OK.
+  - frontend: `vite build` OK; oxlint shows only warnings that were already there in files we did not change.
+  - **Browser end-to-end** (Playwright/Chromium against Vite, with the real order-service app and Socket.IO behind Wen Xi's JWKS auth, a fake user-service publishing a JWKS, a simulated credit worker and a stub supplier-service). Each check below passed:
+    - `/orders` without a token → 401, with a token → 200;
+    - post → My activity;
+    - the board receives the card live;
+    - edit page prefilled → save → My activity and the courier's board both show the change;
+    - accept → pickup → deliver → complete;
+    - a failed reservation shows its reason and stays out of My activity.
+- **Not verified:** a live user-service or supplier-service, and the Redis paths.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts`, `order-service/src/app.ts`, `order-service/src/server.ts`, `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/realtime/socket-server.ts`, `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts`, `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/helpers/tokens.ts`, `order-service/test/realtime.e2e-spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/src/auth/verify-access-token.ts`, `order-service/src/auth/verify-access-token.spec.ts`, `order-service/src/middleware/auth.ts`, `order-service/prisma/migrations/20261020140000_supplier_id_bigint/migration.sql` (removed from the rebased stack)
+- `order-service/package.json`, `order-service/package-lock.json` (`jose` removed; no header possible)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/pages/Activity.jsx`, `frontend/src/components/RequestCard.jsx`, `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **`GET /orders` now needs a token** (her middleware). The board is only shown to signed-in users, so the frontend is unaffected.
+2. **Edit didn't validate `supplierId`** (her code as merged). This is fixed in the next entry.
+3. **Migration order on an existing local database:** her `20261020211000` may already be applied, and ours (`20261020100000`, `120000`, `160000`) have earlier timestamps. `prisma migrate deploy` applies them anyway; `migrate dev` may report the ordering. `20261020120000_listing_filters` deletes order rows.
+4. **She edited the already-applied `20260927111937_create_requests` migration.** Databases that ran the original may show a checksum or drift warning.
+5. Picked by convention: the shape of the extracted `createTokenVerifier`, and the 2 s test token.
+
+**What I kept/changed/rejected:**
+I threw away our throwaway supplier JWKS, kept her auth, switched to INTEGER and chose option a for the frontend, and Claude flagged her edit to an already-applied migration and the missing edit validation.
+
+**Author review:** george-yeo
+
+## 2026-10-20 — Order Service: deliveryLocationId as INTEGER; full edit validation
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo in chat, 2026-10-20 (quoted below), following his choice of INTEGER for `supplierId`. F18.1.2 ("edit 'open' requests' fields in accordance to F9.1.1"), `docs/FoC-ProductBacklog.md`.
+
+**Prompts (exact):**
+
+> ok lets match deliveryLocationId to int to match, and also validate the edit
+
+**Key responses:**
+
+- **`deliveryLocationId` INTEGER** (folded into the #11 commit, so that PR shows the final shape):
+  - the migration `20261020120000_listing_filters` adds the column as `INTEGER`, and the schema is `Int`;
+  - the BigInt conversions in create and edit, the BigInt `location` filter parser and the Express `json replacer` were removed;
+  - fixtures and seeds now use plain numbers;
+  - `isPositiveSafeInteger` became `isPositiveInt` (1 to 2,147,483,647, the INTEGER range).
+  - The later commits were rebased onto it: the #6 listing card no longer converts the id, and fixtures were updated.
+- **Edit validation** (new commit at the top of the stack): `PATCH /orders/:id/edit` now validates every editable field with create's rules, before any database query:
+  - `supplierId` (`isPositiveInt`) → `INVALID_SUPPLIER`;
+  - `description` (non-empty text) → `INVALID_DESCRIPTION`;
+  - `additionalDetails` (text or null) → `INVALID_ADDITIONAL_DETAILS`;
+  - `deliveryLocationId` and `completeBy`, as before.
+  - Create's `supplierId` check also uses `isPositiveInt`, so an id beyond the INTEGER range is a 400 rather than a database error.
+- **Verification in the AI workspace:**
+  - at the #11 tip: tsc clean, unit 418/418, e2e 20/20;
+  - at #6: unit 433/433, e2e 27/27;
+  - at the final tip: tsc clean, oxlint 0, prettier clean, unit 524/524 (new edit-validation cases), e2e 27/27, build OK.
+
+**Files:**
+
+- `order-service/prisma/migrations/20261020120000_listing_filters/migration.sql`, `order-service/prisma/schema.prisma`, `order-service/prisma/seed.ts` (modified, in the #11 commit)
+- `order-service/src/utils/validation.ts`, `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts`, `order-service/src/app.ts` (modified, in the #11 commit)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified, in the #11 commit)
+- `order-service/src/realtime/order-events.ts`, `order-service/src/realtime/order-events.spec.ts`, `order-service/src/worker/credit-jobs.spec.ts`, `order-service/test/realtime.e2e-spec.ts` (modified, in the #6 commit)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Applying the migration change to a local database:** the #11 migration was edited in place (the stack is unmerged). A database that already ran it as BIGINT needs `npx prisma migrate reset`.
+2. **Picked by convention:** the INTEGER upper bound in `isPositiveInt`, and applying it to create's `supplierId` too.
+
+**What I kept/changed/rejected:**
+I asked for `deliveryLocationId` to match the INTEGER location and for edits to be validated, while the INTEGER upper bound and applying it to create were Claude’s calls.
+
+**Author review:** george-yeo
