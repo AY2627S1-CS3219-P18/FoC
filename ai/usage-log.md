@@ -4582,3 +4582,88 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Order Service #11: Listing filters, keyset pagination, location ids
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issue #11's scope (GitHub, AY2627S1-CS3219-P18/FoC #11) and George Yeo's decisions in chat, 2026-10-19/20 (quoted below).
+
+**Prompts (exact):**
+
+> #11 - this is simple registry of filters mapped to the prisma function to filter
+
+> #11 add indexes to credits, completeBy, and deliveryLocation too
+
+> #11 we can do exact, since delivery location is supplied by supplier service so its not freeform input, listing paginate at 50, default status filter? what is that mean, 400 status
+
+> also i am changing order service to take ids from supplier service instead
+
+> #11 default is open
+
+> do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
+
+> 1. oh right, lets update the column now, do a
+> 2. do b, rest api
+> 3. soonest expiring first, the user can configure the sorting operation too
+> 4. match expiresAfter, so if no completeBy it would match expiresAfter=Never
+> 5. invalid status
+
+> 1. a
+> 2. match supplier, convert it
+> 3. ok we will update the frontend later
+
+**Key responses:**
+
+- **Schema / migration** (`20261020120000_listing_filters`, hand-written):
+  - deletes existing order rows (dev data; free-text locations cannot be mapped to ids);
+  - replaces `deliveryLocation` TEXT with `deliveryLocationId` INTEGER (the supplier-service location id; INTEGER to match `supplierId`, George 2026-10-20 — originally BIGINT);
+  - adds single-column indexes on `credits`, `completeBy` and `deliveryLocationId`.
+  - The migration applied cleanly to a fresh Postgres 17 together with all earlier migrations.
+- **API:**
+  - Create and edit take `deliveryLocationId` (a positive integer within INTEGER range).
+  - The column is INTEGER, so it serialises as a JSON number. (An earlier version of this commit used BIGINT and an Express `json replacer`; both were dropped when George matched it to `supplierId`.)
+  - The seed uses location ids 1–9.
+- **Listing** (`GET /orders`, new `services/order-listing.service.ts`):
+  - **Filter registry:** each query parameter maps to a parse step and a Prisma `where` builder, and the conditions are AND-ed: `status`, `location` (exact id), `minCredits`, `maxCredits`, `expiresBefore` and `expiresAfter`. `expiresAfter` also matches orders with no `completeBy`.
+  - **Defaults:** `status=open`; `pending` is rejected as an invalid status.
+  - **400s:** unknown or repeated parameters, invalid values, `minCredits` > `maxCredits`, and invalid or mismatched cursors. An invalid status previously returned 500.
+  - **Pagination:** keyset cursor, 50 per page (51 rows fetched to detect a next page). The response is `{ ok, orders, nextCursor }`.
+  - **Sorting:** `sort` ∈ `completeBy | credits | createdAt` and `order` ∈ `asc | desc`, defaulting to `completeBy asc`. Orders with no complete-by come last ascending and first descending, with id as the tie-breaker.
+- **Verification in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint` clean;
+  - `vitest run` 418/418;
+  - `test:e2e` 20/20 against a local Postgres 17, including 130 seeded orders walked page by page for all 6 sort/order combinations (no gaps, no duplicates, ordering matches an independent JS sort), combined filters, and pending orders hidden;
+  - build OK;
+  - seed ran.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma`, `order-service/prisma/seed.ts` (modified)
+- `order-service/prisma/migrations/20261020120000_listing_filters/migration.sql` (created)
+- `order-service/src/services/order-listing.service.ts`, `order-service/src/services/order-listing.service.spec.ts` (created)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/constants/errors.ts`, `order-service/src/types/orders.ts`, `order-service/src/utils/validation.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the query parameter names;
+   - the sortable fields;
+   - id as the tie-breaker and the null placement;
+   - the opaque base64url cursor;
+   - the error codes `UNKNOWN_QUERY_PARAMETER`, `INVALID_QUERY_PARAMETER` and `INVALID_CURSOR`;
+   - the 400 for `minCredits` > `maxCredits`;
+   - inclusive credit bounds and exclusive expiry bounds;
+   - the `{ message }` error body.
+2. **Frontend now out of date** (George: "we will update the frontend later"). It still sends and displays free-text `deliveryLocation`, and `frontend/src/api/orders.js` ignores `nextCursor`.
+3. **`supplierId` still validated as a UUID,** while supplier ids are BIGINT. This was left as is pending George's decision on the mapping.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

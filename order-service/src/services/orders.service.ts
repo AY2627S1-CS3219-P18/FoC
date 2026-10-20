@@ -29,6 +29,11 @@
  *        replacing the inline reservationId release; `credits` is no longer editable.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #11 - deliveryLocationId (supplier location id) replaces the
+ *        free-text deliveryLocation on create and edit; getOrders moved to
+ *        order-listing.service.ts.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -49,15 +54,19 @@ import {
   type ActorId,
 } from '../domain/order-status.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
-import { ErrorCode, ErrorMessage } from '../constants/errors.js';
-import { isIsoDateString, isNonEmptyString } from '../utils/validation.js';
+import { ErrorCode } from '../constants/errors.js';
+import {
+  isIsoDateString,
+  isNonEmptyString,
+  isPositiveInt,
+} from '../utils/validation.js';
 
 // `credits` is deliberately absent: credit-service allows one reservation per
 // request, so the offer is fixed at creation (George, 2026-10-20).
 const EDITABLE_ORDER_FIELDS = new Set([
   'supplierId',
   'description',
-  'deliveryLocation',
+  'deliveryLocationId',
   'completeBy',
   'additionalDetails',
 ]);
@@ -67,9 +76,6 @@ export type CreateOrderResult =
 
 export type EditOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
-
-export type GetOrderResult =
-  { ok: true; orders: OrderRequest[] } | { ok: false; errors: any };
 
 const validateCredits = (credits: number) => {
   return Number.isInteger(credits) && credits > 0;
@@ -117,9 +123,12 @@ export const createOrder = async (
   } else if (!isNonEmptyString(requestPayload.description)) {
     errors.push(ErrorCode.INVALID_DESCRIPTION);
   }
-  if (!requestPayload.deliveryLocation) {
+  if (
+    requestPayload.deliveryLocationId === undefined ||
+    requestPayload.deliveryLocationId === null
+  ) {
     errors.push(ErrorCode.MISSING_DELIVERY_LOCATION);
-  } else if (!isNonEmptyString(requestPayload.deliveryLocation)) {
+  } else if (!isPositiveInt(requestPayload.deliveryLocationId)) {
     errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
   }
   if (requestPayload.credits === undefined || requestPayload.credits === null) {
@@ -154,7 +163,7 @@ export const createOrder = async (
         requesterId,
         supplierId: requestPayload.supplierId,
         description: requestPayload.description,
-        deliveryLocation: requestPayload.deliveryLocation,
+        deliveryLocationId: requestPayload.deliveryLocationId,
         credits: requestPayload.credits,
         completeBy: requestPayload.completeBy
           ? new Date(requestPayload.completeBy)
@@ -189,7 +198,11 @@ export const editOrder = async (
     }
 
     // Validate fields
-    if (key == 'completeBy') {
+    if (key == 'deliveryLocationId') {
+      if (!isPositiveInt(value)) {
+        errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
+      }
+    } else if (key == 'completeBy') {
       if (typeof value != 'string' && value != null) {
         errors.push(ErrorCode.INVALID_COMPLETE_BY);
       } else {
@@ -241,42 +254,6 @@ export const editOrder = async (
       return { ok: false, errors: [ErrorCode.ORDER_NOT_FOUND] };
     }
     throw error;
-  }
-};
-
-export const getOrders = async (
-  prisma: PrismaClient,
-  statusFilter: RequestStatus | undefined,
-): Promise<GetOrderResult> => {
-  if (
-    statusFilter !== undefined &&
-    !Object.values(RequestStatus).includes(statusFilter)
-  ) {
-    const errorCode = ErrorCode.INVALID_STATUS;
-    return {
-      ok: false,
-      errors: ErrorMessage[errorCode],
-    };
-  }
-  try {
-    const orders = await prisma.orderRequest.findMany({
-      where: statusFilter
-        ? {
-            status: statusFilter,
-          }
-        : undefined,
-    });
-
-    return {
-      ok: true,
-      orders: orders,
-    };
-  } catch (error) {
-    // TODO: retry and log
-    return {
-      ok: false,
-      errors: error,
-    };
   }
 };
 

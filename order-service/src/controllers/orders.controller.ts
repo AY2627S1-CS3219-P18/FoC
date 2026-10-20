@@ -20,6 +20,11 @@
  *        2026-10-20); credit calls moved to the worker, so no credit client here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #11 - GET /orders delegates to the listing service: 200
+ *        { ok, orders, nextCursor }; 400 { message } for unknown or invalid query
+ *        parameters (previously an invalid status answered 500).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -27,6 +32,7 @@ import type { PrismaClient } from '../db/prisma.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
 import * as ordersService from '../services/orders.service.js';
+import { listOrders } from '../services/order-listing.service.js';
 import { RequestStatus } from '../generated/prisma/enums.js';
 
 export const createOrder =
@@ -62,14 +68,15 @@ export const createOrder =
 export const getOrders =
   (prisma: PrismaClient): RequestHandler =>
   async (req, res) => {
-    const statusFilter = req.query.status as RequestStatus | undefined;
-    const result = await ordersService.getOrders(prisma, statusFilter);
-
-    if (result.ok) {
-      res.status(200).json(result);
-    } else {
-      res.status(500).json(result);
+    const result = await listOrders(prisma, req.query);
+    if (!result.ok) {
+      const message = result.errors
+        .map((e) => `${ErrorMessage[e.code]} (${e.param})`)
+        .join('\n');
+      res.status(400).json({ message });
+      return;
     }
+    res.status(200).json(result);
   };
 
 export const editOrder =

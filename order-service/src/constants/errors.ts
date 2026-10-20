@@ -11,6 +11,10 @@
  *        follow the existing codes' convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #11 - listing query errors (unknown parameter, invalid
+ *        value, invalid cursor), named by convention.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -33,6 +37,9 @@ export enum ErrorCode {
   COMPLETE_BY_IN_PAST = 'COMPLETE_BY_IN_PAST',
   DEADLINE_NOT_REACHED = 'DEADLINE_NOT_REACHED',
   ORDER_EXPIRED = 'ORDER_EXPIRED',
+  UNKNOWN_QUERY_PARAMETER = 'UNKNOWN_QUERY_PARAMETER',
+  INVALID_QUERY_PARAMETER = 'INVALID_QUERY_PARAMETER',
+  INVALID_CURSOR = 'INVALID_CURSOR',
   INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
   CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
   INVALID_STATUS = 'INVALID_STATUS',
@@ -47,7 +54,7 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.MISSING_DELIVERY_LOCATION]:
     'Request is missing a delivery location.',
   [ErrorCode.INVALID_DELIVERY_LOCATION]:
-    'Delivery location must be non-empty text.',
+    'Delivery location must be a valid location id.',
   [ErrorCode.MISSING_CREDITS_OFFERED]:
     'Request is missing number of credits offered.',
   [ErrorCode.INVALID_CREDITS_OFFERED]: 'Invalid number of credits offered.',
@@ -64,6 +71,10 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.DEADLINE_NOT_REACHED]:
     'An ongoing request can only be cancelled after its complete-by time has passed.',
   [ErrorCode.ORDER_EXPIRED]: 'This request has expired.',
+  [ErrorCode.UNKNOWN_QUERY_PARAMETER]: 'Unknown query parameter.',
+  [ErrorCode.INVALID_QUERY_PARAMETER]: 'Invalid query parameter value.',
+  [ErrorCode.INVALID_CURSOR]:
+    'The page cursor is invalid or was issued for a different sort.',
   [ErrorCode.INSUFFICIENT_CREDITS]:
     'You do not have enough credits for this request.',
   [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:

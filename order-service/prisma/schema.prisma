@@ -4,15 +4,20 @@
 //        `reservationId`, Outbox and DeadLetterJob models (mirroring supplier-service).
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Scope (2026-10-20): Issue #11 per George's decisions - deliveryLocation (text)
+//        replaced by deliveryLocationId (INTEGER like supplierId, supplier-service location id); indexes
+//        on credits, completeBy and deliveryLocationId.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 // Order service Prisma schema.
 // Datasource URL is supplied by prisma.config.ts (Prisma 7 no longer reads it here).
 
 generator client {
-  provider               = "prisma-client"
-  output                 = "../src/generated/prisma"
-  moduleFormat           = "esm"
-  importFileExtension    = "js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -31,26 +36,29 @@ enum RequestStatus {
 }
 
 model OrderRequest {
-  id                String        @id @default(uuid(7)) @db.Uuid
-  requesterId       String        @db.Uuid
-  supplierId        Int
-  description       String
-  deliveryLocation  String
-  credits           Int
-  completeBy        DateTime?     @db.Timestamptz(3) // null = no deadline
-  additionalDetails String?
-  courierId         String?       @db.Uuid
-  status            RequestStatus @default(open)
-  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
-  acceptedAt        DateTime?     @db.Timestamptz(3)
-  deliveredAt       DateTime?     @db.Timestamptz(3)
-  creditReleasedAt  DateTime?     @db.Timestamptz(3)
-  version           Int           @default(0)
+  id                 String        @id @default(uuid(7)) @db.Uuid
+  requesterId        String        @db.Uuid
+  supplierId         Int
+  description        String
+  deliveryLocationId Int // supplier-service location_id
+  credits            Int
+  completeBy         DateTime?     @db.Timestamptz(3) // null = no deadline
+  additionalDetails  String?
+  courierId          String?       @db.Uuid
+  status             RequestStatus @default(open)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+  acceptedAt         DateTime?     @db.Timestamptz(3)
+  deliveredAt        DateTime?     @db.Timestamptz(3)
+  creditReleasedAt   DateTime?     @db.Timestamptz(3)
+  version            Int           @default(0)
 
   @@index([status, createdAt])
   @@index([requesterId])
   @@index([courierId])
+  @@index([credits])
+  @@index([completeBy])
+  @@index([deliveryLocationId])
   @@map("requests")
 }
 

@@ -25,6 +25,10 @@
  *        HTTP coverage.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #11 - GET /orders coverage for the new listing (default
+ *        filter + ordering, 400s); body uses deliveryLocationId.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #5 - POST /orders/:id/accept HTTP coverage: 200 with the
  *        courier assigned; 403 self-accept; 409 for expired, cancelled, pending, already
  *        assigned, and lost optimistic-lock race.
@@ -46,7 +50,7 @@ const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
 const body = {
   supplierId: 1,
   description: '1x chicken rice',
-  deliveryLocation: 'COM1 Basement',
+  deliveryLocationId: 12,
   credits: 4,
   additionalDetails: null,
 };
@@ -210,70 +214,59 @@ describe('PATCH /orders/:id/edit', () => {
 
 describe('GET /orders', () => {
   const orders = [
-    { id: 'open-1', status: 'open', description: 'Chicken rice' },
-    { id: 'accepted-1', status: 'accepted', description: 'Coffee' },
-    { id: 'cancelled-1', status: 'cancelled', description: 'Textbooks' },
+    { id: 'open-1', status: 'open', deliveryLocationId: 12, credits: 4 },
   ];
 
-  it('returns different orders across multiple statuses without a filter', async () => {
+  it('200 with { ok, orders, nextCursor }', async () => {
     const findMany = vi.fn(async () => orders);
     const res = await request(appWith(findMany)).get('/orders').expect(200);
 
-    expect(res.body).toEqual({ ok: true, orders });
-    expect(findMany).toHaveBeenCalledWith({ where: undefined });
+    expect(res.body).toEqual({
+      ok: true,
+      orders: [
+        { id: 'open-1', status: 'open', deliveryLocationId: 12, credits: 4 },
+      ],
+      nextCursor: null,
+    });
+  });
+
+  it('defaults to open orders, soonest-expiring first, 51 rows to detect a next page', async () => {
+    const findMany = vi.fn(async () => []);
+    await request(appWith(findMany)).get('/orders').expect(200);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { AND: [{ status: 'open' }] },
+      orderBy: [{ completeBy: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+      take: 51,
+    });
   });
 
   it.each([
-    ['open', [orders[0]!]],
-    ['accepted', [orders[1]!]],
-    ['cancelled', [orders[2]!]],
-  ] as const)(
-    'returns only %s orders when filtered',
-    async (status, filtered) => {
-      const findMany = vi.fn(
-        async ({ where }: { where?: { status: string } }) =>
-          where ? [...filtered] : orders,
-      );
-      const res = await request(appWith(findMany))
-        .get('/orders')
-        .query({ status })
-        .expect(200);
-
-      expect(res.body).toEqual({ ok: true, orders: filtered });
-      expect(findMany).toHaveBeenCalledWith({ where: { status } });
-    },
-  );
-
-  it('returns 500 for an invalid status filter without querying the database', async () => {
-    const findMany = vi.fn(async () => orders);
+    [{ status: 'pending' }, 'Status provided is invalid. (status)'],
+    [{ status: 'nope' }, 'Status provided is invalid. (status)'],
+    [{ colour: 'red' }, 'Unknown query parameter. (colour)'],
+    [{ minCredits: '-1' }, 'Invalid query parameter value. (minCredits)'],
+    [
+      { cursor: 'garbage' },
+      'The page cursor is invalid or was issued for a different sort. (cursor)',
+    ],
+  ])('400 for %o without querying the database', async (query, message) => {
+    const findMany = vi.fn(async () => []);
     await request(appWith(findMany))
       .get('/orders')
-      .query({ status: 'not-a-status' })
-      .expect(500, {
-        ok: false,
-        errors: 'Status provided is invalid.',
-      });
-
+      .query(query)
+      .expect(400, { message });
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it('returns an empty list with success when no orders match', async () => {
-    const findMany = vi.fn(async () => []);
-    const res = await request(appWith(findMany))
-      .get('/orders')
-      .query({ status: 'expired' })
-      .expect(200);
-
-    expect(res.body).toEqual({ ok: true, orders: [] });
-  });
-
-  it('returns 500 when listing orders fails', async () => {
+  it('500 when the database fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const findMany = vi.fn(async () => {
       throw new Error('db down');
     });
-    const res = await request(appWith(findMany)).get('/orders').expect(500);
-
-    expect(res.body).toEqual({ ok: false, errors: {} });
+    await request(appWith(findMany))
+      .get('/orders')
+      .expect(500, { message: 'Internal server error.' });
   });
 });
 

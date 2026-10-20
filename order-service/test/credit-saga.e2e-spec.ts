@@ -7,6 +7,11 @@
  *        Credit-service and Redis are faked (HTTP client and BullMQ queue stand-ins).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #11 - listing against the real database: every page of every
+ *        sort walked end to end (no gaps, no duplicates, nulls last/first), filters, and
+ *        pending orders hidden.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Scope (2026-10-20): Issue #5 - concurrent accepts against the real database: exactly
  *        one courier wins (F12.2.1), the rest get ORDER_CONFLICT or INVALID_TRANSITION.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -37,6 +42,10 @@ import {
 } from '../src/worker/credit-jobs.js';
 import { createOutboxRelay } from '../src/worker/outbox-relay.js';
 import { createReleaseRedrive } from '../src/worker/release-redrive.js';
+import {
+  listOrders,
+  PAGE_SIZE,
+} from '../src/services/order-listing.service.js';
 
 // Requires a migrated Postgres at DATABASE_URL (e.g. `docker compose up -d order-db`).
 loadDotenv({ quiet: true });
@@ -47,7 +56,7 @@ const SUPPLIER = 1; // supplier-service integer id
 const payload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
-  deliveryLocation: 'COM1 Basement',
+  deliveryLocationId: 12,
   credits: 4,
   additionalDetails: null,
 };
@@ -366,5 +375,119 @@ describe('accept (e2e)', () => {
     expect(couriers).toContain(order.courierId);
     expect(order.acceptedAt).toBeInstanceOf(Date);
     expect(await prisma.outbox.count()).toBe(0); // accepting queues no credit task
+  });
+});
+
+describe('listing (e2e)', () => {
+  const BASE = Date.parse('2030-01-01T00:00:00.000Z');
+  const COUNT = 130; // > 2 pages
+
+  /** 130 open orders: repeated credits, repeated and null complete-by, varied locations. */
+  async function seed() {
+    await prisma.orderRequest.createMany({
+      data: Array.from({ length: COUNT }, (_, i) => ({
+        requesterId: REQUESTER,
+        supplierId: SUPPLIER,
+        description: `order ${i}`,
+        deliveryLocationId: (i % 3) + 1,
+        credits: (i % 7) + 1,
+        completeBy: i % 5 === 0 ? null : new Date(BASE + (i % 11) * 60_000),
+        additionalDetails: null,
+        status: 'open' as const,
+      })),
+    });
+  }
+
+  async function walk(query: Record<string, string>) {
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const result = await listOrders(
+        prisma,
+        cursor ? { ...query, cursor } : query,
+      );
+      if (!result.ok) throw new Error(JSON.stringify(result.errors));
+      expect(result.orders.length).toBeLessThanOrEqual(PAGE_SIZE);
+      seen.push(...result.orders.map((o) => o.id));
+      cursor = result.nextCursor;
+      pages += 1;
+    } while (cursor && pages < 10);
+    return seen;
+  }
+
+  async function expectedOrder(
+    field: 'completeBy' | 'credits' | 'createdAt',
+    order: 'asc' | 'desc',
+  ) {
+    const all = await prisma.orderRequest.findMany({
+      where: { status: 'open' },
+    });
+    const key = (o: (typeof all)[number]) =>
+      o[field] === null
+        ? null
+        : Number(o[field] instanceof Date ? o[field].getTime() : o[field]);
+    return all
+      .sort((a, b) => {
+        const ka = key(a);
+        const kb = key(b);
+        if (ka !== kb) {
+          // completeBy nulls: last ascending, first descending.
+          if (ka === null) return order === 'asc' ? 1 : -1;
+          if (kb === null) return order === 'asc' ? -1 : 1;
+          return order === 'asc' ? ka - kb : kb - ka;
+        }
+        return a.id < b.id ? -1 : 1;
+      })
+      .map((o) => o.id);
+  }
+
+  it.each([
+    ['completeBy', 'asc'],
+    ['completeBy', 'desc'],
+    ['credits', 'asc'],
+    ['credits', 'desc'],
+    ['createdAt', 'asc'],
+    ['createdAt', 'desc'],
+  ] as const)(
+    'pages through sort=%s order=%s with no gaps or duplicates',
+    async (sort, order) => {
+      await seed();
+      const seen = await walk({ sort, order });
+      expect(new Set(seen).size).toBe(COUNT);
+      expect(seen).toEqual(await expectedOrder(sort, order));
+    },
+  );
+
+  it('applies combined filters, with no-deadline orders matching expiresAfter', async () => {
+    await seed();
+    const after = new Date(BASE + 5 * 60_000).toISOString();
+    const seen = await walk({
+      location: '2',
+      minCredits: '3',
+      maxCredits: '5',
+      expiresAfter: after,
+    });
+
+    const rows = await prisma.orderRequest.findMany({
+      where: { id: { in: seen } },
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.deliveryLocationId).toBe(2);
+      expect(r.credits).toBeGreaterThanOrEqual(3);
+      expect(r.credits).toBeLessThanOrEqual(5);
+      expect(r.completeBy === null || r.completeBy > new Date(after)).toBe(
+        true,
+      );
+    }
+    expect(rows.some((r) => r.completeBy === null)).toBe(true);
+  });
+
+  it('never lists pending orders by default', async () => {
+    const created = await createOrder(prisma, REQUESTER, payload); // stays pending
+    if (!created.ok) throw new Error('create failed');
+    const seen = await walk({});
+    expect(seen).not.toContain(created.order.id);
   });
 });

@@ -44,6 +44,10 @@
  *        cases and added fakes for $transaction and outbox.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-20): Issue #11 - fixtures use deliveryLocationId; getOrders cases moved
+ *        to order-listing.service.spec.ts with the new listing.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -57,7 +61,6 @@ import type { CreateOrderPayload } from '../types/orders.js';
 import {
   createOrder,
   editOrder,
-  getOrders,
   runRequestMaintenance,
   transitionOrder,
 } from './orders.service.js';
@@ -73,7 +76,7 @@ const OTHER_USER = '0192f0c4-7a1e-7c3a-9b2d-4f5e6a7b8c9d';
 const valid: CreateOrderPayload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
-  deliveryLocation: 'COM1 Basement',
+  deliveryLocationId: 12,
   credits: 4,
   additionalDetails: null,
 };
@@ -155,7 +158,7 @@ describe('createOrder: validation', () => {
         requesterId: REQUESTER,
         supplierId: SUPPLIER,
         description: '1x chicken rice',
-        deliveryLocation: 'COM1 Basement',
+        deliveryLocationId: 12,
         credits: 4,
         completeBy: new Date(LATER),
         additionalDetails: null,
@@ -197,8 +200,8 @@ describe('createOrder: validation', () => {
       ErrorCode.INVALID_DESCRIPTION,
     ],
     [
-      'deliveryLocation not text',
-      { deliveryLocation: {} },
+      'deliveryLocationId not an id',
+      { deliveryLocationId: 'COM1 Basement' },
       ErrorCode.INVALID_DELIVERY_LOCATION,
     ],
     ['credits 0', { credits: 0 }, ErrorCode.INVALID_CREDITS_OFFERED],
@@ -408,84 +411,6 @@ describe('editOrder', () => {
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.ORDER_NOT_FOUND],
-    });
-  });
-});
-
-describe('getOrders', () => {
-  const orders = [
-    { id: 'open-1', status: 'open', description: 'Chicken rice' },
-    { id: 'accepted-1', status: 'accepted', description: 'Coffee' },
-    { id: 'delivered-1', status: 'delivered', description: 'Textbooks' },
-  ];
-
-  function prismaWithFindMany() {
-    const findMany = vi.fn();
-    const prisma = {
-      orderRequest: { findMany },
-    } as unknown as PrismaClient;
-    return { findMany, prisma };
-  }
-
-  it('returns all orders when no status filter is provided', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    findMany.mockResolvedValue(orders);
-
-    await expect(getOrders(prisma, undefined)).resolves.toEqual({
-      ok: true,
-      orders,
-    });
-
-    expect(findMany).toHaveBeenCalledWith({ where: undefined });
-  });
-
-  it.each([
-    ['open', [orders[0]]],
-    ['accepted', [orders[1]]],
-    ['delivered', [orders[2]]],
-  ] as const)(
-    'passes the %s status filter to Prisma',
-    async (status, result) => {
-      const { findMany, prisma } = prismaWithFindMany();
-      findMany.mockResolvedValue(result);
-
-      await expect(getOrders(prisma, status)).resolves.toEqual({
-        ok: true,
-        orders: result,
-      });
-      expect(findMany).toHaveBeenCalledWith({ where: { status } });
-    },
-  );
-
-  it('returns an empty list when no orders match the status filter', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    findMany.mockResolvedValue([]);
-
-    await expect(getOrders(prisma, 'cancelled')).resolves.toEqual({
-      ok: true,
-      orders: [],
-    });
-    expect(findMany).toHaveBeenCalledWith({ where: { status: 'cancelled' } });
-  });
-
-  it('returns an invalid-status result without querying the database', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-
-    await expect(getOrders(prisma, 'not-a-status' as never)).resolves.toEqual({
-      ok: false,
-      errors: 'Status provided is invalid.',
-    });
-    expect(findMany).not.toHaveBeenCalled();
-  });
-
-  it('returns database errors in the result', async () => {
-    const { findMany, prisma } = prismaWithFindMany();
-    const error = new Error('db down');
-    findMany.mockRejectedValue(error);
-
-    await expect(getOrders(prisma, undefined)).resolves.toEqual({
-      ok: false,
-      errors: error,
     });
   });
 });
