@@ -1054,6 +1054,42 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-20 — Order Service: JWKS authentication middleware
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** `user-service/docs/jwks-verification-guide.md` and instructions.md Stage 13
+
+**Prompts (exact):**
+
+> help me write the middleware for order service also so that the requests are authenticated
+
+**Key responses:**
+Implemented Order Service Bearer-token authentication using the User Service JWKS endpoint. The middleware caches RSA keys, refetches once for an unknown `kid`, pins verification to RS256, validates expiry and subject claims, and returns the documented 401 response for failures. Mounted it on all `/orders` routes, changed controllers to use the verified principal instead of `x-user-id`, wired `USER_SERVICE_URL` into service configuration and Compose, and updated controller tests with an explicit test authenticator. Type-check, lint, formatting, and focused controller tests passed.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts` (created)
+- `order-service/src/types/express.d.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-13 — order-service: Seed reservation and release lifecycle data
 
 **Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
@@ -4119,5 +4155,37 @@ The frontend container had the correct `VITE_USER_SERVICE_URL` environment varia
 None.
 
 **What I kept/changed/rejected:**
+I kept all changes.
 
 **Author review:**
+tng wen xi
+
+## 2026-10-20 — Frontend: Post errand through Order Service
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing `POST /orders` route and `CreateOrderPayload` contract in `order-service/src/routes/orders.routes.ts` and `order-service/src/types/orders.ts`
+
+**Prompts (exact):**
+
+> help me call the backend POST /orders when the button is clicked
+
+**Key responses:**
+Added a frontend `createOrder` API client and connected the Create Request button to submit the existing form fields to `POST /orders`. The page now shows a loading state, displays API errors, and navigates to `/activity` only after a successful response. No tests were run; frontend lint/build verification remains to be completed.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

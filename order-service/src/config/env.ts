@@ -21,6 +21,9 @@ const EnvSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  USER_SERVICE_URL: z
+    .url({ protocol: /^https?$/ })
+    .default('http://localhost:3001'),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
 });

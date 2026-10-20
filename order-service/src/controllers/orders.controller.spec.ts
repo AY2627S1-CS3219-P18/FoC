@@ -27,6 +27,7 @@
  */
 
 import request from 'supertest';
+import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
 import type {
   CreditsClient,
@@ -69,7 +70,12 @@ function appWith(
     },
   } as unknown as PrismaClient;
   const credits: CreditsClient = { reserve, release: async () => {} };
-  return createApp({ prisma, credits });
+  const authenticate: RequestHandler = (req, res, next) => {
+    const userId = req.get('x-user-id') ?? USER;
+    req.user = { user_id: userId, role: 'user' };
+    next();
+  };
+  return createApp({ prisma, credits, authenticate });
 }
 
 beforeEach(() => {

@@ -26,7 +26,11 @@ const prisma = createPrismaClient(env.DATABASE_URL);
 // TODO(team): swap for the real credit-service client when it exists.
 const credits = createStubCreditsClient();
 console.warn('Using STUB credits client: every reservation is approved.');
-const app = createApp({ prisma, credits });
+const app = createApp({
+  prisma,
+  credits,
+  userServiceUrl: env.USER_SERVICE_URL,
+});
 
 const server = app.listen(env.PORT, (err) => {
   if (err) throw err;
