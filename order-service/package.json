@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --clear-screen=false src/server.ts",
+    "worker:dev": "tsx watch --clear-screen=false src/worker.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" --ignore-path .gitignore",
@@ -21,13 +22,16 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "bullmq": "^6.3.13",
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
+    "ioredis": "^5.11.1",
     "pg": "^8.23.0",
     "prisma": "^7.10.0",
     "zod": "^4.6.5"

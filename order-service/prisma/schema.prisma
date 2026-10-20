@@ -37,6 +37,8 @@ model OrderRequest {
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
   acceptedAt        DateTime?     @db.Timestamptz(3)
   deliveredAt       DateTime?     @db.Timestamptz(3)
+  reservationId     String?
+  creditReleasedAt  DateTime?     @db.Timestamptz(3)
   version           Int           @default(0)
 
   @@index([status, createdAt])

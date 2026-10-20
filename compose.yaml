@@ -7,6 +7,9 @@
 #        PHOTO_STORE_* env lines / extra_hosts on supplier-service per Phase 4 plan Task 14. No
 #        requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
+# Scope (2026-10-12): Added Redis and the separate order maintenance worker
+#        for automatic request completion and acceptance-deadline expiry.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -47,12 +50,41 @@ services:
     depends_on:
       order-db:
         condition: service_healthy
+      order-redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  order-worker:
+    build:
+      context: ./order-service
+      target: production
+    init: true
+    restart: unless-stopped
+    command: ["sh", "-c", "npx prisma migrate deploy && exec node dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
+    depends_on:
+      order-db:
+        condition: service_healthy
+      order-redis:
+        condition: service_healthy
+
+  order-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # ---- user-service -------------------------------------------------------
   # AI Assistance Disclosure:

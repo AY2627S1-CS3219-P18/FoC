@@ -6,3 +6,5 @@ export interface CreateOrderPayload {
   completeBy?: string | null;
   additionalDetails?: string | null;
 }
+
+export type EditOrderPayload = Partial<CreateOrderPayload>;

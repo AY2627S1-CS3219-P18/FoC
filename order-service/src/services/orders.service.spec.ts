@@ -10,6 +10,32 @@
  * Scope (2026-10-04): Updated getOrders unit tests for result objects, invalid
  *        status handling, and database-error results.
  * Author review: tng wen xi
+ * Scope (2026-10-07): Added transitionOrder unit coverage for missing orders,
+ *        forbidden actors, invalid edges, optimistic-lock conflicts, and success.
+ * Author review:
+ * Scope (2026-10-08): Added F17 cancellation transition coverage for open and
+ *        deadline-reached requests, including deadline and actor failures.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Added edit-order coverage for unsupported fields and
+ *        Prisma not-found errors.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Added edit-order optimistic-lock success and conflict
+ *        coverage.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Added maintenance-worker coverage for system-actor
+ *        completion, deadline expiry, and optimistic-lock races.
+ * Author review: tng wen xi
+ * Scope (2026-10-12): Updated create-order fixtures for additional-details
+ *        validation and added edit-order not-found and forbidden coverage.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Added cancellation credit-release coverage.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Added deadline-boundary, missing-reservation, release
+ *        failure, and terminal-state lifecycle coverage.
+ * Author review: tng wen xi
+ * Scope (2026-10-13): Updated fixtures for persisted reservation identifiers
+ *        and credit release inputs.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -18,11 +44,22 @@ import type {
 } from '../clients/credits.client.js';
 import { ErrorCode } from '../constants/errors.js';
 import type { PrismaClient } from '../db/prisma.js';
+import { Prisma } from '../generated/prisma/client.js';
+import {
+  RequestStatus,
+  type OrderRequest,
+} from '../generated/prisma/client.js';
 import type { CreateOrderPayload } from '../types/orders.js';
-import { createOrder, getOrders } from './orders.service.js';
+import {
+  createOrder,
+  editOrder,
+  getOrders,
+  runRequestMaintenance,
+  transitionOrder,
+} from './orders.service.js';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
-const LATER = '2026-09-27T14:00:00.000Z';
+const LATER = '2099-09-27T14:00:00.000Z';
 const EARLIER = '2026-09-27T10:00:00.000Z';
 
 const REQUESTER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
@@ -33,6 +70,7 @@ const valid: CreateOrderPayload = {
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,
+  additionalDetails: null,
 };
 
 function fakes({
@@ -64,7 +102,6 @@ async function run(payload: object, deps: ReturnType<typeof fakes> = fakes()) {
     deps.credits,
     REQUESTER,
     payload as unknown as CreateOrderPayload,
-    NOW,
   );
   return { result, ...deps };
 }
@@ -82,11 +119,12 @@ describe('createOrder: validation', () => {
       status: 'completed',
       courierId: REQUESTER,
       version: 99,
+      additionalDetails: null,
     });
 
     expect(result.ok).toBe(true);
     expect(create).toHaveBeenCalledWith({
-      data: {
+      data: expect.objectContaining({
         requesterId: REQUESTER,
         supplierId: SUPPLIER,
         description: '1x chicken rice',
@@ -94,7 +132,8 @@ describe('createOrder: validation', () => {
         credits: 4,
         completeBy: new Date(LATER),
         additionalDetails: null,
-      },
+        reservationId: 'res-1',
+      }),
     });
   });
 
@@ -107,6 +146,7 @@ describe('createOrder: validation', () => {
         ErrorCode.MISSING_DESCRIPTION,
         ErrorCode.MISSING_DELIVERY_LOCATION,
         ErrorCode.MISSING_CREDITS_OFFERED,
+        ErrorCode.INVALID_ADDITIONAL_DETAILS,
       ],
     });
     expect(credits.reserve).not.toHaveBeenCalled();
@@ -194,6 +234,7 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
     expect(result.ok).toBe(true);
     expect(deps.credits.reserve).toHaveBeenCalledWith({
       requesterId: REQUESTER,
+      requestId: expect.any(String),
       amount: 4,
     });
     expect(order).toEqual(['reserve', 'create']);
@@ -262,6 +303,127 @@ describe('createOrder: credit reservation (F9.1.2)', () => {
   });
 });
 
+describe('editOrder', () => {
+  function prismaWithEdit({ updatedRows = 1 } = {}) {
+    const order = {
+      id: 'order-1',
+      requesterId: REQUESTER,
+      version: 3,
+    } as OrderRequest;
+    const findUniqueOrThrow = vi.fn(async () => order);
+    const updateMany = vi.fn(async () => ({ count: updatedRows }));
+    const prisma = {
+      orderRequest: { findUniqueOrThrow, updateMany },
+    } as unknown as PrismaClient;
+    return { findUniqueOrThrow, updateMany, prisma, order };
+  }
+
+  it('rejects unsupported fields before querying the database', async () => {
+    const findUniqueOrThrow = vi.fn();
+    const prisma = {
+      orderRequest: { findUniqueOrThrow },
+    } as unknown as PrismaClient;
+
+    await expect(
+      editOrder(prisma, REQUESTER, 'order-1', {
+        credits: 4,
+        unsupported: true,
+      } as never),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.INVALID_FIELD],
+    });
+    expect(findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('updates only the fetched version and increments it', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    const updatedOrder = {
+      ...order,
+      description: 'Updated description',
+      version: 4,
+    };
+    findUniqueOrThrow
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce(updatedOrder);
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({ ok: true, order: updatedOrder });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+    expect(findUniqueOrThrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns FORBIDDEN when the actor is not the requester', async () => {
+    const { prisma, updateMany, order } = prismaWithEdit();
+
+    await expect(
+      editOrder(prisma, SUPPLIER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.FORBIDDEN],
+    });
+
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns ORDER_CONFLICT when the fetched version is stale', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit({
+      updatedRows: 0,
+    });
+
+    await expect(
+      editOrder(prisma, REQUESTER, order.id, {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_CONFLICT],
+    });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version },
+      data: {
+        description: 'Updated description',
+        version: { increment: 1 },
+      },
+    });
+    expect(findUniqueOrThrow).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns ORDER_NOT_FOUND when the order does not exist', async () => {
+    const findUniqueOrThrow = vi.fn(async () => {
+      throw new Prisma.PrismaClientKnownRequestError('not found', {
+        code: 'P2025',
+        clientVersion: '7.10.0',
+      });
+    });
+    const prisma = {
+      orderRequest: { findUniqueOrThrow },
+    } as unknown as PrismaClient;
+
+    await expect(
+      editOrder(prisma, REQUESTER, 'missing-order', {
+        description: 'Updated description',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_NOT_FOUND],
+    });
+  });
+});
+
 describe('getOrders', () => {
   const orders = [
     { id: 'open-1', status: 'open', description: 'Chicken rice' },
@@ -285,6 +447,7 @@ describe('getOrders', () => {
       ok: true,
       orders,
     });
+
     expect(findMany).toHaveBeenCalledWith({ where: undefined });
   });
 
@@ -336,5 +499,611 @@ describe('getOrders', () => {
       ok: false,
       errors: error,
     });
+  });
+});
+
+describe('runRequestMaintenance', () => {
+  it('releases a persisted reservation after expiring an open request', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi
+      .fn()
+      .mockResolvedValueOnce(open)
+      .mockResolvedValueOnce({ ...open, status: 'expired' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn(),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(
+      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
+    ).resolves.toEqual({ completed: 0, expired: 1 });
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: open.id, status: 'expired', creditReleasedAt: null },
+      data: { creditReleasedAt: now },
+    });
+  });
+
+  it('expires at the exact delivery deadline and skips credit release without a reservation', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: null,
+      completeBy: new Date('2026-10-12T12:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const release = vi.fn();
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...open,
+          status: 'expired',
+        }),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(
+      runRequestMaintenance(prisma, { reserve: vi.fn(), release }, now),
+    ).resolves.toEqual({ completed: 0, expired: 1 });
+
+    expect(release).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: open.id, version: open.version },
+      data: { status: 'expired', version: { increment: 1 } },
+    });
+  });
+
+  it('does not expire an open request before its delivery deadline', async () => {
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const findUnique = vi.fn();
+    const updateMany = vi.fn();
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(prisma, new Date('2026-10-12T11:59:59.999Z')),
+    ).resolves.toEqual({ completed: 0, expired: 0 });
+
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not release credits when expiry loses the optimistic-lock race', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const release = vi.fn();
+    const prisma = {
+      orderRequest: { findMany, findUnique, updateMany },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(
+        prisma,
+        { reserve: vi.fn(), release },
+        new Date('2026-10-12T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ completed: 0, expired: 0 });
+
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('propagates an expiry credit-release failure after the request is expired', async () => {
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      reservationId: 'reservation-1',
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findUnique = vi.fn().mockResolvedValueOnce(open);
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const releaseError = new Error('credit service unavailable');
+    const release = vi.fn().mockRejectedValue(releaseError);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          ...open,
+          status: 'expired',
+        }),
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(
+        prisma,
+        { reserve: vi.fn(), release },
+        new Date('2026-10-12T12:00:00.000Z'),
+      ),
+    ).rejects.toBe(releaseError);
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses system transitions for delivered and expired requests', async () => {
+    const delivered = {
+      id: 'delivered-order',
+      status: 'delivered',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 1,
+    } as OrderRequest;
+    const open = {
+      id: 'open-order',
+      status: 'open',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 2,
+      completeBy: new Date('2026-10-12T11:00:00.000Z'),
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([delivered])
+      .mockResolvedValueOnce([open]);
+    const findUnique = vi
+      .fn()
+      .mockResolvedValueOnce(delivered)
+      .mockResolvedValueOnce(open)
+      .mockResolvedValueOnce({ ...open, status: 'expired' });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique,
+        updateMany,
+        findUniqueOrThrow: vi.fn(),
+      },
+    } as unknown as PrismaClient;
+    const now = new Date('2026-10-12T12:00:00.000Z');
+
+    await expect(runRequestMaintenance(prisma, now)).resolves.toEqual({
+      completed: 1,
+      expired: 1,
+    });
+
+    expect(findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        status: 'delivered',
+        deliveredAt: { lte: new Date('2026-10-11T12:00:00.000Z') },
+      },
+    });
+    expect(findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        status: 'open',
+        completeBy: { not: null, lte: now },
+      },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: delivered.id, version: delivered.version },
+      data: {
+        status: 'completed',
+        version: { increment: 1 },
+      },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: open.id, version: open.version },
+      data: {
+        status: 'expired',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('does not count a transition that loses an optimistic-lock race', async () => {
+    const delivered = {
+      id: 'delivered-order',
+      status: 'delivered',
+      requesterId: REQUESTER,
+      courierId: null,
+      version: 1,
+    } as OrderRequest;
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([delivered])
+      .mockResolvedValueOnce([]);
+    const prisma = {
+      orderRequest: {
+        findMany,
+        findUnique: vi.fn().mockResolvedValue(delivered),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    } as unknown as PrismaClient;
+
+    await expect(
+      runRequestMaintenance(prisma, new Date('2026-10-12T12:00:00.000Z')),
+    ).resolves.toEqual({
+      completed: 0,
+      expired: 0,
+    });
+  });
+});
+
+describe('transitionOrder', () => {
+  const orderId = '0192f0c4-0000-7000-8000-000000000001';
+  const requesterId = '0192f0c4-0000-7000-8000-00000000000a';
+  const courierId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  function prismaWithTransition(
+    current: Partial<OrderRequest> | null,
+    { updatedRows = 1 } = {},
+  ) {
+    const row =
+      current && ({ id: orderId, version: 3, ...current } as OrderRequest);
+    const orderRequest = {
+      findUnique: vi.fn(async () => row),
+      updateMany: vi.fn(async () => ({ count: updatedRows })),
+      findUniqueOrThrow: vi.fn(async () => ({ ...row, status: 'picked_up' })),
+    };
+
+    return {
+      prisma: { orderRequest } as unknown as PrismaClient,
+      orderRequest,
+    };
+  }
+
+  it('returns ORDER_NOT_FOUND when the order does not exist', async () => {
+    const { prisma, orderRequest } = prismaWithTransition(null);
+
+    await expect(
+      transitionOrder(prisma, orderId, 'accepted', courierId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_NOT_FOUND });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns INVALID_TRANSITION when the status edge is not allowed', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'delivered', courierId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns FORBIDDEN when the actor is not allowed to transition the order', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'accepted', requesterId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('updates the order and sets the courier and acceptedAt values', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    const result = await transitionOrder(
+      prisma,
+      orderId,
+      'accepted',
+      courierId,
+    );
+
+    expect(orderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        status: 'accepted',
+        version: { increment: 1 },
+        courierId,
+        acceptedAt: expect.any(Date),
+      },
+    });
+    expect(result).toMatchObject({ ok: true, order: { status: 'picked_up' } });
+  });
+
+  it('allows the requester to cancel an open order', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+    });
+
+    const result = await transitionOrder(
+      prisma,
+      orderId,
+      'cancelled',
+      requesterId,
+    );
+
+    expect(orderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        status: 'cancelled',
+        version: { increment: 1 },
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('releases the reservation after a successful cancellation', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+      reservationId: 'reservation-1',
+    });
+    const release = vi.fn().mockResolvedValue(undefined);
+    const credits: CreditsClient = {
+      reserve: vi.fn(),
+      release,
+    };
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        credits,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(orderRequest.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { id: orderId, status: 'cancelled', creditReleasedAt: null },
+      data: { creditReleasedAt: new Date('2026-10-13T12:00:00.000Z') },
+    });
+  });
+
+  it('does not release credits when cancellation loses the optimistic-lock race', async () => {
+    const { prisma, orderRequest } = prismaWithTransition(
+      {
+        status: 'open',
+        requesterId,
+        courierId: null,
+        reservationId: 'reservation-1',
+      },
+      { updatedRows: 0 },
+    );
+    const release = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        { reserve: vi.fn(), release },
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_CONFLICT });
+
+    expect(release).not.toHaveBeenCalled();
+    expect(orderRequest.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  it('cancels at the exact complete-by deadline', async () => {
+    const deadline = new Date('2026-10-13T12:00:00.000Z');
+    const { prisma } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: deadline,
+    });
+
+    await expect(
+      transitionOrder(prisma, orderId, 'cancelled', requesterId, deadline),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it('rejects ongoing cancellation when complete-by is missing', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'picked_up',
+      requesterId,
+      courierId,
+      completeBy: null,
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: ErrorCode.DEADLINE_NOT_REACHED,
+    });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['completed', 'expired', 'cancelled'] as RequestStatus[])(
+    'rejects cancellation from terminal status %s',
+    async (status) => {
+      const { prisma, orderRequest } = prismaWithTransition({
+        status,
+        requesterId,
+        courierId,
+        completeBy: new Date('2026-10-13T10:00:00.000Z'),
+      });
+
+      await expect(
+        transitionOrder(
+          prisma,
+          orderId,
+          'cancelled',
+          requesterId,
+          new Date('2026-10-13T12:00:00.000Z'),
+        ),
+      ).resolves.toEqual({
+        ok: false,
+        error: ErrorCode.INVALID_TRANSITION,
+      });
+      expect(orderRequest.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('propagates a release failure after cancellation', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'open',
+      requesterId,
+      courierId: null,
+      reservationId: 'reservation-1',
+    });
+    const releaseError = new Error('credit service unavailable');
+    const release = vi.fn().mockRejectedValue(releaseError);
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-13T12:00:00.000Z'),
+        { reserve: vi.fn(), release },
+      ),
+    ).rejects.toBe(releaseError);
+
+    expect(release).toHaveBeenCalledWith('reservation-1');
+    expect(orderRequest.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cancelling a non-open order before its complete-by deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T14:00:00.000Z'),
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        requesterId,
+        new Date('2026-10-08T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.DEADLINE_NOT_REACHED });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('allows the requester to cancel a non-open order after its complete-by deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T11:00:00.000Z'),
+    });
+
+    const result = await transitionOrder(
+      prisma,
+      orderId,
+      'cancelled',
+      requesterId,
+      new Date('2026-10-08T12:00:00.000Z'),
+    );
+
+    expect(orderRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, version: 3 },
+      data: {
+        status: 'cancelled',
+        version: { increment: 1 },
+      },
+    });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('does not allow a courier to cancel a request after its deadline', async () => {
+    const { prisma, orderRequest } = prismaWithTransition({
+      status: 'accepted',
+      requesterId,
+      courierId,
+      completeBy: new Date('2026-10-08T11:00:00.000Z'),
+    });
+
+    await expect(
+      transitionOrder(
+        prisma,
+        orderId,
+        'cancelled',
+        courierId,
+        new Date('2026-10-08T12:00:00.000Z'),
+      ),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
+    expect(orderRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns ORDER_CONFLICT when optimistic locking fails', async () => {
+    const { prisma, orderRequest } = prismaWithTransition(
+      {
+        status: 'open',
+        requesterId,
+        courierId: null,
+      },
+      { updatedRows: 0 },
+    );
+
+    await expect(
+      transitionOrder(prisma, orderId, 'accepted', courierId),
+    ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_CONFLICT });
+    expect(orderRequest.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 });

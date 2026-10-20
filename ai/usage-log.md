@@ -328,8 +328,195 @@ Updated `orders.controller.spec.ts` to match the new `getOrders` result contract
 None.
 
 **What I kept/changed/rejected:**
+I accepted all changes.
 
 **Author review:**
+tng wen xi
+
+## 2026-10-13 — order-service: Credit reservation tracking for automatic expiry
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decision to persist the credit reservation identifier on `OrderRequest`; the credit-service release endpoint remains a later team-owned contract.
+
+**Prompts (exact):**
+
+> can you implement whatever can be implemented now
+
+**Key responses:**
+Persisted the reservation transaction identifier on each order, passed the order ID to credit reservation, and connected expiry maintenance to call the credit client's release operation after a successful system transition. Added a `creditReleasedAt` bookkeeping field and migration. The real credit-service release endpoint was not invented because its request/response fields remain pending team sign-off. Verification: 290 order-service tests passed and TypeScript typecheck passed.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261013123000_add_reservation_tracking/migration.sql` (created)
+- `order-service/src/clients/credits.client.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+The worker still uses the existing stub credit client until the team approves and implements the credit-service release API contract. Release-failure retry/outbox behavior remains for that follow-up.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-13 — order-service: Release credits on cancellation
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing cancellation transition rules in `order-service/src/domain/order-status.ts`; existing persisted reservation ID decision.
+
+**Prompts (exact):**
+
+> implement the credit release for transitionOrder to 'cancelled'
+
+**Key responses:**
+Passed the credit client through the HTTP transition route and released the order's persisted reservation only after the optimistic-locking status update succeeded. Recorded `creditReleasedAt` after release and added unit coverage. Verification: 292 order-service tests passed and TypeScript typecheck passed.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+The application still uses the existing stub credit client, so the release call is wired but does not contact the credit service until its real release client is approved and connected.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: Format maintenance timestamp
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Refactor
+**Governing decision:** Existing order-service maintenance logging.
+
+**Prompts (exact):**
+
+> help me format the time nicely here
+
+**Key responses:**
+Changed the maintenance log from Unix milliseconds to an ISO-8601 timestamp using `Date.toISOString()`, preserving an explicit UTC timezone.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: Fix worker watch shutdown
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor
+**Governing decision:** Existing BullMQ worker lifecycle in `order-service/src/worker.ts`.
+
+**Prompts (exact):**
+
+> $ docker compose logs -f order-worker
+> order-worker-1 | 10:26:24 AM [tsx] change in ./src/worker.ts Restarting...
+> order-worker-1 | SIGTERM received, shutting down maintenance worker
+> ...
+
+**Key responses:**
+Diagnosed that the signal handler awaited resource cleanup without explicitly terminating the worker process, preventing `tsx watch` from starting the replacement process. Updated shutdown to exit after cleanup and report cleanup failures.
+
+**Files:**
+
+- `order-service/src/worker.ts` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: Route maintenance through system transitions
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Refactor
+**Governing decision:** Existing team-authored system role and transition table in `order-service/src/domain/order-status.ts`.
+
+**Prompts (exact):**
+
+> ohh cuz over here there is a 'system' role so i would assume it's best to call checkTransition even for system updates
+
+**Key responses:**
+Changed request maintenance to query eligible requests and call `transitionOrder` with `SYSTEM_ACTOR`, so automatic completion and expiry pass through `checkTransition` and the existing optimistic-lock path. Added coverage for successful system transitions and lost optimistic-lock races. Verification was run with the order-service typecheck and full test suite.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-07 — order-service: transitionOrder test coverage
+
+**Tool:** GitHub Copilot (model: MAI-Code-1.1-Flash)
+**Mode:** debug, generate
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `order-service` controller and service implementation in the working tree.
+
+**Prompts (exact):**
+
+> help me write tests in these files for this new function transitionOrder
+
+**Key responses:**
+Added focused unit coverage for the service-level transition rules and HTTP coverage for the pickup/deliver routes. The tests now exercise valid accepted-to-picked_up transitions, forbidden actors, invalid status edges, missing orders, and optimistic-lock conflicts. Verification: `npx vitest run src/services/orders.service.spec.ts src/controllers/orders.controller.spec.ts` passed with 48 tests passing across 2 files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+
+**Deviations / questions raised for the team:**
+The existing controller did not map `ORDER_CONFLICT` to HTTP 409, so the tightly coupled status mapping was corrected to make the new route’s optimistic-lock response consistent with its service error.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-09-28 — order-service: Prisma Order Seed Fixtures
 
@@ -827,6 +1014,153 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-13 — order-service: Seed reservation and release lifecycle data
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Boilerplate
+**Governing decision:** Existing `OrderRequest.reservationId` and `OrderRequest.creditReleasedAt` fields.
+
+**Prompts (exact):**
+
+> updaate the seed data to include the new fields of reservationid and creditsReleasedAt where necessary
+
+**Key responses:**
+Added deterministic reservation identifiers to every seeded request. Cancelled and expired requests now include release timestamps; active and completed requests retain a null release timestamp because their reservation is not released by those states.
+
+**Files:**
+
+- `order-service/prisma/seed.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-13 — order-service: Auto-expiry and cancellation edge-case tests
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Existing F16.1 delivery-deadline expiry and F17 cancellation transition rules in `order-service/src/domain/order-status.ts`.
+
+**Prompts (exact):**
+
+> write tests for the auto expire and auto cancel based on the requirements, remember to add for edge cases too and ensure high branch coverage
+
+**Key responses:**
+Added lifecycle tests for automatic expiry and requester cancellation, including exact deadline boundaries, pre-deadline behavior, missing deadlines and reservations, terminal states, optimistic-lock races, and credit-release failures. Verification: 303 tests passed, typecheck passed, and full coverage reported 90.41% branches overall and 93.2% branches in `orders.service.ts`.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+No production code was changed. Existing credit-service stubs remain outside this test scope.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — Order edit optimistic locking: Version check and update
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing `OrderRequest.version` schema field and optimistic-locking pattern in `order-service/src/services/orders.service.ts`
+
+**Prompts (exact):**
+
+> should version update and checking also be implemeented in this function? if so, help me implement it
+
+**Key responses:**
+Implemented optimistic locking in `editOrder`: the update now matches the version read during authorization, increments the version atomically, returns `ORDER_CONFLICT` when no row matches, and re-reads the updated order. Added success and stale-version unit tests. Type-checking and linting passed; the two new focused tests passed. The broader service test file still has 20 pre-existing `createOrder` failures unrelated to this change.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-12 — order-service: edit payload error handling
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** refactor, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing order-service edit endpoint behavior; team-selected `INVALID_FIELD` response for unsupported JSON keys.
+
+**Prompts (exact):**
+
+> is there a way to find the type of error within the catch block and send the correct error code and message back to the user?
+
+**Key responses:**
+Added `INVALID_FIELD` for unsupported edit payload keys, validate those keys before querying Prisma, map Prisma `P2025` to `ORDER_NOT_FOUND`, rethrow unrelated database errors, and map edit error codes to user-facing messages in the controller. Added focused service and HTTP tests. Typecheck and focused tests passed. The broader controller/service files retain pre-existing failures related to `additionalDetails` validation.
+
+**Files:**
+
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The team selected adding `INVALID_FIELD` and returning HTTP 400 for unsupported JSON keys.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-10-12 — order-service: edit-order test coverage
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** refactor, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** Existing `PATCH /orders/:id/edit` route and service behavior in `order-service/src/routes/orders.routes.ts` and `order-service/src/services/orders.service.ts`.
+
+**Prompts (exact):**
+
+> Implemented this new route for updating orders. can you help me to update the tests in these files?
+
+**Key responses:**
+Updated shared create-order fixtures to include the validated optional `additionalDetails` field. Added service tests for edit authorization and missing orders, and HTTP tests for successful edits, forbidden actors, and optimistic-lock conflicts. Focused order-service tests passed.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
 ## 2026-09-26 — Recess iteration: Credit Service verification run
 
 **Tool:** Claude Code (model: claude-opus-5)
@@ -863,6 +1197,39 @@ The `credit-db` compose service requested in the prompt had already been written
 Verification actually run, against a real database this time. Docker Desktop was not running and was started. `docker compose up -d credit-db` created the container; the Postgres image applied `src/db/init.sql` on first start, producing both tables and all five indexes, and the container reported healthy. `npm test` passed 10 tests in 2 files. `npx tsc --noEmit` and `npm run build` exit 0.
 
 Concurrency results (NFR8.1.1): six simultaneous 4-credit reservations against a 20-credit balance left exactly five committed and one rejected with `INSUFFICIENT_UNRESERVED_CREDITS`, final state `reserved=20, total=20` with six log rows; ten concurrent 3-credit reservations kept `reserved` equal to three times the number of logged reservations; two simultaneous allocations for one user produced one success and one log row.
+
+## 2026-10-16 — Frontend: Docker Compose development setup
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, refactor, docs
+**Scope:** Boilerplate, Implementation code, Refactor/Docs
+**Governing decision:** Existing root Compose development workflow and frontend Vite proxy configuration.
+
+**Prompts (exact):**
+
+> can u set up the docker such that when i run `docker compose -f compose.yaml -f compose.dev.yaml up --build --watch` it will also run the frontend together with the backend
+
+**Key responses:**
+Added a frontend development Dockerfile and `.dockerignore`, a `frontend` service with Compose Watch sync/rebuild rules in `compose.dev.yaml`, and configurable Vite proxy targets so the container reaches the user and supplier services over the Compose network. Documented the command in the frontend README. `docker compose ... config --quiet`, `git diff --check`, and the frontend development image build passed. The image build reported eight npm audit vulnerabilities from the existing dependency tree; dependencies were not changed.
+
+**Files:**
+
+- `frontend/Dockerfile` (created)
+- `frontend/.dockerignore` (created)
+- `compose.dev.yaml` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
 
 Mutation check, to show the concurrency test is not vacuous: removing `FOR UPDATE` from `lockBalanceForUpdate` made the first concurrency test fail, and the failure was informative. All six requests passed the application-level comparison because without the lock they all read `reserved_balance = 0`; the sixth was stopped by the `balances_reserved_not_exceeding_total` CHECK constraint (SQLSTATE 23514) rather than by the service. So the row lock is what produces a clean 422, and the CHECK constraint is what prevents balance corruption if the lock is ever lost. The source was restored and the suite re-run green.
 
@@ -1448,6 +1815,39 @@ I kept all changes
 
 **Author review: Congchen**
 Additions were all based on content I provided. Reviewed.
+
+## 2026-10-16 — Frontend: order-service request board
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Existing order-service `GET /orders` contract in `order-service/src/routes/orders.routes.ts` and `order-service/src/controllers/orders.controller.ts`
+
+**Prompts (exact):**
+
+> can u help me implement the frontend for getting the orders from order-service instead of the way it is rn?
+
+**Key responses:**
+
+Replaced the RequestBoard's demo request source with the order-service list endpoint, added the frontend API client and development proxy target, and kept the existing card layout compatible with order-service records when supplier/requester records are not joined. Added loading, error, retry, and logged-out states through the existing API notice pattern. Verification: `npm run build` passed; `npm run lint` passed with pre-existing warnings; `git diff --check` passed.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (created)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `compose.dev.yaml` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-09-26 — Supplier Service: Photo Management and Concrete Schema
 
@@ -2631,6 +3031,77 @@ The two helpers were moved as well, which goes slightly beyond "test cases". A `
 
 **Author review:**
 
+## 2026-10-06 — Order-service pickup endpoint review
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** debug, explain
+**Scope:** Debugging, Refactor/Docs
+**Governing decision:** Existing order-service transition rules in `order-service/src/domain/order-status.ts` and service result contract in `order-service/src/services/orders.service.ts`.
+
+**Prompts (exact):**
+
+> i just implemented this. help me check for code quality or any bugs. also update ai usage log
+
+**Key responses:**
+Reviewed the pickup controller, route, transition service, error definitions, and existing tests. Found that the controller returns HTTP 500 for all transition failures, including `ORDER_NOT_FOUND`, `FORBIDDEN`, `INVALID_TRANSITION`, and `ORDER_CONFLICT`; these should be mapped to the team-approved client/error statuses before release. Found no controller-level tests for `POST /orders/:id/pickup`. TypeScript typecheck, lint, and the full order-service test suite passed: 5 test files and 263 tests.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.ts` (reviewed)
+- `order-service/src/routes/orders.routes.ts` (reviewed)
+- `order-service/src/services/orders.service.ts` (reviewed)
+- `order-service/src/domain/order-status.ts` (reviewed)
+- `order-service/src/constants/errors.ts` (reviewed)
+- `order-service/src/controllers/orders.controller.spec.ts` (reviewed; no pickup coverage found)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+The correct HTTP mapping for pickup transition errors is an API decision not recorded in the reviewed files; the team should decide and document it before implementation.
+
+**What I kept/changed/rejected:**
+No production code changes; findings were reported for team decision.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-08 — order-service: F17 cancellation test coverage
+
+**Tool:** GitHub Copilot (model: GPT-5.6 Luna)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** F17 cancellation requirements supplied by the team in chat and the existing order transition implementation.
+
+**Prompts (exact):**
+
+> F17 Support the cancellation of requests.
+> F17.1 The system shall allow requesters to cancel their open requests High 9
+> The system shall update the request status from “open”
+> to “cancelled” when the user cancels it. High 9
+> F17.2 The system shall allow the requester to cancel a non-“open”
+> request when its complete-by deadline is reached.
+> The system shall provide an option for requesters to cancel
+> a request that is ongoing when the complete-by deadline
+> has passed.
+> The system shall update the request status to “cancelled” when the user cancels it.
+
+**Key responses:**
+Added service and HTTP tests covering requester cancellation of open orders, requester cancellation after a passed complete-by deadline, rejection before the deadline, and rejection of courier cancellation. Verification: `npx vitest run src/services/orders.service.spec.ts src/controllers/orders.controller.spec.ts` passed with 56 tests across 2 files.
+
+**Files:**
+
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-09-30 — Phase 3: Admin update (PUT /api/v1/admin/suppliers/:id)
 
 **Tool:** Claude Code (model: claude-sonnet-5-5)
@@ -2843,6 +3314,52 @@ Verification actually run: `npx vitest run` 38 files / 343 tests passed; `npx ts
 **What I kept/changed/rejected: Kept all**
 
 **Author review: Congchen**
+
+## 2026-10-12 — order-service: F15.1.4 + F16.1: Automatic request maintenance
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decision confirmed in chat on 2026-10-12 to use a separate BullMQ worker backed by Redis for order-service.
+
+**Prompts (exact):**
+
+> we need to implement these:
+> F15.1.4
+> The system shall automatically mark “completed” a
+> request 24 hours after the state is set to “delivered”, in
+> case the requester forgot to mark as completed.
+>
+> and
+>
+> F16.1 The system shall automatically expire an open request when its acceptance deadline is reached.
+>
+> our team is thinking of using BullMQ's cron job for this. how can this be implemented?
+
+**Key responses:**
+Implemented a recurring BullMQ maintenance job that runs every minute. It conditionally marks delivered requests completed when `deliveredAt` is at least 24 hours old, and marks open requests expired when `completeBy` is reached. Added version increments, worker shutdown handling, Compose Redis/worker services, environment configuration, and unit coverage. Verification was run with the order-service typecheck and targeted tests.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/worker.ts` (created)
+- `order-service/package.json` (modified)
+- `order-service/package-lock.json` (modified)
+- `.env.example` (modified)
+- `compose.yaml` (modified)
+- `compose.dev.yaml` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The team confirmed the separate BullMQ worker and Redis deployment boundary before implementation. None otherwise.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
 
 ## 2026-09-30 — Supplier Service: Supplier responses carry location_id, faculty_id and category ids
 
@@ -3475,7 +3992,9 @@ Accepted all changes.
 > Three changes, then the PR. Read credit-service/CONTEXT.md first.
 >
 > ## 1. Public user lookup — user-service (NOT my service)
+>
 > ## 2. Errand ID on transaction rows — frontend Wallet page
+>
 > ## 3. Switch counterparty resolution to the new endpoint
 >
 > Touch only what this endpoint needs; do not refactor anything else in user-service, and follow its existing conventions for routes, controllers and validation rather than importing credit-service's patterns.
@@ -3528,3 +4047,37 @@ _Errand reference._ Every row with a `request_id` now shows it, transfers includ
 
 **What I kept/changed/rejected:**
 Accepted all changes. `frontend/package-lock.json` was additionally reverted: its only diff was seven incidental `"peer": true` annotations from a local `npm ci`, with no dependency change.
+
+## 2026-10-19 — Frontend: Restore Docker Vite proxy targets
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor/Docs
+**Governing decision:** Existing Compose development workflow and frontend Vite proxy configuration.
+
+**Prompts (exact):**
+
+> frontend-1 | 12:24:57 PM [vite] http proxy error: /auth/refresh
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+> frontend-1 | at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16)
+> frontend-1 | 12:24:58 PM [vite] http proxy error: /auth/refresh
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+> frontend-1 | 12:25:05 PM [vite] http proxy error: /auth/login
+> frontend-1 | Error: connect ECONNREFUSED 127.0.0.1:3001
+
+**Key responses:**
+The frontend container had the correct `VITE_USER_SERVICE_URL` environment variable, but `vite.config.js` hardcoded `localhost` targets. Restored environment-configured targets with localhost fallbacks for host-run Vite and added the Compose credit-service target. Verification was run by inspecting the resolved Compose environment and service status; frontend rebuild and proxy smoke testing remain to be run after the configuration change.
+
+**Files:**
+
+- `frontend/vite.config.js` (modified)
+- `compose.dev.yaml` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
