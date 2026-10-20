@@ -41,11 +41,7 @@ import {
 } from '../domain/order-status.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
-import {
-  isIsoDateString,
-  isNonEmptyString,
-  isUuid,
-} from '../utils/validation.js';
+import { isIsoDateString, isNonEmptyString } from '../utils/validation.js';
 
 const EDITABLE_ORDER_FIELDS = new Set([
   'supplierId',
@@ -101,7 +97,10 @@ export const createOrder = async (
   console.log('VALIDATING PAYLOAD');
   if (!requestPayload.supplierId) {
     errors.push(ErrorCode.MISSING_SUPPLIER);
-  } else if (!isUuid(requestPayload.supplierId)) {
+  } else if (
+    !Number.isInteger(requestPayload.supplierId) ||
+    requestPayload.supplierId <= 0
+  ) {
     errors.push(ErrorCode.INVALID_SUPPLIER);
   }
   if (!requestPayload.description) {

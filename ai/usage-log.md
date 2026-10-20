@@ -1054,6 +1054,43 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 
 **Author review:**
 
+## 2026-10-20 — Order Service: Integer supplier identifiers
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Team request to align Order Service supplier references with Supplier Service integer IDs
+
+**Prompts (exact):**
+
+> found the problem it's here. help change it to just a normal integer id
+
+**Key responses:**
+Changed `supplierId` from UUID to a positive integer across the Prisma schema, migrations, request payload type, validation, seed data, tests, and the frontend POST payload. Added a migration that replaces the existing UUID reference column because arbitrary historical UUIDs cannot be translated reliably to Supplier Service integer IDs. Prisma client generation, type-checking, linting, and 80 focused service/controller tests passed.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20260927111937_create_requests/migration.sql` (modified)
+- `order-service/prisma/migrations/20261020211000_supplier_id_integer/migration.sql` (created)
+- `order-service/prisma/seed.ts` (modified)
+- `order-service/src/types/orders.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The new migration drops and recreates the supplier reference column; existing UUID supplier references are not preserved.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-20 — Order Service: JWKS authentication middleware
 
 **Tool:** Copilot SDK (model: unspecified by runtime)

@@ -105,7 +105,7 @@ export default function CreateRequest() {
     setSubmitError(null);
     try {
       await createOrder({
-        supplierId,
+        supplierId: Number(supplierId),
         description,
         deliveryLocation: location,
         credits: offer,

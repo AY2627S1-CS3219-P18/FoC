@@ -59,7 +59,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[0],
     requesterId: requesterA,
-    supplierId: '30000000-0000-4000-8000-000000000001',
+    supplierId: 1,
     description: 'Chicken rice with no cucumber and chilli on the side',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
@@ -71,7 +71,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[1],
     requesterId: requesterB,
-    supplierId: '30000000-0000-4000-8000-000000000002',
+    supplierId: 2,
     description: 'Kopi-o kosong and kaya toast set',
     deliveryLocation: 'COM2 Level 3 Lounge',
     credits: 2,
@@ -82,7 +82,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[2],
     requesterId: requesterA,
-    supplierId: '30000000-0000-4000-8000-000000000003',
+    supplierId: 3,
     description: 'Two dishes cai fan, no pork',
     deliveryLocation: 'Central Library Level 2',
     credits: 6,
@@ -95,7 +95,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[3],
     requesterId: requesterB,
-    supplierId: '30000000-0000-4000-8000-000000000004',
+    supplierId: 4,
     description: 'Large ban mian with extra chilli',
     deliveryLocation: 'UTown Residence Front Desk',
     credits: 8,
@@ -108,7 +108,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[4],
     requesterId: requesterA,
-    supplierId: '30000000-0000-4000-8000-000000000005',
+    supplierId: 5,
     description: 'Mixed rice, one meat and two vegetables',
     deliveryLocation: 'Yusof Ishak House Lobby',
     credits: 10,
@@ -122,7 +122,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[5],
     requesterId: requesterB,
-    supplierId: '30000000-0000-4000-8000-000000000006',
+    supplierId: 6,
     description: 'Two prata kosong and one teh peng',
     deliveryLocation: 'PGP Residence Block A',
     credits: 12,
@@ -136,7 +136,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[6],
     requesterId: requesterA,
-    supplierId: '30000000-0000-4000-8000-000000000007',
+    supplierId: 7,
     description: 'Nasi lemak set with extra sambal',
     deliveryLocation: 'SDE4 Studio',
     credits: 15,
@@ -149,7 +149,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[7],
     requesterId: requesterB,
-    supplierId: '30000000-0000-4000-8000-000000000008',
+    supplierId: 8,
     description: 'Bubble tea, half sugar and less ice',
     deliveryLocation: 'Science Drive 2',
     credits: 3,
@@ -161,7 +161,7 @@ const orders: Prisma.OrderRequestCreateManyInput[] = [
   {
     id: orderIds[8],
     requesterId: requesterA,
-    supplierId: '30000000-0000-4000-8000-000000000009',
+    supplierId: 9,
     description: 'Iced milo and tuna sandwich',
     deliveryLocation: 'LT19 Main Entrance',
     credits: 5,

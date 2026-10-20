@@ -37,7 +37,7 @@ import type { PrismaClient } from '../db/prisma.js';
 
 const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
 const body = {
-  supplierId: '0192f0c4-7a1e-7c3a-9b2d-000000000001',
+  supplierId: 1,
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,

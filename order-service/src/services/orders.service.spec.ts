@@ -63,7 +63,8 @@ const LATER = '2099-09-27T14:00:00.000Z';
 const EARLIER = '2026-09-27T10:00:00.000Z';
 
 const REQUESTER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
-const SUPPLIER = '0192f0c4-7a1e-7c3a-9b2d-000000000001';
+const SUPPLIER = 1;
+const OTHER_USER = '0192f0c4-7a1e-7c3a-9b2d-4f5e6a7b8c9d';
 
 const valid: CreateOrderPayload = {
   supplierId: SUPPLIER,
@@ -154,7 +155,11 @@ describe('createOrder: validation', () => {
   });
 
   it.each([
-    ['supplierId not a UUID', { supplierId: 's1' }, ErrorCode.INVALID_SUPPLIER],
+    [
+      'supplierId not a positive integer',
+      { supplierId: 's1' },
+      ErrorCode.INVALID_SUPPLIER,
+    ],
     [
       'description not text',
       { description: 123 },
@@ -367,7 +372,7 @@ describe('editOrder', () => {
     const { prisma, updateMany, order } = prismaWithEdit();
 
     await expect(
-      editOrder(prisma, SUPPLIER, order.id, {
+      editOrder(prisma, OTHER_USER, order.id, {
         description: 'Updated description',
       }),
     ).resolves.toEqual({
@@ -586,7 +591,10 @@ describe('runRequestMaintenance', () => {
   });
 
   it('does not expire an open request before its delivery deadline', async () => {
-    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
     const findUnique = vi.fn();
     const updateMany = vi.fn();
     const prisma = {
@@ -615,7 +623,10 @@ describe('runRequestMaintenance', () => {
       reservationId: 'reservation-1',
       completeBy: new Date('2026-10-12T11:00:00.000Z'),
     } as OrderRequest;
-    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
     const findUnique = vi.fn().mockResolvedValueOnce(open);
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
     const release = vi.fn();
@@ -644,7 +655,10 @@ describe('runRequestMaintenance', () => {
       reservationId: 'reservation-1',
       completeBy: new Date('2026-10-12T11:00:00.000Z'),
     } as OrderRequest;
-    const findMany = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([open]);
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([open]);
     const findUnique = vi.fn().mockResolvedValueOnce(open);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const releaseError = new Error('credit service unavailable');

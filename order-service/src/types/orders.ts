@@ -1,5 +1,5 @@
 export interface CreateOrderPayload {
-  supplierId: string;
+  supplierId: number;
   description: string;
   deliveryLocation: string;
   credits: number;
