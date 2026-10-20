@@ -12,11 +12,23 @@
  * Author review: tng wen xi
  */
 
+/*
+ * AI Assistance Disclosure:
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Added the edit-order API client for PATCH /orders/:id/edit.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ */
+
 import { request } from "./http";
 
 export const createOrder = (payload) =>
   request("/orders", { method: "POST", json: payload });
 export const listOrders = (status) => request("/orders", { query: { status } });
+export const editOrder = (id, payload) =>
+  request(`/orders/${id}/edit`, { method: "PATCH", json: payload });
+export const acceptOrder = (id) =>
+  request(`/orders/${id}/accept`, { method: "POST" });
 
 const TRANSITION_PATHS = {
   picked_up: "pickup",

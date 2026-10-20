@@ -13,6 +13,14 @@
  * Author review: tng wen xi
  */
 
+/*
+ * AI Assistance Disclosure:
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Wired the existing requester Edit action to the order edit page.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bike, ShoppingBag } from "lucide-react";
@@ -199,7 +207,11 @@ function ActivityCard({ request, supplier, asCourier, setRequestStatus }) {
       if (request.status === "open") {
         return (
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate("/requests/" + request.id + "/edit")}
+            >
               Edit
             </Button>
             <Button

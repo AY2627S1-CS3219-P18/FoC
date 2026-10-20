@@ -333,6 +333,69 @@ I accepted all changes.
 **Author review:**
 tng wen xi
 
+## 2026-10-20 — Frontend and Order Service: Accept errand
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** implementation code
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service transition logic for the `accepted` status
+
+**Prompts (exact):**
+
+> onaccept, make it call order service endpoint `/orders/:id/accept`
+
+**Key responses:**
+Added the order-service route backed by the existing `accepted` transition, added the frontend API client, and changed `RequestCard` to call the endpoint after login gating. `cd frontend && npm run build` passed. Focused order-service tests were not run because the frontend request was the active implementation scope.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-20 — Frontend: Edit open errand
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** implementation code | refactor
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service `PATCH /orders/:id/edit` contract and the existing Create Request form
+
+**Prompts (exact):**
+
+> create an edit page similar to the create page where users can edit the fields except for number of credits (for the moment)
+
+**Key responses:**
+Reused the existing request form for `/requests/:id/edit`, loaded the selected order from Order Service, connected the Activity Edit action, and submitted supplier, description, delivery location, deadline, and additional details without sending credits. Added a frontend API client and route. `cd frontend && npm run build` passed. An initial root-level build attempt was skipped because the repository root has no package.json.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-20 — Supplier Service: JWKS token verification
 
 **Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
