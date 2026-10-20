@@ -15,28 +15,28 @@
  * Scope (2026-10-20): Issue #5 - ORDER_EXPIRED maps to 409 (George: self-accept 403,
  *        every other accept rejection 409).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #4 - POST /orders answers 202 with the `pending` order (George,
  *        2026-10-20); credit calls moved to the worker, so no credit client here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - GET /orders delegates to the listing service: 200
  *        { ok, orders, nextCursor }; 400 { message } for unknown or invalid query
  *        parameters (previously an invalid status answered 500).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - writes publish order events; GET /orders/active lists
  *        the caller's active deliveries (F12.1.3), with the same req.user check as the
  *        other handlers.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Frontend integration - GET /orders/mine?as=requester|courier.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): F18.1.1 - ORDER_NOT_EDITABLE maps to 409, like the
  *        other state conflicts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { RequestHandler } from 'express';

@@ -10,7 +10,7 @@
  * Scope: Login prompt waits for the session restore (sessionReady), as Wallet.jsx does, so a
  *        reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { useEffect, useState } from 'react'

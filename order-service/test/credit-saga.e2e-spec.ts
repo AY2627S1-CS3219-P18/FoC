@@ -6,23 +6,23 @@
  *        open, and cancel -> release job -> creditReleasedAt, plus the failure paths.
  *        Credit-service and Redis are faked (HTTP client and BullMQ queue stand-ins).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - listing against the real database: every page of every
  *        sort walked end to end (no gaps, no duplicates, nulls last/first), filters, and
  *        pending orders hidden.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #5 - concurrent accepts against the real database: exactly
  *        one courier wins (F12.2.1), the rest get ORDER_CONFLICT or INVALID_TRANSITION.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Added coverage for the re-drive of transient credit_release
  *        dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - reservation failures end in `failed`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { config as loadDotenv } from 'dotenv';

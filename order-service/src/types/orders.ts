@@ -4,7 +4,7 @@
  * Scope (2026-10-20): Issue #11 - deliveryLocation (text) became deliveryLocationId
  *        (supplier-service location id, George 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 export interface CreateOrderPayload {

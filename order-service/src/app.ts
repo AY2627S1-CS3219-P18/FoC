@@ -8,11 +8,11 @@
  * Scope (2026-10-20): Issue #4 - dropped the credit client from AppDeps; the API no longer calls
  *        credit-service.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - createApp takes the order-event publisher; REST auth is
  *        Wen Xi's authenticate middleware (George, 2026-10-20: keep hers).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import express, { type Express } from 'express';

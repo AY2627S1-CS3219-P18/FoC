@@ -5,7 +5,7 @@
  *        credit-service/API.md and George's outcome classification (already-done
  *        codes = success; 5xx / network = transient; other 4xx = permanent).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { createHttpCreditsClient } from './credits.client.js';

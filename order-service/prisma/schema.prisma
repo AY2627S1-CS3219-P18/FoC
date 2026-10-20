@@ -3,12 +3,12 @@
 // Scope: Issue #4 schema changes per George's decisions: `pending` status, dropped
 //        `reservationId`, Outbox and DeadLetterJob models (mirroring supplier-service).
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: george-yeo
 // Scope (2026-10-20): Issue #11 per George's decisions - deliveryLocation (text)
 //        replaced by deliveryLocationId (INTEGER like supplierId, supplier-service location id); indexes
 //        on credits, completeBy and deliveryLocationId.
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: george-yeo
 
 // Order service Prisma schema.
 // Datasource URL is supplied by prisma.config.ts (Prisma 7 no longer reads it here).

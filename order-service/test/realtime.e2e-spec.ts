@@ -8,11 +8,11 @@
  *        sent -> server broadcasts the event) under 2 s. Single process, in-memory
  *        adapter (no Redis in the test environment).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Tokens are verified by Wen Xi's JWKS verifier against a local
  *        JWKS endpoint (George, 2026-10-20: keep her auth); the expiry test uses a 2 s exp.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { createServer, type Server as HttpServer } from 'node:http';

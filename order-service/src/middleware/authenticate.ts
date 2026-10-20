@@ -12,7 +12,7 @@
  *        reuses it (George, 2026-10-20: keep Wen Xi's auth); it also returns `exp` for the
  *        disconnect-at-expiry rule. createAuthenticate optionally takes a verifier.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import {

@@ -6,7 +6,7 @@
 --        location id, matching supplierId), and indexes are added on credits, completeBy and deliveryLocationId.
 --        Hand-written (prisma migrate dev unavailable in the AI workspace).
 --        No requirements, architecture, schema, or API decisions were made by the AI tool.
--- Author review:
+-- Author review: george-yeo
 
 -- Existing rows have free-text locations with no mapping to supplier location ids.
 DELETE FROM "requests";

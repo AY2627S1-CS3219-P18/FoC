@@ -6,17 +6,17 @@
 # Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the supplier-worker service and the
 #        PHOTO_STORE_* env lines / extra_hosts on supplier-service per Phase 4 plan Task 14. No
 #        requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: george-yeo
 # Scope (2026-10-12): Added Redis and the separate order maintenance worker
 #        for automatic request completion and acceptance-deadline expiry.
-# Author review:
+# Author review: george-yeo
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
 # Scope (2026-10-20): Issue #4 - CREDIT_SERVICE_URL on order-worker. No requirements,
 #        architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: george-yeo
 # Scope (2026-10-20): Issue #6 - REDIS_HOST/PORT and USER_SERVICE_URL on order-service.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: george-yeo
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch

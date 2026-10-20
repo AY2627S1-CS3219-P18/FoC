@@ -23,11 +23,11 @@
  *        delivery location resolve from their ids through the Supplier and User Services; the
  *        signed-in user comes from the session instead of the demo user.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { useState } from 'react'

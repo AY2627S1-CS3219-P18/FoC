@@ -7,7 +7,7 @@
  *        delay (1/2/4/8 s) is BullMQ's built-in `exponential` type and was picked by
  *        convention, not decided.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';

@@ -17,7 +17,7 @@
  * Scope: Order Service frontend integration - /socket.io (WebSocket upgrade) proxied to the
  *        order service for its Socket.IO order events. No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import react from "@vitejs/plugin-react";

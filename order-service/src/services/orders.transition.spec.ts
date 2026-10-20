@@ -8,7 +8,7 @@
  * Scope (2026-10-20): Issue #4 - fake Prisma gained $transaction and outbox, since
  *        transitions now write any credit task in the same transaction.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

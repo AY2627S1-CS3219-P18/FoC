@@ -25,17 +25,17 @@
  *        transitions, restating order-service/src/routes/orders.routes.ts. User-facing wording
  *        for the service's error codes and reserve-failure reasons.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): editOrder for PATCH /orders/:id/edit, carried over from Wen Xi's client.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - reserve-failure reasons arrive on order:failed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { request } from './http'

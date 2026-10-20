@@ -9,7 +9,7 @@
  *        replica, so the Redis adapter does not fan them out a second time. The channel
  *        name is by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { Redis } from 'ioredis';

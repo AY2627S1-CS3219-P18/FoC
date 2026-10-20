@@ -35,26 +35,26 @@
  *        fallback) and opens My activity. The stay-open and scheduled-posting fields stay hidden
  *        (George, 2026-10-20) and their unused state is removed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Carried over Wen Xi's edit page (merged in PR #115) onto this form, per
  *        George: /requests/:id/edit loads the errand from GET /orders/mine, mounts the form with
  *        its fields, hides the offer, and saves with PATCH /orders/:id/edit (delivery location
  *        id, complete-by or null, details or null).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - the reservation outcome is order:created or
  *        order:failed (with its reason); the re-check treats an order missing from
  *        /orders/mine as failed, since that list leaves failed orders out.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
  *        Wallet.jsx does, so a reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { useEffect, useState } from 'react'

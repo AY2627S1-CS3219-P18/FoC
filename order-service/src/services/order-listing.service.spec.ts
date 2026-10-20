@@ -4,10 +4,10 @@
  * Scope: Issue #11 - unit tests for the listing's filter registry, defaults, sorting,
  *        cursor handling and 400 cases (the Prisma query is asserted, not run).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - status=failed is rejected as INVALID_STATUS.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

@@ -10,15 +10,15 @@
  *        complete-by (George: expired = past completeBy if set; 409). Name and message
  *        follow the existing codes' convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - listing query errors (unknown parameter, invalid
  *        value, invalid cursor), named by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): F18.1.1 - ORDER_NOT_EDITABLE for editing a request that
  *        is not open, named by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 export enum ErrorCode {

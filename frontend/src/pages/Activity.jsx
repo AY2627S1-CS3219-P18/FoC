@@ -29,18 +29,18 @@
  *        from ids; timeline stamps use createdAt / acceptedAt / deliveredAt. Cancel on an
  *        accepted or picked-up errand appears once its deliver-by time has passed (F17.2).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Edit opens /requests/:id/edit (Wen Xi's edit page, carried over).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
  *        Wallet.jsx does, so a reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'

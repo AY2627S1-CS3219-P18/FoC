@@ -11,7 +11,7 @@
  *        (the REST middleware's check), so any failure is "unauthorized". The
  *        active-status set is by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { Server as HttpServer } from 'node:http';

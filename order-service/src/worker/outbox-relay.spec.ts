@@ -5,7 +5,7 @@
  *        relay behaviour: enqueue then delete, dead-letter unroutable rows, stop on a
  *        Redis failure).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { OutboxRow } from '../db/outbox.repository.js';

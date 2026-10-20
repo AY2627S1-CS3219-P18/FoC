@@ -6,7 +6,7 @@
  *        exercise the production verifier (Wen Xi's createTokenVerifier) end to end.
  *        Uses node:crypto only.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { generateKeyPairSync, sign as rsaSign } from 'node:crypto';

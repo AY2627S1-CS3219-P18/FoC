@@ -12,7 +12,7 @@
  * Author review: tng wen xi
  * Scope (2026-10-07): Added transitionOrder unit coverage for missing orders,
  *        forbidden actors, invalid edges, optimistic-lock conflicts, and success.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-08): Added F17 cancellation transition coverage for open and
  *        deadline-reached requests, including deadline and actor failures.
  * Author review: tng wen xi
@@ -43,22 +43,22 @@
  *        inline by reservationId; `credits` is no longer editable. Rewrote the affected
  *        cases and added fakes for $transaction and outbox.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - fixtures use deliveryLocationId; getOrders cases moved
  *        to order-listing.service.spec.ts with the new listing.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - pending orders settle to `failed`; pending ->
  *        cancelled is no longer a transition.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details optional on
  *        create; edit refused unless the request is open.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Edit validation cases for every editable field.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

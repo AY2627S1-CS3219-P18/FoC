@@ -7,7 +7,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope (2026-10-20): Issue #4 - createApp no longer takes a credit client.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { config as loadDotenv } from 'dotenv';

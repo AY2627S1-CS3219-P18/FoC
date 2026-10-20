@@ -12,7 +12,7 @@
  *        client (real client everywhere, George 2026-10-20). Localhost default mirrors
  *        REDIS_HOST's; compose sets the container address.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { z } from 'zod';

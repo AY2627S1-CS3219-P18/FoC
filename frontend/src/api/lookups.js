@@ -6,7 +6,7 @@
  *        delivery location name (supplier-service location reference list). Each id is fetched
  *        once per page load and shared between cards.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { useEffect, useMemo, useState } from 'react'

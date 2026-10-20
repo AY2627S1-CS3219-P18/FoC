@@ -10,11 +10,11 @@
  * Scope (2026-10-20): Issues #4/#5 - matrix now covers `pending` (system-only exits) and
  *        F11.2.2 (accepting past complete-by is ORDER_EXPIRED).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - the matrix covers `failed`; pending -> failed (system
  *        only) replaces pending -> cancelled.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

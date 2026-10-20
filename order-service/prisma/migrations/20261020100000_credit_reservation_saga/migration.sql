@@ -5,7 +5,7 @@
 --        `outbox` and `dead_letter_jobs` tables mirroring supplier-service's columns.
 --        Hand-written (prisma migrate dev unavailable in the AI workspace).
 --        No requirements, architecture, schema, or API decisions were made by the AI tool.
--- Author review:
+-- Author review: george-yeo
 
 -- AlterEnum
 ALTER TYPE "RequestStatus" ADD VALUE 'pending' BEFORE 'open';

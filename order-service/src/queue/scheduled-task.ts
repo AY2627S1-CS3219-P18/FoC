@@ -5,7 +5,7 @@
  *        out of the outbox relay's startRelay (which mirrors supplier-service's
  *        startRelay.ts) so the release re-drive can reuse it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { Queue, Worker, type ConnectionOptions } from 'bullmq';

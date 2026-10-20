@@ -13,21 +13,21 @@
  *        Failure reason string RESERVE_RETRIES_EXHAUSTED is named by convention
  *        (UPPER_SNAKE like credit-service's codes).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - reservation outcomes are published as order events
  *        (order:created on success, order:cancelled with the reason on failure) through
  *        transitionOrder, replacing the log-only notifier from issue #4.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Exported the transient-release message so the dead-letter
  *        re-drive can select transient release failures only (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - both reservation failure paths (credit-service
  *        rejection, retries exhausted) settle pending -> failed with the reason, published as
  *        order:failed (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';

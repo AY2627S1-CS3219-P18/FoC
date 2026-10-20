@@ -6,17 +6,17 @@
  *        failure; George's decisions 2026-10-19), and kept the F17.2 deadline rule
  *        to requester cancellation of ongoing orders only.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #5 - F11.2.2: an order past its complete-by cannot be
  *        accepted even before the expiry sweep has run (George: expired = past
  *        completeBy if set).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - a failed reservation moves pending -> failed
  *        (system only) instead of pending -> cancelled (George, 2026-10-20: "the transition is
  *        only pending -> failed"); failed is terminal.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type {

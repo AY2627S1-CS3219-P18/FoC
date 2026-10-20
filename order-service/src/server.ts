@@ -7,13 +7,13 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope (2026-10-20): Issue #4 - removed the stub credit client; reservation runs in the worker.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - one HTTP server for Express and Socket.IO; the
  *        Socket.IO Redis adapter over the shared order-redis for cross-replica emits
  *        (George, 2026-10-19); REST verifies JWTs against user-service's JWKS; events from
  *        the worker arrive over Redis pub/sub and are emitted locally.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { createServer } from 'node:http';

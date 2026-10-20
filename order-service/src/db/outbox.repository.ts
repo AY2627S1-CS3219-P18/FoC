@@ -5,7 +5,7 @@
  *        read/delete, mirroring supplier-service's outboxWriter.ts and
  *        mysqlOutboxRepository.ts (outbox + relay decided by George, 2026-10-19).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { Prisma } from '../generated/prisma/client.js';

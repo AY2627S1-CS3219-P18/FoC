@@ -4472,8 +4472,9 @@ tng wen xi
 5. **Decisions are not yet written in the repo.** The governing decision above is chat-only.
 
 **What I kept/changed/rejected:**
+I set the design: create as `pending`, reserve asynchronously, return 202 with a frontend spinner, use outbox and dead letters the same way as Congchen’s supplier-service, and run the worker in its own container. I also changed failure handling from “a failed reserve has nothing to release, just cancel” to “if reserve keeps failing then we will release,” limited retries to transient errors at 5 attempts with powers-of-2 backoff, rejected a timeout, made credits non-editable rather than adjusting the reservation, dropped the transfer result queue, and told Claude not to push at all after its one push attempt was refused with a 403.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service #4: Automatic re-drive of transient credit-release dead letters
 
@@ -4524,8 +4525,9 @@ tng wen xi
 - During a long credit-service outage, each stuck release adds a new dead-letter row per cycle (about one per minute plus the job's own retry time). The old rows are kept as `REDRIVEN`, so the table grows until the outage ends.
 
 **What I kept/changed/rejected:**
+Claude set out the options for release dead letters, and I picked automatic re-drive of transient failures only, every minute, with no limit.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service #5: Accept request + validation
 
@@ -4580,8 +4582,9 @@ tng wen xi
 - Auth still uses the `x-user-id` header, as in all existing routes.
 
 **What I kept/changed/rejected:**
+I set the rules (403 for self-accept, 409 for everything else, no automatic retry), and Claude only implemented them.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service #11: Listing filters, keyset pagination, location ids
 
@@ -4665,8 +4668,9 @@ tng wen xi
 3. **`supplierId` still validated as a UUID,** while supplier ids are BIGINT. This was left as is pending George's decision on the mapping.
 
 **What I kept/changed/rejected:**
+I added the indexes on credits, completeBy and deliveryLocation, set default `open`, exact location match, `expiresAfter` including orders with no deadline, and 400 for an invalid status, moved `deliveryLocation` from free text to supplier-service ids, and today changed BIGINT to INTEGER.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service #6/#59: Socket.IO order events, JWT auth, active deliveries
 
@@ -4822,8 +4826,9 @@ tng wen xi
 4. **Curl testing now needs a real user-service access token** (`Authorization: Bearer …`).
 
 **What I kept/changed/rejected:**
+I chose Socket.IO and designed the rooms and events, chose JWT after Claude flagged the `x-user-id` identity problem, and in the rebase rejected Claude’s `jose` verifier, public listing and 503 behaviour in favour of Wen Xi’s middleware, while Claude flagged the room mapping and event names as conventions for me to review.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Frontend: Order Service integration (create, live board, activity, Socket.IO client)
 
@@ -4944,8 +4949,9 @@ tng wen xi
 5. **Migrations delete order rows:** `20261020120000_listing_filters` deletes existing orders, so local data is lost.
 
 **What I kept/changed/rejected:**
+I corrected Claude on `supplierId` (I thought it was already BIGINT), asked for `/orders/mine` and for the stay-open and schedule fields to be hidden, and in the rebase kept Claude’s frontend over Wen Xi’s but kept her edit page, while replacing “Near me” and the search behaviour were Claude’s calls, flagged for me.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service: `failed` status for failed reservations; login prompt on reload
 
@@ -5024,8 +5030,9 @@ tng wen xi
 2. Existing `cancelled` rows that came from failed reservations are not migrated to `failed`. They stay in History until the local data is reset.
 
 **What I kept/changed/rejected:**
+I asked whether `failed` was a good idea, and after Claude declined to judge the policy and only listed the impact, I decided on a new `order:failed` event, filtered out of `/mine`, with `INVALID_STATUS` on the listing, while removing `pending → cancelled` was Claude’s convention call.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service: F18.1.1 edit only when open; F9.1.1 optional additional details
 
@@ -5072,8 +5079,9 @@ tng wen xi
 2. **Two intermittent e2e failures** were seen once each and have not been diagnosed. The token-expiry test uses a 1-second `exp` and may be timing-sensitive.
 
 **What I kept/changed/rejected:**
+I told Claude to fix the F18.1.1 and F9.1.1 violations it had found in Wen Xi’s code, and returning `ORDER_NOT_EDITABLE` with a 409 was Claude’s convention call.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service + Frontend: rebase onto PR #115 (Wen Xi's auth, supplier ids, edit page)
 
@@ -5143,8 +5151,9 @@ tng wen xi
 5. Picked by convention: the shape of the extracted `createTokenVerifier`, and the 2 s test token.
 
 **What I kept/changed/rejected:**
+I threw away our throwaway supplier JWKS, kept her auth, switched to INTEGER and chose option a for the frontend, and Claude flagged her edit to an already-applied migration and the missing edit validation.
 
-**Author review:**
+**Author review:** george-yeo
 
 ## 2026-10-20 — Order Service: deliveryLocationId as INTEGER; full edit validation
 
@@ -5191,5 +5200,6 @@ tng wen xi
 2. **Picked by convention:** the INTEGER upper bound in `isPositiveInt`, and applying it to create's `supplierId` too.
 
 **What I kept/changed/rejected:**
+I asked for `deliveryLocationId` to match the INTEGER location and for edits to be validated, while the INTEGER upper bound and applying it to create were Claude’s calls.
 
-**Author review:**
+**Author review:** george-yeo

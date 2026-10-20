@@ -8,7 +8,7 @@
  *        a new job with a full set of retries. The REDRIVEN status value and the
  *        `queue:order:release-redrive` key are named by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { ConnectionOptions } from 'bullmq';

@@ -9,7 +9,7 @@
  *        credit-service/API.md's reserve and release bodies take. The queue key and
  *        task names are derived from supplier-service's convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 /** What a write transaction hands to the outbox: a task name and its payload. */

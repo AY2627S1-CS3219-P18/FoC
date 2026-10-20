@@ -28,33 +28,33 @@
  *        credit_release outbox row in the same transaction as the status change,
  *        replacing the inline reservationId release; `credits` is no longer editable.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - deliveryLocationId (supplier location id) replaces the
  *        free-text deliveryLocation on create and edit; getOrders moved to
  *        order-listing.service.ts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - transitions and edits publish order events after the
  *        transaction commits (best-effort; REST stays the source of truth).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
- * Author review:
+ * Author review: george-yeo
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - moving to `failed` can queue a credit release (the
  *        retries-exhausted path, as cancellation did before).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): F9.1.1 / F18.1.1 - additional details are optional on
  *        create (a missing field is no longer rejected); edit is refused with
  *        ORDER_NOT_EDITABLE unless the request is open, and the versioned write also
  *        requires `open`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Edit validates every editable field with create's rules: supplierId
  *        (positive INTEGER id), description (non-empty text), additionalDetails (text or
  *        null), alongside the existing location and complete-by checks; create's supplierId
  *        check also caps at the INTEGER range (George, 2026-10-20: "validate the edit").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { PrismaClient } from '../db/prisma.js';

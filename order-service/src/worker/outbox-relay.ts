@@ -8,10 +8,10 @@
  *        after a successful enqueue, dead-letter rows with no queue, stop the tick if
  *        Redis refuses so order is kept.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): startRelay now delegates to the shared startScheduledTask.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { ConnectionOptions } from 'bullmq';

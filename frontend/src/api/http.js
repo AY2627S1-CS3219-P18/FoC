@@ -17,7 +17,7 @@
  *        transition errors carry their code as `error`), and getAccessToken() lets the Socket.IO
  *        client send the in-memory token in its handshake.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.

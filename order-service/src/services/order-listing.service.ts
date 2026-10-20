@@ -12,22 +12,22 @@
  *        tie-breaker, nulls-last ordering and the opaque base64url cursor format are by
  *        convention and flagged for review.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - listActiveDeliveries for F12.1.3 (courier's accepted /
  *        picked_up / delivered orders, from issue #6's scope).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Frontend integration - listMyOrders for the caller's own orders
  *        (George, 2026-10-20: add an authenticated endpoint), as requester (default, all
  *        statuses including pending) or as courier, newest first. The `as` parameter and
  *        ordering are by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - GET /orders?status=failed is rejected like pending
  *        (400 INVALID_STATUS), and GET /orders/mine leaves failed orders out (George,
  *        2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

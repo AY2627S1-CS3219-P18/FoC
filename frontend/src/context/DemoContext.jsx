@@ -15,7 +15,7 @@
  *        logged in and closes it on logout. The demo request data stays for the screens not yet
  *        connected (chat, demo controls).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'

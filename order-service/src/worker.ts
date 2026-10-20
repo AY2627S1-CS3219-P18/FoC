@@ -17,16 +17,16 @@
  *        final failure), mirroring supplier-service's worker; real credit client
  *        (George, 2026-10-20). Maintenance no longer calls credit-service directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - order events from the worker (reservation outcomes,
  *        expiry, auto-completion) are published to Redis pub/sub for the API to emit
  *        (George, 2026-10-20: plain Redis, no extra dependency).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Also runs the minute-by-minute re-drive of transient
  *        credit_release dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { Queue, Worker, type Job } from 'bullmq';

@@ -13,7 +13,7 @@
  *        404 RESERVATION_NOT_FOUND / 409 ALREADY_RELEASED = success; only timeouts,
  *        5xx and connection errors are transient. The stub stays for unit tests only.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 /**

@@ -4,17 +4,17 @@
  * Scope (2026-10-20): Issue #4 - credit client removed from the router deps (credit calls moved to
  *        the worker).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #5 - POST /orders/:id/accept, following the existing
  *        POST /orders/:id/<action> transition routes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - GET /orders/active (F12.1.3, path by convention under
  *        /orders); writes receive the order-event publisher. Authentication is applied to
  *        all of /orders by Wen Xi's middleware in app.ts. Frontend integration -
  *        GET /orders/mine.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { Router } from 'express';

@@ -11,12 +11,12 @@
  *        rooms when someone becomes a participant and leaving them at terminal states are
  *        derived by convention from those room purposes and flagged for review.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - a failed reservation publishes `order:failed` with
  *        its reason to the requester (George, 2026-10-20: "add the new event"), replacing
  *        order:cancelled from pending.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type {

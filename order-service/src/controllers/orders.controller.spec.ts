@@ -29,31 +29,31 @@
  *        Wen Xi's JWKS middleware, which covers all of /orders including the listing);
  *        GET /orders/active coverage.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Frontend integration - GET /orders/mine coverage.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - GET /orders coverage for the new listing (default
  *        filter + ordering, 400s); body uses deliveryLocationId.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #5 - POST /orders/:id/accept HTTP coverage: 200 with the
  *        courier assigned; 403 self-accept; 409 for expired, cancelled, pending, already
  *        assigned, and lost optimistic-lock race.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #4 - POST /orders now answers 202 with a `pending` order and
  *        an outbox reserve task (no credit call in the request path); dropped the
  *        422/503 credit cases that moved to the worker; fakes gained $transaction/outbox.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - GET /orders/mine leaves failed orders out.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): F18.1.1 - edit returns 409 ORDER_NOT_EDITABLE unless the request is
  *        open; edit fixtures carry status `open`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import request from 'supertest';

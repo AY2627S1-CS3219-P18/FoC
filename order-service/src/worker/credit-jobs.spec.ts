@@ -5,15 +5,15 @@
  *        each branch of George's saga decisions (success, permanent failure, transient
  *        retry, retries exhausted) and release outcomes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #6 - outcomes asserted as published order events (rooms and
  *        payload) instead of the removed log-only notifier.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): `failed` status - reservation failures settle to `failed` and publish
  *        order:failed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { UnrecoverableError } from 'bullmq';

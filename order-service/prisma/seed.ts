@@ -11,11 +11,11 @@
  * Scope (2026-10-20): Issue #4 - removed the dropped `reservationId` column from the
  *        fixtures (the order id is now the reservation key).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  * Scope (2026-10-20): Issue #11 - fixtures use supplier location ids (deliveryLocationId)
  *        instead of free-text locations.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import 'dotenv/config';

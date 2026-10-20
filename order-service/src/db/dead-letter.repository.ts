@@ -4,7 +4,7 @@
  * Scope: Issue #4 - dead_letter_jobs writes, mirroring supplier-service's
  *        deadLetterRepository (same dead_letter_jobs solution, George 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import type { Prisma } from '../generated/prisma/client.js';

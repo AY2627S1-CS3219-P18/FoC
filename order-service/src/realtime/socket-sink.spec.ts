@@ -4,7 +4,7 @@
  * Scope: Issue #6 - unit tests for the worker -> API Redis pub/sub path with fake Redis
  *        connections (no Redis in the test environment).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: george-yeo
  */
 
 import { EventEmitter } from 'node:events';
