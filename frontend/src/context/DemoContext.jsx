@@ -9,11 +9,19 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Replaced the demo login flag with a real session (login, logout, silent restore through the refresh cookie) and exposed systemRole/isAdmin. `role` (requester/courier) and the order data stay mocked. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Order Service frontend integration - opens the order-service Socket.IO connection while
+ *        logged in and closes it on logout. The demo request data stays for the screens not yet
+ *        connected (chat, demo controls).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import * as authApi from '../api/auth'
 import { setOnSessionExpired } from '../api/http'
+import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 import { requests as seedRequests } from '../data/requests'
 import { currentUser } from '../data/users'
 
@@ -41,6 +49,13 @@ export function DemoProvider({ children }) {
       () => setSessionReady(true),
     )
   }, [])
+
+  // Order events (#6/#59) need a signed-in user: one connection for the whole app.
+  useEffect(() => {
+    if (!isLoggedIn) return undefined
+    connectOrderSocket()
+    return () => disconnectOrderSocket()
+  }, [isLoggedIn])
 
   const login = useCallback(async (identifier, password) => {
     setSession(await authApi.login(identifier, password))

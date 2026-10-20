@@ -13,10 +13,18 @@
  *        uses service names while host-run Vite uses localhost. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Order Service frontend integration - /socket.io (WebSocket upgrade) proxied to the
+ *        order service for its Socket.IO order events. No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+
+const orderServiceUrl =
+  process.env.VITE_ORDER_SERVICE_URL ?? "http://localhost:3002";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -31,7 +39,9 @@ export default defineConfig({
       "/users": process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/credits":
         process.env.VITE_CREDIT_SERVICE_URL ?? "http://localhost:3003",
-      "/orders": process.env.VITE_ORDER_SERVICE_URL ?? "http://localhost:3002",
+      "/orders": orderServiceUrl,
+      // Order events (Socket.IO, websocket transport only).
+      "/socket.io": { target: orderServiceUrl, ws: true },
     },
   },
 });

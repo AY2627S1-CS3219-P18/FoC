@@ -11,6 +11,13 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Identical in-flight GET requests share one network call. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Order Service frontend integration - ApiError keeps the response body (order-service
+ *        transition errors carry their code as `error`), and getAccessToken() lets the Socket.IO
+ *        client send the in-memory token in its handshake.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.
@@ -21,6 +28,7 @@ let onSessionExpired = () => {}
 export const setAccessToken = (token) => {
   accessToken = token
 }
+export const getAccessToken = () => accessToken
 export const setOnSessionExpired = (callback) => {
   onSessionExpired = callback
 }
@@ -32,6 +40,7 @@ export class ApiError extends Error {
     super(body?.message || 'Request failed (' + status + ')')
     this.status = status
     this.code = body?.code
+    this.body = body
     this.details = Array.isArray(body?.details) ? body.details : []
   }
 }

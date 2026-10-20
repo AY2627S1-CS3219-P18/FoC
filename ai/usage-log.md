@@ -4824,3 +4824,125 @@ tng wen xi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Frontend: Order Service integration (create, live board, activity, Socket.IO client)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** Issues #4, #5, #6, #11 and #59 (GitHub, AY2627S1-CS3219-P18/FoC), the Socket.IO design George Yeo gave in chat (quoted in the #6/#59 entry above), and George's answers below.
+
+**Prompts (exact):**
+
+> ok make a new branch now and connect up the frontend
+
+> 1. what do you mean uuid, i thought we already changed it to bigint
+
+> 1. ok change to bigint too, A
+> 2. yes add it A
+> 3. hide them first
+> 4. ok
+
+**Key responses:**
+
+- **Rebased onto PR #115 (Wen Xi), 2026-10-20.** George kept her INTEGER `supplierId` (her migration `20261020211000_supplier_id_integer`), so the BIGINT change originally made here was dropped. He also kept this frontend, with her edit page carried over (see below).
+- **Backend, commit 1 (order-service):**
+  - New `GET /orders/mine?as=requester|courier` returns the caller's own orders, newest first, in every status (George: "yes add it A"). The path and the `as` parameter were picked by convention.
+- **Frontend, commit 2:**
+  - **Socket.IO client** (`src/realtime/orderSocket.js`, new dependency `socket.io-client`):
+    - one connection per signed-in session, opened and closed from `DemoContext`;
+    - websocket transport; `auth` is a callback that sends the in-memory access token, refreshing it first when it is missing or within 30 s of expiry;
+    - reconnects on `io server disconnect` (token expiry); one forced refresh and retry on an `unauthorized` connect error; retries after 5 s on `identity_provider_unavailable`;
+    - reference-counted `listing:subscribe`, re-sent after every `ready`;
+    - hooks `useOrderEvents` and `useSocketReady`, and `watchOrderEvents` for a reply that may arrive before the HTTP response.
+  - **API clients** (`src/api/orders.js`):
+    - create, filtered and cursor-paged listing, `mine`, `active`, and accept/pickup/deliver/complete/cancel;
+    - user-facing wording for the error codes and for the reserve-failure reasons.
+  - `http.js` exposes `getAccessToken()`, and `ApiError` keeps the response body, because transition errors carry their code as `error`.
+  - **Lookups** (`src/api/lookups.js`), each fetched once per id per page load:
+    - supplier via `GET /api/v1/suppliers/:id`;
+    - display name via user-service `GET /users/public/:id`;
+    - location name from supplier-service's location reference list.
+  - **Post an errand** (`CreateRequest.jsx`):
+    - the delivery location picker uses the supplier-service location ids;
+    - `POST /orders` (202), then a spinner until `order:created`, which goes to My activity, or `order:cancelled`, which shows the reason and keeps the form;
+    - fallback: `/orders/mine` is re-checked every 5 s if no event arrives;
+    - the stay-open and schedule fields stay hidden (George: "hide them first"; they were already commented out), and their unused state was removed;
+    - empty additional details are sent as `null`, because the service rejects a missing field (see deviations).
+  - **Find errands** (`RequestBoard.jsx`, `RequestCard.jsx`):
+    - queries `status=open` with the service's filters and sorts: "3+ credits" → `minCredits=3`, "Expiring soon" → `expiresBefore=now+45 min`, a drop-off point picker → `location` (replaces the name-based "Near me" chip), and a sort picker for deliver-by, most credits, or newest;
+    - "Load more" pages through `nextCursor`;
+    - live updates from the `listing` feed: created → inserted in sort order if it matches the filters; accepted → "Taken"; cancelled/expired → removed; edited → refetch. A version guard ignores stale events, and the board refetches after every reconnect;
+    - Accept calls the real route and shows 403 own-errand or 409 taken/expired/conflict text;
+    - text search filters the loaded page in the browser only (the service has no text search).
+  - **My activity** (`Activity.jsx`):
+    - errands come from `/orders/mine` with `pending` hidden;
+    - deliveries come from `/orders/active` plus the closed orders from `/orders/mine?as=courier`;
+    - pick up, deliver, complete and cancel call their routes and show the rejection;
+    - cancel on an accepted or picked-up errand appears only once deliver-by has passed (F17.2);
+    - the lists refetch on order events and after a reconnect;
+    - timeline stamps come from `createdAt`/`acceptedAt`/`deliveredAt`.
+  - **Vite proxy:** `/socket.io` (ws) → order service.
+  - **Edit page (Wen Xi's, carried over after the rebase):**
+    - `/requests/:id/edit` loads the errand from `/orders/mine` and mounts the same form with the errand's fields, hiding the offer.
+    - Saving sends `PATCH /orders/:id/edit` with the location id, `completeBy` (or `null`) and details (or `null`).
+    - The Activity Edit button opens the page.
+- **Verification in the AI workspace:**
+  - order-service: tsc clean, oxlint clean, 447 unit and 27 e2e tests passing, build OK.
+  - frontend: `vite build` OK, and oxlint reports no warnings in the changed files.
+  - **Browser end-to-end** (Playwright/Chromium against Vite). Backends:
+    - the real order-service app and Socket.IO server on Postgres 17, with the in-memory adapter (no Redis available);
+    - a simulated credit worker;
+    - stub user and supplier services.
+
+    Each check below passed:
+    - post → spinner → My activity (≈0.3–0.45 s);
+    - another user's board receives the card live;
+    - own errand not acceptable;
+    - accept → requester's activity updates live;
+    - pickup and deliver → requester sees Delivered live;
+    - complete → both sides move it to History;
+    - a reservation failure shows its reason;
+    - 55 orders page as 50 + "Load more";
+    - credit and location filters, and credit sort;
+    - cancel removes the card live;
+    - with WebSocket blocked, a post settles through the re-check (~5.1 s);
+    - with 35 s tokens, the board is still live after the server's expiry disconnect.
+- **Not verified:** a live user-service or supplier-service, and the Redis adapter or worker pub/sub path.
+
+**Files:**
+
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts`, `order-service/src/controllers/orders.controller.spec.ts`, `order-service/src/routes/orders.routes.ts` (modified)
+- `frontend/src/realtime/orderSocket.js`, `frontend/src/api/lookups.js` (created)
+- `frontend/src/api/orders.js`, `frontend/src/api/http.js`, `frontend/src/context/DemoContext.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx`, `frontend/src/pages/RequestBoard.jsx`, `frontend/src/components/RequestCard.jsx`, `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/package.json`, `frontend/package-lock.json` (modified; no header possible)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review:**
+   - the `/orders/mine?as=` path, parameter and ordering;
+   - the 5 s re-check fallback while posting;
+   - the token-refresh threshold (30 s);
+   - one forced refresh on `unauthorized`;
+   - the 5 s retry on `identity_provider_unavailable`;
+   - "Near me" replaced by a drop-off point picker;
+   - the sort labels;
+   - browser-only text search;
+   - the requester and courier names from `/users/public/:id`;
+   - the user-facing error and reason wording;
+   - a duplicate "Deliver by" cell in the expanded card changed to "Posted".
+2. **Backend inconsistency (Wen Xi's validation):** `createOrder` treats a missing `additionalDetails` as invalid even though the code marks it optional. The frontend sends `null` instead; the service was not changed.
+3. **Not wired, left as they were:**
+   - the Edit button on an open errand (F18 editing UI);
+   - Chat and the demo controls (still demo data);
+   - the credit pill and Wallet (George: leave alone). The post form's "insufficient credits" check still uses the demo balance, and the real check is the reservation outcome.
+4. **Pre-existing, not changed:** pages that require login open the login prompt before the session has been restored on a hard reload.
+5. **Migrations delete order rows:** `20261020120000_listing_filters` deletes existing orders, so local data is lost.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
