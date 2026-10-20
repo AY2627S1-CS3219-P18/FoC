@@ -27,6 +27,7 @@
  */
 
 import request from 'supertest';
+import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
 import type {
   CreditsClient,
@@ -36,7 +37,7 @@ import type { PrismaClient } from '../db/prisma.js';
 
 const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
 const body = {
-  supplierId: '0192f0c4-7a1e-7c3a-9b2d-000000000001',
+  supplierId: 1,
   description: '1x chicken rice',
   deliveryLocation: 'COM1 Basement',
   credits: 4,
@@ -69,7 +70,12 @@ function appWith(
     },
   } as unknown as PrismaClient;
   const credits: CreditsClient = { reserve, release: async () => {} };
-  return createApp({ prisma, credits });
+  const authenticate: RequestHandler = (req, res, next) => {
+    const userId = req.get('x-user-id') ?? USER;
+    req.user = { user_id: userId, role: 'user' };
+    next();
+  };
+  return createApp({ prisma, credits, authenticate });
 }
 
 beforeEach(() => {

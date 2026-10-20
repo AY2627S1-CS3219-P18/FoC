@@ -5,7 +5,7 @@ CREATE TYPE "RequestStatus" AS ENUM ('open', 'accepted', 'picked_up', 'delivered
 CREATE TABLE "requests" (
     "id" UUID NOT NULL,
     "requesterId" UUID NOT NULL,
-    "supplierId" UUID NOT NULL,
+    "supplierId" INTEGER NOT NULL,
     "description" TEXT NOT NULL,
     "deliveryLocation" TEXT NOT NULL,
     "credits" INTEGER NOT NULL,

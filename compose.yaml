@@ -45,6 +45,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
+      USER_SERVICE_URL: http://user-service:3001
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"
     depends_on:

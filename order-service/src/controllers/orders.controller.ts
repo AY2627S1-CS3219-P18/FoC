@@ -24,7 +24,7 @@ import { RequestStatus } from '../generated/prisma/enums.js';
 export const createOrder =
   (prisma: PrismaClient, credits: CreditsClient): RequestHandler =>
   async (req, res) => {
-    const requesterId = req.get('x-user-id'); // TODO(team): take from verified JWT
+    const requesterId = req.user?.user_id;
     if (!isUuid(requesterId)) {
       res
         .status(401)
@@ -67,7 +67,7 @@ export const getOrders =
 export const editOrder =
   (prisma: PrismaClient): RequestHandler =>
   async (req, res) => {
-    const actorId = req.get('x-user-id');
+    const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
       res
         .status(401)
@@ -102,7 +102,7 @@ export const transitionOrder =
     newStatus: RequestStatus,
   ): RequestHandler =>
   async (req, res) => {
-    const actorId = req.get('x-user-id'); // TODO(team): take from verified JWT
+    const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
       res
         .status(401)

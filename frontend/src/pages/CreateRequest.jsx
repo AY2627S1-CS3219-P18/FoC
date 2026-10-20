@@ -10,105 +10,194 @@
  * Scope: Shows the supplier's faculty where the old location text was shown. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The pick-up supplier picker and the preselected supplier (?supplier=id) load from the Supplier Service. The request itself is still mocked (Order Service not connected). No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Connected the post-errand button to the existing Order Service POST /orders endpoint and
+ *        added submission loading and error states. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review: tng wen xi
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Reused the create form for editing existing orders and submitted non-credit fields
+ *        through the existing order-service edit endpoint.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
-import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Bookmark, Minus, Plus } from 'lucide-react'
-import Button from '../components/Button'
-import SupplierImage from '../components/SupplierImage'
-import { useApi } from '../api/useApi'
-import { getSupplier, listSuppliers } from '../api/suppliers'
-import { qualifiedName } from '../data/suppliers'
-import { bookmarkedLocations, otherLocations, locations } from '../data/locations'
-import { useDemo } from '../context/DemoContext'
+import { useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Bookmark, Minus, Plus } from "lucide-react";
+import Button from "../components/Button";
+import SupplierImage from "../components/SupplierImage";
+import { useApi } from "../api/useApi";
+import { createOrder, editOrder, listOrders } from "../api/orders";
+import { getSupplier, listSuppliers } from "../api/suppliers";
+import { qualifiedName } from "../data/suppliers";
+import {
+  bookmarkedLocations,
+  otherLocations,
+  locations,
+} from "../data/locations";
+import { useDemo } from "../context/DemoContext";
 
-const MAX_CHARS = 200
-const EXPIRY_CHOICES = [15, 30, 45, 60, 120]
+const MAX_CHARS = 200;
+const EXPIRY_CHOICES = [15, 30, 45, 60, 120];
 
 // Defaults follow the clock rather than a hardcoded date that goes stale overnight.
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => new Date().toISOString().slice(0, 10);
 
 // Order F1.1.1 — supplier, description, delivery location, credits offered, expiration,
 // additional details. Plus the scheduled-errand and bookmarked-location nice-to-haves.
 export default function CreateRequest() {
-  const [params] = useSearchParams()
-  const navigate = useNavigate()
-  const { credits, isLoggedIn, requireLogin } = useDemo()
+  const [params] = useSearchParams();
+  const { id: editId } = useParams();
+  const navigate = useNavigate();
+  const { credits, isLoggedIn, requireLogin } = useDemo();
+  const isEdit = Boolean(editId);
 
   // Gated when logged out (§9): the page stays visible behind the scrim.
   useEffect(() => {
-    if (!isLoggedIn) requireLogin('You need an account to post an errand.')
-  }, [isLoggedIn, requireLogin])
+    if (!isLoggedIn) requireLogin("You need an account to post an errand.");
+  }, [isLoggedIn, requireLogin]);
 
-  const [supplierId, setSupplierId] = useState(params.get('supplier') || '')
-  const [description, setDescription] = useState('')
-  const [location, setLocation] = useState(locations[0].name)
-  const [postMode, setPostMode] = useState('now')
-  const [postDate, setPostDate] = useState(today)
-  const [postTime, setPostTime] = useState('11:30')
-  const [timing, setTiming] = useState('asap')
-  const [expiry, setExpiry] = useState(45)
-  const [date, setDate] = useState(today)
-  const [time, setTime] = useState('15:30')
-  const [offer, setOffer] = useState(4)
-  const [extra, setExtra] = useState('')
+  const [supplierId, setSupplierId] = useState(params.get("supplier") || "");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState(locations[0].name);
+  const [postMode, setPostMode] = useState("now");
+  const [postDate, setPostDate] = useState(today);
+  const [postTime, setPostTime] = useState("11:30");
+  const [timing, setTiming] = useState("asap");
+  const [expiry, setExpiry] = useState(45);
+  const [date, setDate] = useState(today);
+  const [time, setTime] = useState("15:30");
+  const [offer, setOffer] = useState(4);
+  const [extra, setExtra] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const {
+    data: orderData,
+    loading: orderLoading,
+    error: orderError,
+  } = useApi(() => listOrders(), []);
+  const existingOrder = orderData?.orders?.find((order) => order.id === editId);
+
+  useEffect(() => {
+    if (!existingOrder) return;
+    setSupplierId(String(existingOrder.supplierId));
+    setDescription(existingOrder.description ?? "");
+    setLocation(existingOrder.deliveryLocation ?? "");
+    setTiming(existingOrder.completeBy ? "later" : "asap");
+    if (existingOrder.completeBy) {
+      const deadline = new Date(existingOrder.completeBy);
+      setDate(deadline.toISOString().slice(0, 10));
+      setTime(deadline.toTimeString().slice(0, 5));
+    }
+    setExtra(existingOrder.additionalDetails ?? "");
+  }, [existingOrder]);
 
   // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
-  const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
-  const { data: chosen } = useApi(() => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)), [supplierId])
-  const suppliers = supplierPage?.data ?? []
-  const supplier = supplierId ? chosen : null
+  const { data: supplierPage } = useApi(
+    () => listSuppliers({ sortOrder: "A-Z" }),
+    [],
+  );
+  const { data: chosen } = useApi(
+    () => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)),
+    [supplierId],
+  );
+  const suppliers = supplierPage?.data ?? [];
+  const supplier = supplierId ? chosen : null;
 
   // An errand that is still collecting couriers past its own delivery deadline is incoherent.
   // Warned about, not blocked - see AI-NOTES for the open question.
   const goesOutAt = (() => {
-    if (postMode !== 'schedule') return Date.now()
-    const t = new Date(postDate + 'T' + postTime).getTime()
-    return Number.isNaN(t) ? Date.now() : t
-  })()
+    if (postMode !== "schedule") return Date.now();
+    const t = new Date(postDate + "T" + postTime).getTime();
+    return Number.isNaN(t) ? Date.now() : t;
+  })();
 
   const deadlineTooTight = (() => {
-    if (timing !== 'later') return false
-    const deadline = new Date(date + 'T' + time)
-    if (Number.isNaN(deadline.getTime())) return false
-    return deadline.getTime() < goesOutAt + expiry * 60000
-  })()
-  const insufficient = offer > credits.available
-  const remaining = credits.available - offer
+    if (timing !== "later") return false;
+    const deadline = new Date(date + "T" + time);
+    if (Number.isNaN(deadline.getTime())) return false;
+    return deadline.getTime() < goesOutAt + expiry * 60000;
+  })();
+  const insufficient = offer > credits.available;
+  const remaining = credits.available - offer;
+
+  const submitOrder = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const payload = {
+        supplierId: Number(supplierId),
+        description,
+        deliveryLocation: location,
+        completeBy:
+          timing === "later" ? new Date(date + "T" + time).toISOString() : null,
+        additionalDetails: extra.trim() || null,
+      };
+      if (isEdit) {
+        await editOrder(editId, payload);
+      } else {
+        await createOrder({ ...payload, credits: offer });
+      }
+      navigate("/activity");
+    } catch (error) {
+      setSubmitError(error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const label = (text, htmlFor) => (
     <label htmlFor={htmlFor} className="block text-base font-semibold text-ink">
       {text}
     </label>
-  )
+  );
 
   return (
     <div className="page-gutter mx-auto w-full max-w-[640px] py-8 pb-32 md:py-10 md:pb-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Post an errand</h1>
+      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
+        {isEdit ? "Edit errand" : "Post an errand"}
+      </h1>
+      {isEdit && orderLoading && (
+        <p className="mt-4 text-sm text-ink-70">Loading errand…</p>
+      )}
+      {isEdit && orderError && (
+        <p role="alert" className="mt-4 text-sm text-alert">
+          {orderError.message}
+        </p>
+      )}
 
       <div className="mt-8 space-y-8">
         {/* 1. Pick-up from */}
         <section>
-          {label('Pick-up from', 'supplier')}
+          {label("Pick-up from", "supplier")}
           {supplier ? (
             <div className="mt-2 flex items-center gap-3 rounded-card border border-line p-3">
               <div className="w-16 shrink-0">
-                <SupplierImage supplier={supplier} ratio="aspect-square" rounded="rounded-[10px]" compact />
+                <SupplierImage
+                  supplier={supplier}
+                  ratio="aspect-square"
+                  rounded="rounded-[10px]"
+                  compact
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink">
                   {qualifiedName(supplier)}
                 </p>
-                <p className="truncate text-sm text-ink-40">{supplier.faculty}</p>
+                <p className="truncate text-sm text-ink-40">
+                  {supplier.faculty}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSupplierId('')}
+                onClick={() => setSupplierId("")}
                 className="min-h-[44px] shrink-0 px-2 py-2 text-sm font-medium text-blue hover:underline md:min-h-0"
               >
                 Change
@@ -133,7 +222,7 @@ export default function CreateRequest() {
 
         {/* 2. What do you need? */}
         <section>
-          {label('What do you need?', 'description')}
+          {label("What do you need?", "description")}
           <textarea
             id="description"
             rows={4}
@@ -145,7 +234,8 @@ export default function CreateRequest() {
           />
           <div className="mt-1.5 flex items-start justify-between gap-4">
             <p className="max-w-prose text-sm text-ink-40">
-              Be specific. Your courier is buying this for you, so mention anything that matters.
+              Be specific. Your courier is buying this for you, so mention
+              anything that matters.
             </p>
             <span className="tnum shrink-0 text-sm text-ink-40">
               {description.length}/{MAX_CHARS}
@@ -155,7 +245,7 @@ export default function CreateRequest() {
 
         {/* 3. Deliver to */}
         <section>
-          {label('Deliver to', 'location')}
+          {label("Deliver to", "location")}
           <select
             id="location"
             value={location}
@@ -246,8 +336,8 @@ export default function CreateRequest() {
           </span>
           <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
             {[
-              ['asap', 'As soon as possible'],
-              ['later', 'By a specific time'],
+              ["asap", "As soon as possible"],
+              ["later", "By a specific time"],
             ].map(([value, text]) => (
               <button
                 key={value}
@@ -255,15 +345,17 @@ export default function CreateRequest() {
                 onClick={() => setTiming(value)}
                 aria-pressed={timing === value}
                 className={
-                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
-                  (timing === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                  "h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 " +
+                  (timing === value
+                    ? "bg-ink text-white"
+                    : "text-ink-70 hover:text-ink")
                 }
               >
                 {text}
               </button>
             ))}
           </div>
-          {timing === 'later' && (
+          {timing === "later" && (
             <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-sm text-ink-70">Date</span>
@@ -286,7 +378,8 @@ export default function CreateRequest() {
             </div>
           )}
           <p className="mt-1.5 max-w-prose text-sm text-ink-40">
-            This is when the food should reach you. Your courier sees it before accepting.
+            This is when the food should reach you. Your courier sees it before
+            accepting.
           </p>
         </section>
 
@@ -328,55 +421,61 @@ export default function CreateRequest() {
         </section> */}
 
         {/* 7. Offer */}
-        <section>
-          <span className="block text-base font-semibold text-ink">Offer</span>
-          <div
-            className={
-              'mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 ' +
-              (insufficient ? 'border-alert' : 'border-line')
-            }
-          >
-            <button
-              type="button"
-              onClick={() => setOffer((v) => Math.max(1, v - 1))}
-              disabled={offer <= 1}
-              aria-label="Offer one credit fewer"
-              className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
-            >
-              <Minus size={18} aria-hidden="true" />
-            </button>
-            <span className="tnum min-w-[3ch] text-center text-2xl font-semibold text-ink">
-              {offer}
+        {!isEdit && (
+          <section>
+            <span className="block text-base font-semibold text-ink">
+              Offer
             </span>
-            <button
-              type="button"
-              onClick={() => setOffer((v) => Math.min(10, v + 1))}
-              disabled={offer >= 10}
-              aria-label="Offer one credit more"
-              className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+            <div
+              className={
+                "mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 " +
+                (insufficient ? "border-alert" : "border-line")
+              }
             >
-              <Plus size={18} aria-hidden="true" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setOffer((v) => Math.max(1, v - 1))}
+                disabled={offer <= 1}
+                aria-label="Offer one credit fewer"
+                className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+              >
+                <Minus size={18} aria-hidden="true" />
+              </button>
+              <span className="tnum min-w-[3ch] text-center text-2xl font-semibold text-ink">
+                {offer}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOffer((v) => Math.min(10, v + 1))}
+                disabled={offer >= 10}
+                aria-label="Offer one credit more"
+                className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+              >
+                <Plus size={18} aria-hidden="true" />
+              </button>
+            </div>
 
-          {insufficient ? (
-            /* Credit F1.2.2 — insufficient credits. */
-            <p className="mt-2 max-w-prose text-sm text-alert">
-              You have <span className="tnum">{credits.total}</span> credits,{' '}
-              <span className="tnum">{credits.reserved}</span> of them reserved. Lower your offer or
-              wait for an errand to complete.
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-ink-40">
-              After posting, you&rsquo;ll have <span className="tnum">{remaining}</span> of{' '}
-              <span className="tnum">{credits.available}</span> credits available.
-            </p>
-          )}
-        </section>
+            {insufficient ? (
+              /* Credit F1.2.2 — insufficient credits. */
+              <p className="mt-2 max-w-prose text-sm text-alert">
+                You have <span className="tnum">{credits.total}</span> credits,{" "}
+                <span className="tnum">{credits.reserved}</span> of them
+                reserved. Lower your offer or wait for an errand to complete.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-ink-40">
+                After posting, you&rsquo;ll have{" "}
+                <span className="tnum">{remaining}</span> of{" "}
+                <span className="tnum">{credits.available}</span> credits
+                available.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* 8. Anything else? */}
         <section>
-          {label('Anything else?', 'extra')}
+          {label("Anything else?", "extra")}
           <input
             id="extra"
             type="text"
@@ -392,29 +491,55 @@ export default function CreateRequest() {
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface p-4 md:static md:mt-10 md:p-0 md:pt-6">
         <div className="page-gutter mx-auto flex max-w-[640px] flex-col gap-3 md:flex-row md:items-center md:justify-between md:px-0">
           <p className="max-w-prose text-sm text-ink-70">
-            <span className="tnum">{offer}</span> credits will be reserved until this errand is
-            completed or cancelled
-            {postMode === 'schedule' && (
-              <span className="text-ink-40">
-                {' '}
-                · scheduled to go out {postDate} at {postTime}
-              </span>
+            {isEdit ? (
+              "Update the details of this open errand."
+            ) : (
+              <>
+                <span className="tnum">{offer}</span> credits will be reserved
+                until this errand is completed or cancelled
+                {postMode === "schedule" && (
+                  <span className="text-ink-40">
+                    {" "}
+                    · scheduled to go out {postDate} at {postTime}
+                  </span>
+                )}
+              </>
             )}
           </p>
           <div className="flex shrink-0 gap-2">
-            <Button variant="ghost" className="flex-1 md:flex-none" onClick={() => navigate(-1)}>
+            <Button
+              variant="ghost"
+              className="flex-1 md:flex-none"
+              onClick={() => navigate(-1)}
+            >
               Cancel
             </Button>
             <Button
               className="flex-1 md:flex-none"
-              disabled={insufficient}
-              onClick={() => navigate('/activity')}
+              disabled={insufficient || submitting}
+              onClick={submitOrder}
             >
-              {postMode === 'schedule' ? 'Schedule errand' : 'Post errand'}
+              {submitting
+                ? isEdit
+                  ? "Saving…"
+                  : "Posting…"
+                : postMode === "schedule"
+                  ? "Schedule errand"
+                  : isEdit
+                    ? "Save changes"
+                    : "Post errand"}
             </Button>
           </div>
+          {submitError && (
+            <p
+              role="alert"
+              className="text-sm text-alert md:order-first md:basis-full"
+            >
+              {submitError.message}
+            </p>
+          )}
         </div>
       </div>
     </div>
-  )
+  );
 }

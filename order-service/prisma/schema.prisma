@@ -25,7 +25,7 @@ enum RequestStatus {
 model OrderRequest {
   id                String        @id @default(uuid(7)) @db.Uuid
   requesterId       String        @db.Uuid
-  supplierId        String        @db.Uuid
+  supplierId        Int
   description       String
   deliveryLocation  String
   credits           Int

@@ -333,6 +333,109 @@ I accepted all changes.
 **Author review:**
 tng wen xi
 
+## 2026-10-20 — Frontend and Order Service: Accept errand
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** implementation code
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service transition logic for the `accepted` status
+
+**Prompts (exact):**
+
+> onaccept, make it call order service endpoint `/orders/:id/accept`
+
+**Key responses:**
+Added the order-service route backed by the existing `accepted` transition, added the frontend API client, and changed `RequestCard` to call the endpoint after login gating. `cd frontend && npm run build` passed. Focused order-service tests were not run because the frontend request was the active implementation scope.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I accepted all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-20 — Frontend: Edit open errand
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** implementation code | refactor
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service `PATCH /orders/:id/edit` contract and the existing Create Request form
+
+**Prompts (exact):**
+
+> create an edit page similar to the create page where users can edit the fields except for number of credits (for the moment)
+
+**Key responses:**
+Reused the existing request form for `/requests/:id/edit`, loaded the selected order from Order Service, connected the Activity Edit action, and submitted supplier, description, delivery location, deadline, and additional details without sending credits. Added a frontend API client and route. `cd frontend && npm run build` passed. An initial root-level build attempt was skipped because the repository root has no package.json.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-20 — Supplier Service: JWKS token verification
+
+**Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
+**Mode:** refactor | generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `user-service/docs/jwks-verification-guide.md`; the User Service JWKS
+endpoint and RS256 token contract documented there.
+
+**Prompts (exact):**
+
+> read the guide and make the relevant edits in supplier service
+
+**Key responses:**
+Replaced the Supplier Service's per-request `/auth/verify` call with cached JWKS retrieval, `kid`
+lookup with one refresh on a cache miss, RS256-only local signature verification, required
+`sub`/`role` claims, and expiry validation. Updated middleware tests to generate and verify real
+RS256 tokens, and aligned the Supplier Service README, OpenAPI description, architecture, and
+implementation spec with the JWKS contract. Verification: `npm run build` passed and all 26
+Supplier Service middleware tests passed.
+
+**Files:**
+
+- `supplier-service/src/middleware/authenticate.ts` (modified)
+- `supplier-service/test/middleware/authenticate.test.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `supplier-service/openapi.yaml` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-10-13 — order-service: Credit reservation tracking for automatic expiry
 
 **Tool:** GitHub Copilot SDK in VS Code (model: GPT-5.6 Luna)
@@ -1013,6 +1116,109 @@ Verification actually run: `npx tsc --noEmit` and `npm run build` both exit 0. *
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-20 — Frontend: Live activity from microservices
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing Order Service `GET /orders` and transition routes, plus Supplier Service requester read endpoints
+
+**Prompts (exact):**
+
+> seems like what's shown on the card is from the options selected in the demo. now i dont want a demo anymore, i want the data shown to be from the microservices straight.
+
+**Key responses:**
+Replaced Activity's DemoContext request list with live Order Service data, filtered by the authenticated session ID. Supplier details are loaded from the Supplier Service, and status actions now call the Order Service transition endpoints before refreshing the list. The UI no longer uses demo request, supplier, or user records for Activity cards; unavailable user names are represented by role labels because the Order Service response contains IDs only. Frontend lint completed with existing warnings and the production build passed after fixing an invalid `qualifiedName` import.
+
+**Files:**
+
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-10-20 — Order Service: Integer supplier identifiers
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Team request to align Order Service supplier references with Supplier Service integer IDs
+
+**Prompts (exact):**
+
+> found the problem it's here. help change it to just a normal integer id
+
+**Key responses:**
+Changed `supplierId` from UUID to a positive integer across the Prisma schema, migrations, request payload type, validation, seed data, tests, and the frontend POST payload. Added a migration that replaces the existing UUID reference column because arbitrary historical UUIDs cannot be translated reliably to Supplier Service integer IDs. Prisma client generation, type-checking, linting, and 80 focused service/controller tests passed.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20260927111937_create_requests/migration.sql` (modified)
+- `order-service/prisma/migrations/20261020211000_supplier_id_integer/migration.sql` (created)
+- `order-service/prisma/seed.ts` (modified)
+- `order-service/src/types/orders.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+The new migration drops and recreates the supplier reference column; existing UUID supplier references are not preserved.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-10-20 — Order Service: JWKS authentication middleware
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** `user-service/docs/jwks-verification-guide.md` and instructions.md Stage 13
+
+**Prompts (exact):**
+
+> help me write the middleware for order service also so that the requests are authenticated
+
+**Key responses:**
+Implemented Order Service Bearer-token authentication using the User Service JWKS endpoint. The middleware caches RSA keys, refetches once for an unknown `kid`, pins verification to RS256, validates expiry and subject claims, and returns the documented 401 response for failures. Mounted it on all `/orders` routes, changed controllers to use the verified principal instead of `x-user-id`, wired `USER_SERVICE_URL` into service configuration and Compose, and updated controller tests with an explicit test authenticator. Type-check, lint, formatting, and focused controller tests passed.
+
+**Files:**
+
+- `order-service/src/middleware/authenticate.ts` (created)
+- `order-service/src/types/express.d.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+tng wen xi
 
 ## 2026-10-13 — order-service: Seed reservation and release lifecycle data
 
@@ -4079,5 +4285,37 @@ The frontend container had the correct `VITE_USER_SERVICE_URL` environment varia
 None.
 
 **What I kept/changed/rejected:**
+I kept all changes.
 
 **Author review:**
+tng wen xi
+
+## 2026-10-20 — Frontend: Post errand through Order Service
+
+**Tool:** Copilot SDK (model: unspecified by runtime)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Existing `POST /orders` route and `CreateOrderPayload` contract in `order-service/src/routes/orders.routes.ts` and `order-service/src/types/orders.ts`
+
+**Prompts (exact):**
+
+> help me call the backend POST /orders when the button is clicked
+
+**Key responses:**
+Added a frontend `createOrder` API client and connected the Create Request button to submit the existing form fields to `POST /orders`. The page now shows a loading state, displays API errors, and navigates to `/activity` only after a successful response. No tests were run; frontend lint/build verification remains to be completed.
+
+**Files:**
+
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

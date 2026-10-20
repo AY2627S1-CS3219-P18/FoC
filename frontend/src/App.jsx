@@ -12,37 +12,45 @@
  * Author review: Congchen
  */
 
-import { useEffect } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import TopNav from './components/TopNav'
-import Footer from './components/Footer'
-import LoginModal from './components/LoginModal'
-import DemoControls from './components/DemoControls'
-import ChatBubble from './components/ChatBubble'
-import Landing from './pages/Landing'
-import Suppliers from './pages/Suppliers'
-import SupplierDetail from './pages/SupplierDetail'
-import CreateRequest from './pages/CreateRequest'
-import RequestBoard from './pages/RequestBoard'
-import Activity from './pages/Activity'
-import Chat from './pages/Chat'
-import Wallet from './pages/Wallet'
-import AdminSuppliers from './pages/AdminSuppliers'
-import AdminSupplierForm from './pages/AdminSupplierForm'
+/*
+ * AI Assistance Disclosure:
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Added the route for editing an existing request.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ */
+
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import TopNav from "./components/TopNav";
+import Footer from "./components/Footer";
+import LoginModal from "./components/LoginModal";
+import DemoControls from "./components/DemoControls";
+import ChatBubble from "./components/ChatBubble";
+import Landing from "./pages/Landing";
+import Suppliers from "./pages/Suppliers";
+import SupplierDetail from "./pages/SupplierDetail";
+import CreateRequest from "./pages/CreateRequest";
+import RequestBoard from "./pages/RequestBoard";
+import Activity from "./pages/Activity";
+import Chat from "./pages/Chat";
+import Wallet from "./pages/Wallet";
+import AdminSuppliers from "./pages/AdminSuppliers";
+import AdminSupplierForm from "./pages/AdminSupplierForm";
 
 function ScrollToTop() {
-  const { pathname } = useLocation()
+  const { pathname } = useLocation();
   // Block body: an implicit return makes React treat the result as a cleanup function.
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
-  return null
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
 }
 
 export default function App() {
-  const { pathname } = useLocation()
+  const { pathname } = useLocation();
   // The chat thread fills the viewport, so it does not carry the marketing footer.
-  const showFooter = !pathname.startsWith('/chat')
+  const showFooter = !pathname.startsWith("/chat");
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -54,6 +62,7 @@ export default function App() {
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/suppliers/:id" element={<SupplierDetail />} />
           <Route path="/requests/new" element={<CreateRequest />} />
+          <Route path="/requests/:id/edit" element={<CreateRequest />} />
           <Route path="/requests" element={<RequestBoard />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/chat" element={<Navigate to="/chat/r6" replace />} />
@@ -61,7 +70,10 @@ export default function App() {
           <Route path="/wallet" element={<Wallet />} />
           <Route path="/admin/suppliers" element={<AdminSuppliers />} />
           <Route path="/admin/suppliers/new" element={<AdminSupplierForm />} />
-          <Route path="/admin/suppliers/:id/edit" element={<AdminSupplierForm />} />
+          <Route
+            path="/admin/suppliers/:id/edit"
+            element={<AdminSupplierForm />}
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -70,5 +82,5 @@ export default function App() {
       <ChatBubble />
       <DemoControls />
     </div>
-  )
+  );
 }

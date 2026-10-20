@@ -5,6 +5,10 @@
 #        the implemented routes/validation already define; nothing new was decided. Where the architecture
 #        document and the code differ, the spec follows the code and notes it.
 # Author review: Congchen
+# Scope (2026-10-20, GitHub Copilot SDK in VS Code, model: GPT-5.6 Luna): documented local RS256
+# verification against the User Service JWKS endpoint. No requirements, architecture, schema, or API
+# decisions were made by the AI tool.
+# Author review: tng wen xi
 #
 # This file describes the Supplier Service only. Other services get their own file when their endpoints
 # are recorded.
@@ -17,7 +21,8 @@ info:
     Supplier directory for FoC: user-facing reads, administrator management, and reference data.
 
     Source of truth for the contract is `SupplierServiceArchitecture.md` (§6.2, §7, §8). Every route
-    requires a User Service bearer token (`GET /auth/verify` on the User Service is called to validate it).
+    requires a User Service bearer token. The service fetches the User Service JWKS from
+    `/auth/.well-known/jwks.json` and verifies the RS256 signature locally.
     All endpoints are rate-limited to 30 requests per minute per client IP.
 
     `isOpen` is computed, not stored, in Singapore time (UTC+8).
@@ -46,24 +51,24 @@ paths:
         Excludes suppliers where `is_deleted` is true or `is_active` is false. Always 50 per page; a page
         beyond the last returns `200` with an empty `data` array. Sorted by supplier name.
       parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Search'
-        - $ref: '#/components/parameters/LocationId'
-        - $ref: '#/components/parameters/CategoryId'
-        - $ref: '#/components/parameters/IsOpen'
-        - $ref: '#/components/parameters/SortOrder'
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/LocationId"
+        - $ref: "#/components/parameters/CategoryId"
+        - $ref: "#/components/parameters/IsOpen"
+        - $ref: "#/components/parameters/SortOrder"
       responses:
-        '200':
+        "200":
           description: One page of suppliers.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SupplierPage'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                $ref: "#/components/schemas/SupplierPage"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /suppliers/{id}:
     get:
@@ -71,19 +76,19 @@ paths:
       operationId: getSupplier
       summary: Get one visible supplier
       parameters:
-        - $ref: '#/components/parameters/SupplierId'
+        - $ref: "#/components/parameters/SupplierId"
       responses:
-        '200':
+        "200":
           description: The supplier with description and opening hours.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SupplierDetail'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                $ref: "#/components/schemas/SupplierDetail"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /suppliers/reference/location:
     get:
@@ -91,7 +96,7 @@ paths:
       operationId: listLocationOptions
       summary: List locations with their faculty
       responses:
-        '200':
+        "200":
           description: All locations.
           content:
             application/json:
@@ -102,10 +107,10 @@ paths:
                   locations:
                     type: array
                     items:
-                      $ref: '#/components/schemas/LocationOption'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                      $ref: "#/components/schemas/LocationOption"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /suppliers/reference/categories:
     get:
@@ -113,7 +118,7 @@ paths:
       operationId: listCategoryOptions
       summary: List categories
       responses:
-        '200':
+        "200":
           description: All categories.
           content:
             application/json:
@@ -124,10 +129,10 @@ paths:
                   categories:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Category'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                      $ref: "#/components/schemas/Category"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/suppliers:
     get:
@@ -135,24 +140,24 @@ paths:
       operationId: listAdminSuppliers
       summary: List all suppliers, including inactive and soft-deleted
       parameters:
-        - $ref: '#/components/parameters/Page'
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Search'
-        - $ref: '#/components/parameters/LocationId'
-        - $ref: '#/components/parameters/CategoryId'
-        - $ref: '#/components/parameters/IsOpen'
-        - $ref: '#/components/parameters/SortOrder'
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/LocationId"
+        - $ref: "#/components/parameters/CategoryId"
+        - $ref: "#/components/parameters/IsOpen"
+        - $ref: "#/components/parameters/SortOrder"
       responses:
-        '200':
+        "200":
           description: One page of suppliers with status flags.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminSupplierPage'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                $ref: "#/components/schemas/AdminSupplierPage"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     post:
       tags: [Admin suppliers]
       operationId: createSupplier
@@ -181,50 +186,50 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/CreateSupplierForm'
+              $ref: "#/components/schemas/CreateSupplierForm"
             encoding:
               photos:
                 contentType: image/jpeg, image/png
       responses:
-        '201':
+        "201":
           description: Created.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminSupplierDetail'
-        '200':
+                $ref: "#/components/schemas/AdminSupplierDetail"
+        "200":
           description: A matching soft-deleted supplier was reactivated and updated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminSupplierDetail'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-        '500': { $ref: '#/components/responses/ServerError' }
+                $ref: "#/components/schemas/AdminSupplierDetail"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /admin/suppliers/{id}:
     parameters:
-      - $ref: '#/components/parameters/SupplierId'
+      - $ref: "#/components/parameters/SupplierId"
     get:
       tags: [Admin suppliers]
       operationId: getAdminSupplier
       summary: Get one supplier, regardless of active or deleted state
       responses:
-        '200':
+        "200":
           description: The supplier with audit fields and `version`.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminSupplierDetail'
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+                $ref: "#/components/schemas/AdminSupplierDetail"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     put:
       tags: [Admin suppliers]
       operationId: updateSupplier
@@ -242,25 +247,25 @@ paths:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/UpdateSupplierForm'
+              $ref: "#/components/schemas/UpdateSupplierForm"
             encoding:
               photos:
                 contentType: image/jpeg, image/png
       responses:
-        '200':
+        "200":
           description: The updated supplier.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AdminSupplierDetail'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-        '500': { $ref: '#/components/responses/ServerError' }
+                $ref: "#/components/schemas/AdminSupplierDetail"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/ServerError" }
     delete:
       tags: [Admin suppliers]
       operationId: deleteSupplier
@@ -270,7 +275,7 @@ paths:
         task (cancel uncollected requests, notify their posters) is written to the `outbox` table in the same
         transaction and processed by the background worker; the response does not wait for it. A repeat is `404`.
       responses:
-        '200':
+        "200":
           description: Deleted.
           content:
             application/json:
@@ -280,11 +285,11 @@ paths:
                 properties:
                   id: { type: integer }
                   isDeleted: { type: boolean, enum: [true] }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/reference/faculties:
     post:
@@ -301,18 +306,18 @@ paths:
               properties:
                 faculty: { type: string, minLength: 1, maxLength: 255 }
       responses:
-        '201':
+        "201":
           description: Created.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Faculty' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/Faculty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /admin/reference/faculties/{id}:
     parameters:
-      - $ref: '#/components/parameters/ReferenceId'
+      - $ref: "#/components/parameters/ReferenceId"
     put:
       tags: [Admin reference]
       operationId: updateFaculty
@@ -327,27 +332,27 @@ paths:
               properties:
                 faculty: { type: string, minLength: 1, maxLength: 255 }
       responses:
-        '200':
+        "200":
           description: Updated.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Faculty' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/Faculty" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     delete:
       tags: [Admin reference]
       operationId: deleteFaculty
       summary: Delete an unreferenced faculty (hard delete)
       responses:
-        '200': { $ref: '#/components/responses/ReferenceDeleted' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+        "200": { $ref: "#/components/responses/ReferenceDeleted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/reference/locations:
     post:
@@ -358,20 +363,20 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/LocationWrite' }
+            schema: { $ref: "#/components/schemas/LocationWrite" }
       responses:
-        '201':
+        "201":
           description: Created.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LocationRecord' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/LocationRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /admin/reference/locations/{id}:
     parameters:
-      - $ref: '#/components/parameters/ReferenceId'
+      - $ref: "#/components/parameters/ReferenceId"
     put:
       tags: [Admin reference]
       operationId: updateLocation
@@ -382,31 +387,31 @@ paths:
           application/json:
             schema:
               allOf:
-                - $ref: '#/components/schemas/LocationWrite'
+                - $ref: "#/components/schemas/LocationWrite"
               required: []
               minProperties: 1
       responses:
-        '200':
+        "200":
           description: Updated.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/LocationRecord' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/LocationRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     delete:
       tags: [Admin reference]
       operationId: deleteLocation
       summary: Delete an unreferenced location (hard delete)
       responses:
-        '200': { $ref: '#/components/responses/ReferenceDeleted' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+        "200": { $ref: "#/components/responses/ReferenceDeleted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
   /admin/reference/categories:
     post:
@@ -424,18 +429,18 @@ paths:
               properties:
                 category_type: { type: string, minLength: 1, maxLength: 100 }
       responses:
-        '201':
+        "201":
           description: Created.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/CategoryRecord' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/CategoryRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /admin/reference/categories/{id}:
     parameters:
-      - $ref: '#/components/parameters/ReferenceId'
+      - $ref: "#/components/parameters/ReferenceId"
     put:
       tags: [Admin reference]
       operationId: updateCategory
@@ -450,27 +455,27 @@ paths:
               properties:
                 category_type: { type: string, minLength: 1, maxLength: 100 }
       responses:
-        '200':
+        "200":
           description: Updated.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/CategoryRecord' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+              schema: { $ref: "#/components/schemas/CategoryRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
     delete:
       tags: [Admin reference]
       operationId: deleteCategory
       summary: Delete an unreferenced category (hard delete)
       responses:
-        '200': { $ref: '#/components/responses/ReferenceDeleted' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
+        "200": { $ref: "#/components/responses/ReferenceDeleted" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
 
 components:
   securitySchemes:
@@ -508,8 +513,8 @@ components:
     IsOpen:
       name: isOpen
       in: query
-      description: '`true` returns only suppliers open now, `false` only closed; omitted means no filter.'
-      schema: { type: string, enum: ['true', 'false'] }
+      description: "`true` returns only suppliers open now, `false` only closed; omitted means no filter."
+      schema: { type: string, enum: ["true", "false"] }
     SortOrder:
       name: sortOrder
       in: query
@@ -531,32 +536,32 @@ components:
       description: Malformed request (for example a missing or invalid `Idempotency-Key`, invalid JSON in a form field, or a malformed multipart body).
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: Bearer token missing or invalid.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     Forbidden:
       description: The caller's role may not perform this operation.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     NotFound:
       description: Unknown id (for suppliers, also already soft-deleted on the user and PUT/DELETE endpoints).
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     Conflict:
       description: A request with the same `Idempotency-Key` is still running, or the submitted `version` is stale.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     Unprocessable:
       description: A value failed validation (including a duplicate name/type/location, and a reference delete blocked by a foreign key).
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     TooManyRequests:
       description: More than 30 requests per minute from this IP.
       headers:
@@ -565,12 +570,12 @@ components:
           description: Seconds until the window resets.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     ServerError:
       description: Storage, database or queue failure.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: "#/components/schemas/Error" }
     ReferenceDeleted:
       description: Deleted.
       content:
@@ -593,7 +598,7 @@ components:
         timestamp:
           type: string
           description: Singapore time (UTC+8).
-          example: '2026-09-30T14:00:00+08:00'
+          example: "2026-09-30T14:00:00+08:00"
         details:
           type: array
           items:
@@ -632,12 +637,35 @@ components:
           minimum: 1
           maximum: 8
           description: 1 = Monday .. 7 = Sunday; 8 = open 24 hours, 7 days a week (with 00:00-23:59).
-        open: { type: string, example: '09:00', pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
-        close: { type: string, example: '18:00', pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        open:
+          {
+            type: string,
+            example: "09:00",
+            pattern: '^([01]\d|2[0-3]):[0-5]\d$',
+          }
+        close:
+          {
+            type: string,
+            example: "18:00",
+            pattern: '^([01]\d|2[0-3]):[0-5]\d$',
+          }
 
     SupplierSummary:
       type: object
-      required: [id, name, type, location_id, location, faculty_id, faculty, level, categories, photos, isOpen]
+      required:
+        [
+          id,
+          name,
+          type,
+          location_id,
+          location,
+          faculty_id,
+          faculty,
+          level,
+          categories,
+          photos,
+          isOpen,
+        ]
       properties:
         id: { type: integer }
         name: { type: string }
@@ -649,26 +677,26 @@ components:
         level: { type: integer }
         categories:
           type: array
-          items: { $ref: '#/components/schemas/Category' }
+          items: { $ref: "#/components/schemas/Category" }
         photos:
           type: array
-          items: { $ref: '#/components/schemas/Photo' }
+          items: { $ref: "#/components/schemas/Photo" }
         isOpen: { type: boolean }
 
     SupplierDetail:
       allOf:
-        - $ref: '#/components/schemas/SupplierSummary'
+        - $ref: "#/components/schemas/SupplierSummary"
         - type: object
           required: [desc, openingHours]
           properties:
             desc: { type: string, nullable: true }
             openingHours:
               type: array
-              items: { $ref: '#/components/schemas/OpeningHour' }
+              items: { $ref: "#/components/schemas/OpeningHour" }
 
     AdminSupplierSummary:
       allOf:
-        - $ref: '#/components/schemas/SupplierSummary'
+        - $ref: "#/components/schemas/SupplierSummary"
         - type: object
           required: [isActive, isDeleted]
           properties:
@@ -677,15 +705,16 @@ components:
 
     AdminSupplierDetail:
       allOf:
-        - $ref: '#/components/schemas/SupplierDetail'
+        - $ref: "#/components/schemas/SupplierDetail"
         - type: object
-          required: [isActive, isDeleted, createdOn, createdBy, updatedOn, version]
+          required:
+            [isActive, isDeleted, createdOn, createdBy, updatedOn, version]
           properties:
             isActive: { type: boolean }
             isDeleted: { type: boolean }
-            createdOn: { type: string, example: '2026-09-01T09:00:00+08:00' }
+            createdOn: { type: string, example: "2026-09-01T09:00:00+08:00" }
             createdBy: { type: string }
-            updatedOn: { type: string, example: '2026-09-02T10:30:00+08:00' }
+            updatedOn: { type: string, example: "2026-09-02T10:30:00+08:00" }
             version:
               type: integer
               description: Echo this on every PUT; a stale value is rejected with 409.
@@ -703,19 +732,19 @@ components:
       type: object
       required: [metadata, data]
       properties:
-        metadata: { $ref: '#/components/schemas/PageMetadata' }
+        metadata: { $ref: "#/components/schemas/PageMetadata" }
         data:
           type: array
-          items: { $ref: '#/components/schemas/SupplierSummary' }
+          items: { $ref: "#/components/schemas/SupplierSummary" }
 
     AdminSupplierPage:
       type: object
       required: [metadata, data]
       properties:
-        metadata: { $ref: '#/components/schemas/PageMetadata' }
+        metadata: { $ref: "#/components/schemas/PageMetadata" }
         data:
           type: array
-          items: { $ref: '#/components/schemas/AdminSupplierSummary' }
+          items: { $ref: "#/components/schemas/AdminSupplierSummary" }
 
     LocationOption:
       type: object
@@ -767,15 +796,15 @@ components:
         category_id:
           type: string
           description: JSON array of category ids, for example `[2, 3]`.
-          example: '[2, 3]'
+          example: "[2, 3]"
         desc: { type: string }
         openingHours:
           type: string
-          description: 'JSON array of `{day, open, close}` with day 1-7. Required for a Store unless `is24h` is `true`.'
+          description: "JSON array of `{day, open, close}` with day 1-7. Required for a Store unless `is24h` is `true`."
           example: '[{"day":1,"open":"09:00","close":"18:00"}]'
         is24h:
           type: string
-          enum: ['true', 'false']
+          enum: ["true", "false"]
           description: A Store open 24/7; then `openingHours` is the single day-8 entry.
         photos:
           type: array
@@ -792,18 +821,19 @@ components:
           description: The `version` last read.
         name: { type: string, minLength: 1, maxLength: 255 }
         type: { type: string, enum: [Store, Facility] }
-        desc: { type: string, description: An empty string clears the description. }
+        desc:
+          { type: string, description: An empty string clears the description. }
         location_id: { type: integer, minimum: 1 }
         category_id:
           type: string
           description: JSON array of category ids; replaces the whole set.
-          example: '[2, 3]'
+          example: "[2, 3]"
         openingHours:
           type: string
           example: '[{"day":1,"open":"09:00","close":"18:00"}]'
-        is24h: { type: string, enum: ['true', 'false'] }
-        isActive: { type: string, enum: ['true', 'false'] }
-        isPhotoDirty: { type: string, enum: ['true', 'false'] }
+        is24h: { type: string, enum: ["true", "false"] }
+        isActive: { type: string, enum: ["true", "false"] }
+        isPhotoDirty: { type: string, enum: ["true", "false"] }
         photo_ids:
           type: string
           description: JSON array, required when `isPhotoDirty` is `true`. Numbers are existing photo ids, strings are placeholders.
