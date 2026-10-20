@@ -1,3 +1,14 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Issue #4 - added the `pending` status edges for the credit-reservation saga
+ *        (system moves pending -> open on reserve success, pending -> cancelled on
+ *        failure; George's decisions 2026-10-19), and kept the F17.2 deadline rule
+ *        to requester cancellation of ongoing orders only.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ */
+
 import type {
   OrderRequest,
   RequestStatus,
@@ -12,6 +23,8 @@ const ALLOWED_TRANSITIONS: Record<
   RequestStatus,
   Partial<Record<RequestStatus, readonly ActorRole[]>>
 > = {
+  // Reservation outcome is applied by the worker only (issue #4).
+  pending: { open: ['system'], cancelled: ['system'] },
   open: { accepted: ['other'], expired: ['system'], cancelled: ['requester'] },
   accepted: { picked_up: ['courier'], cancelled: ['requester'] },
   picked_up: { delivered: ['courier'], cancelled: ['requester'] },
@@ -49,7 +62,13 @@ export function checkTransition(
   if (!allowedRoles.includes(roleOf(order, actorId)))
     return { ok: false, error: ErrorCode.FORBIDDEN };
 
-  if (to === 'cancelled' && order.status !== 'open') {
+  // F17.2: an ongoing (accepted / picked_up) order can only be cancelled after its
+  // complete-by deadline. Open and pending orders are not "ongoing".
+  if (
+    to === 'cancelled' &&
+    order.status !== 'open' &&
+    order.status !== 'pending'
+  ) {
     if (!order.completeBy || now < order.completeBy)
       return { ok: false, error: ErrorCode.DEADLINE_NOT_REACHED };
   }

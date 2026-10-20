@@ -4,11 +4,14 @@
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - removed the stub credit client; reservation runs in the worker.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
 import { createApp } from './app.js';
-import { createStubCreditsClient } from './clients/credits.client.js';
 import { loadEnv, type Env } from './config/env.js';
 import { createPrismaClient } from './db/prisma.js';
 
@@ -23,14 +26,7 @@ try {
   process.exit(1);
 }
 const prisma = createPrismaClient(env.DATABASE_URL);
-// TODO(team): swap for the real credit-service client when it exists.
-const credits = createStubCreditsClient();
-console.warn('Using STUB credits client: every reservation is approved.');
-const app = createApp({
-  prisma,
-  credits,
-  userServiceUrl: env.USER_SERVICE_URL,
-});
+const app = createApp({ prisma, userServiceUrl: env.USER_SERVICE_URL });
 
 const server = app.listen(env.PORT, (err) => {
   if (err) throw err;

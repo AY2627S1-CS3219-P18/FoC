@@ -24,15 +24,17 @@
  *        validation and added successful, forbidden, and conflict edit-order
  *        HTTP coverage.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - POST /orders now answers 202 with a `pending` order and
+ *        an outbox reserve task (no credit call in the request path); dropped the
+ *        422/503 credit cases that moved to the worker; fakes gained $transaction/outbox.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
 import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
-import type {
-  CreditsClient,
-  ReserveResult,
-} from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 
 const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
@@ -45,7 +47,6 @@ const body = {
 };
 
 function appWith(
-  reserve: () => Promise<ReserveResult>,
   findMany: (args: {
     where?: { status: string };
   }) => Promise<object[]> = async () => [],
@@ -59,7 +60,11 @@ function appWith(
     findUniqueOrThrow: (args: { where: { id: string } }) => Promise<object>;
   }> = {},
 ) {
+  const outbox = { createMany: vi.fn(async () => ({ count: 1 })) };
   const prisma = {
+    outbox,
+    // Interactive transactions run the callback against the same fake client.
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
     orderRequest: {
       create: async ({ data }: { data: object }) => ({ id: 'new', ...data }),
       findMany,
@@ -69,13 +74,12 @@ function appWith(
       ...orderRequestOverrides,
     },
   } as unknown as PrismaClient;
-  const credits: CreditsClient = { reserve, release: async () => {} };
   const authenticate: RequestHandler = (req, res, next) => {
     const userId = req.get('x-user-id') ?? USER;
     req.user = { user_id: userId, role: 'user' };
     next();
   };
-  return createApp({ prisma, credits, authenticate });
+  return Object.assign(createApp({ prisma, authenticate }), { outbox });
 }
 
 beforeEach(() => {
@@ -83,40 +87,27 @@ beforeEach(() => {
 });
 
 describe('POST /orders', () => {
-  it('201 with the created request when credits are reserved', async () => {
-    const res = await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' })),
-    )
+  it('202 with the pending request, queueing its credit reservation', async () => {
+    const app = appWith();
+    const res = await request(app)
       .post('/orders')
       .set('x-user-id', USER)
       .send(body)
-      .expect(201);
-    expect(res.body).toMatchObject({ credits: 4, reservationId: 'r' });
+      .expect(202);
+    expect(res.body).toMatchObject({ credits: 4, status: 'pending' });
     expect(res.body.id).toEqual(expect.any(String));
-  });
-
-  it('422 when the requester does not have enough credits', async () => {
-    await request(
-      appWith(async () => ({ ok: false, reason: 'INSUFFICIENT_CREDITS' })),
-    )
-      .post('/orders')
-      .set('x-user-id', USER)
-      .send(body)
-      .expect(422, {
-        message: 'You do not have enough credits for this request.',
-      });
-  });
-
-  it('503 when credit-service is unavailable', async () => {
-    await request(appWith(async () => ({ ok: false, reason: 'UNAVAILABLE' })))
-      .post('/orders')
-      .set('x-user-id', USER)
-      .send(body)
-      .expect(503);
+    expect(app.outbox.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          taskName: 'credit_reserve',
+          payload: { requestId: res.body.id, userId: USER, amount: 4 },
+        }),
+      ],
+    });
   });
 
   it('400 when complete-by is in the past', async () => {
-    await request(appWith(async () => ({ ok: true, reservationId: 'r' })))
+    await request(appWith())
       .post('/orders')
       .set('x-user-id', USER)
       .send({ ...body, completeBy: '2000-01-01T00:00:00.000Z' })
@@ -137,20 +128,16 @@ describe('PATCH /orders/:id/edit', () => {
       version: 4,
     };
     const res = await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUniqueOrThrow: vi
-            .fn()
-            .mockResolvedValueOnce({
-              ...updatedOrder,
-              version: 3,
-            })
-            .mockResolvedValueOnce(updatedOrder),
-          updateMany,
-        },
-      ),
+      appWith(async () => [], {
+        findUniqueOrThrow: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ...updatedOrder,
+            version: 3,
+          })
+          .mockResolvedValueOnce(updatedOrder),
+        updateMany,
+      }),
     )
       .patch(`/orders/${orderId}/edit`)
       .set('x-user-id', requesterId)
@@ -169,17 +156,13 @@ describe('PATCH /orders/:id/edit', () => {
 
   it('403 when a non-requester edits the order', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUniqueOrThrow: async () => ({
-            id: orderId,
-            requesterId: USER,
-            version: 3,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          requesterId: USER,
+          version: 3,
+        }),
+      }),
     )
       .patch(`/orders/${orderId}/edit`)
       .set('x-user-id', requesterId)
@@ -191,18 +174,14 @@ describe('PATCH /orders/:id/edit', () => {
 
   it('409 when the order changed before the edit was saved', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUniqueOrThrow: async () => ({
-            id: orderId,
-            requesterId,
-            version: 3,
-          }),
-          updateMany: async () => ({ count: 0 }),
-        },
-      ),
+      appWith(async () => [], {
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          requesterId,
+          version: 3,
+        }),
+        updateMany: async () => ({ count: 0 }),
+      }),
     )
       .patch(`/orders/${orderId}/edit`)
       .set('x-user-id', requesterId)
@@ -214,7 +193,7 @@ describe('PATCH /orders/:id/edit', () => {
   });
 
   it('returns a user-facing validation message for unsupported fields', async () => {
-    await request(appWith(async () => ({ ok: true, reservationId: 'r' })))
+    await request(appWith())
       .patch('/orders/order-1/edit')
       .set('x-user-id', USER)
       .send({ unsupported: true })
@@ -233,11 +212,7 @@ describe('GET /orders', () => {
 
   it('returns different orders across multiple statuses without a filter', async () => {
     const findMany = vi.fn(async () => orders);
-    const res = await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
-    )
-      .get('/orders')
-      .expect(200);
+    const res = await request(appWith(findMany)).get('/orders').expect(200);
 
     expect(res.body).toEqual({ ok: true, orders });
     expect(findMany).toHaveBeenCalledWith({ where: undefined });
@@ -254,9 +229,7 @@ describe('GET /orders', () => {
         async ({ where }: { where?: { status: string } }) =>
           where ? [...filtered] : orders,
       );
-      const res = await request(
-        appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
-      )
+      const res = await request(appWith(findMany))
         .get('/orders')
         .query({ status })
         .expect(200);
@@ -268,9 +241,7 @@ describe('GET /orders', () => {
 
   it('returns 500 for an invalid status filter without querying the database', async () => {
     const findMany = vi.fn(async () => orders);
-    await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
-    )
+    await request(appWith(findMany))
       .get('/orders')
       .query({ status: 'not-a-status' })
       .expect(500, {
@@ -283,9 +254,7 @@ describe('GET /orders', () => {
 
   it('returns an empty list with success when no orders match', async () => {
     const findMany = vi.fn(async () => []);
-    const res = await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
-    )
+    const res = await request(appWith(findMany))
       .get('/orders')
       .query({ status: 'expired' })
       .expect(200);
@@ -297,11 +266,7 @@ describe('GET /orders', () => {
     const findMany = vi.fn(async () => {
       throw new Error('db down');
     });
-    const res = await request(
-      appWith(async () => ({ ok: true, reservationId: 'r' }), findMany),
-    )
-      .get('/orders')
-      .expect(500);
+    const res = await request(appWith(findMany)).get('/orders').expect(500);
 
     expect(res.body).toEqual({ ok: false, errors: {} });
   });
@@ -314,27 +279,23 @@ describe('POST /orders/:id/pickup', () => {
 
   it('200 when the courier is allowed to pick up the order', async () => {
     const res = await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'accepted',
-            requesterId,
-            courierId,
-            version: 3,
-          }),
-          updateMany: async () => ({ count: 1 }),
-          findUniqueOrThrow: async () => ({
-            id: orderId,
-            status: 'picked_up',
-            requesterId,
-            courierId,
-            version: 4,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'accepted',
+          requesterId,
+          courierId,
+          version: 3,
+        }),
+        updateMany: async () => ({ count: 1 }),
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          status: 'picked_up',
+          requesterId,
+          courierId,
+          version: 4,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/pickup`)
       .set('x-user-id', courierId)
@@ -348,19 +309,15 @@ describe('POST /orders/:id/pickup', () => {
 
   it('403 when the actor is not allowed to pick up the order', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'accepted',
-            requesterId,
-            courierId,
-            version: 3,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'accepted',
+          requesterId,
+          courierId,
+          version: 3,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/pickup`)
       .set('x-user-id', requesterId)
@@ -369,19 +326,15 @@ describe('POST /orders/:id/pickup', () => {
 
   it('409 when the requested transition is not valid from the current status', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'open',
-            requesterId,
-            courierId: null,
-            version: 3,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'open',
+          requesterId,
+          courierId: null,
+          version: 3,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/deliver`)
       .set('x-user-id', courierId)
@@ -396,27 +349,23 @@ describe('POST /orders/:id/cancel', () => {
 
   it('200 when the requester cancels an open order', async () => {
     const res = await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'open',
-            requesterId,
-            courierId: null,
-            version: 3,
-          }),
-          updateMany: async () => ({ count: 1 }),
-          findUniqueOrThrow: async () => ({
-            id: orderId,
-            status: 'cancelled',
-            requesterId,
-            courierId: null,
-            version: 4,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'open',
+          requesterId,
+          courierId: null,
+          version: 3,
+        }),
+        updateMany: async () => ({ count: 1 }),
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          status: 'cancelled',
+          requesterId,
+          courierId: null,
+          version: 4,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/cancel`)
       .set('x-user-id', requesterId)
@@ -430,28 +379,24 @@ describe('POST /orders/:id/cancel', () => {
 
   it('200 when the requester cancels an ongoing order after complete-by', async () => {
     const res = await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'accepted',
-            requesterId,
-            courierId,
-            completeBy: new Date('2000-01-01T00:00:00.000Z'),
-            version: 3,
-          }),
-          updateMany: async () => ({ count: 1 }),
-          findUniqueOrThrow: async () => ({
-            id: orderId,
-            status: 'cancelled',
-            requesterId,
-            courierId,
-            version: 4,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'accepted',
+          requesterId,
+          courierId,
+          completeBy: new Date('2000-01-01T00:00:00.000Z'),
+          version: 3,
+        }),
+        updateMany: async () => ({ count: 1 }),
+        findUniqueOrThrow: async () => ({
+          id: orderId,
+          status: 'cancelled',
+          requesterId,
+          courierId,
+          version: 4,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/cancel`)
       .set('x-user-id', requesterId)
@@ -465,20 +410,16 @@ describe('POST /orders/:id/cancel', () => {
 
   it('400 when an ongoing order has not reached complete-by', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'accepted',
-            requesterId,
-            courierId,
-            completeBy: new Date('2099-01-01T00:00:00.000Z'),
-            version: 3,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'accepted',
+          requesterId,
+          courierId,
+          completeBy: new Date('2099-01-01T00:00:00.000Z'),
+          version: 3,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/cancel`)
       .set('x-user-id', requesterId)
@@ -487,20 +428,16 @@ describe('POST /orders/:id/cancel', () => {
 
   it('403 when a courier tries to cancel an order', async () => {
     await request(
-      appWith(
-        async () => ({ ok: true, reservationId: 'r' }),
-        async () => [],
-        {
-          findUnique: async () => ({
-            id: orderId,
-            status: 'accepted',
-            requesterId,
-            courierId,
-            completeBy: new Date('2000-01-01T00:00:00.000Z'),
-            version: 3,
-          }),
-        },
-      ),
+      appWith(async () => [], {
+        findUnique: async () => ({
+          id: orderId,
+          status: 'accepted',
+          requesterId,
+          courierId,
+          completeBy: new Date('2000-01-01T00:00:00.000Z'),
+          version: 3,
+        }),
+      }),
     )
       .post(`/orders/${orderId}/cancel`)
       .set('x-user-id', courierId)

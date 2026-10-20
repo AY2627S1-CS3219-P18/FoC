@@ -10,6 +10,10 @@
 # Scope (2026-10-12): Added Redis and the separate order maintenance worker
 #        for automatic request completion and acceptance-deadline expiry.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+# Scope (2026-10-20): Issue #4 - CREDIT_SERVICE_URL on order-worker. No requirements,
+#        architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -72,6 +76,9 @@ services:
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
       REDIS_HOST: order-redis
       REDIS_PORT: 6379
+      # Issue #4: the worker calls credit-service for reserve/release. No depends_on:
+      # failed calls are retried by BullMQ, so a cold start recovers on its own.
+      CREDIT_SERVICE_URL: http://credit-service:3003
     depends_on:
       order-db:
         condition: service_healthy

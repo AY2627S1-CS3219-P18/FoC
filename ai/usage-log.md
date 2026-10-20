@@ -4319,3 +4319,158 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-10-20 — Order Service #4: Credit reservation saga (pending orders, outbox, worker reserve/release)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George Yeo's design decisions for issue #4, given in chat on 2026-10-19 and 2026-10-20 (quoted below; kept in his personal notes, not yet written into the repo). Credit contract: `credit-service/API.md`. Outbox/relay/dead-letter mirrored from `supplier-service/SupplierServiceArchitecture.md` §8.1 and its `src/queue`, `src/worker`, `src/persistence` code, per the decision "do what congchen does".
+
+**Prompts (exact):**
+
+> #4 - when an order request created, i will produce the order object first, then use the id as idmpkey to pass into credit service to reserve, if fails perform compensation and send notification by event bus (redis) and socket, by the saga pattern
+
+> #4 order status is set to pending (new state) at creation, while the reserving from credit service, if it fails once, we notify user failure and to retry, if success pending -> open, this happens async, so on frontend the button will have loading spinner while reply is not received yet
+
+> #4 go to cancelled, retries make a new order, pending is hidden yes
+
+> #4 what do you mean release? if the reservation fails that means no credits is reserved so no further action needs to be done other than cancelling the order, yes drop adjust
+
+> #4 if reserve keeps failing then we will release, there is no recovering orders in pending, they will automaticalyl retry with bullmq and on mega failure it is cancelled + released credits back
+
+> 1. only transient
+> 2. 5 attempts at powers of 2
+> 3. how can we resolve this properly?
+> 4. yes success
+> 5. yes final outcome only
+> 6. separate worker container
+
+> ok lets do the same dead_letter_jobs solution, what else is pending
+
+> 1. outbox too
+> 2. do what congchen does
+> 3. yes
+> 4. by redis
+> 5. make events in redis
+> 6. make events and pass failure
+> 7. just follow convention this isnt part of design decisions
+> 8. what do you mean
+> 9.same
+> 10. defer
+> 11. resolved by client
+> 12. 2s
+> 13. yes
+> 14. what refresh flow, the 15min is for the socket not the JWT
+> 15. can we make a foreign table to map the bigint to uuid
+> 16. no it will not thats supplier service job on client
+> 17. no keep it personal md for nkw
+
+> ok we dont have to literally plan every single little detail now, you can just do it based on convention
+
+> lets begin coding, keep me in the loop, and if any gaps appear inform me immediately and wait for my decision
+
+> 1. drop the reservationId column first, then do a
+> 2. return 202
+> 3. what are the options
+> 4. is it better to keep some sort of adapter to access credit api? or should we connect directly to credit api? i lean toward adapter if thats convention
+> 5. success
+
+> 3. no timeout
+> 4. a
+>
+> verification a
+
+> 1. use a string code that makes sense
+> 2. admin will handle
+>
+>
+> 5. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
+
+> 6. ok then drop the results we dont need it for now
+>
+>
+> 2. ok lets just make credits non-editable for now
+>
+>
+> make the contract now for weejean and make it succinct and simple, no sources from who
+
+> ok lets start coding
+
+**Key responses:**
+
+- **Schema / migration** (`20261020100000_credit_reservation_saga`, hand-written): `pending` added to `RequestStatus`; `requests.reservationId` dropped; `outbox` and `dead_letter_jobs` tables with supplier-service's column set in order-service's naming style. Applied cleanly to a fresh Postgres 17 together with the two earlier migrations.
+- **Create:** `createOrder` writes the order as `pending` and a `credit_reserve` outbox row (`{ requestId: order.id, userId, amount }`) in one Prisma interactive transaction; no credit call in the request path. `POST /orders` answers **202**.
+- **State machine:** `pending → open` and `pending → cancelled` are system-only; the F17.2 deadline rule no longer applies to `pending`.
+- **Release:** cancelling or expiring a funded order (`open`/`accepted`/`picked_up`) writes a `credit_release` outbox row in the same transaction as the status change, replacing Wen Xi's inline `credits.release(order.reservationId)` in `transitionOrder` and `runRequestMaintenance` (edit approved by George). A lost optimistic-lock race writes nothing.
+- **Credit client:** real HTTP client for `POST /credits/reserve` and `/credits/release` per `API.md`, no timeout. Reserve `409 RESERVATION_ALREADY_EXISTS` = success; release `404 RESERVATION_NOT_FOUND` / `409 ALREADY_RELEASED` = success; 5xx and connection errors = transient; other 4xx = permanent. The stub remains for unit tests only; the API process no longer holds a credit client.
+- **Worker (order-worker container):** outbox relay on a 1 s BullMQ job scheduler (enqueue as `outbox-<id>`, delete only after a successful enqueue, dead-letter unroutable rows, stop the tick if Redis refuses), plus a worker on `queue:order:credit`:
+  - reserve ok → `pending → open` + notify;
+  - permanent → `pending → cancelled`, no release, notify with credit-service's code;
+  - transient → retry (5 attempts, BullMQ exponential backoff);
+  - last attempt → cancel + queued release + notify, then the job fails and is written to `dead_letter_jobs`;
+  - release ok → stamp `creditReleasedAt`; transient → retry; permanent → dead-letter without retries.
+- **Notifications:** `Notifier.notify(userId, event, payload)` port, log-only until issue #6.
+- **Edit:** `credits` removed from the editable fields, so it now returns `INVALID_FIELD`.
+- **Config:** `CREDIT_SERVICE_URL` in `env.ts`, both `.env.example` files and the `order-worker` block of `compose.yaml`.
+- **Verification run in the AI workspace:**
+  - `tsc --noEmit` clean;
+  - `oxlint --type-aware` clean (0 warnings);
+  - `vitest run` 328/328;
+  - `test:e2e` 8/8 against a local Postgres 17 (new `test/credit-saga.e2e-spec.ts` runs the saga with real transactions; credit-service and Redis are faked);
+  - `npm run build` OK;
+  - `prisma/seed.ts` ran against the migrated DB.
+  - The Prisma client was generated with `PRISMA_SCHEMA_ENGINE_BINARY=/bin/true`, because the schema-engine download is blocked there.
+- **Not verified:**
+  - `src/worker.ts` against a real Redis/BullMQ (no Redis available);
+  - `prisma migrate dev` / drift check (engine unavailable);
+  - calls against a running credit-service.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261020100000_credit_reservation_saga/migration.sql` (created)
+- `order-service/prisma/seed.ts` (modified)
+- `order-service/src/clients/credits.client.ts` (modified)
+- `order-service/src/clients/credits.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/services/orders.transition.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts`, `order-service/src/app.spec.ts`, `order-service/src/server.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/db/outbox.repository.ts`, `order-service/src/db/dead-letter.repository.ts` (created)
+- `order-service/src/queue/tasks.ts`, `order-service/src/queue/bull-queue.ts` (created)
+- `order-service/src/worker/credit-jobs.ts`, `order-service/src/worker/credit-jobs.spec.ts` (created)
+- `order-service/src/worker/outbox-relay.ts`, `order-service/src/worker/outbox-relay.spec.ts` (created)
+- `order-service/src/notifications/notifier.ts` (created)
+- `order-service/test/health.e2e-spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (created)
+- `order-service/.env.example`, `.env.example`, `compose.yaml` (modified)
+- `ai/usage-log.md`, `README.md` (modified: this entry and its Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention and flagged for George's review, not decided:**
+   - new tables use order-service's camelCase column names;
+   - queue key `queue:order:credit`, with task names `credit_reserve` / `credit_release` following supplier-service's convention;
+   - 1 s base for the powers-of-2 backoff (1/2/4/8 s);
+   - events `order:created` (reservation succeeded) and `order:cancelled` with a `reason` (reservation failed), following the `order:<pastTenseVerb>` convention;
+   - failure reason `RESERVE_RETRIES_EXHAUSTED`;
+   - `CREDIT_SERVICE_URL` default `http://localhost:3003`.
+2. **`pending` orders are still returned by `GET /orders` when no status filter is given.** Hiding them is part of issue #11 (default filter `open`).
+3. **Not touched, raised to George:**
+   - `editOrder` does not check that the order is `open` (F18.1.1);
+   - `createOrder` validates `supplierId` as a UUID while supplier-service ids are BIGINT;
+   - nothing calls `POST /credits/allocate` (user-service TODO);
+   - transfer on completion is not implemented (the queue contract is pending Wee Jean).
+4. **Wen Xi's code changed with George's approval:** the cancel/expire release paths, the seed, and `credits` editability.
+5. **Decisions are not yet written in the repo.** The governing decision above is chat-only.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

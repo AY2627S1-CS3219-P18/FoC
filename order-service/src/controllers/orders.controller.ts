@@ -11,10 +11,14 @@
  * Scope (2026-10-13): Passed the credit client through status transitions so
  *        requester cancellation releases the persisted reservation.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - POST /orders answers 202 with the `pending` order (George,
+ *        2026-10-20); credit calls moved to the worker, so no credit client here.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
-import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
@@ -22,7 +26,7 @@ import * as ordersService from '../services/orders.service.js';
 import { RequestStatus } from '../generated/prisma/enums.js';
 
 export const createOrder =
-  (prisma: PrismaClient, credits: CreditsClient): RequestHandler =>
+  (prisma: PrismaClient): RequestHandler =>
   async (req, res) => {
     const requesterId = req.user?.user_id;
     if (!isUuid(requesterId)) {
@@ -34,7 +38,6 @@ export const createOrder =
 
     const result = await ordersService.createOrder(
       prisma,
-      credits,
       requesterId,
       req.body ?? {},
     );
@@ -48,7 +51,8 @@ export const createOrder =
       return;
     }
 
-    res.status(201).json(result.order);
+    // 202: accepted as `pending`; credit reservation completes asynchronously.
+    res.status(202).json(result.order);
   };
 
 export const getOrders =
@@ -96,11 +100,7 @@ export const editOrder =
   };
 
 export const transitionOrder =
-  (
-    prisma: PrismaClient,
-    credits: CreditsClient,
-    newStatus: RequestStatus,
-  ): RequestHandler =>
+  (prisma: PrismaClient, newStatus: RequestStatus): RequestHandler =>
   async (req, res) => {
     const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
@@ -119,7 +119,6 @@ export const transitionOrder =
       newStatus,
       actorId,
       new Date(),
-      credits,
     );
 
     if (response.ok) {

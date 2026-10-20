@@ -4,10 +4,14 @@
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - dropped the credit client from AppDeps; the API no longer calls
+ *        credit-service.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import express, { type Express } from 'express';
-import type { CreditsClient } from './clients/credits.client.js';
 import type { PrismaClient } from './db/prisma.js';
 import type { RequestHandler } from 'express';
 import { createAuthenticate } from './middleware/authenticate.js';
@@ -17,7 +21,6 @@ import { ordersRouter } from './routes/orders.routes.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
-  credits: CreditsClient;
   authenticate?: RequestHandler;
   userServiceUrl?: string;
 }
@@ -28,7 +31,6 @@ export interface AppDeps {
  */
 export function createApp({
   prisma,
-  credits,
   authenticate,
   userServiceUrl = 'http://localhost:3001',
 }: AppDeps): Express {
@@ -40,7 +42,7 @@ export function createApp({
   app.use(
     '/orders',
     authenticate ?? createAuthenticate(userServiceUrl),
-    ordersRouter(prisma, credits),
+    ordersRouter(prisma),
   );
 
   app.use(notFound);

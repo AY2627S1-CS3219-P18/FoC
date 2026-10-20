@@ -4,6 +4,11 @@
  * Scope: Unit tests for the team-authored transitionOrder (optimistic locking).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - fake Prisma gained $transaction and outbox, since
+ *        transitions now write any credit task in the same transaction.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -26,8 +31,15 @@ function fakePrisma(
     updateMany: vi.fn(async () => ({ count: updatedRows })),
     findUniqueOrThrow: vi.fn(async () => ({ ...row, status: 'UPDATED' })),
   };
+  const prisma: Record<string, unknown> = {
+    orderRequest,
+    outbox: { createMany: vi.fn(async () => ({ count: 1 })) },
+  };
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prisma),
+  );
   return {
-    prisma: { orderRequest } as unknown as PrismaClient,
+    prisma: prisma as unknown as PrismaClient,
     orderRequest,
   };
 }
