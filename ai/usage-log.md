@@ -5320,3 +5320,33 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14b: Outbox Queries
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14b ("Outbox Queries")
+
+**Prompts (exact):**
+
+> done, let's move on
+
+**Key responses:**
+
+- Created `src/db/queries/creditOutbox.queries.ts` with the six functions specified in Stage 14b: `insertCreditAllocation` (transaction-only, no `db` default, `RETURNING id`), `findDueCreditAllocations` (pending rows due now, ordered by `next_attempt_at, created_at`, `LIMIT $1`), `markCreditAllocationSent`, `markCreditAllocationDead`, `recordCreditAllocationFailure` (single conditional `UPDATE` computing the exponential-backoff-with-jitter `next_attempt_at` in SQL via `clock_timestamp()`/`random()`/`power()`, with `maxAttempts`/`baseDelaySeconds`/`maxDelaySeconds` passed as query parameters, not hard-coded), and `replayDeadCreditAllocations` (`ids: string[] | null`, `null` means all `dead` rows).
+- Every state-changing query is a conditional `UPDATE ... WHERE status = '<expected>'` (per the stage's "convention 3" note) and returns whether a row was actually updated, following the existing `(result.rowCount ?? 0) > 0` pattern used elsewhere in the queries layer (e.g. `activateUser`, `consumeOtp`).
+- Followed the existing `Queryable`/`db = pool` convention from `tokens.queries.ts` / `otp.queries.ts` / `users.queries.ts`.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean. Per the stage, functional verification of these queries is deferred to Stage 14c–14e, where the relay and replay script exercise them.
+
+**Files:**
+
+- `user-service/src/db/queries/creditOutbox.queries.ts` (created)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
