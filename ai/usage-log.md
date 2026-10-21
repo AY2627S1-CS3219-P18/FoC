@@ -4356,15 +4356,15 @@ tng wen xi
 > 6. make events and pass failure
 > 7. just follow convention this isnt part of design decisions
 > 8. what do you mean
-> 9.same
-> 10. defer
-> 11. resolved by client
-> 12. 2s
-> 13. yes
-> 14. what refresh flow, the 15min is for the socket not the JWT
-> 15. can we make a foreign table to map the bigint to uuid
-> 16. no it will not thats supplier service job on client
-> 17. no keep it personal md for nkw
+>    9.same
+> 9. defer
+> 10. resolved by client
+> 11. 2s
+> 12. yes
+> 13. what refresh flow, the 15min is for the socket not the JWT
+> 14. can we make a foreign table to map the bigint to uuid
+> 15. no it will not thats supplier service job on client
+> 16. no keep it personal md for nkw
 
 > ok we dont have to literally plan every single little detail now, you can just do it based on convention
 
@@ -4383,15 +4383,10 @@ tng wen xi
 
 > 1. use a string code that makes sense
 > 2. admin will handle
->
->
-> 5. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
+> 3. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
 
 > 6. ok then drop the results we dont need it for now
->
->
-> 2. ok lets just make credits non-editable for now
->
+> 7. ok lets just make credits non-editable for now
 >
 > make the contract now for weejean and make it succinct and simple, no sources from who
 
@@ -4693,35 +4688,35 @@ I added the indexes on credits, completeBy and deliveryLocation, set default `op
 > #6 we are sharing redis, using pub/sub for notifications since they are not critical, if client reconnects they will receive their backlog of notifications anyway (currently no backlog system yet so ignore that)
 
 > 1. Event names and payloads
-> Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
-> Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
-> Clients discard events whose version is ≤ the version they already hold.
-> Event names and payload types live in a shared types file used by both frontend and backend.
+>    Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
+>    Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
+>    Clients discard events whose version is ≤ the version they already hold.
+>    Event names and payload types live in a shared types file used by both frontend and backend.
 > 2. Rooms
-> Room	Joined by	Purpose
-> user:{id}	Server, automatically at connect (from the JWT)	Personal updates, e.g. your order was accepted
-> order:{id}	Server, from the DB (active orders where the user is requester or courier)	Status changes for that order
-> listing	Client emits listing:subscribe / listing:unsubscribe	Open-request feed for couriers on the browse screen
+>    Room Joined by Purpose
+>    user:{id} Server, automatically at connect (from the JWT) Personal updates, e.g. your order was accepted
+>    order:{id} Server, from the DB (active orders where the user is requester or courier) Status changes for that order
+>    listing Client emits listing:subscribe / listing:unsubscribe Open-request feed for couriers on the browse screen
 >
 > Clients never join a room by name directly. All order: joins are authorized server-side.
 >
 > 3. Where the notifying controller lives
-> The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
-> Emits happen only after the DB transaction commits, never inside it.
+>    The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
+>    Emits happen only after the DB transaction commits, never inside it.
 > 4. Multi-instance fan-out
-> Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
-> Clients use transports: ["websocket"], so no sticky sessions are needed.
-> Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
+>    Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
+>    Clients use transports: ["websocket"], so no sticky sessions are needed.
+>    Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
 > 5. 15-minute socket lifetime and reconnection
-> Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
-> Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
-> Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
-> After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
-> Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
+>    Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
+>    Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
+>    Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
+>    After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
+>    Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
 > 6. 2-second latency requirement
-> Definition: from DB commit to event received by the client, for connected clients.
-> Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
-> Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
+>    Definition: from DB commit to event received by the client, for connected clients.
+>    Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
+>    Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
 
 > 1. outbox too
 > 2. do what congchen does
@@ -4731,15 +4726,15 @@ I added the indexes on credits, completeBy and deliveryLocation, set default `op
 > 6. make events and pass failure
 > 7. just follow convention this isnt part of design decisions
 > 8. what do you mean
-> 9.same
-> 10. defer
-> 11. resolved by client
-> 12. 2s
-> 13. yes
-> 14. what refresh flow, the 15min is for the socket not the JWT
-> 15. can we make a foreign table to map the bigint to uuid
-> 16. no it will not thats supplier service job on client
-> 17. no keep it personal md for nkw
+>    9.same
+> 9. defer
+> 10. resolved by client
+> 11. 2s
+> 12. yes
+> 13. what refresh flow, the 15min is for the socket not the JWT
+> 14. can we make a foreign table to map the bigint to uuid
+> 15. no it will not thats supplier service job on client
+> 16. no keep it personal md for nkw
 
 > do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
 
@@ -4913,6 +4908,7 @@ I chose Socket.IO and designed the rooms and events, chose JWT after Claude flag
     - cancel removes the card live;
     - with WebSocket blocked, a post settles through the re-check (~5.1 s);
     - with 35 s tokens, the board is still live after the server's expiry disconnect.
+
 - **Not verified:** a live user-service or supplier-service, and the Redis adapter or worker pub/sub path.
 
 **Files:**
@@ -5061,7 +5057,7 @@ I asked whether `failed` was a good idea, and after Claude declined to judge the
   - order-service: tsc clean, oxlint 0 warnings, prettier clean, unit tests 524/524, build OK. The order-service e2e suite (27 tests) ran 7 times against a local Postgres 17. Five runs passed in full; two runs each had one failure, in different tests both times:
     - `realtime.e2e-spec.ts` › token-expiry disconnect;
     - `credit-saga.e2e-spec.ts` › last transient failure.
-    Neither failure reproduced in 4 further consecutive runs.
+      Neither failure reproduced in 4 further consecutive runs.
   - frontend: `vite build` OK.
 - **Not verified:** the edit route from the browser (the Edit button is not wired).
 
@@ -5098,7 +5094,6 @@ I told Claude to fix the F18.1.1 and F9.1.1 violations it had found in Wen Xi’
 > 2. keep hers
 > 3. ok lets use int instead
 > 4. do a
->
 >
 > yes make it clean
 
@@ -5203,3 +5198,40 @@ I threw away our throwaway supplier JWKS, kept her auth, switched to INTEGER and
 I asked for `deliveryLocationId` to match the INTEGER location and for edits to be validated, while the INTEGER upper bound and applying it to create were Claude’s calls.
 
 **Author review:** george-yeo
+
+## 2026-10-21 — Stage 14a: Schema + Config
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14 ("Design decisions (already made, do not change)" table) and Stage 14a ("Schema + Config")
+
+**Prompts (exact):**
+
+> look thru agents.md for AI instructions. look through stage 14 in instructinos.md. let me know if there's any other info you need in order for you to implement stage 14. do not start first.
+
+> do you know the git workflow?
+
+> let's go for stage 14a
+
+**Key responses:**
+
+- Added `outbox_status_enum` (`pending`/`sent`/`dead`) and the `credit_allocation_outbox` table to `init.sql`, using the exact DDL given in Stage 14a and the same safe-creation (`DO $$ ... EXCEPTION WHEN duplicate_object`) pattern as the existing enums.
+- Added `CREDIT_SERVICE_URL` to `.env.example` and `.env` (`http://credit-service:3003`, matching the Docker service name convention already used for `DB_HOST`) and to `.env.test` (`http://localhost:3003`, per the stage's instruction since no test calls it yet).
+- Added `CREDIT_SERVICE_URL` to the Zod schema in `config.ts` as `z.string().url()` (required), and exposed it as `config.creditService.url` with a trailing slash stripped (`.replace(/\/$/, "")`).
+- Verified: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, existing `tests/config.test.ts` unaffected (the new var is required-but-satisfied in `.env.test`, so none of its missing-var or SMTP cases needed changes).
+- Did not run the Docker-based verification steps from the stage (`docker compose down -v && docker compose up --build`, `\d credit_allocation_outbox`, removing `CREDIT_SERVICE_URL` to check the exit-with-named-error path) — Docker was not running in this environment. These still need to be run by hand.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified)
+- `user-service/.env.test` (modified)
+- `user-service/src/config.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
