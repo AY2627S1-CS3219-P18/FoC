@@ -1,13 +1,20 @@
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 4e - super admin bootstrap
-// Author review: 
+// Author review:
 // 2026-10-02: Add bootstrapTestUser (optional seeded normal user, same env-var pattern)
 // Author review: Congchen
+// 2026-10-21: Stage 14d - create the super admin and its credit-allocation outbox row in one
+//   transaction, only when creation actually happened. No requirements, architecture, schema,
+//   or API decisions were made by the AI tool — see instructions.md Stage 14 for the governing
+//   decision.
+// Author review:
 
 import bcrypt from 'bcrypt';
 import { config } from '../config.js';
+import * as creditOutboxQueries from '../db/queries/creditOutbox.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
+import { withTransaction } from '../db/transaction.js';
 import { PASSWORD_REGEX } from './auth.service.js';
 
 const BCRYPT_WORK_FACTOR = 10;
@@ -26,10 +33,19 @@ export async function bootstrapSuperAdmin(): Promise<void> {
 
   const passwordHash = await bcrypt.hash(config.superAdmin.password, BCRYPT_WORK_FACTOR);
 
-  const created = await userQueries.createSuperAdmin({
-    username: config.superAdmin.username.trim().toLowerCase(),
-    email: config.superAdmin.email.trim().toLowerCase(),
-    passwordHash,
+  const created = await withTransaction(async (client) => {
+    const created = await userQueries.createSuperAdmin(
+      {
+        username: config.superAdmin.username.trim().toLowerCase(),
+        email: config.superAdmin.email.trim().toLowerCase(),
+        passwordHash,
+      },
+      client,
+    );
+    if (created) {
+      await creditOutboxQueries.insertCreditAllocation(created.id, client);
+    }
+    return created;
   });
 
   if (created) {
