@@ -5350,3 +5350,38 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14c: The Relay
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14c ("The Relay")
+
+**Prompts (exact):**
+
+> let's go
+
+**Key responses:**
+
+- Created `src/services/creditOutbox.relay.ts`:
+  - `classifyResponseStatus(status)` — pure function implementing the Outcome → action table exactly (2xx and 409 → `sent`; 400/401/403/404/500 → `dead`; 408/425/429 and every other 5xx → `retry`; every other 3xx/4xx → `dead`). Sanity-checked by hand against every row of the table in a throwaway script (not committed — the stage defers tests).
+  - `deliverCreditAllocation(userId)` — POSTs to `${config.creditService.url}/credits/allocate` with a 3 s `AbortSignal.timeout`; maps a timeout to `{ action: 'retry', error: 'TIMEOUT' }` and any other thrown error to `{ action: 'retry', error: 'NETWORK <cause.code ?? UNKNOWN>' }`; on a response, classifies the status and, for `dead`/`retry`, reads the body only to pull a `code` field (ignored if not JSON), formatting `last_error` as `HTTP <status>` or `HTTP <status> <code>`, never storing the body.
+  - `runOutboxPass()` — loops `findDueCreditAllocations(BATCH_SIZE)` groups with no wait between groups, delivers each group concurrently via `Promise.allSettled`, and routes each outcome to `markCreditAllocationSent` / `markCreditAllocationDead` / `recordCreditAllocationFailure` (passing `MAX_ATTEMPTS`/`BASE_DELAY_SECONDS`/`MAX_DELAY_SECONDS`); a `false` return from those is left unhandled (ignored), per the stage.
+  - `startCreditOutboxRelay()` — runs a pass immediately, then chains the next pass `POLL_INTERVAL_MS` after the previous one finishes via `setTimeout` (not `setInterval`); a pass that throws is caught and logged with a single `console.error` line (message only, no response bodies) and the relay continues; `stop()` cancels the pending timer and awaits any in-flight pass.
+- Updated `src/server.ts` to call `startCreditOutboxRelay()` after the existing bootstrap calls. `app.ts` is untouched, so the relay never starts under the test harness.
+- `server.ts` has no shutdown-signal handling today, so per the stage's own instruction ("If it doesn't, do not add signal handling in this stage") `stop()` is not wired to any signal — flagged to the user previously, no change made.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, confirmed `app.ts` does not reference the relay. Docker was not running in this environment, so the stage's live-relay checks (pending → sent against a running credit-service, backoff/dead-letter behavior, batch-of-5 grouping, `user-db` outage logging) were not run — still need to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/services/creditOutbox.relay.ts` (created)
+- `user-service/src/server.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
