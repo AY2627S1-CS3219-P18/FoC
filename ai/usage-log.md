@@ -5415,3 +5415,37 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14e: Replay Script
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14e ("Replay Script")
+
+**Prompts (exact):**
+
+> let's go
+
+**Key responses:**
+
+- Created `src/scripts/replayCreditOutbox.ts`:
+  - No arguments, or any argument that isn't `--all-dead` and isn't a UUID → prints usage to stderr and exits `1` (checked via a UUID regex, case-insensitive).
+  - `--all-dead` as the sole argument → `replayDeadCreditAllocations(null)`; otherwise, every argument is validated as a UUID and passed as the explicit id list.
+  - Prints the ids that were reset; for the explicit-id form, also prints the ids that were not reset (not found, or not `dead`), computed by diffing the input ids against the ids `replayDeadCreditAllocations` returned via `RETURNING id`.
+  - Ends the pool in a `finally` after `main()`, regardless of success or failure; errors are caught, logged, and set `process.exitCode = 1`.
+- Added `"outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"` to `package.json`.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean. Manually ran the script with `.env` sourced for no-args, an invalid id, and `--all-dead` plus a stray extra argument — all three correctly printed usage and exited `1` (these paths return before touching the database, so they didn't need Docker). Docker was not running in this environment, so the DB-backed paths (replaying a real `dead` row by id, `--all-dead` resetting every dead row and nothing else, replaying a `sent`/`pending` row reported as not reset) were not run — still need to be exercised by hand, e.g. via `docker exec -it foc-user-service npm run outbox:replay -- --all-dead`.
+
+**Files:**
+
+- `user-service/src/scripts/replayCreditOutbox.ts` (created)
+- `user-service/package.json` (modified — cannot carry a header comment)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
