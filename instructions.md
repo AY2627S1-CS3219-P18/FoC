@@ -2371,7 +2371,7 @@ Concurrency:
 > inside `order-service`, `supplier-service`, or `credit-service` — see Stage 13d.
 >
 > This supersedes the auth pattern documented in `SupplierServiceArchitecture.md §7` and
-> `SupplierServiceSpec.md`. **Scope correction (2026-10-17):** those two docs are *not* updated
+> `SupplierServiceSpec.md`. **Scope correction (2026-10-17):** those two docs are _not_ updated
 > as part of this stage — the user-service owner only touches `user-service` and this file;
 > updating the supplier-service docs is left to that service's own owner.
 
@@ -2502,3 +2502,299 @@ Each service's own implementer writes and owns that service's verification code;
 only tells them how, per the decisions in this stage.
 
 - Running `POST /auth/login` with the OLD password in a loop while the reset completes → no non-revoked refresh token survives from an old-password login after the change commits
+
+# Stage 14: Initial Credit Allocation via Transactional Outbox
+
+> **Scope**: When a user becomes active, user-service tells credit-service to allocate their
+> initial credits. The request is recorded in an outbox table in `user-db` in the **same
+> transaction** as the activation, and a relay running inside user-service delivers it to
+> credit-service's `POST /credits/allocate` over HTTP, retrying on failure. Credit-service's side
+> is already built and is not touched in this stage.
+>
+> Activation points covered: registration OTP verification (`verifyRegistrationOtp`) and the
+> super admin bootstrap (when it actually creates the super admin).
+>
+> Backlog refs: F19.1.1 (allocation itself is credit-service's; this stage triggers it). D3 Parts 2–3.
+>
+> **Before starting:** if any `[DECIDE]` placeholder remains anywhere in this stage, stop and ask
+> me. Do not pick a value yourself.
+
+### Design decisions (already made, do not change)
+
+| Rule                    | Value                                                                                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport               | HTTP. `POST {CREDIT_SERVICE_URL}/credits/allocate`, JSON body `{ "userId": "<uuid>" }`. No message broker.                                                                                                       |
+| Credit-service contract | `201` = allocated. `409 ALREADY_ALLOCATED` = already allocated, nothing granted. Credit dedupes on `userId` only. No service-to-service auth. No `Idempotency-Key` or other custom header is sent.               |
+| Durability              | Transactional outbox: the outbox row is inserted with the same `client` and in the same `withTransaction` as the activation (or the super admin insert). Both commit or neither does.                            |
+| Relay location          | Inside user-service. Started from `server.ts` after the super admin bootstrap. `app.ts` must not start it (tests import `app`).                                                                                  |
+| Poll interval           | 1 second between passes                                                                                                                                                                                          |
+| Batch size              | 5 rows per group; a pass repeats groups until no row is due (see "Delivery within a pass")                                                                                                                       |
+| Request timeout         | 3 seconds per call                                                                                                                                                                                               |
+| Claiming                | None. Two relays may deliver the same row; Credit's `409` makes that harmless. Do not add `FOR UPDATE SKIP LOCKED`, a claim column, or any other claiming mechanism.                                             |
+| Max attempts            | 10 failed attempts, then the row is `dead`                                                                                                                                                                       |
+| Backoff                 | Exponential with full jitter (see "Backoff" below)                                                                                                                                                               |
+| Dead rows               | Kept. Recovered only by the replay script (Stage 14e).                                                                                                                                                           |
+| Sent rows               | Kept with `status = 'sent'`, never deleted                                                                                                                                                                       |
+| Observability           | The outbox row is the record: `status`, `attempts`, `last_error`, `updated_at`. No per-attempt log lines. The only console output is `console.error` when a whole relay pass fails (e.g. `user-db` unreachable). |
+| Super admin             | Gets credits. Bootstrap inserts an outbox row only when it actually created the super admin.                                                                                                                     |
+| Already-active users    | Ignored. No backfill.                                                                                                                                                                                            |
+| Config                  | `CREDIT_SERVICE_URL` is an env var. Every other value in this table is a constant in code.                                                                                                                       |
+
+### Outcome → action
+
+| Outcome of a delivery attempt                                                                                            | Action                                                             |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Any `2xx` (including `201`)                                                                                              | `sent`                                                             |
+| `409`                                                                                                                    | `sent`                                                             |
+| `400`, `401`, `403`, `404`, `500`                                                                                        | `dead` immediately (`attempts` incremented, `last_error` recorded) |
+| `429`, and any `5xx` other than `500` (e.g. `502`, `503`, `504`)                                                         | Retry with backoff; `dead` once `attempts` reaches 10              |
+| Timeout (3 s) or network error (`ECONNREFUSED`, `ENOTFOUND`, `ECONNRESET`, etc.)                                         | Retry with backoff; `dead` once `attempts` reaches 10              |
+| `408`, `425` (may resolve on their own)                                                                                  | Retry with backoff; `dead` once `attempts` reaches 10              |
+| Any other status not listed above, including every other `3xx` and `4xx` (won't resolve without a code or config change) | `dead` immediately (`attempts` incremented, `last_error` recorded) |
+
+`last_error` format:
+
+- HTTP response: `HTTP <status>` followed by the response body's `code` if the body is JSON and has one, e.g. `HTTP 500 BALANCE_INVARIANT_VIOLATION`. Never store the full response body.
+- Timeout: `TIMEOUT`
+- Network error: `NETWORK <error code>`, e.g. `NETWORK ECONNREFUSED`
+
+### Backoff
+
+`attempts` counts failed attempts. After the n-th failed attempt (n = the new `attempts` value):
+
+- If n ≥ 10 → `status = 'dead'`
+- Otherwise → `next_attempt_at = clock_timestamp() + (random() × min(300, 1 × 2^(n−1))) seconds`
+
+So the caps on the wait are 1, 2, 4, …, 256 seconds, and the actual wait is a random value between 0 and the cap. Compute this in SQL (clock rule: the database owns time), not with `Date.now()` or `Math.random()`. A row whose wait has passed is picked up by the next group, in the same pass or the next one.
+
+### Delivery within a pass
+
+A pass works through the backlog in groups of 5:
+
+1. `findDueCreditAllocations(5)`
+2. If it returns no rows, the pass ends.
+3. Otherwise, send all of the returned rows concurrently, wait until every request has settled (`Promise.allSettled`, so one failure never stops the others' results from being recorded), and record each result.
+4. Go back to step 1 immediately. There is no 1-second wait between groups.
+
+A pass ends only when no row is due. Rows still waiting out their backoff are not due, so they don't keep the pass going; a row whose wait expires during the pass is picked up by a later group in the same pass. Each group takes at most 3 s (the request timeout).
+
+Passes never overlap within one process: schedule the next pass 1 second after the current pass finishes (chained `setTimeout`), not with `setInterval`.
+
+---
+
+## Changes to already-implemented code (do these as part of the sub-stages below)
+
+| #   | File                                                     | Change                                                                                                                                              | Where specified |
+| --- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 1   | `src/db/init.sql`                                        | New `outbox_status_enum` and `credit_allocation_outbox` table                                                                                       | Stage 14a       |
+| 2   | `.env.example`, `.env`, `.env.test`, `src/config.ts`     | Add `CREDIT_SERVICE_URL`                                                                                                                            | Stage 14a       |
+| 3   | `src/services/auth.service.ts` (`verifyRegistrationOtp`) | Insert the outbox row after `activateUser` succeeds, same `client`. Replace the `// TODO(credit-service): emit user-registered event here` comment. | Stage 14d       |
+| 4   | Super admin bootstrap                                    | Run `createSuperAdmin` and the outbox insert in one `withTransaction`; insert the outbox row only if `createSuperAdmin` returned a row              | Stage 14d       |
+| 5   | `src/server.ts`                                          | Start the relay after the bootstrap                                                                                                                 | Stage 14c       |
+| 6   | `package.json`                                           | Add the `outbox:replay` script                                                                                                                      | Stage 14e       |
+
+---
+
+## Stage 14a: Schema + Config
+
+### Update `src/db/init.sql`
+
+Add, using the same safe-creation pattern as the existing enums:
+
+```sql
+DO $$ BEGIN
+  CREATE TYPE outbox_status_enum AS ENUM ('pending', 'sent', 'dead');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS credit_allocation_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  status outbox_status_enum NOT NULL DEFAULT 'pending',
+  attempts SMALLINT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+`init.sql` only runs on a fresh volume. Remind me in your summary to reset with `docker compose down -v` (dev data only), and that the test database is rebuilt from `init.sql` by `globalSetup.ts`.
+
+### Update `.env.example`, `.env`, `.env.test`
+
+```env
+# Credit service
+CREDIT_SERVICE_URL=http://credit-service:3003
+```
+
+In `.env.test` use `http://localhost:3003` (no test calls it yet).
+
+### Update `src/config.ts`
+
+- Add `CREDIT_SERVICE_URL` to the Zod schema as a required URL string.
+- Expose it as `config.creditService.url`.
+- Strip a trailing slash if present, so `${url}/credits/allocate` is always well-formed.
+
+### Verification
+
+- `docker compose down -v && docker compose up --build` starts cleanly
+- `\d credit_allocation_outbox` shows the table; `\dT+ outbox_status_enum` shows `pending`, `sent`, `dead`
+- Remove `CREDIT_SERVICE_URL` from `.env` → the app exits with a clear error naming it (revert afterwards)
+
+---
+
+## Stage 14b: Outbox Queries
+
+### Create `src/db/queries/creditOutbox.queries.ts`
+
+All functions take `db: Queryable` as the last parameter (default `pool` where the function is not transaction-only).
+
+- `insertCreditAllocation(userId, db)` — `INSERT INTO credit_allocation_outbox (user_id) VALUES ($1) RETURNING id`. Transaction-only: `db` is required.
+- `findDueCreditAllocations(limit, db = pool)` — rows with `status = 'pending' AND next_attempt_at <= clock_timestamp()`, ordered by `next_attempt_at, created_at`, `LIMIT $1`. Plain read, no locking (see Claiming).
+- `markCreditAllocationSent(id, db = pool)` — `SET status = 'sent', updated_at = NOW() WHERE id = $1 AND status = 'pending'`. Returns whether a row was updated.
+- `markCreditAllocationDead(id, lastError, db = pool)` — `SET status = 'dead', attempts = attempts + 1, last_error = $2, updated_at = NOW() WHERE id = $1 AND status = 'pending'`. Returns whether a row was updated.
+- `recordCreditAllocationFailure(id, lastError, { maxAttempts, baseDelaySeconds, maxDelaySeconds }, db = pool)` — one conditional `UPDATE ... WHERE id = $1 AND status = 'pending'` that:
+  - sets `attempts = attempts + 1`, `last_error = $2`, `updated_at = NOW()`
+  - sets `status = 'dead'` if `attempts + 1 >= maxAttempts`, else leaves it `'pending'`
+  - when still pending, sets `next_attempt_at = clock_timestamp() + make_interval(secs => random() * LEAST(maxDelaySeconds, baseDelaySeconds * power(2, attempts)))`. In an `UPDATE`, `attempts` on the right-hand side is the **old** value (n − 1), which gives the 2^(n−1) cap from the Backoff section.
+
+  Returns whether a row was updated. `maxAttempts`, `baseDelaySeconds` and `maxDelaySeconds` are passed as query parameters from the relay's constants, not hard-coded in the SQL.
+
+- `replayDeadCreditAllocations(ids: string[] | null, db = pool)` — `SET status = 'pending', attempts = 0, next_attempt_at = NOW(), updated_at = NOW() WHERE status = 'dead'` and, when `ids` is not null, `AND id = ANY($1)`. Leave `last_error` unchanged. `RETURNING id`.
+
+Every state change is a conditional `UPDATE ... WHERE status = '<expected>'` (convention 3), so a relay can never move a row out of `sent` or `dead`.
+
+### Verification
+
+- Covered through 14c–14e.
+
+---
+
+## Stage 14c: The Relay
+
+### Create `src/services/creditOutbox.relay.ts`
+
+Constants at the top of the file:
+
+```ts
+const POLL_INTERVAL_MS = 1000;
+const BATCH_SIZE = 5;
+const REQUEST_TIMEOUT_MS = 3000;
+const MAX_ATTEMPTS = 10;
+const BASE_DELAY_SECONDS = 1;
+const MAX_DELAY_SECONDS = 300;
+```
+
+**`classifyResponseStatus(status: number)`** — pure function, no I/O. Returns `'sent' | 'dead' | 'retry'` per the Outcome → action table. Keep it separate so it can be unit-tested later.
+
+**`deliverCreditAllocation(userId)`**:
+
+- Sends the request:
+
+  ```ts
+  fetch(`${config.creditService.url}/credits/allocate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  ```
+
+- Returns `{ action: 'sent' | 'dead' | 'retry', error?: string }`, where `error` follows the `last_error` format
+- A timeout → `retry`, `TIMEOUT`. Any other thrown network error → `retry`, `NETWORK <code>` (use the error's `cause.code` if present, else `UNKNOWN`)
+- Read the response body only to extract `code` for `last_error`. If the body isn't JSON, ignore it. Never store or log the body.
+
+**One pass**: follows "Delivery within a pass" (groups of `BATCH_SIZE`, sent concurrently, repeated until no row is due). For each result in a group:
+
+- `sent` → `markCreditAllocationSent`; `dead` → `markCreditAllocationDead`; `retry` → `recordCreditAllocationFailure` (passing `MAX_ATTEMPTS`, `BASE_DELAY_SECONDS`, `MAX_DELAY_SECONDS`)
+- A `false` return from any of these (row no longer pending, e.g. another relay already handled it) is not an error. Skip it.
+
+**`startCreditOutboxRelay(): { stop(): Promise<void> }`**:
+
+- Runs a pass, then schedules the next one `POLL_INTERVAL_MS` after the pass finishes
+- If a pass throws (e.g. `user-db` unreachable), `console.error` a single line with the error message (no user data, no response bodies) and continue with the next scheduled pass. The relay must never crash the process.
+- `stop()` cancels the next scheduled pass and resolves once any in-flight pass finishes
+
+### Update `src/server.ts`
+
+- After the super admin bootstrap completes, call `startCreditOutboxRelay()`.
+- If `server.ts` already handles shutdown signals, call `stop()` there. If it doesn't, do not add signal handling in this stage; tell me instead.
+- `app.ts` must not import or start the relay.
+
+### Verification
+
+- With credit-service running: a pending row becomes `sent` within about a second, and credit-service shows a balance for that user
+- With credit-service stopped (`docker compose stop credit-service`): the row stays `pending`, `attempts` goes up over time, `last_error` shows a `NETWORK ...` error, and `next_attempt_at` moves further out roughly as described in Backoff. Start credit-service again → the row becomes `sent` at its next due attempt
+- Backdate `next_attempt_at` between attempts to speed it up: after the 10th failed attempt the row is `dead`, and the relay stops picking it up
+- Insert more than 5 due rows at once (e.g. several pending rows via SQL for existing users) → they are delivered in groups of at most 5 within a single pass, with no 1-second gap between groups
+- Set `CREDIT_SERVICE_URL=http://credit-service:3003/nonexistent` → credit-service returns `404` → the row goes straight to `dead` with `attempts = 1` and `last_error` starting `HTTP 404` (revert afterwards)
+- Manually set a `sent` row back to `pending` → the relay delivers it again, credit-service returns `409`, the row becomes `sent`, and the user's balance is unchanged
+- While credit-service is down, the rest of user-service (login, register, etc.) responds normally
+- Stop `user-db` while user-service is running → one `console.error` line per failed pass, no crash; restart `user-db` → the relay resumes on its own
+
+---
+
+## Stage 14d: Wire Into Activation and Bootstrap
+
+### Update `verifyRegistrationOtp` in `src/services/auth.service.ts`
+
+- In the existing `withTransaction`, immediately after `activateUser(user.id, client)` returns `true`, call `insertCreditAllocation(user.id, client)`.
+- Remove the `// TODO(credit-service): emit user-registered event here` comment.
+- Nothing else in the function changes. In particular, the response does not wait for credit-service: verification succeeds even if credit-service is down.
+
+### Update the super admin bootstrap
+
+- Wrap `createSuperAdmin` and the outbox insert in one `withTransaction`, passing `client` to both.
+- Insert the outbox row only if `createSuperAdmin` returned a row (the insert was not skipped by `ON CONFLICT DO NOTHING`).
+- The existing "insert was skipped → re-check whether a super admin exists" logic is unchanged.
+- An already-existing super admin gets no outbox row (no backfill).
+
+### Verification
+
+- Register → verify OTP → `200 REGISTER_SUCCESS`; one `credit_allocation_outbox` row for that user, created in the same transaction; it becomes `sent` and credit-service shows a 20-credit balance
+- A failing verify (wrong OTP, expired OTP, attempts exceeded) creates no outbox row
+- Two concurrent correct `verify-otp` requests → exactly one outbox row (only one activation succeeds)
+- `docker compose down -v && docker compose up --build` → exactly one outbox row for the super admin, which becomes `sent`
+- Restart the containers without `-v` → no new outbox row for the super admin
+- With credit-service stopped, registration verification still returns `200 REGISTER_SUCCESS`
+
+---
+
+## Stage 14e: Replay Script
+
+### Create `src/scripts/replayCreditOutbox.ts`
+
+Usage:
+
+```bash
+npm run outbox:replay -- <outbox-id> [<outbox-id> ...]
+npm run outbox:replay -- --all-dead
+```
+
+- No arguments, or an argument that is neither `--all-dead` nor a UUID → print usage and exit `1`
+- Calls `replayDeadCreditAllocations` (with the IDs, or `null` for `--all-dead`)
+- Prints the IDs that were reset. For explicit IDs, also prints the ones that were not reset (not found, or not `dead`). Only `dead` rows are ever reset.
+- Ends the pool before exiting; exit `0` on success
+
+### Update `package.json`
+
+```json
+"outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"
+```
+
+Run it in dev with `docker exec -it foc-user-service npm run outbox:replay -- --all-dead`.
+
+### Verification
+
+- A `dead` row replayed by ID → `status = 'pending'`, `attempts = 0`, `last_error` unchanged; the relay then delivers it
+- `--all-dead` resets every `dead` row and nothing else
+- Replaying the ID of a `sent` or `pending` row → reported as not reset, row unchanged
+- No arguments or an invalid ID → usage message, exit code `1`
+
+---
+
+### Tests
+
+Deferred to the end-of-project test stage. Do not write tests in this stage.

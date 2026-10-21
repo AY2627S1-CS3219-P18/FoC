@@ -20,6 +20,8 @@ Set up the user-service scaffold: package.json, .env.example, RS256 keys, .gitig
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-24 — Stage 2: Database Setup
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -38,6 +40,8 @@ Write the Postgres schema (enums + users/users_otps/refresh_tokens tables) in in
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-24 — Stage 3: Docker Setup
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -55,6 +59,8 @@ Build a multi-stage Dockerfile (dev/prod) for user-service, wire up user-db + us
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 4a: App Setup + Middleware
 
@@ -81,6 +87,8 @@ Wire up cookie-parser/cors middleware, mount the auth router, and add the shared
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 4b: Registration
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -98,6 +106,8 @@ Implement user registration: users.queries.ts (CRUD reads + insert), auth.servic
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 4c: Login + Tokens
 
@@ -118,6 +128,8 @@ Implement login: tokens.queries.ts for refresh token CRUD, a signAccessToken() a
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 4d: Logout + Refresh
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -134,6 +146,8 @@ Implement logout() (revoke by token hash) and refresh() (validate not-found/revo
 
 **What I kept/changed/rejected:**
 I accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 4e: Inter-Service Verify + Super Admin Bootstrap
 
@@ -158,6 +172,8 @@ Add GET /auth/verify (reusing verifyAccessToken so it agrees with the authentica
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 5a: Schema, Config, Utilities
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -173,6 +189,8 @@ Created: src/utils/otp.ts, src/utils/otp.test.ts, src/db/transaction.ts
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 5b: Email Service
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -186,6 +204,8 @@ Created: user-service/src/services/email.service.ts
 
 **What I kept/changed/rejected:**
 I kept all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 5c: OTP Queries + Service
 
@@ -201,6 +221,8 @@ Created: user-service/src/db/queries/otp.queries.ts, src/services/otp.service.ts
 **What I kept/changed/rejected:**
 I kept all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 5d: Registration Now Creates a Pending Account
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -215,6 +237,8 @@ Modified: user-service/src/services/auth.service.ts, src/controllers/auth.contro
 **What I kept/changed/rejected:**
 I kept all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 5e: Verify OTP + Resend OTP Endpoints
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -227,6 +251,9 @@ Implement Stage 5e: public POST /auth/verify-otp and /auth/resend-otp with stric
 Modified: user-service/src/utils/AppError.ts, src/app.ts, src/routes/auth.routes.ts, src/services/auth.service.ts, src/controllers/auth.controller.ts
 
 **What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 6 pre-work #1: OTP resend window config
 
@@ -256,6 +283,8 @@ Pre-existing typecheck error at `users.queries.ts:105` (`createSuperAdmin` retur
 **What I kept/changed/rejected:**
 Had to merge in the changes in a PR for the questions, but accepted everything else.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6 pre-work #2: Windowed countOtps
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -280,6 +309,8 @@ None
 **What I kept/changed/rejected:**
 I accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6 pre-work #3: checkOtp consume flag
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -303,6 +334,8 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-10-04 — Order-service controller test update
 
@@ -703,6 +736,8 @@ The intro sentence wording was not specified in `instructions.md`; the AI suppli
 **What I kept/changed/rejected:**
 Okay with the wording used.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6 pre-work #6: Login race-safety
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -729,6 +764,8 @@ Change #5 skipped for now at the user's request; because it has dependencies in 
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6 pre-work #7: Registration resend-limit message
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -752,6 +789,8 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 6 pre-work #8: Locked refresh
 
@@ -782,6 +821,8 @@ None
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6 pre-work #9: Logout route without authenticate
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -805,6 +846,8 @@ Removed the unused `authenticate` import in `auth.routes.ts`, which the instruct
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 6a: requestOtp
 
@@ -830,6 +873,8 @@ None. The interrupted first request produced no changes; the work was done on th
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-25 — Stage 6b: POST /auth/forgot-password
 
 **Governing decision:** `instructions.md`, Stage 6b (design decisions in Stage 6 header; `requestOtp` from Stage 6a)
@@ -854,6 +899,8 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 6c: verify-otp for forgot_password (includes pre-work #5, verify-otp half)
 
@@ -881,6 +928,8 @@ Row 5 split across stages as described above: the verify-otp side is done here, 
 
 **What I kept/changed/rejected:**
 Approved all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Stage 6d: POST /auth/reset-password
 
@@ -914,6 +963,8 @@ The 6d branch was cut from a `main` that did not yet contain PR #84 (6c), so bef
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-26 — Stage 6e: resend-otp for forgot_password (includes pre-work #5, resend-otp half)
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -940,6 +991,8 @@ None
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-26 — Docs: align instructions.md with the codebase
 
@@ -972,6 +1025,8 @@ Stage 7 (`GET /users/me` and later) is not in `instructions.md`; the team needs 
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-26 — Stage 7: Comprehensive Test Suite (Stages 1-6)
 
@@ -1033,6 +1088,8 @@ Committed separately on `main` at the user's request: the user's own `instructio
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ---
 
@@ -1508,6 +1565,8 @@ Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ---
 
 ## 2026-09-27 — Stage 9: Admin Endpoints — View Users, Suspend/Unsuspend
@@ -1572,6 +1631,8 @@ Environment: Docker Desktop was not running and was started. The existing `foc-u
 **What I kept/changed/rejected:**
 Got Claude to help modify the error codes, to make it accurate (e.g. not just "suspend", but "change status").
 
+**Author review:** gabriel yap
+
 ---
 
 ## 2026-09-27 — Stage 10: Super Admin — Promote / Demote
@@ -1620,6 +1681,8 @@ Verification actually run: full suite 524 passed (19 files), `eslint .`, `tsc --
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-27 — Stage 11: Requester/Courier Toggle
 
@@ -1683,6 +1746,8 @@ Verification actually run: `tsc --noEmit` for `src` and for `tests/tsconfig.json
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-27 — Stage 11b: Test Suite — Requester/Courier Toggle
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -1726,6 +1791,8 @@ Verification actually run: `tsc --noEmit` for `tests/tsconfig.json` and `eslint 
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-27 — Stage 12a: GET /users/me
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -1766,6 +1833,8 @@ None — the 12a spec was unambiguous. The stale-container and missing dev-DB-co
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-27 — Stage 12b: Change Username
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -1803,6 +1872,8 @@ None — the 12b spec was unambiguous.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-27 — Stage 12c: Change Email — Initiate
 
@@ -1842,6 +1913,8 @@ None — the 12c spec was unambiguous.
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-27 — Stage 12d: /users/me/verify-otp and /users/me/resend-otp
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -1878,6 +1951,8 @@ None — the 12d spec was unambiguous.
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-09-27 — Stage 12e: Change Password — Initiate + Confirm
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -1913,6 +1988,8 @@ None as spec ambiguities — see the concurrency observation above (informationa
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-09-25 — Supplier Service: Architecture Document
 
@@ -4089,6 +4166,8 @@ None against the 13a spec. The pre-existing `email.service.test.ts` failure and 
 **What I kept/changed/rejected:**
 Accepted all changes
 
+**Author review:** gabriel yap
+
 ## 2026-10-17 — Stage 13b/13c: JWKS Endpoint, Remove `GET /auth/verify`, Test Cleanup
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -4130,6 +4209,8 @@ Per the user's instruction above, the "Docs" subsection of Stage 13c's written s
 **What I kept/changed/rejected:**
 Accepted all changes.
 
+**Author review:** gabriel yap
+
 ## 2026-10-17 — Stage 13d: JWKS Verification Guide for Order/Supplier/Credit Implementers
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -4170,6 +4251,8 @@ None.
 
 **What I kept/changed/rejected:**
 Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-10-19 — Credit Service D3 iteration 2: JWKS auth, transaction history, frontend wiring, public user lookup
 
@@ -4356,15 +4439,15 @@ tng wen xi
 > 6. make events and pass failure
 > 7. just follow convention this isnt part of design decisions
 > 8. what do you mean
-> 9.same
-> 10. defer
-> 11. resolved by client
-> 12. 2s
-> 13. yes
-> 14. what refresh flow, the 15min is for the socket not the JWT
-> 15. can we make a foreign table to map the bigint to uuid
-> 16. no it will not thats supplier service job on client
-> 17. no keep it personal md for nkw
+>    9.same
+> 9. defer
+> 10. resolved by client
+> 11. 2s
+> 12. yes
+> 13. what refresh flow, the 15min is for the socket not the JWT
+> 14. can we make a foreign table to map the bigint to uuid
+> 15. no it will not thats supplier service job on client
+> 16. no keep it personal md for nkw
 
 > ok we dont have to literally plan every single little detail now, you can just do it based on convention
 
@@ -4383,15 +4466,10 @@ tng wen xi
 
 > 1. use a string code that makes sense
 > 2. admin will handle
->
->
-> 5. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
+> 3. ok use the same queue same as reserve for release, if not credits would never be released if credit is down>
 
 > 6. ok then drop the results we dont need it for now
->
->
-> 2. ok lets just make credits non-editable for now
->
+> 7. ok lets just make credits non-editable for now
 >
 > make the contract now for weejean and make it succinct and simple, no sources from who
 
@@ -4693,35 +4771,35 @@ I added the indexes on credits, completeBy and deliveryLocation, set default `op
 > #6 we are sharing redis, using pub/sub for notifications since they are not critical, if client reconnects they will receive their backlog of notifications anyway (currently no backlog system yet so ignore that)
 
 > 1. Event names and payloads
-> Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
-> Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
-> Clients discard events whose version is ≤ the version they already hold.
-> Event names and payload types live in a shared types file used by both frontend and backend.
+>    Events are named order:<pastTenseVerb>: order:created, order:accepted, order:cancelled, order:expired, order:completed.
+>    Payloads are thin: { orderId, status, version, occurredAt }. order:created also carries the fields the listing card displays.
+>    Clients discard events whose version is ≤ the version they already hold.
+>    Event names and payload types live in a shared types file used by both frontend and backend.
 > 2. Rooms
-> Room	Joined by	Purpose
-> user:{id}	Server, automatically at connect (from the JWT)	Personal updates, e.g. your order was accepted
-> order:{id}	Server, from the DB (active orders where the user is requester or courier)	Status changes for that order
-> listing	Client emits listing:subscribe / listing:unsubscribe	Open-request feed for couriers on the browse screen
+>    Room Joined by Purpose
+>    user:{id} Server, automatically at connect (from the JWT) Personal updates, e.g. your order was accepted
+>    order:{id} Server, from the DB (active orders where the user is requester or courier) Status changes for that order
+>    listing Client emits listing:subscribe / listing:unsubscribe Open-request feed for couriers on the browse screen
 >
 > Clients never join a room by name directly. All order: joins are authorized server-side.
 >
 > 3. Where the notifying controller lives
-> The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
-> Emits happen only after the DB transaction commits, never inside it.
+>    The Order Service emits directly via io.to(room).emit(...). There is no separate gateway.
+>    Emits happen only after the DB transaction commits, never inside it.
 > 4. Multi-instance fan-out
-> Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
-> Clients use transports: ["websocket"], so no sticky sessions are needed.
-> Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
+>    Cross-replica emits go through @socket.io/redis-adapter (Redis pub/sub), reusing our existing Redis.
+>    Clients use transports: ["websocket"], so no sticky sessions are needed.
+>    Pub/sub is at-most-once, so pushes are hints. The REST API remains the source of truth.
 > 5. 15-minute socket lifetime and reconnection
-> Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
-> Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
-> Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
-> After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
-> Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
+>    Auth: the JWT goes in the Socket.IO handshake auth payload and is verified in io.use(). On failure the server returns unauthorized and the client goes to login.
+>    Expiry: the server schedules socket.disconnect(true) at the token's exp (15 min).
+>    Reconnect: a server-initiated disconnect doesn't auto-reconnect, so the client calls socket.connect() on io server disconnect. auth is a callback that fetches a fresh access token on every attempt.
+>    After reconnect: the server rebuilds the user: and order: rooms. The client re-subscribes to listing if it's on that screen, and re-fetches whatever it's displaying to cover events missed during the gap.
+>    Dependency: the User Service must provide a refresh-token flow. ⚠️ To confirm.
 > 6. 2-second latency requirement
-> Definition: from DB commit to event received by the client, for connected clients.
-> Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
-> Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
+>    Definition: from DB commit to event received by the client, for connected clients.
+>    Target: p95 < 2s under a stated load (e.g. N concurrent sockets; N TBD).
+>    Measurement: a load test with Artillery's Socket.IO engine, run with clients and server on the same host to avoid clock skew. Alternatively, the server timestamps the commit and measures the round trip via a Socket.IO ack; this RTT is an upper bound on one-way latency.
 
 > 1. outbox too
 > 2. do what congchen does
@@ -4731,15 +4809,15 @@ I added the indexes on credits, completeBy and deliveryLocation, set default `op
 > 6. make events and pass failure
 > 7. just follow convention this isnt part of design decisions
 > 8. what do you mean
-> 9.same
-> 10. defer
-> 11. resolved by client
-> 12. 2s
-> 13. yes
-> 14. what refresh flow, the 15min is for the socket not the JWT
-> 15. can we make a foreign table to map the bigint to uuid
-> 16. no it will not thats supplier service job on client
-> 17. no keep it personal md for nkw
+>    9.same
+> 9. defer
+> 10. resolved by client
+> 11. 2s
+> 12. yes
+> 13. what refresh flow, the 15min is for the socket not the JWT
+> 14. can we make a foreign table to map the bigint to uuid
+> 15. no it will not thats supplier service job on client
+> 16. no keep it personal md for nkw
 
 > do both sequentially, 11 then 6, make each its own branch built on top of order-accept-request then on each other
 
@@ -4913,6 +4991,7 @@ I chose Socket.IO and designed the rooms and events, chose JWT after Claude flag
     - cancel removes the card live;
     - with WebSocket blocked, a post settles through the re-check (~5.1 s);
     - with 35 s tokens, the board is still live after the server's expiry disconnect.
+
 - **Not verified:** a live user-service or supplier-service, and the Redis adapter or worker pub/sub path.
 
 **Files:**
@@ -5061,7 +5140,7 @@ I asked whether `failed` was a good idea, and after Claude declined to judge the
   - order-service: tsc clean, oxlint 0 warnings, prettier clean, unit tests 524/524, build OK. The order-service e2e suite (27 tests) ran 7 times against a local Postgres 17. Five runs passed in full; two runs each had one failure, in different tests both times:
     - `realtime.e2e-spec.ts` › token-expiry disconnect;
     - `credit-saga.e2e-spec.ts` › last transient failure.
-    Neither failure reproduced in 4 further consecutive runs.
+      Neither failure reproduced in 4 further consecutive runs.
   - frontend: `vite build` OK.
 - **Not verified:** the edit route from the browser (the Edit button is not wired).
 
@@ -5098,7 +5177,6 @@ I told Claude to fix the F18.1.1 and F9.1.1 violations it had found in Wen Xi’
 > 2. keep hers
 > 3. ok lets use int instead
 > 4. do a
->
 >
 > yes make it clean
 
@@ -5204,6 +5282,173 @@ I asked for `deliveryLocationId` to match the INTEGER location and for edits to 
 
 **Author review:** george-yeo
 
+## 2026-10-21 — Stage 14a: Schema + Config
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14 ("Design decisions (already made, do not change)" table) and Stage 14a ("Schema + Config")
+
+**Prompts (exact):**
+
+> look thru agents.md for AI instructions. look through stage 14 in instructinos.md. let me know if there's any other info you need in order for you to implement stage 14. do not start first.
+
+> do you know the git workflow?
+
+> let's go for stage 14a
+
+**Key responses:**
+
+- Added `outbox_status_enum` (`pending`/`sent`/`dead`) and the `credit_allocation_outbox` table to `init.sql`, using the exact DDL given in Stage 14a and the same safe-creation (`DO $$ ... EXCEPTION WHEN duplicate_object`) pattern as the existing enums.
+- Added `CREDIT_SERVICE_URL` to `.env.example` and `.env` (`http://credit-service:3003`, matching the Docker service name convention already used for `DB_HOST`) and to `.env.test` (`http://localhost:3003`, per the stage's instruction since no test calls it yet).
+- Added `CREDIT_SERVICE_URL` to the Zod schema in `config.ts` as `z.string().url()` (required), and exposed it as `config.creditService.url` with a trailing slash stripped (`.replace(/\/$/, "")`).
+- Verified: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, existing `tests/config.test.ts` unaffected (the new var is required-but-satisfied in `.env.test`, so none of its missing-var or SMTP cases needed changes).
+- Did not run the Docker-based verification steps from the stage (`docker compose down -v && docker compose up --build`, `\d credit_allocation_outbox`, removing `CREDIT_SERVICE_URL` to check the exit-with-named-error path) — Docker was not running in this environment. These still need to be run by hand.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified)
+- `user-service/.env.test` (modified)
+- `user-service/src/config.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14b: Outbox Queries
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14b ("Outbox Queries")
+
+**Prompts (exact):**
+
+> done, let's move on
+
+**Key responses:**
+
+- Created `src/db/queries/creditOutbox.queries.ts` with the six functions specified in Stage 14b: `insertCreditAllocation` (transaction-only, no `db` default, `RETURNING id`), `findDueCreditAllocations` (pending rows due now, ordered by `next_attempt_at, created_at`, `LIMIT $1`), `markCreditAllocationSent`, `markCreditAllocationDead`, `recordCreditAllocationFailure` (single conditional `UPDATE` computing the exponential-backoff-with-jitter `next_attempt_at` in SQL via `clock_timestamp()`/`random()`/`power()`, with `maxAttempts`/`baseDelaySeconds`/`maxDelaySeconds` passed as query parameters, not hard-coded), and `replayDeadCreditAllocations` (`ids: string[] | null`, `null` means all `dead` rows).
+- Every state-changing query is a conditional `UPDATE ... WHERE status = '<expected>'` (per the stage's "convention 3" note) and returns whether a row was actually updated, following the existing `(result.rowCount ?? 0) > 0` pattern used elsewhere in the queries layer (e.g. `activateUser`, `consumeOtp`).
+- Followed the existing `Queryable`/`db = pool` convention from `tokens.queries.ts` / `otp.queries.ts` / `users.queries.ts`.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean. Per the stage, functional verification of these queries is deferred to Stage 14c–14e, where the relay and replay script exercise them.
+
+**Files:**
+
+- `user-service/src/db/queries/creditOutbox.queries.ts` (created)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14c: The Relay
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14c ("The Relay")
+
+**Prompts (exact):**
+
+> let's go
+
+**Key responses:**
+
+- Created `src/services/creditOutbox.relay.ts`:
+  - `classifyResponseStatus(status)` — pure function implementing the Outcome → action table exactly (2xx and 409 → `sent`; 400/401/403/404/500 → `dead`; 408/425/429 and every other 5xx → `retry`; every other 3xx/4xx → `dead`). Sanity-checked by hand against every row of the table in a throwaway script (not committed — the stage defers tests).
+  - `deliverCreditAllocation(userId)` — POSTs to `${config.creditService.url}/credits/allocate` with a 3 s `AbortSignal.timeout`; maps a timeout to `{ action: 'retry', error: 'TIMEOUT' }` and any other thrown error to `{ action: 'retry', error: 'NETWORK <cause.code ?? UNKNOWN>' }`; on a response, classifies the status and, for `dead`/`retry`, reads the body only to pull a `code` field (ignored if not JSON), formatting `last_error` as `HTTP <status>` or `HTTP <status> <code>`, never storing the body.
+  - `runOutboxPass()` — loops `findDueCreditAllocations(BATCH_SIZE)` groups with no wait between groups, delivers each group concurrently via `Promise.allSettled`, and routes each outcome to `markCreditAllocationSent` / `markCreditAllocationDead` / `recordCreditAllocationFailure` (passing `MAX_ATTEMPTS`/`BASE_DELAY_SECONDS`/`MAX_DELAY_SECONDS`); a `false` return from those is left unhandled (ignored), per the stage.
+  - `startCreditOutboxRelay()` — runs a pass immediately, then chains the next pass `POLL_INTERVAL_MS` after the previous one finishes via `setTimeout` (not `setInterval`); a pass that throws is caught and logged with a single `console.error` line (message only, no response bodies) and the relay continues; `stop()` cancels the pending timer and awaits any in-flight pass.
+- Updated `src/server.ts` to call `startCreditOutboxRelay()` after the existing bootstrap calls. `app.ts` is untouched, so the relay never starts under the test harness.
+- `server.ts` has no shutdown-signal handling today, so per the stage's own instruction ("If it doesn't, do not add signal handling in this stage") `stop()` is not wired to any signal — flagged to the user previously, no change made.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, confirmed `app.ts` does not reference the relay. Docker was not running in this environment, so the stage's live-relay checks (pending → sent against a running credit-service, backoff/dead-letter behavior, batch-of-5 grouping, `user-db` outage logging) were not run — still need to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/services/creditOutbox.relay.ts` (created)
+- `user-service/src/server.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14d: Wire Into Activation and Bootstrap
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14d ("Wire Into Activation and Bootstrap")
+
+**Prompts (exact):**
+
+> go
+
+**Key responses:**
+
+- `src/services/auth.service.ts` (`verifyRegistrationOtp`): immediately after `activateUser(user.id, client)` returns `true`, added `await creditOutboxQueries.insertCreditAllocation(user.id, client)`, replacing the `// TODO(credit-service): emit user-registered event here` comment. Nothing else in the function changed — the response still does not wait for credit-service.
+- `src/services/bootstrap.service.ts` (`bootstrapSuperAdmin`): wrapped `createSuperAdmin` and the outbox insert in one `withTransaction`, passing `client` to both; the outbox insert only runs `if (created)` (i.e. `createSuperAdmin` actually returned a row, not skipped by `ON CONFLICT DO NOTHING`). The existing "insert was skipped → re-check whether a super admin exists" logic after the transaction is unchanged, so an already-existing super admin still gets no outbox row.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, confirmed the TODO comment is gone. Docker was not running in this environment, so the stage's live checks (register → verify → one outbox row → `sent` with a 20-credit balance; two concurrent verify-otp requests → exactly one outbox row; fresh-volume bootstrap → exactly one super-admin outbox row; restart without `-v` → no new row; credit-service down → registration still returns `200`) were not run — still need to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/bootstrap.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14e: Replay Script
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14e ("Replay Script")
+
+**Prompts (exact):**
+
+> let's go
+
+**Key responses:**
+
+- Created `src/scripts/replayCreditOutbox.ts`:
+  - No arguments, or any argument that isn't `--all-dead` and isn't a UUID → prints usage to stderr and exits `1` (checked via a UUID regex, case-insensitive).
+  - `--all-dead` as the sole argument → `replayDeadCreditAllocations(null)`; otherwise, every argument is validated as a UUID and passed as the explicit id list.
+  - Prints the ids that were reset; for the explicit-id form, also prints the ids that were not reset (not found, or not `dead`), computed by diffing the input ids against the ids `replayDeadCreditAllocations` returned via `RETURNING id`.
+  - Ends the pool in a `finally` after `main()`, regardless of success or failure; errors are caught, logged, and set `process.exitCode = 1`.
+- Added `"outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"` to `package.json`.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean. Manually ran the script with `.env` sourced for no-args, an invalid id, and `--all-dead` plus a stray extra argument — all three correctly printed usage and exited `1` (these paths return before touching the database, so they didn't need Docker). Docker was not running in this environment, so the DB-backed paths (replaying a real `dead` row by id, `--all-dead` resetting every dead row and nothing else, replaying a `sent`/`pending` row reported as not reset) were not run — still need to be exercised by hand, e.g. via `docker exec -it foc-user-service npm run outbox:replay -- --all-dead`.
+
+**Files:**
+
+- `user-service/src/scripts/replayCreditOutbox.ts` (created)
+- `user-service/package.json` (modified — cannot carry a header comment)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
 ## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
 
 **Tool:** Claude Code (model: claude-opus-5-5)
