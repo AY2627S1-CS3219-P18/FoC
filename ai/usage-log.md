@@ -5449,3 +5449,60 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The order-redis transfer queue contract George Yeo agreed with Wee Jean (2026-10-20): queue `queue:credit:transfer`, task `credit_transfer`, job id `outbox-<outbox id>`, payload `{ requestId, courierId }`, produced by the order-worker outbox relay; 5 attempts with exponential backoff at powers of 5, then credit-service's `dead_letter_jobs`; non-retryable errors dead-letter at once; no result queue. George's follow-up prompts are quoted below.
+
+**Prompts (exact):**
+
+> did you not make the redis queue?
+
+> so you already built the queue right? and weejean can see it?
+
+> wait so what queue is done and what isnt
+
+> make a new branch ill make a new PR and doesnt the contract set tge attenpts and backoff?
+
+**Key responses:**
+
+- **What was missing:** order-service had no producer for `queue:credit:transfer`, so completing an order did not move any credits. I should have flagged this as an open item when George asked whether the PR was ready; that answer omitted it.
+- **Producer:**
+  - `transitionOrder` → `completed`, whether the requester confirms or the system auto-completes, now writes a `credit_transfer` outbox row with `{ requestId, courierId }` in the same transaction as the status change.
+  - The existing relay sends it to `queue:credit:transfer` with job id `outbox-<id>`.
+  - order-service has no consumer for this queue.
+- **Retry split:** this answers George's question. The contract fixes the numbers. In BullMQ, the producer sets `attempts` and the backoff type when it adds the job, and the worker supplies a custom backoff's delays. So this queue gets `{ attempts: 5, backoff: { type: 'custom' }, removeOnComplete: true }`, and credit-service's worker supplies the 5/25/125/625 s delays and the dead letter. This is the same split as supplier-service (`supplier-service/src/queue/bullQueue.ts`). Order-service's own credit queue keeps its exponential defaults.
+- **Not in this change:**
+  - the credit-service consumer, its Redis connection to `order-redis`, and its dead-letter table (Wee Jean's side);
+  - any compose change for credit-service.
+- **Verification in the AI workspace:**
+  - tsc clean, oxlint 0, prettier clean, unit tests 531/531 (new: completion queues the transfer for both the requester and the system; other transitions do not; relay routing; per-queue job options and job ids), build OK;
+  - e2e 28/28 against Postgres 17. The new test runs a full lifecycle to `completed` and checks that the relay enqueues exactly one `credit_transfer` job, with `{ requestId, courierId }`, on `queue:credit:transfer`, with no dead letter.
+  - Not run against a real Redis.
+
+**Files:**
+
+- `order-service/src/queue/tasks.ts`, `order-service/src/queue/bull-queue.ts` (modified)
+- `order-service/src/queue/bull-queue.spec.ts` (created)
+- `order-service/src/services/orders.service.ts`, `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/worker/outbox-relay.spec.ts`, `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Picked by convention, following supplier-service:**
+   - which side sets which BullMQ option;
+   - `removeOnComplete: true`.
+2. **Wee Jean's consumer must:**
+   - register a `backoffStrategy` returning 5 s × 5^(attemptsMade−1);
+   - read `{ requestId, courierId }`;
+   - treat `409 ALREADY_TRANSFERRED` as done;
+   - dead-letter immediately on `404 COURIER_NOT_FOUND`, `404 RESERVATION_NOT_FOUND` and `409 ALREADY_RELEASED`.
+   If his worker has no custom strategy, BullMQ fails retries of `custom`-backoff jobs.
+3. **No outcome reaches order-service** (deferred). A completed order whose transfer dead-letters still reads `completed`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

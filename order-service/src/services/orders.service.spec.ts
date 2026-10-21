@@ -59,6 +59,10 @@
  * Scope (2026-10-20): Edit validation cases for every editable field.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-21): Credit transfer - completion (requester or system)
+ *        queues a credit_transfer outbox row; other transitions do not.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -749,6 +753,43 @@ describe('transitionOrder', () => {
       orderRequest,
     };
   }
+
+  it.each([
+    ['the requester', requesterId],
+    ['the system (auto-complete)', 'system'],
+  ])(
+    'completing a delivered order as %s queues the credit transfer to the courier',
+    async (_who, actor) => {
+      const { prisma } = prismaWithTransition({
+        status: 'delivered',
+        requesterId,
+        courierId,
+      });
+
+      await expect(
+        transitionOrder(prisma, orderId, 'completed', actor),
+      ).resolves.toMatchObject({ ok: true });
+      expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            taskName: 'credit_transfer',
+            payload: { requestId: orderId, courierId },
+          }),
+        ],
+      });
+    },
+  );
+
+  it('a transition other than completion queues no transfer', async () => {
+    const { prisma } = prismaWithTransition({
+      status: 'picked_up',
+      requesterId,
+      courierId,
+    });
+
+    await transitionOrder(prisma, orderId, 'delivered', courierId);
+    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
+  });
 
   it('returns ORDER_NOT_FOUND when the order does not exist', async () => {
     const { prisma, orderRequest } = prismaWithTransition(null);

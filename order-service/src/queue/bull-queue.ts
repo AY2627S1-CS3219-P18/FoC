@@ -8,9 +8,15 @@
  *        convention, not decided.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-21): Credit transfer - per-queue job options: the transfer
+ *        queue gets attempts 5 with a custom backoff (the consumer supplies the powers-of-5
+ *        delays), following supplier-service's split.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';
+import { CREDIT_TRANSFER_QUEUE_KEY } from './tasks.js';
 
 /**
  * Keys look like 'queue:<group>:<name>'. BullMQ forbids ':' in a queue name, so the
@@ -38,6 +44,26 @@ export const DEFAULT_JOB_OPTIONS: JobsOptions = {
   removeOnComplete: true,
 };
 
+/**
+ * Jobs for credit-service's transfer queue: 5 attempts, with the powers-of-5 delays
+ * (5/25/125/625 s) supplied by the consumer's custom backoff strategy, then its dead letter
+ * (transfer contract, 2026-10-20). Same split as supplier-service's queues.
+ */
+export const TRANSFER_JOB_OPTIONS: JobsOptions = {
+  attempts: MAX_ATTEMPTS,
+  backoff: { type: 'custom' },
+  removeOnComplete: true,
+};
+
+const JOB_OPTIONS_BY_QUEUE = new Map<string, JobsOptions>([
+  [CREDIT_TRANSFER_QUEUE_KEY, TRANSFER_JOB_OPTIONS],
+]);
+
+/** Job options for a queue: the transfer queue's contract options, else the defaults. */
+export function jobOptionsFor(queueKey: string): JobsOptions {
+  return JOB_OPTIONS_BY_QUEUE.get(queueKey) ?? DEFAULT_JOB_OPTIONS;
+}
+
 export interface QueuedJob {
   id: string;
   taskName: string;
@@ -63,7 +89,7 @@ export function createBullJobQueue(
     return new Queue(name, {
       connection,
       prefix,
-      defaultJobOptions: DEFAULT_JOB_OPTIONS,
+      defaultJobOptions: jobOptionsFor(queueKey),
     });
   },
 ): JobQueue {

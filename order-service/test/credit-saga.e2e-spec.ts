@@ -23,6 +23,10 @@
  * Scope (2026-10-20): `failed` status - reservation failures end in `failed`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-21): Credit transfer - e2e check that completing an order relays a
+ *        credit_transfer job ({ requestId, courierId }) to queue:credit:transfer.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -351,6 +355,53 @@ describe('release dead-letter re-drive (e2e)', () => {
       where: { id: result.order.id },
     });
     expect(order.creditReleasedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('credit transfer on completion (e2e)', () => {
+  it("completing the order relays a credit_transfer job to credit-service's queue", async () => {
+    const COURIER = '0192f0c4-0000-7000-8000-00000000000b';
+    const h = harness(() => ({ ok: true }));
+    const result = await createOrder(prisma, REQUESTER, payload);
+    if (!result.ok) throw new Error('create failed');
+    await h.drain(); // reserved -> open
+    const id = result.order.id;
+    for (const [to, actor] of [
+      ['accepted', COURIER],
+      ['picked_up', COURIER],
+      ['delivered', COURIER],
+      ['completed', REQUESTER],
+    ] as const) {
+      await expect(
+        transitionOrder(prisma, id, to, actor),
+      ).resolves.toMatchObject({ ok: true });
+    }
+
+    // Relay with a recording queue so the target queue key is visible.
+    const enqueued: { key: string; job: QueuedJob }[] = [];
+    const relayOnce = createOutboxRelay({
+      outbox: createOutboxRepository(prisma),
+      queue: {
+        enqueue: async (key, job) => void enqueued.push({ key, job }),
+        close: async () => {},
+      },
+      deadLetters: createDeadLetterRepository(prisma),
+      log: () => {},
+    });
+    await relayOnce();
+
+    expect(enqueued).toEqual([
+      {
+        key: 'queue:credit:transfer',
+        job: {
+          id: expect.stringMatching(/^outbox-\d+$/),
+          taskName: 'credit_transfer',
+          payload: { requestId: id, courierId: COURIER },
+        },
+      },
+    ]);
+    expect(await prisma.outbox.count()).toBe(0);
+    expect(await prisma.deadLetterJob.count()).toBe(0);
   });
 });
 
