@@ -4068,6 +4068,63 @@ A footgun was found and fixed during the work: the first version of globalSetup 
 
 **Author review:**
 
+## 2026-10-17 — Stage 13: Auth Distribution Plan — JWKS Recorded in instructions.md
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The decisions themselves were made by the user in chat (quoted below); this task only formatted them into `instructions.md` as a new stage. Nothing in `instructions.md` Stage 13 was originated by the AI tool.
+
+**Prompts (exact):**
+
+> first read agents.md to find out what you can and can't do. keep that in mind.
+>
+> if i told you to convert my authentication method from making an API call to giving each individual service a public PKC key, what other info do you need for you to do that, while complying with the rules in agents.md? list them out so i can help you out.
+
+> 1. Is it alright to put a new stage 13 in instructions.md detailing the changes that should happen, and telling it what to ignore from previous parts?
+> 2. Currently using RS256. Basically when user service issues a JWT (using refresh / login), it will sign it (it has access to the private key). All other services will hold the public key.
+> 3. I would think you would have the answer to this…?
+> 4. Let's go with JWKS, since we want to rotate our keys.
+> 5. All 3 services (order, supplier and credit). But don't implement their part for them. Help me come up with a guide for the implementors of those parts on how to access the JWKS endpoint and how to verify using the resulting public key.
+> 6. On top of what is already in the token payload, add kid and aud.
+> 7. Is the token lifetime not already set in the code?
+> 8. Key rotation - let's do rotation once every 3 months. Link it to JWKT to allow for smooth transfer of keys.
+> 9. Let's instantly switch to the new local verification.
+> 10. Wouldn't you know better?
+>
+> do let me know if youre still missing information!
+
+> 1: Let's do this
+> 3: Let's continue with what we have.
+> 7: Let's stick with what we have.
+> 10: For documentation, remind me later after we're done implementing.
+>
+> New
+>
+> 1. Yes, put in the header I mean.
+> 2. Scratch that. We don't need aud.
+> 3. Let's do with auth.
+> 4. Let's do env vars per key.
+> 5. Let's remove the endpoint, and update hte docs accordingly.
+
+> put the plan into stage 13 in instructions.md
+
+**Key responses:**
+Before answering, read `AGENTS.md` and classified the request: converting the auth scheme from an inter-service API call to JWKS-distributed public keys is an authentication-scheme/security-tradeoff decision under AGENTS.md §2.1, so declined to pick the scheme and instead listed the open decisions needed (algorithm, key distribution mechanism, scope, claims, token lifetime, rotation, migration plan, existing code to replace). Where the user deferred a decision back to the AI ("I would think you would have the answer to this", "Wouldn't you know better?"), did not choose for them — instead looked up the relevant facts in the existing codebase and reported them: the existing key pair at `user-service/keys/{private,public}.pem` is RSA-2048 (confirmed with `openssl rsa -noout -text`), `ACCESS_TOKEN_TTL_MINUTES=15` is already set in `user-service/.env`/`config.ts`, and the only existing inter-service-API-call auth consumer is `supplier-service/src/middleware/authenticate.ts` calling `GET /auth/verify` (`order-service` and `credit-service` have no auth middleware yet). Once every open item had an explicit team decision, wrote `instructions.md` Stage 13 (13a–13d) in the same design-decisions-table-plus-sub-stage format as Stages 8–12, encoding only what was decided — including a clarification that `kid` means the standard JWT header field, not a payload claim (per the user's follow-up), and that Stage 13d is a guide for the order/supplier/credit implementers, not code written on their behalf.
+
+**Files:**
+
+- `instructions.md` (modified: added Stage 13, sub-stages 13a–13d)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None — every open design/security point (§2.1) was referred back to the user and resolved by them before being written down; see the quoted prompts above for exactly which.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
 ## 2026-10-17 — Stage 13a: Per-Key Config + Sign/Verify by `kid`
 
 **Tool:** Claude Code (model: claude-sonnet-5)
