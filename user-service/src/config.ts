@@ -12,6 +12,10 @@
 //    JWKS-based key rotation. No requirements, architecture, schema, or API decisions were
 //    made by the AI tool — see instructions.md Stage 13 for the governing decision.
 //    Author review:
+//  2026-10-21: Stage 14a - add CREDIT_SERVICE_URL for the credit-allocation outbox relay.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool — see
+//    instructions.md Stage 14 for the governing decision.
+//    Author review:
 
 import { z } from "zod";
 
@@ -54,6 +58,8 @@ const envSchema = z
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
     OTP_MAX_RESENDS: z.coerce.number().int().positive(),
     OTP_RESEND_WINDOW_MINUTES: z.coerce.number().int().positive(),
+
+    CREDIT_SERVICE_URL: z.string().url(),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -129,5 +135,8 @@ export const config = {
     username: env.TEST_USER_USERNAME,
     email: env.TEST_USER_EMAIL,
     password: env.TEST_USER_PASSWORD,
+  },
+  creditService: {
+    url: env.CREDIT_SERVICE_URL.replace(/\/$/, ""),
   },
 } as const;
