@@ -5385,3 +5385,33 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-21 — Stage 14d: Wire Into Activation and Bootstrap
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 14d ("Wire Into Activation and Bootstrap")
+
+**Prompts (exact):**
+
+> go
+
+**Key responses:**
+
+- `src/services/auth.service.ts` (`verifyRegistrationOtp`): immediately after `activateUser(user.id, client)` returns `true`, added `await creditOutboxQueries.insertCreditAllocation(user.id, client)`, replacing the `// TODO(credit-service): emit user-registered event here` comment. Nothing else in the function changed — the response still does not wait for credit-service.
+- `src/services/bootstrap.service.ts` (`bootstrapSuperAdmin`): wrapped `createSuperAdmin` and the outbox insert in one `withTransaction`, passing `client` to both; the outbox insert only runs `if (created)` (i.e. `createSuperAdmin` actually returned a row, not skipped by `ON CONFLICT DO NOTHING`). The existing "insert was skipped → re-check whether a super admin exists" logic after the transaction is unchanged, so an already-existing super admin still gets no outbox row.
+- Verification: `npm run build` (tsc) clean, `npm run lint` (eslint) clean, confirmed the TODO comment is gone. Docker was not running in this environment, so the stage's live checks (register → verify → one outbox row → `sent` with a 20-credit balance; two concurrent verify-otp requests → exactly one outbox row; fresh-volume bootstrap → exactly one super-admin outbox row; restart without `-v` → no new row; credit-service down → registration still returns `200`) were not run — still need to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/bootstrap.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
