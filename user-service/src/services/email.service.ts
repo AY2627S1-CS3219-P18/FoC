@@ -6,6 +6,11 @@
 // Author review:
 // 27/09/2026: Stage 12c - Change Email template
 // Author review:
+// 2026-10-22: Added the missing Change Password template. Change Password has sent
+//   OTPs since Stage 12e (me.service.ts), but PURPOSE_COPY had no entry for it, so
+//   sendOtpEmail threw whenever SMTP was actually configured (masked locally by the
+//   dev console-log fallback). Found while fixing an unrelated stale test.
+// Author review:
 
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
@@ -22,6 +27,10 @@ const PURPOSE_COPY: Record<string, { subject: string; intro: string }> = {
   "Change Email": {
     subject: "Confirm your new FoC email address",
     intro: "Use the code below to confirm your new FoC email address.",
+  },
+  "Change Password": {
+    subject: "Confirm your FoC password change",
+    intro: "Use the code below to confirm your password change.",
   },
 };
 

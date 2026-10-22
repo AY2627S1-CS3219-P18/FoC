@@ -32,7 +32,7 @@ describe('PUT /users/me/active-view', () => {
 
     const res = await putActiveView(token, { activeView: 'courier' });
     expect(res.status).toBe(200);
-    expect(res.body.active_view).toBe('courier');
+    expect(res.body.activeView).toBe('courier');
     expect((await getUserByEmail(user.email))!.active_view).toBe('courier');
   });
 
@@ -43,7 +43,7 @@ describe('PUT /users/me/active-view', () => {
 
     const res = await putActiveView(token, { activeView: 'requester' });
     expect(res.status).toBe(200);
-    expect(res.body.active_view).toBe('requester');
+    expect(res.body.activeView).toBe('requester');
     expect((await getUserByEmail(user.email))!.active_view).toBe('requester');
   });
 
@@ -53,7 +53,7 @@ describe('PUT /users/me/active-view', () => {
 
     const res = await putActiveView(token, { activeView: 'requester' });
     expect(res.status).toBe(200);
-    expect(res.body.active_view).toBe('requester');
+    expect(res.body.activeView).toBe('requester');
   });
 
   it('rejects a request with no Authorization header: 401 UNAUTHORIZED', async () => {

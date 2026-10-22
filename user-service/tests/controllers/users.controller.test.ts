@@ -86,11 +86,15 @@ describe('GET /users', () => {
     expect(res.body).toEqual(FORBIDDEN);
   });
 
-  it.each(['admin', 'super admin'] as const)('allows a %s and wraps the list in { users }', async (role) => {
+  it.each(['admin', 'super admin'] as const)('allows a %s and returns the paginated shape', async (role) => {
     const { token } = await callerToken(role);
     const res = await get('/users', token);
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body)).toEqual(['users']);
+    expect(Object.keys(res.body).sort()).toEqual(
+      ['page', 'pageSize', 'total', 'totalPages', 'users'].sort(),
+    );
+    expect(res.body.page).toBe(1);
+    expect(res.body.pageSize).toBe(50);
     expect(Array.isArray(res.body.users)).toBe(true);
     expect(res.body.users).toHaveLength(1);
   });
@@ -113,7 +117,7 @@ describe('GET /users', () => {
     for (const u of res.body.users) {
       expect(u).not.toHaveProperty('password_hash');
       expect(Object.keys(u).sort()).toEqual(
-        ['active_view', 'created_at', 'email', 'id', 'role', 'status', 'updated_at', 'username'].sort(),
+        ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
       );
     }
   });
@@ -378,7 +382,7 @@ describe('PUT /users/:id/status', () => {
       const res = await putStatus(token, target, 'suspended');
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('suspended');
-      expect(new Date(res.body.updated_at)).toEqual(userBefore.updated_at);
+      expect(new Date(res.body.updatedAt)).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(userBefore.updated_at);
       expect((await getRefreshTokens(target.id)).map((t) => t.revoked_at)).toEqual(
         tokensBefore.map((t) => t.revoked_at),
@@ -394,7 +398,7 @@ describe('PUT /users/:id/status', () => {
       const res = await putStatus(token, target, 'active');
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('active');
-      expect(new Date(res.body.updated_at)).toEqual(userBefore.updated_at);
+      expect(new Date(res.body.updatedAt)).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(userBefore.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });
@@ -631,7 +635,7 @@ describe('PUT /users/:id/role', () => {
       const res = await putRole(token, target, 'admin');
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('admin');
-      expect(new Date(res.body.updated_at)).toEqual(before.updated_at);
+      expect(new Date(res.body.updatedAt)).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });
@@ -645,7 +649,7 @@ describe('PUT /users/:id/role', () => {
       const res = await putRole(token, target, 'user');
       expect(res.status).toBe(200);
       expect(res.body.role).toBe('user');
-      expect(new Date(res.body.updated_at)).toEqual(before.updated_at);
+      expect(new Date(res.body.updatedAt)).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });

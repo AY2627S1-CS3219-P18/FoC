@@ -22,7 +22,7 @@ describe('changeActiveView', () => {
   it('toggles an active user to courier, updating the DB column and stripping password_hash', async () => {
     const user = await createActiveUser(1);
     const result = await meService.changeActiveView(user.id, 'courier');
-    expect(result.active_view).toBe('courier');
+    expect(result.activeView).toBe('courier');
     expect(result).not.toHaveProperty('password_hash');
     expect((await getUserByEmail(user.email))!.active_view).toBe('courier');
   });
@@ -31,7 +31,7 @@ describe('changeActiveView', () => {
     const user = await createActiveUser(1);
     await meService.changeActiveView(user.id, 'courier');
     const result = await meService.changeActiveView(user.id, 'requester');
-    expect(result.active_view).toBe('requester');
+    expect(result.activeView).toBe('requester');
     expect((await getUserByEmail(user.email))!.active_view).toBe('requester');
   });
 
@@ -39,14 +39,14 @@ describe('changeActiveView', () => {
     const user = await createActiveUser(1);
     // Default is already 'requester'; there is no existing-value check (unlike status/role).
     const result = await meService.changeActiveView(user.id, 'requester');
-    expect(result.active_view).toBe('requester');
+    expect(result.activeView).toBe('requester');
   });
 
   it('returns the full user row shape minus password_hash', async () => {
     const user = await createActiveUser(1);
     const result = await meService.changeActiveView(user.id, 'courier');
     expect(Object.keys(result).sort()).toEqual(
-      ['active_view', 'created_at', 'email', 'id', 'role', 'status', 'updated_at', 'username'].sort(),
+      ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
     );
   });
 
