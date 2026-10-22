@@ -21,6 +21,13 @@
  *        in the browser over the loaded errands.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isLoggedIn/sessionReady from the new AuthContext instead of DemoContext, per
+ *        instructions.md Stage 16b. /requests stays a public, soft-gated page (its own
+ *        ApiNotice prompt), not wrapped in RequireAuth.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +37,7 @@ import RequestCard from "../components/RequestCard";
 import EmptyState from "../components/EmptyState";
 import Button from "../components/Button";
 import { useApiNotice } from "../components/ApiNotice";
-import { useDemo } from "../context/DemoContext";
+import { useAuth } from "../context/AuthContext";
 import { listOrders } from "../api/orders";
 import { useLocationNames } from "../api/lookups";
 import { useReferenceData } from "../api/useApi";
@@ -82,7 +89,7 @@ function matches(order, query) {
 // Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 validation, F3.5.1/F3.5.2 updates.
 export default function RequestBoard() {
   const navigate = useNavigate();
-  const { isLoggedIn, sessionReady } = useDemo();
+  const { isLoggedIn, sessionReady } = useAuth();
   const [filter, setFilter] = useState("All");
   const [locationId, setLocationId] = useState("");
   const [sortKey, setSortKey] = useState("deadline");

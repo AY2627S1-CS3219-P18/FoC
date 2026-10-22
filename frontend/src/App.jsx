@@ -18,16 +18,24 @@
  * Scope: Added the route for editing an existing request.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Added /login; wrapped the four pages that used to gate themselves via the deleted
+ *        LoginModal (Activity, Wallet, Chat, CreateRequest, including the edit route) in
+ *        RequireAuth; removed the LoginModal mount, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
-import LoginModal from "./components/LoginModal";
 import DemoControls from "./components/DemoControls";
 import ChatBubble from "./components/ChatBubble";
+import { RequireAuth } from "./components/RouteGuards";
 import Landing from "./pages/Landing";
+import Login from "./pages/Login";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
 import CreateRequest from "./pages/CreateRequest";
@@ -59,15 +67,51 @@ export default function App() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/suppliers/:id" element={<SupplierDetail />} />
-          <Route path="/requests/new" element={<CreateRequest />} />
-          <Route path="/requests/:id/edit" element={<CreateRequest />} />
+          <Route
+            path="/requests/new"
+            element={
+              <RequireAuth>
+                <CreateRequest />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/requests/:id/edit"
+            element={
+              <RequireAuth>
+                <CreateRequest />
+              </RequireAuth>
+            }
+          />
           <Route path="/requests" element={<RequestBoard />} />
-          <Route path="/activity" element={<Activity />} />
+          <Route
+            path="/activity"
+            element={
+              <RequireAuth>
+                <Activity />
+              </RequireAuth>
+            }
+          />
           <Route path="/chat" element={<Navigate to="/chat/r6" replace />} />
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/wallet" element={<Wallet />} />
+          <Route
+            path="/chat/:id"
+            element={
+              <RequireAuth>
+                <Chat />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/wallet"
+            element={
+              <RequireAuth>
+                <Wallet />
+              </RequireAuth>
+            }
+          />
           <Route path="/admin/suppliers" element={<AdminSuppliers />} />
           <Route path="/admin/suppliers/new" element={<AdminSupplierForm />} />
           <Route
@@ -78,7 +122,6 @@ export default function App() {
         </Routes>
       </main>
       {showFooter && <Footer />}
-      <LoginModal />
       <ChatBubble />
       <DemoControls />
     </div>

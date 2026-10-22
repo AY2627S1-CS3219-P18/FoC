@@ -15,6 +15,16 @@
  *        and super admin roles of the logged-in session. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: AdminOnly and the admin check below now read from the new AuthContext instead of
+ *        DemoContext, and the "Log in" button calls requireAuth instead of the deleted
+ *        LoginModal's requireLogin, per instructions.md Stage 16b. AdminOnly's own rendering
+ *        (its inline "Admins only"/"Log in" message) is unchanged - this page is not wrapped
+ *        in the new generic RequireRole/Forbidden, which is reserved for /admin/users
+ *        (stage 16g).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -25,7 +35,7 @@ import CategoryPills from '../components/CategoryPills'
 import EmptyState from '../components/EmptyState'
 import SupplierImage from '../components/SupplierImage'
 import { Pager, useApiNotice } from '../components/ApiNotice'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 import { useApi, useReferenceData } from '../api/useApi'
 import { deleteSupplier, listAdminSuppliers } from '../api/suppliers'
 
@@ -54,7 +64,7 @@ function Badge({ tone, children }) {
 
 // The service answers 403 to a non-admin; the screen mirrors that without a request.
 export function AdminOnly({ children }) {
-  const { isAdmin, isLoggedIn, sessionReady, requireLogin } = useDemo()
+  const { isAdmin, isLoggedIn, sessionReady, requireAuth } = useAuth()
   if (!sessionReady) return <p className="page-width page-gutter py-10 text-sm text-ink-40">Loading…</p>
   if (isAdmin) return children
   return (
@@ -64,7 +74,7 @@ export function AdminOnly({ children }) {
         body="Supplier management needs an admin or super admin account."
         action={
           isLoggedIn ? null : (
-            <Button size="sm" onClick={() => requireLogin('Log in to manage suppliers.')}>
+            <Button size="sm" onClick={() => requireAuth('Log in to manage suppliers.')}>
               Log in
             </Button>
           )
@@ -117,7 +127,7 @@ function DeleteDialog({ supplier, busy, error, onCancel, onConfirm }) {
 
 // Admin list: includes inactive and soft-deleted suppliers (§6.3) and shows isActive/isDeleted.
 export default function AdminSuppliers() {
-  const { isAdmin } = useDemo()
+  const { isAdmin } = useAuth()
   const { locations, categories } = useReferenceData()
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')

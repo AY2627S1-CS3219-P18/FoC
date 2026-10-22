@@ -5,17 +5,24 @@
  *        Supplier Service. Visual implementation only. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads session state from the new AuthContext instead of DemoContext, and the "Log
+ *        in" button calls requireAuth instead of the deleted LoginModal's requireLogin, per
+ *        instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Button from './Button'
 import EmptyState from './EmptyState'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Shown in place of a list or page while it cannot be displayed. Returns null when there is nothing to
 // say, so a screen can render it first and continue when it is null.
 export function useApiNotice({ loading, error }, what = 'suppliers') {
-  const { isLoggedIn, sessionReady, requireLogin } = useDemo()
+  const { isLoggedIn, sessionReady, requireAuth } = useAuth()
 
   if (!sessionReady || (isLoggedIn && loading)) {
     return <p className="mt-6 text-sm text-ink-40">Loading {what}…</p>
@@ -27,7 +34,7 @@ export function useApiNotice({ loading, error }, what = 'suppliers') {
           title={'Log in to see ' + what}
           body="The supplier list comes from the Supplier Service, which needs an account."
           action={
-            <Button size="sm" onClick={() => requireLogin('Log in to see ' + what + '.')}>
+            <Button size="sm" onClick={() => requireAuth('Log in to see ' + what + '.')}>
               Log in
             </Button>
           }

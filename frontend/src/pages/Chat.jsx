@@ -11,9 +11,16 @@
  *        reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: /chat/:id is now wrapped in RequireAuth (App.jsx), which replaces the gating effect
+ *        that opened the deleted LoginModal via requireLogin, per instructions.md Stage 16b.
+ *        `currentUser`/`requests` stay on DemoContext (mocked chat data, unrelated to auth).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Languages, Paperclip, Phone, Send, Video } from 'lucide-react'
 import { threads, LANG_NAMES, SYSTEM_USER, threadHref, findThread } from '../data/messages'
@@ -24,12 +31,7 @@ import { useDemo } from '../context/DemoContext'
 // Nice-to-have: real-time chat and translation. Translations are hardcoded in messages.js.
 export default function Chat() {
   const { id } = useParams()
-  const { currentUser, requests, isLoggedIn, sessionReady, requireLogin } = useDemo()
-
-  // Gated when logged out (§9): the page stays visible behind the scrim.
-  useEffect(() => {
-    if (sessionReady && !isLoggedIn) requireLogin('You need an account to open this chat.')
-  }, [sessionReady, isLoggedIn, requireLogin])
+  const { currentUser, requests } = useDemo()
   const [autoTranslate, setAutoTranslate] = useState(false)
   const [translated, setTranslated] = useState({})
 

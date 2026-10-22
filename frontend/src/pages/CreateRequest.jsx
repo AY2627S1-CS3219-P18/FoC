@@ -55,9 +55,17 @@
  *        Wallet.jsx does, so a reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: /requests/new and /requests/:id/edit are now wrapped in RequireAuth (App.jsx), which
+ *        replaces the gating effect and the inline requireLogin check in onPost that opened
+ *        the deleted LoginModal. `credits` now comes from the new AuthContext instead of
+ *        DemoContext, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Loader2, Minus, Plus } from 'lucide-react'
 import Button from '../components/Button'
@@ -67,7 +75,7 @@ import { getSupplier, listSuppliers } from '../api/suppliers'
 import { createOrder, editOrder, listMyOrders, reserveFailureMessage } from '../api/orders'
 import { watchOrderEvents } from '../realtime/orderSocket'
 import { qualifiedName } from '../data/suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 const MAX_CHARS = 200
 const RECHECK_MS = 5000
@@ -153,13 +161,8 @@ export default function CreateRequest() {
 function RequestForm({ order }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { credits, isLoggedIn, sessionReady, requireLogin } = useDemo()
+  const { credits } = useAuth()
   const isEdit = order !== null
-
-  // Gated when logged out (§9): the page stays visible behind the scrim.
-  useEffect(() => {
-    if (sessionReady && !isLoggedIn) requireLogin('You need an account to post an errand.')
-  }, [sessionReady, isLoggedIn, requireLogin])
 
   const [supplierId, setSupplierId] = useState(
     isEdit ? String(order.supplierId) : params.get('supplier') || '',
@@ -208,7 +211,6 @@ function RequestForm({ order }) {
   }
 
   const onPost = async () => {
-    if (!requireLogin('You need an account to post an errand.')) return
     setPosting(true)
     setPostError(null)
     const watch = watchOrderEvents() // before the POST, so a fast outcome is not missed
