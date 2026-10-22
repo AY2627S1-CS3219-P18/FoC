@@ -5779,3 +5779,67 @@ Read the current `getOwnProfile` (`user-service/src/services/me.service.ts`) and
 KIVed the error for now, accepted all other changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-22 — Fix: `bootstrapTestUser` missing credit-allocation outbox row
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug, generate
+**Scope:** Debugging | Implementation code
+**Governing decision:** instructions.md ("one `credit_allocation_outbox` row for that user, created in the same transaction; it becomes `sent` and credit-service shows a 20-credit balance"); same pattern already implemented in `bootstrapSuperAdmin` (Stage 14d) and the registration flow (`auth.service.ts`)
+
+**Prompts (exact):**
+
+> btw the bootstrap doesnt create the 20 credit balance yet so the test user breaks
+>
+> is there a bootstrap for regular user?
+
+> wait can you remember the changes you did, and undo it first, i want to git commit my other cahnges first
+
+> okay redo the changes, then do the git workflow
+
+**Key responses:**
+Found `bootstrapTestUser` (`user-service/src/services/bootstrap.service.ts`), the opt-in seeded-normal-user bootstrap (`TEST_USER_*` env vars). Confirmed it created the user row but never inserted a `credit_allocation_outbox` row, unlike `bootstrapSuperAdmin` right above it and the real registration flow in `auth.service.ts`, both of which insert the outbox row in the same transaction as user creation per the governing decision already recorded in instructions.md. This is implementing the existing decision consistently, not a new schema/architecture choice. Wrapped `bootstrapTestUser`'s `createUser` call in `withTransaction` and added `creditOutboxQueries.insertCreditAllocation(created.id, client)` in the same transaction, mirroring `bootstrapSuperAdmin`. Verified: `tsc --noEmit` clean; `vitest run tests/services/bootstrap.service.test.ts` - all 17 existing tests pass unchanged (no test currently asserts the outbox row for this path - flagged below).
+
+**Files:**
+
+- `user-service/src/services/bootstrap.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. No test asserts the test-user bootstrap now creates its outbox row (mirroring however/whether the super-admin path is tested for this). Flagged, not added, since adding test coverage wasn't asked for.
+
+**What I kept/changed/rejected:**
+Asked to add test cases.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Fix: test coverage for the credit-allocation outbox row on `bootstrapTestUser`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** same as the entry above (instructions.md credit-allocation outbox decision)
+
+**Prompts (exact):**
+
+> let's add one
+
+**Key responses:**
+Added `getCreditAllocationOutboxRows(userId)` to `tests/helpers/db.ts` - no existing test helper queried `credit_allocation_outbox`; confirmed `truncateAll('users CASCADE')` already clears it via the table's `ON DELETE CASCADE` on `user_id`, so no change to `truncateAll` was needed. Added a test in `bootstrap.service.test.ts` asserting `bootstrapTestUser` leaves exactly one `pending` outbox row for the new user. Verified: `tsc --noEmit` clean; `npm run lint` clean; `vitest run tests/services/bootstrap.service.test.ts` - 18 tests pass (the 17 from the prior entry plus this new one).
+
+**Files:**
+
+- `user-service/tests/services/bootstrap.service.test.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -2,6 +2,10 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - SQL helpers for manipulating test DB state directly
 // Author review:
+// 2026-10-22: Added getCreditAllocationOutboxRows, a read helper for the
+//   credit_allocation_outbox test coverage on bootstrapTestUser. No requirements,
+//   architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -37,6 +41,16 @@ export async function getOtps(userId: string, purpose?: OtpPurpose): Promise<Otp
     : await pool.query<OtpRow>('SELECT * FROM users_otps WHERE user_id = $1 ORDER BY created_at', [
         userId,
       ]);
+  return r.rows;
+}
+
+export async function getCreditAllocationOutboxRows(
+  userId: string,
+): Promise<{ status: string }[]> {
+  const r = await pool.query<{ status: string }>(
+    'SELECT status FROM credit_allocation_outbox WHERE user_id = $1',
+    [userId],
+  );
   return r.rows;
 }
 
