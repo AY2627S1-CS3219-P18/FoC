@@ -7,6 +7,11 @@
 --    existing user-service/src/db/init.sql.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
 --    Author review: Wee Jean
+--  2026-10-22: Credit transfer consumer - dead_letter_jobs table for the BullMQ worker.
+--    Columns mirror the sibling services'; snake_case per the team decision of
+--    2026-10-22. No requirements, architecture, schema, or API decisions were made by
+--    the AI tool.
+--    Author review:
 
 -- ---------------------------------------------------------------------------
 -- Transaction types (F20.1.1)
@@ -125,3 +130,33 @@ CREATE INDEX IF NOT EXISTS transaction_log_destination_user_idx
 -- the same privileges. Role creation differs between the two only in where the
 -- password comes from.
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- dead_letter_jobs
+--
+-- Where a credit_transfer job lands once BullMQ will not run it again: either the
+-- failure is permanent (an UnrecoverableError from the classification table in
+-- src/worker/classifyTransferError.ts) or the fifth attempt has failed.
+--
+-- Columns mirror the sibling services' dead_letter_jobs (order-service's Prisma model
+-- and supplier-service's init.sql) so an administrator sees one shape across the
+-- system. Names are snake_case here, matching this service's own schema rather than
+-- order-service's camelCase (team decision 2026-10-22).
+--
+-- GENERATED ALWAYS AS IDENTITY rather than BIGSERIAL: BIGSERIAL creates a sequence
+-- that needs its own GRANT USAGE, SELECT, and without it every INSERT by credit_app
+-- fails. An identity column is covered by the table privilege alone.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  job_id       TEXT NOT NULL,
+  task_name    TEXT NOT NULL,
+  payload      JSONB NOT NULL,
+  error_trace  TEXT NOT NULL,
+  failed_at    TIMESTAMPTZ NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'UNRESOLVED'
+);
+
+-- An administrator's query is "what is still outstanding?", so status is the index.
+CREATE INDEX IF NOT EXISTS dead_letter_jobs_status_idx
+  ON dead_letter_jobs (status);
