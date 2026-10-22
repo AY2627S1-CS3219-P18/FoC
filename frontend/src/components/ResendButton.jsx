@@ -9,6 +9,13 @@
  *        onError (e.g. NO_PENDING_REGISTRATION, which the decisions table shows as a banner).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added an optional `label` prop (default unchanged: "Resend code"), so Register.jsx
+ *        can reuse the same cooldown/limit-aware control for its "Send a new code" button
+ *        (instructions.md Stage 16c) without a second, separately-stateful resend control.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -17,7 +24,7 @@ import { errorMessages } from '../api/errorMessages'
 
 const DEFAULT_COOLDOWN_SECONDS = 60
 
-export default function ResendButton({ onResend, onError, disabled = false }) {
+export default function ResendButton({ onResend, onError, disabled = false, label = 'Resend code' }) {
   const [cooldown, setCooldown] = useState(0)
   const [limitReached, setLimitReached] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -58,7 +65,7 @@ export default function ResendButton({ onResend, onError, disabled = false }) {
       disabled={disabled || busy || cooldown > 0}
       onClick={handleClick}
     >
-      {cooldown > 0 ? 'Resend in ' + cooldown + 's' : busy ? 'Sending…' : 'Resend code'}
+      {cooldown > 0 ? 'Resend in ' + cooldown + 's' : busy ? 'Sending…' : label}
     </Button>
   )
 }

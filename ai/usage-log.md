@@ -6045,3 +6045,46 @@ Verified: `npm run build` (`vite build`) succeeds. `npm run lint` (`oxlint`): on
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16c: Registration (`/register`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16c (the registration form/OTP spec) and its Stage 16 decisions table (OTP input behaviour, resend cooldown/limit, error display rules, `ACCOUNT_NOT_VERIFIED` redirect snippet, `USERNAME_TAKEN`/`EMAIL_TAKEN` hint text)
+
+**Prompts (exact):**
+
+> let's start 16c, dont forget ot pull main first, and the git workflow too
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16b PR #129) and branched `feat/stage-16c-registration` from it, per the team's standing git workflow.
+
+Created `src/pages/Register.jsx`: one page, two steps (`form`, `otp`), starting at `location.state.step` (default `form`) exactly as Stage 16b's `Login.jsx` already sends it for `ACCOUNT_NOT_VERIFIED`. Form step: username/email/password with the Stage 16b client validators (blur + submit), `POST /auth/register`, success moves to the OTP step; `USERNAME_TAKEN`/`EMAIL_TAKEN` show inline on that field plus the "Already signed up? Log in to finish verifying" hint linking to `/login`; anything else falls back to a form banner via `errorMessages.describeError`. OTP step: `OtpInput` → `POST /auth/verify-otp` (`purpose: 'registration'`) — `INVALID_OTP` clears the boxes and refocuses via the component's exposed `reset()`, `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` show an inline error pointing at resend, success navigates to `/login` with a success banner. Resend uses `POST /auth/resend-otp` (`purpose: 'registration'`); `NO_PENDING_REGISTRATION` and anything else `ResendButton` doesn't itself handle (cooldown/limit) surface as a banner.
+
+When arriving from `Login.jsx`'s `ACCOUNT_NOT_VERIFIED` redirect (`location.state.step === 'otp'`, captured once at mount so it stays stable across the page's own step transitions), the OTP step instead shows a "Send a new code" button at the top (does not send automatically) and, if no email was carried in (the user logged in by username), an email field above the boxes with the boxes/resend/verify disabled until it's filled. This reuses the same `ResendButton` instance repositioned to the top rather than a second independent one, so there is one cooldown/limit state, not two that could disagree — `ResendButton` gained an optional `label` prop (default unchanged: "Resend code") to support this.
+
+`src/api/auth.js` gained `register`, `verifyOtp`, `resendOtp` — thin wrappers over the existing `request()` helper, bodies matching `user-service/src/controllers/auth.controller.ts`'s `registerSchema`/`verifyOtpSchema`/`resendOtpSchema` exactly (`{username,email,password}`, `{email,otp,purpose}`, `{email,purpose}`). `App.jsx` added the `/register` route.
+
+Verified: `npm run build` (`vite build`) succeeds; `npm run lint` (`oxlint`) shows no new findings in the touched files (same pre-existing warning set as the 16b branch). Ran Playwright (headless Chromium, against the real Docker stack already running) through three scenarios, reading each OTP from the user-service container's dev-console email log:
+
+1. Fresh registration happy path: form → `201` → OTP step (no stray email field, no "Send a new code" banner) → wrong code clears the boxes and shows "That code is incorrect." → correct code → `/login` with "Account verified. You can now log in." shown.
+2. Abandon-and-retry via username: registered, abandoned at OTP, logged in again with the username (not email) → redirected to `/register`'s OTP step with the "Send a new code" button and an email field, both gated until the email is filled; clicking it while still inside the registration OTP's cooldown surfaced "Resend in 60s" (cooldown working as intended, not a bug); verified with the original still-valid code → `/login` success banner again.
+3. Caught and fixed one of my own bugs before considering this done: the OTP step's "email field for a missing email" was gated only on `!initial.email`, so it also appeared (pre-filled, harmless but wrong per spec) on the ordinary post-registration flow, where the email is always known. Fixed to `arrivedFromLogin && !initial.email`; confirmed fixed by scenario 1 above.
+
+**Files:**
+
+- `frontend/src/pages/Register.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/components/ResendButton.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

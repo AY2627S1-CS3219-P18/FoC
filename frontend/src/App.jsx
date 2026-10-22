@@ -25,6 +25,11 @@
  *        RequireAuth; removed the LoginModal mount, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /register, per instructions.md Stage 16c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect } from "react";
@@ -36,6 +41,7 @@ import ChatBubble from "./components/ChatBubble";
 import { RequireAuth } from "./components/RouteGuards";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
 import CreateRequest from "./pages/CreateRequest";
@@ -68,6 +74,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/suppliers/:id" element={<SupplierDetail />} />
           <Route
