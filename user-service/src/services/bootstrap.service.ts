@@ -9,6 +9,13 @@
 //   or API decisions were made by the AI tool — see instructions.md Stage 14 for the governing
 //   decision.
 // Author review:
+// 2026-10-22: Fix - bootstrapTestUser now creates its credit-allocation outbox row in the same
+//   transaction as the user, matching bootstrapSuperAdmin and the registration flow
+//   (auth.service.ts), so the seeded test user gets the same 20-credit allocation. No
+//   requirements, architecture, schema, or API decisions were made by the AI tool — this applies
+//   the existing governing decision in instructions.md ("one credit_allocation_outbox row for
+//   that user, created in the same transaction").
+// Author review:
 
 import bcrypt from 'bcrypt';
 import { config } from '../config.js';
@@ -63,6 +70,13 @@ throw new Error(
 
 // Seeds a normal (non-admin) user for local development. Opt-in: does nothing unless all three
 // TEST_USER_* values are set. Never modifies an existing account.
+//
+// 2026-10-22: creates the user and its credit-allocation outbox row in the same transaction,
+// matching bootstrapSuperAdmin and the registration flow (auth.service.ts), so the seeded user
+// gets the same 20-credit allocation per the governing decision in instructions.md Stage 15/16
+// ("one credit_allocation_outbox row for that user, created in the same transaction"). Previously
+// this bootstrap created the user with no outbox row, so Credit Service never saw a balance for
+// it.
 export async function bootstrapTestUser(): Promise<void> {
   const { username, email, password } = config.testUser;
   if (!username || !email || !password) {
@@ -86,11 +100,17 @@ export async function bootstrapTestUser(): Promise<void> {
   }
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_WORK_FACTOR);
-  await userQueries.createUser({
-    username: normalisedUsername,
-    email: normalisedEmail,
-    passwordHash,
-    status: 'active',
+  await withTransaction(async (client) => {
+    const created = await userQueries.createUser(
+      {
+        username: normalisedUsername,
+        email: normalisedEmail,
+        passwordHash,
+        status: 'active',
+      },
+      client,
+    );
+    await creditOutboxQueries.insertCreditAllocation(created.id, client);
   });
   console.log(`Test user bootstrap: created user '${normalisedUsername}'`);
 }
