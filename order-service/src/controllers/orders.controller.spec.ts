@@ -54,6 +54,11 @@
  *        open; edit fixtures carry status `open`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): 404 coverage for a missing order and for a non-UUID :id on the
+ *        transition and edit routes; the unsupported-field edit test uses a UUID :id.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -247,7 +252,7 @@ describe('PATCH /orders/:id/edit', () => {
 
   it('returns a user-facing validation message for unsupported fields', async () => {
     await request(appWith())
-      .patch('/orders/order-1/edit')
+      .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(USER))
       .send({ unsupported: true })
       .expect(400, {
@@ -668,5 +673,39 @@ describe('POST /orders/:id/cancel', () => {
       .post(`/orders/${orderId}/cancel`)
       .set('authorization', bearer(courierId))
       .expect(403, { ok: false, error: 'FORBIDDEN' });
+  });
+});
+
+describe('404 ORDER_NOT_FOUND on /orders/:id routes', () => {
+  const userId = '0192f0c4-0000-7000-8000-00000000000b';
+
+  it('404 when the order does not exist', async () => {
+    const res = await request(appWith())
+      .post('/orders/0192f0c4-0000-7000-8000-0000000000ff/accept')
+      .set('authorization', bearer(userId))
+      .expect(404);
+    expect(res.body).toMatchObject({ ok: false, error: 'ORDER_NOT_FOUND' });
+  });
+
+  it.each(['accept', 'pickup', 'deliver', 'complete', 'cancel'])(
+    '404 for a non-UUID :id on POST /orders/:id/%s, without querying the database',
+    async (action) => {
+      const findUnique = vi.fn(async () => null);
+      await request(appWith(async () => [], { findUnique }))
+        .post(`/orders/not-a-uuid/${action}`)
+        .set('authorization', bearer(userId))
+        .expect(404);
+      expect(findUnique).not.toHaveBeenCalled();
+    },
+  );
+
+  it('404 for a non-UUID :id on PATCH /orders/:id/edit', async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    await request(appWith(async () => [], { updateMany }))
+      .patch('/orders/123/edit')
+      .set('authorization', bearer(userId))
+      .send({ description: 'x' })
+      .expect(404);
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });
