@@ -9,6 +9,28 @@
  *        they were.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added forceReauth, per instructions.md Stage 16e's decision for a successful
+ *        password change: the backend has already revoked every refresh token for this user
+ *        (including this browser's), so there is nothing to call POST /auth/logout against —
+ *        this clears client state the same way logout() does, minus that network call, and
+ *        redirects to /login with a message immediately rather than waiting for the next
+ *        proactive refresh to discover the session is dead.
+ *
+ *        forceReauth is normally called from a RequireAuth-protected page (/account). Carrying
+ *        its message through react-router's navigate(..., { state }) turned out to race
+ *        RequireAuth's own redirect: flipping auth state to anonymous makes RequireAuth
+ *        re-render before this navigate's location update has landed (confirmed with an actual
+ *        Playwright run plus console tracing, not just reasoning about it — neither reordering
+ *        the calls nor wrapping the call in flushSync, React's or react-router v7's own
+ *        navigate(..., { flushSync: true }) option, changed the outcome), so RequireAuth's own
+ *        `{ from: location }` wins and the banner silently never renders. Routed the message
+ *        through pendingAuthMessage/consumePendingAuthMessage below instead — a plain
+ *        module-level variable outside React state entirely sidesteps the race, since it
+ *        doesn't matter any more which navigate call's router state wins.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -16,13 +38,25 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as authApi from '../api/auth'
 import * as profileApi from '../api/profile'
 import { getBalance } from '../api/credits'
-import { setOnSessionExpired } from '../api/http'
+import { setAccessToken, setOnSessionExpired } from '../api/http'
 import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 
 const AuthContext = createContext(null)
 
 /** Logged out, or the balance could not be read. Module-scoped so its identity is stable. */
 const NO_CREDITS = { available: 0, reserved: 0, total: 0 }
+
+// See forceReauth below for why this lives outside React state. Read with a pure lazy useState
+// initializer (safe under StrictMode's double-invoked renders, since reading doesn't mutate)
+// and cleared separately by the reader's own effect (idempotent, so a StrictMode double-invoked
+// effect is also safe).
+let pendingAuthMessage = null
+export function consumePendingAuthMessage() {
+  return pendingAuthMessage
+}
+export function clearPendingAuthMessage() {
+  pendingAuthMessage = null
+}
 
 export function AuthProvider({ children }) {
   // null while logged out or still restoring; { id, role, username, email, activeView } once known.
@@ -91,6 +125,23 @@ export function AuthProvider({ children }) {
       navigate('/login')
     }
   }, [navigate])
+
+  // Same client-state clearing as logout(), without the POST /auth/logout call: for a
+  // successful password change, the backend has already revoked every refresh token for this
+  // user, this browser's included, so there is no session left to log out of. The message
+  // travels via pendingAuthMessage (see above), not router state, so it doesn't matter whether
+  // this navigate or RequireAuth's own competing redirect (also firing once isLoggedIn flips)
+  // is the one that actually lands.
+  const forceReauth = useCallback(
+    (message) => {
+      pendingAuthMessage = message
+      setAccessToken(null)
+      setUser(null)
+      setStatus('anonymous')
+      navigate('/login')
+    },
+    [navigate],
+  )
 
   // For later sub-stages: merge fields into `user` after a profile change (e.g. a new
   // username/email once the change is confirmed).
@@ -167,6 +218,7 @@ export function AuthProvider({ children }) {
       isAdmin,
       login,
       logout,
+      forceReauth,
       updateUser,
       setActiveView,
       requireAuth,
@@ -181,6 +233,7 @@ export function AuthProvider({ children }) {
       isAdmin,
       login,
       logout,
+      forceReauth,
       updateUser,
       setActiveView,
       requireAuth,

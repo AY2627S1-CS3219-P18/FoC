@@ -9,14 +9,22 @@
  *        doesn't forbid showing it).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Also shows AuthContext.forceReauth's message (Stage 16e, after a password change) via
+ *        consumePendingAuthMessage — see AuthContext.jsx for why that message travels outside
+ *        router state. Read once with a lazy useState initializer (so it survives whichever
+ *        redirect actually lands on this page) and cleared by its own effect.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
 import FormBanner from '../components/FormBanner'
 import Logo from '../components/Logo'
-import { useAuth } from '../context/AuthContext'
+import { clearPendingAuthMessage, consumePendingAuthMessage, useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { login } = useAuth()
@@ -26,8 +34,13 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [forcedMessage] = useState(consumePendingAuthMessage)
 
-  const successMessage = location.state?.successMessage
+  useEffect(() => {
+    clearPendingAuthMessage()
+  }, [])
+
+  const successMessage = location.state?.successMessage ?? forcedMessage
   const reason = location.state?.reason
 
   const onSubmit = async (e) => {
