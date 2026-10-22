@@ -11,6 +11,10 @@
 //    transfer worker consumes from. Same shape as the sibling services' env.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-10-22: Updated a comment's doc path after user-service's docs/local-dev-setup.md
+//    was renamed to docs/user-service-instructions.md. No requirements, architecture,
+//    schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { z } from 'zod';
 
@@ -57,7 +61,7 @@ export const config = {
     password: env.DB_PASSWORD,
   },
   userServiceUrl: env.USER_SERVICE_URL,
-  // Published by user-service; see user-service/docs/jwks-verification-guide.md.
+  // Published by user-service; see user-service/docs/user-service-instructions.md (Part 2).
   jwksUrl: new URL('/auth/.well-known/jwks.json', env.USER_SERVICE_URL),
   redis: {
     host: env.REDIS_HOST,

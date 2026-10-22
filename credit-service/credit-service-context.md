@@ -1,3 +1,14 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+Scope: Updated a doc path reference after user-service's docs/local-dev-setup.md was renamed
+       to docs/user-service-instructions.md. No requirements, architecture, schema, or API
+       decisions were made by the AI tool. Note for the team: this file has been materially
+       edited by AI tools in earlier sessions (see ai/usage-log.md) without a header being
+       added at the time; this entry only covers today's edit, not that earlier history.
+Author review:
+-->
+
 # Credit Service — Development Context
 
 **Project:** CS3219 AY2627S1, FoC — peer-to-peer campus errand platform
@@ -61,7 +72,7 @@ service's database.
 1. ~~How Credit Service authenticates callers.~~ **RESOLVED — User Service publishes a
    JWKS at `/auth/.well-known/jwks.json` (2026-10-17) and Credit Service verifies RS256
    tokens locally, reading `sub` and `role` from the token. `GET /auth/verify` no longer
-   exists.** See `user-service/docs/jwks-verification-guide.md`. No longer blocks
+   exists.** See `user-service/docs/user-service-instructions.md` (Part 2). No longer blocks
    F19.5.2 or F20.2.1.
 2. Whether User Service calls `POST /credits/allocate` after OTP verification, or
    Credit Service subscribes to a registration event.

@@ -5449,6 +5449,7 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
 ## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -5500,7 +5501,7 @@ Accepted all changes.
    - read `{ requestId, courierId }`;
    - treat `409 ALREADY_TRANSFERRED` as done;
    - dead-letter immediately on `404 COURIER_NOT_FOUND`, `404 RESERVATION_NOT_FOUND` and `409 ALREADY_RELEASED`.
-   If his worker has no custom strategy, BullMQ fails retries of `custom`-backoff jobs.
+     If his worker has no custom strategy, BullMQ fails retries of `custom`-backoff jobs.
 3. **No outcome reaches order-service** (deferred). A completed order whose transfer dead-letters still reads `completed`.
 
 **What I kept/changed/rejected:**
@@ -5523,24 +5524,24 @@ Accepted all changes.
 >
 > ## What the producer does — confirmed, build against this
 >
->   Queue key:  queue:credit:transfer   (prefix queue:credit, name transfer)
->   Job name:   credit_transfer
->   jobId:      outbox-<outboxId>
->   Payload:    { requestId, courierId }   — exactly two keys
->   Published:  on completion, in the same prisma transaction as the status change, version-guarded
->   Broker:     order-redis:6379
->   attempts:   5  (1 initial + 4 retries)
->   backoff:    { type: 'custom' }  — delays are MY responsibility
->   removeOnComplete: true
->   removeOnFail:     unset, so failed jobs stay in Redis
->   Relay cadence:    ~1s from completion to the job landing
->   No reply is sent back to order-service.
+> Queue key: queue:credit:transfer (prefix queue:credit, name transfer)
+> Job name: credit_transfer
+> jobId: outbox-<outboxId>
+> Payload: { requestId, courierId } — exactly two keys
+> Published: on completion, in the same prisma transaction as the status change, version-guarded
+> Broker: order-redis:6379
+> attempts: 5 (1 initial + 4 retries)
+> backoff: { type: 'custom' } — delays are MY responsibility
+> removeOnComplete: true
+> removeOnFail: unset, so failed jobs stay in Redis
+> Relay cadence: ~1s from completion to the job landing
+> No reply is sent back to order-service.
 >
 > ## Decisions — implement as given, do not revisit
 >
 > 1. **Separate worker container**, mirroring supplier-worker […]
 > 2. **BullMQ pinned to an exact version, no caret.** order-service's lockfile resolves 6.3.13. Record the dependency in CONTEXT.md §4 as an approved team decision.
-> 3. **Register the backoff strategy. This is load-bearing.** […] `5000 * 5 ** (attemptsMade - 1)` → 5s / 25s / 125s / 625s. Verify the *observed* delays in testing rather than trusting the config took.
+> 3. **Register the backoff strategy. This is load-bearing.** […] `5000 * 5 ** (attemptsMade - 1)` → 5s / 25s / 125s / 625s. Verify the _observed_ delays in testing rather than trusting the config took.
 > 4. **Error classification — one explicit table in code**, not scattered catch blocks […]
 > 5. **dead_letter_jobs in credit-db, snake_case** […] Use `GENERATED ALWAYS AS IDENTITY`, not `BIGSERIAL`.
 > 6. **Grants — surgical, per table.** […] Never `GRANT ... ON ALL TABLES IN SCHEMA public`.
@@ -5554,8 +5555,9 @@ Accepted all changes.
 > Approved — apply both diffs, run docker compose down -v on credit-db, and proceed with the verification exactly as you proposed.
 >
 > Two things from the build prompt that your report didn't cover:
->   - Item 9: what concurrency did you choose and why, and what did you check about BullMQ's 30s lockDuration against our transfer transaction?
->   - Item 2: confirm package.json pins 6.3.13 exactly, no caret.
+>
+> - Item 9: what concurrency did you choose and why, and what did you check about BullMQ's 30s lockDuration against our transfer transaction?
+> - Item 2: confirm package.json pins 6.3.13 exactly, no caret.
 >
 > Report the measured retry gaps as real numbers, not the configured values.
 
@@ -5582,7 +5584,7 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 - Redelivery of an already-transferred request completed as **success**, logged `already applied (ALREADY_TRANSFERRED) … treating as success`, wrote no dead letter and moved no balance.
 - Unknown courier dead-lettered on **attempt 1 of 5**, not the fifth: `UNRESOLVED` row carrying the full payload and an `error_trace` naming `COURIER_NOT_FOUND`, and the job remained in BullMQ's failed set.
 - **Measured retry gaps**, from the worker's own log timestamps rather than the configured values: **5.098 s**, **25.008 s**, **125.003 s**, **625.034 s** (configured 5/25/125/625). Gaps 1-2 came from one run and 3-4 from a second, because an unrelated check restarted a container mid-run; the split is recorded rather than spliced. Corroborated independently by decoding Redis's own delayed-set score, which had attempt 5 scheduled exactly 625.000 s after attempt 4's failure. Attempt 5 then succeeded, credit-db having returned, so the run also shows the full ladder recovering rather than merely expiring.
-- Duplicate jobId: publishing `dup-1` twice moved credits **once** (requester -4, courier +4, one `transfer` row). Note that BullMQ did *not* dedupe the second publish - `removeOnComplete: true` had already freed the id - so the processor genuinely ran twice and the second was stopped by this service's own idempotency (the `ALREADY_TRANSFERRED` guard and the unique index), which is a stronger result than broker-level dedupe.
+- Duplicate jobId: publishing `dup-1` twice moved credits **once** (requester -4, courier +4, one `transfer` row). Note that BullMQ did _not_ dedupe the second publish - `removeOnComplete: true` had already freed the id - so the processor genuinely ran twice and the second was stopped by this service's own idempotency (the `ALREADY_TRANSFERRED` guard and the unique index), which is a stronger result than broker-level dedupe.
 - Transient recovery: with credit-db stopped, attempts 1 and 2 failed with `getaddrinfo ENOTFOUND credit-db` classified `NON_APP_ERROR` → retry; when the database returned, attempt 3 transferred the credits and completed.
 - Broker outage: stopped `order-redis`, restarted `credit-worker` so it started with no broker. The container stayed **Up**, logged `reconnecting in 2000ms` then `2500ms` (the `times * 500` strategy), and on Redis returning resumed consuming immediately — it processed the in-flight job's next attempt without a restart.
 - NFR8.2.3 against the live database as `credit_app`: `DELETE FROM transaction_log` and `UPDATE transaction_log` both `permission denied`, while `UPDATE dead_letter_jobs SET status='RESOLVED'` succeeded. The surgical grant holds.
@@ -5607,19 +5609,106 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 - `credit-service/credit-service-context.md` (modified: §4 records BullMQ 6.3.13 and ioredis as the approved dependency)
 - `credit-service/package.json`, `package-lock.json` (modified: bullmq 6.3.13 and ioredis 5.11.1 pinned exactly; worker scripts)
 - `credit-service/.env.example`, `.env.test` (modified: REDIS_HOST, REDIS_PORT)
-- `compose.yaml` (modified: REDIS_* on credit-service; new credit-worker service)
+- `compose.yaml` (modified: REDIS\_\* on credit-service; new credit-worker service)
 - `.env.example` (modified: comment recording credit-worker's broker)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified: Log index row)
 
 **Deviations / questions raised for the team:**
 
-1. **ioredis had to be added as a second dependency.** BullMQ 6 declares ioredis an optional peer and loads it lazily; under native ESM, which this service is, that load fails with *"BullMQ could not load the optional 'ioredis' package … pass an already-constructed client instance instead"*. The worker logged that error in a loop and consumed nothing. Fixed by installing `ioredis` pinned to `5.11.1` — the version order-service's lockfile resolves — and constructing the client explicitly. It is BullMQ's own transport rather than a separate design choice, and is recorded in §4 alongside BullMQ, but it is a dependency beyond the stack as originally approved and the team should ratify it.
-2. **A mutation check exposed a missing test, and the test was added because of it.** Deleting `settings: { backoffStrategy }` from the Worker left `tsc` and all 122 tests green: the suite covered the strategy *function* but never its *registration*, which is the part that matters. `tests/worker/workerWiring.test.ts` now mocks `bullmq` and `ioredis`, imports `main.ts`, and asserts the constructed Worker's queue name, prefix, concurrency, connection options and registered strategy. With the mutation re-applied it fails.
+1. **ioredis had to be added as a second dependency.** BullMQ 6 declares ioredis an optional peer and loads it lazily; under native ESM, which this service is, that load fails with _"BullMQ could not load the optional 'ioredis' package … pass an already-constructed client instance instead"_. The worker logged that error in a loop and consumed nothing. Fixed by installing `ioredis` pinned to `5.11.1` — the version order-service's lockfile resolves — and constructing the client explicitly. It is BullMQ's own transport rather than a separate design choice, and is recorded in §4 alongside BullMQ, but it is a dependency beyond the stack as originally approved and the team should ratify it.
+2. **A mutation check exposed a missing test, and the test was added because of it.** Deleting `settings: { backoffStrategy }` from the Worker left `tsc` and all 122 tests green: the suite covered the strategy _function_ but never its _registration_, which is the part that matters. `tests/worker/workerWiring.test.ts` now mocks `bullmq` and `ioredis`, imports `main.ts`, and asserts the constructed Worker's queue name, prefix, concurrency, connection options and registered strategy. With the mutation re-applied it fails.
 3. **A test caught a real gap in what the dead letter records.** For a transient exhaustion the row's `error_trace` held only `"Error: Internal server error."` with no error code, while permanent failures carried theirs in the wrapped message. `errorTrace` now prefixes `[CODE]` for any `AppError`, so every row names the code an operator triages on.
-4. **`order-redis` has no persistence configured.** Observed directly: a delayed retry *did* survive `docker stop` / `docker start` of the Redis container, because the container filesystem and its default RDB snapshot survive that. It would not survive `docker compose down`, which removes the container. A transfer awaiting its 625 s retry is therefore lost on a full teardown, and the outbox row that produced it is already deleted, so nothing re-drives it. This is on order-service's side of the boundary and was raised with its owner.
-5. **"A job exhausting all attempts lands in dead_letter_jobs" is proven at the unit level against the real database, not end to end.** The two conditions are coupled: at the integration level the only way to force a *transient* failure is to make credit-db unreachable, and then the dead-letter write necessarily fails too. That path was exercised and is what decision 7's stderr trace exists for. The DB-up exhaustion path is covered by `transferJobProcessor.test.ts`, which asserts the row, its `UNRESOLVED` status and its `error_trace` against a real Postgres.
+4. **`order-redis` has no persistence configured.** Observed directly: a delayed retry _did_ survive `docker stop` / `docker start` of the Redis container, because the container filesystem and its default RDB snapshot survive that. It would not survive `docker compose down`, which removes the container. A transfer awaiting its 625 s retry is therefore lost on a full teardown, and the outbox row that produced it is already deleted, so nothing re-drives it. This is on order-service's side of the boundary and was raised with its owner.
+5. **"A job exhausting all attempts lands in dead_letter_jobs" is proven at the unit level against the real database, not end to end.** The two conditions are coupled: at the integration level the only way to force a _transient_ failure is to make credit-db unreachable, and then the dead-letter write necessarily fails too. That path was exercised and is what decision 7's stderr trace exists for. The DB-up exhaustion path is covered by `transferJobProcessor.test.ts`, which asserts the row, its `UNRESOLVED` status and its `error_trace` against a real Postgres.
 6. **Two things outside credit-service that were already broken.** `user-service` would not start: the team's stage-14 work made `CREDIT_SERVICE_URL` required, and nothing supplies it — fixed locally in the gitignored `user-service/.env`, so the repo still needs a real fix. And `user-service` logs `relation "credit_allocation_outbox" does not exist` on every relay pass, the same empty-volume problem `init.sql` has here. Neither was touched beyond the local env file.
 7. **The four write endpoints remain unauthenticated**, unchanged by this work and still listed as invented in `API.md`. The worker does not go through HTTP, so the queue path is not affected, but the gap stands.
 
 **What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-10-22 — User Service: local dev setup guide for CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** explain, docs
+**Scope:** Debugging | Refactor/Docs
+**Governing decision:** instructions.md Stage 3b/3c (user-service loads all config via `env_file: ./user-service/.env`, created by copying `.env.example`); instructions.md Stage 14a / `user-service/src/config.ts` (CREDIT_SERVICE_URL required, already in `.env.example`); `user-service/src/services/bootstrap.service.ts` (SUPER_ADMIN_PASSWORD complexity rule, already implemented)
+
+**Prompts (exact):**
+
+> Hey! Just a heads-up, the User Service is currently crashing on a fresh checkout because it requires CREDIT_SERVICE_URL, but that isn't defined in the compose.yaml. Could you add CREDIT_SERVICE_URL: http://credit-service:3003 to your environment block in the compose file so the stack boots up cleanly for the D3 demo?
+>
+> can you find the issue?
+
+> wait so what does my teammate need to do to get it working?
+
+> does this change if i'm using docker - should the env variables be my responsiblity since i'm doing user service?
+
+> so should the line be in .env or in compose.yaml?
+
+> so what exactly does my teammate need to do to fix the issue?
+
+> but if it's gitignored, will they have a copy of it?
+
+> and why did i choose to put my env variabels in .env instead of compose.yaml?
+
+> what did the other services do? the same?
+
+> is it a hassle to move everything to compose.yaml now?
+
+> wait, so the super_admin_password in .env is actually used for the actual app when i boot it up? then how are my teammates supposed to get the password, if i shouldn't put it in .env.example
+
+> so basically every teammate just needs to copy .env.example into user/.env, and fill in the missing values
+
+> can give me a full list of instructions, and put it somewhere (maybe where the previous instructions on how to access the public key using jwks is)?
+
+**Key responses:**
+Investigated the reported "crashing on fresh checkout" claim by reading `compose.yaml`, `user-service/.env.example`, `user-service/src/config.ts`, and instructions.md Stages 3b/3c/14a. Found the requested fix (adding `CREDIT_SERVICE_URL` to an inline `environment:` block in `compose.yaml`) was not correct: `user-service` has no inline `environment:` block by design — it loads everything via `env_file: ./user-service/.env`, a gitignored, per-developer file, and `CREDIT_SERVICE_URL` was already correctly recorded in `.env.example` per Stage 14a. Declined to make the requested compose.yaml edit, since it would have introduced an inline environment block deviating from the recorded Stage 3b decision without the team authorizing that change (AGENTS.md §2.1). Explained the real cause (a stale local `.env` predating Stage 14a) and the actual fix (edit the local `.env` file, not compose.yaml). Also explained, from existing code/docs, that `user-service` differs from `order-service`/`credit-service`/`supplier-service` (which do use inline `environment:` blocks), why moving user-service's vars into compose.yaml would mean committing secrets (DB*PASSWORD, SMTP*_, SUPER*ADMIN_PASSWORD) to version control, and how `SUPER_ADMIN_PASSWORD` and the RS256 keypair work (confirmed against `bootstrap.service.ts` and `config.ts`'s Zod schema, and cross-checked against the existing gap flagged in a 2026-10-20-ish entry of this same log). Declined to invent a "why we chose env_file" rationale, since no such rationale is recorded anywhere in the docs and manufacturing one would be drafting a decision rationale (AGENTS.md §2, prohibited). Wrote `user-service/docs/local-dev-setup.md`, consolidating the already-decided setup steps (copy `.env.example`, set `SUPER_ADMIN_PASSWORD` to satisfy the existing complexity check, generate an RS256 keypair with `openssl genrsa`/`openssl rsa` into `user-service/keys/`, leave SMTP/TEST_USER*_ blank in development) into one guide, placed alongside the existing `jwks-verification-guide.md` in the same `user-service/docs/` folder per the user's request. No new requirements, architecture, schema, or API decisions were made; the guide restates decisions already recorded in instructions.md and already-implemented validation in `config.ts`/`bootstrap.service.ts`. No build/test run — this was a documentation-only change to a new Markdown file with no code touched.
+
+**Files:**
+
+- `user-service/docs/local-dev-setup.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. Declined the originally requested edit (adding `CREDIT_SERVICE_URL` to `compose.yaml`'s environment block for `user-service`) as inconsistent with the recorded Stage 3b `env_file` design; see rationale above.
+2. Flagged again (previously flagged in an earlier log entry) that every fresh checkout needs a locally-set `SUPER_ADMIN_PASSWORD` and a generated RS256 keypair before `user-service` will boot — this is now documented in the new guide, but the underlying "first-run setup is manual and easy to miss" gap is unchanged. Not acted on beyond writing the guide, since adding e.g. an automated setup script would be a new tooling choice for the team to decide, not implied by the request.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — User Service: merge jwks-verification-guide.md into local-dev-setup.md
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor, docs
+**Scope:** Refactor/Docs
+**Governing decision:** instructions.md Stage 13d (original jwks-verification-guide.md content, restated verbatim); this is a documentation consolidation, not a new decision
+
+**Prompts (exact):**
+
+> can you merge jwks verificataion into this
+
+**Key responses:**
+Merged `user-service/docs/jwks-verification-guide.md` into `user-service/docs/local-dev-setup.md` as "Part 2", at the user's request (the file was open in their editor). Content was carried over verbatim (heading levels adjusted, one internal cross-reference updated), with a new disclosure header entry recording the merge and its original 2026-10-17 authorship (Stage 13d). Deleted the old file, then updated the three live documentation pointers to it that exist elsewhere in the repo — `credit-service/API.md:31`, `credit-service/credit-service-context.md:64`, `credit-service/src/config.ts:60` — to the new path. Left two other references untouched: `credit-service/src/auth/verifyAccessToken.ts` and `supplier-service/src/middleware/authenticate.ts` each mention the old filename only inside their own historical AI-disclosure header (describing what was true as of a past edit on 2026-10-19/2026-10-20); rewriting those would restate history rather than document current state, so they were left as-is. Also left every mention of the old filename inside `ai/usage-log.md` itself untouched, since that log is append-only and earlier entries are not to be edited. No code behavior changed; no build/test run (documentation-only change).
+
+**Files:**
+
+- `user-service/docs/local-dev-setup.md` (modified: merged in Part 2)
+- `user-service/docs/jwks-verification-guide.md` (deleted)
+- `credit-service/API.md` (modified: path reference)
+- `credit-service/credit-service-context.md` (modified: path reference)
+- `credit-service/src/config.ts` (modified: comment path reference)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+**Author review:** gabriel yap
