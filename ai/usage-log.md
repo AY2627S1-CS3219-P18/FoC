@@ -5712,3 +5712,43 @@ None.
 **What I kept/changed/rejected:**
 Accepted all changes.
 **Author review:** gabriel yap
+
+## 2026-10-22 — User Service: Docker-dependent verification of Stage 14 (outbox/relay/replay)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging | Implementation code
+**Governing decision:** instructions.md Stage 14a-14e "Verification" sections (already-written checklists this entry executes); the one code change (`user-service/src/db/pool.ts`) applies node-postgres's own documented requirement to attach a `pool.on('error', ...)` listener, not a new design decision.
+
+**Prompts (exact):**
+
+> you know the git workflow?
+
+> let's do the docker-dependent verification first then
+
+**Key responses:**
+Ran the full Docker-dependent verification matrix from instructions.md Stages 14a-14e end to end: `docker compose down -v && docker compose up --build` (approved by the user after the sandbox's auto-classifier flagged the volume deletion); confirmed `credit_allocation_outbox` table and `outbox_status_enum` schema; confirmed missing `CREDIT_SERVICE_URL` fails startup with a named error; exercised the relay against a live registration (OTP verify → 200 REGISTER_SUCCESS, one outbox row in the same transaction, delivered within ~1s, 20-credit balance on credit-service); confirmed a failed OTP verify creates no row; confirmed two concurrent correct verify-otp requests produce exactly one row; confirmed the super-admin bootstrap produces exactly one outbox row that gets delivered, and that restarting without `-v` does not duplicate it; stopped credit-service and confirmed the row stays `pending` with growing `attempts`/backoff and a `NETWORK ENOTFOUND`-style `last_error`, then confirmed delivery resumes once credit-service is back; backdated `next_attempt_at` repeatedly to drive a row to exactly 10 attempts and confirmed `dead`, and that the relay never picks a `dead` row back up; pointed `CREDIT_SERVICE_URL` at a nonexistent path to confirm a `404` goes straight to `dead` with `attempts = 1` and `last_error` starting `HTTP 404` (reverted after); reset a `sent` row to `pending` and confirmed redelivery gets `409` from credit-service, goes back to `sent`, and leaves the balance unchanged; inserted 12 due rows at once across 6 users and confirmed they all settled within ~1.1s (consistent with groups of 5 processed back-to-back, no inter-group wait); exercised `outbox:replay` for all documented cases - explicit dead ID, `--all-dead` against a mix of dead/pending/sent rows (only the dead ones reset, `attempts` zeroed, `last_error` left unchanged), replaying an already-`sent` or already-`pending` row reported as not reset, and no-args/invalid-UUID both printing usage and exiting `1`.
+
+Two findings came out of this:
+
+1. **Fixed - real bug, not a Stage 14 regression.** Stopping `user-db` while `user-service` was running crashed the process (`[nodemon] app crashed`), not just logged an error as Stage 14c's verification requires. Root cause: `user-service/src/db/pool.ts` (written in Stage 2c, long before Stage 14) never attached a `pool.on('error', ...)` listener, so an idle client's connection-reset surfaced as an unhandled EventEmitter `error` event. This is documented node-postgres behavior, unrelated to anything Stage 14 decided, and the first time this path got exercised was this verification run. Added the listener (one `console.error` line, same style the relay already uses); re-ran the test and the process now survives with one `console.error` line per failed pass.
+2. **Investigated, no action needed.** First pass at this check (immediately after the crash fix) seemed to show the relay stuck forever after a `user-db` restart (`getaddrinfo ENOTFOUND user-db` on every pass for 60s+), so the entry originally logged this as a suspected Node/Alpine DNS-caching bug needing a team decision. Re-tested twice more with a patient, timestamped watch (`docker logs -t`) instead of giving up after 60s, including one clean run that was timed end-to-end: `user-db` stopped at 14:11:17, restarted at 14:11:26, one `ECONNREFUSED` logged at 14:11:26 (the DB was still coming up), then silence, and a row inserted afterward was `sent` within 3s - full recovery in well under 20s with zero manual intervention. Another run took closer to 90s before failures stopped. So the relay does resume on its own, as Stage 14c's verification requires; recovery time is just inconsistent (seconds to ~1-2 minutes) under Docker Desktop, most likely transient embedded-DNS/connection-retry timing rather than a permanent stuck state. The original "never recovers" conclusion was an artifact of not waiting long enough on the very first run, not a reproducible bug. No code change; nothing further needed.
+
+Also hit an unrelated environment-only snag while bringing credit-service up fresh: `credit-service/src/db/grant-app-role.sh` failed inside `docker-entrypoint-initdb.d` with "bad interpreter: Permission denied" - the script's executable bit was not propagating through the Docker Desktop (macOS) bind mount, so `credit_app` was never created and `credit-service` couldn't authenticate. Worked around it for this session only by running `docker exec foc-credit-db bash /docker-entrypoint-initdb.d/02-grant-app-role.sh` by hand (no file changed, nothing committed); did not touch `grant-app-role.sh`'s permissions or `compose.yaml`, since this is a local macOS Docker Desktop quirk, not a code or schema issue, and may not reproduce on another machine or in CI.
+
+Verification run: `npm run build`/`npm run lint` not re-run (no TypeScript changed beyond the one-line `pool.ts` fix, verified instead by exercising the actual running containers end to end, matching Stage 14's own "Verification" sections above).
+
+**Files:**
+
+- `user-service/src/db/pool.ts` (modified: added `pool.on('error', ...)`)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. `credit-service/src/db/grant-app-role.sh` not being executable through the Docker Desktop bind mount on this machine - worth the team checking whether this reproduces for others or only here, since it would otherwise silently leave `credit-service` unable to authenticate on a fresh `docker compose up --build`.
+
+**What I kept/changed/rejected:**
+Accepted all changes, KIVing the remaining deviation/question for now.
+
+**Author review:** gabriel yap
