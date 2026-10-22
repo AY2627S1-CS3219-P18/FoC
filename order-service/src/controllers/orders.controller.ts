@@ -37,6 +37,10 @@
  *        other state conflicts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): ORDER_NOT_FOUND maps to 404 in statusFor (George).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -207,6 +211,7 @@ export const transitionOrder =
 function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.CREDIT_SERVICE_UNAVAILABLE)) return 503;
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
+  if (errors.includes(ErrorCode.ORDER_NOT_FOUND)) return 404;
   if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
   if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
   if (errors.includes(ErrorCode.ORDER_CONFLICT)) return 409;

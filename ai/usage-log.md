@@ -5450,6 +5450,43 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+## 2026-10-22 — Order service: 404 for missing or non-UUID order ids
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** debug
+**Scope:** Debugging | Implementation code
+**Governing decision:** George (2026-10-22, in session): `ORDER_NOT_FOUND` answers 404; a non-UUID `:id` answers 404 `ORDER_NOT_FOUND` via a `router.param('id')` guard.
+
+**Prompts (exact):**
+
+> Status-code bugs.
+>
+> * `ORDER_NOT_FOUND` isn’t mapped in `statusFor`, so it falls through to 400 instead of 404.
+> * A non-UUID `:id` isn’t validated. With the `@db.Uuid` column, Prisma throws, and Express 5 turns that into a 500. Both will show up during a Postman demo.
+>
+> make a new branch from main and fix
+
+> (answers to the agent's questions) Non-UUID :id → "404 ORDER_NOT_FOUND"; placement → "router.param('id')"
+
+**Key responses:**
+
+- Created branch `fix/order-status-codes` from `main` (75a4b01).
+- `statusFor` maps `ORDER_NOT_FOUND` to 404 (transition and edit handlers).
+- `ordersRouter` registers `router.param('id', …)`: when `isUuid(id)` fails, it answers 404 `{ message: 'Order not found.' }` before any handler or Prisma call. This covers accept, pickup, deliver, complete, cancel and edit. The body follows the `{ message }` shape the existing 401 guards use.
+- The agent asked George for the non-UUID status code and the check's placement instead of choosing them (API decision).
+- Tests: 404 for a missing order; 404 for a non-UUID `:id` on all five transition routes and on edit, with no DB call. The existing unsupported-field edit test used `order-1` as `:id`, which now hits the guard, so it uses a UUID fixture instead.
+- Verification: `tsc --noEmit` clean, `vitest run` 531/531 passed, `oxlint` clean, `prettier --check` clean on the changed files. Run on a copy of `order-service` with Prisma client generated offline. Not exercised against a live database or through Postman.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified, log index row)
+
+**Deviations / questions raised for the team:**
+Asked George which status a non-UUID `:id` returns and where the check lives; implemented his answers.
 ## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -5628,6 +5665,29 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 
 **Author review:**
 
+## 2026-10-22 — Frontend: required-field asterisks on the create-errand form
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George (2026-10-22, in session): mark required fields with `*`. Required set taken from the existing `POST /orders` validation (`MISSING_SUPPLIER`, `MISSING_DESCRIPTION`, `MISSING_DELIVERY_LOCATION`, `MISSING_CREDITS_OFFERED` in `order-service/src/services/orders.service.ts`).
+
+**Prompts (exact):**
+
+> also update the order creation frontend page, for required fields add the *
+> does the API for post order currently return which fields are invalid/empty?
+
+**Key responses:**
+
+- `CreateRequest.jsx`: the `label` helper takes a `required` flag. Pick-up from, What do you need? and Deliver to pass it; the Offer heading carries the same marker (Offer is hidden when editing). The marker is a `text-alert` asterisk hidden from screen readers plus an `sr-only` "(required)". Optional fields (complete-by, Anything else?) are unmarked.
+- Answered the question: `POST /orders` returns 400 `{ message }` with the human messages joined by newlines; it does not return field names or error codes. No API change made.
+- Verification: `vite build` succeeded on a copy of `frontend` with a fresh `npm ci`. Not checked visually in a browser.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified, log index row)
 ## 2026-10-22 — User Service: local dev setup guide for CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -5710,5 +5770,7 @@ Merged `user-service/docs/jwks-verification-guide.md` into `user-service/docs/lo
 None.
 
 **What I kept/changed/rejected:**
+
+**Author review:**
 Accepted all changes.
 **Author review:** gabriel yap

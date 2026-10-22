@@ -15,6 +15,11 @@
  *        GET /orders/mine.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): router.param('id') guard - a non-UUID :id answers 404
+ *        ORDER_NOT_FOUND before reaching Prisma's @db.Uuid column (George).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -22,6 +27,8 @@ import type { RequestStatus } from '../generated/prisma/client.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
 import type { PrismaClient } from '../db/prisma.js';
 import * as ordersController from '../controllers/orders.controller.js';
+import { ErrorCode, ErrorMessage } from '../constants/errors.js';
+import { isUuid } from '../utils/validation.js';
 
 export interface OrdersRouterDeps {
   events?: OrderEventPublisher;
@@ -32,6 +39,10 @@ export function ordersRouter(
   { events }: OrdersRouterDeps = {},
 ): Router {
   const router = Router();
+  router.param('id', (_req, res, next, id) => {
+    if (isUuid(id)) return next();
+    res.status(404).json({ message: ErrorMessage[ErrorCode.ORDER_NOT_FOUND] });
+  });
   const transition = (status: RequestStatus) =>
     ordersController.transitionOrder(prisma, status, events);
 
