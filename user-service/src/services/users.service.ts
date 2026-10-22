@@ -15,6 +15,12 @@
  * Scope: Exported toPublicUser so me.service.ts can reuse it (Stage 11).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: listUsers takes pagination/search/filter/sort params and returns the paginated
+ *        shape, per instructions.md Stage 15b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as tokenQueries from '../db/queries/tokens.queries.js';
@@ -56,9 +62,54 @@ export async function getPublicUserById(id: string): Promise<PublicUserSummary> 
   return row;
 }
 
-export async function listUsers(): Promise<PublicUser[]> {
-  const rows = await userQueries.listAllUsers();
-  return rows.map(toPublicUser);
+const PAGE_SIZE = 50;
+
+export interface ListUsersParams {
+  page: number;
+  username?: string;
+  email?: string;
+  status?: 'pending' | 'active' | 'suspended';
+  role?: 'user' | 'admin' | 'super admin';
+  sortBy: 'username' | 'email' | 'createdAt';
+  sortDir: 'asc' | 'desc';
+}
+
+export interface ListUsersResult {
+  users: PublicUser[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export async function listUsers({
+  page,
+  username,
+  email,
+  status,
+  role,
+  sortBy,
+  sortDir,
+}: ListUsersParams): Promise<ListUsersResult> {
+  const offset = (page - 1) * PAGE_SIZE;
+  const { rows, total } = await userQueries.listUsersPage({
+    usernameContains: username,
+    email,
+    status,
+    role,
+    sortBy,
+    sortDir,
+    limit: PAGE_SIZE,
+    offset,
+  });
+
+  return {
+    users: rows.map(toPublicUser),
+    page,
+    pageSize: PAGE_SIZE,
+    total,
+    totalPages: Math.ceil(total / PAGE_SIZE),
+  };
 }
 
 // The id's UUID format is validated at the controller before this is called.

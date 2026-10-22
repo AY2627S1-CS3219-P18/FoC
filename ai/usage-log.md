@@ -5843,3 +5843,40 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15b: Paginated `GET /users`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 15b (Design decisions table and the Stage 15b section)
+
+**Prompts (exact):**
+
+> read through instruction.md. im gonna implement stage 15b onwards. dont do anything first
+
+> follow the git workflow. before you start, do a pull to check whether there's anything i havent pulled
+
+> let's do 15b
+
+**Key responses:**
+Read `instructions.md` Stage 15 in full (15a-16g) first, per the first prompt, without making changes. Confirmed `main` had nothing unpulled, then branched `feat/stage-15b-paginated-users` off `main`. Replaced `listAllUsers` in `users.queries.ts` with `listUsersPage({ usernameContains, email, status, role, sortBy, sortDir, limit, offset })`, returning `{ rows, total }`: dynamic `WHERE` built only from provided filters, all values bound; `usernameContains` goes through a `LIKE '%'||$n||'%' ESCAPE '\'` with `\`, `%`, `_` escaped first; `sortBy`/`sortDir` are mapped through a fixed whitelist (`SORT_COLUMNS`/`SORT_DIRECTIONS`), never interpolated; ties broken by `id` in the same direction; total via `COUNT(*) OVER()`, falling back to a separate `COUNT(*)` query when the page comes back empty (past the last page) since the window function then returns no rows to read the count from. Updated `users.service.ts`'s `listUsers` to take `{ page, username, email, status, role, sortBy, sortDir }`, added the `PAGE_SIZE = 50` constant and offset math, and return `{ users, page, pageSize, total, totalPages }`. Updated `users.controller.ts`'s `list` to validate `req.query` with a `.strict()` Zod schema: `page` defaults to 1 and must be a positive integer; `username`/`email` are optional, lowercased (email also trimmed), with empty string treated as absent; `status`/`role`/`sortBy`/`sortDir` are closed enums; each field raises exactly one fixed error message regardless of which rule failed (wrong type, a repeated query param Express turns into an array, or not in the allowed set), via a small `enumFilterField` helper and matching `page`/`username`/`email` transforms. `sortDir`'s default (`desc` when absent and `sortBy` is absent or `createdAt`, `asc` otherwise) is applied in the controller after parsing, since it depends on `sortBy`. Verified: `tsc --noEmit` clean, `npm run lint` clean. `vitest run` against the exposed dev DB port (tests/ isn't mounted into the dev container, so ran outside Docker with `DB_HOST=localhost DB_PORT=5434`): 544 passed, 6 failed, matching exactly the expected fallout below plus the one pre-existing unrelated failure already flagged in the Stage 15a entry; reran the full suite once more to confirm two other failures seen on one pass (a concurrency test and a logout test) were pre-existing flakiness outside Docker, not caused by this change - they did not reproduce on the repeat run.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. `listUsers` maps rows with the existing `toPublicUser` (password_hash stripped, snake_case fields) rather than the Stage 15c `toUserResponse` mapper the Stage 15b text names, because that mapper doesn't exist until Stage 15c is implemented. This matches the file's own "Changes to already-implemented code" table, which lists the mapper swap as Stage 15c's change (row 4), separate from Stage 15b's pagination change (row 3) - not treated as an open question.
+2. Left 5 existing tests failing, unmodified: both `listAllUsers` tests in `users.queries.test.ts` (function removed), `users.service.test.ts`'s old no-argument `listUsers` call, and two `GET /users` tests in `users.controller.test.ts` expecting the old bare `{ users: [...] }` shape. Per the same table (row 5) and Stage 15c's own "Update existing tests" section, updating these is explicitly Stage 15c's job, not Stage 15b's.
+3. The pre-existing, unrelated `email.service.test.ts` failure already flagged in the Stage 15a log entry is still present; unrelated to this change, not touched.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
