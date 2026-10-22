@@ -59,6 +59,15 @@
  *        transition and edit routes; the unsupported-field edit test uses a UUID :id.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-22): GET /orders/:id coverage (requester / courier / admin / other user
+ *        by status, 404s, literal /mine and /active not captured); the auth stub takes an
+ *        optional x-role header (default 'user') for the admin cases.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-10-22): authz fix - GET /orders?status=<non-open> is scoped to the caller's
+ *        own orders; the default listing is not.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -115,7 +124,7 @@ function appWith(
       res.status(401).json({ message: 'Unauthorized', code: 'UNAUTHORIZED' });
       return;
     }
-    req.user = { user_id: userId, role: 'user' };
+    req.user = { user_id: userId, role: req.get('x-role') ?? 'user' };
     next();
   };
   return Object.assign(createApp({ prisma, authenticate }), { outbox });
@@ -707,5 +716,149 @@ describe('404 ORDER_NOT_FOUND on /orders/:id routes', () => {
       .send({ description: 'x' })
       .expect(404);
     expect(updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /orders/:id', () => {
+  const REQUESTER = USER;
+  const COURIER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8e';
+  const OTHER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8f';
+  const ORDER_ID = '0192f0c4-0000-7000-8000-000000000001';
+  const order = (status: string) => ({
+    id: ORDER_ID,
+    requesterId: REQUESTER,
+    courierId: status === 'open' || status === 'pending' ? null : COURIER,
+    status,
+    credits: 4,
+  });
+  const appFor = (status: string | null) =>
+    appWith(async () => [], {
+      findUnique: async () => (status ? order(status) : null),
+    });
+
+  it.each(['pending', 'open', 'accepted', 'delivered', 'cancelled', 'failed'])(
+    '200 for the requester on a %s order',
+    async (status) => {
+      const res = await request(appFor(status))
+        .get(`/orders/${ORDER_ID}`)
+        .set('authorization', bearer(REQUESTER))
+        .expect(200);
+      expect(res.body).toMatchObject({ id: ORDER_ID, status });
+    },
+  );
+
+  it.each(['accepted', 'picked_up', 'completed'])(
+    '200 for the courier on a %s order',
+    async (status) => {
+      await request(appFor(status))
+        .get(`/orders/${ORDER_ID}`)
+        .set('authorization', bearer(COURIER))
+        .expect(200);
+    },
+  );
+
+  it('200 for another user while the order is open', async () => {
+    const res = await request(appFor('open'))
+      .get(`/orders/${ORDER_ID}`)
+      .set('authorization', bearer(OTHER))
+      .expect(200);
+    expect(res.body).toMatchObject({ id: ORDER_ID, status: 'open' });
+  });
+
+  it.each([
+    'pending',
+    'accepted',
+    'picked_up',
+    'completed',
+    'expired',
+    'failed',
+  ])(
+    '404 for another user on a %s order, as if it did not exist',
+    async (status) => {
+      const res = await request(appFor(status))
+        .get(`/orders/${ORDER_ID}`)
+        .set('authorization', bearer(OTHER))
+        .expect(404);
+      expect(res.body).toEqual({ message: 'Order not found.' });
+    },
+  );
+
+  it.each(['admin', 'super admin'])(
+    '200 for %s on an order they are not part of',
+    async (role) => {
+      await request(appFor('accepted'))
+        .get(`/orders/${ORDER_ID}`)
+        .set('authorization', bearer(OTHER))
+        .set('x-role', role)
+        .expect(200);
+    },
+  );
+
+  it('404 when the order does not exist', async () => {
+    await request(appFor(null))
+      .get(`/orders/${ORDER_ID}`)
+      .set('authorization', bearer(REQUESTER))
+      .expect(404);
+  });
+
+  it('404 for a non-UUID :id without querying the database', async () => {
+    const findUnique = vi.fn(async () => null);
+    await request(appWith(async () => [], { findUnique }))
+      .get('/orders/not-a-uuid')
+      .set('authorization', bearer(REQUESTER))
+      .expect(404);
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('401 without a token', async () => {
+    await request(appFor('open')).get(`/orders/${ORDER_ID}`).expect(401);
+  });
+
+  it('does not capture /orders/mine or /orders/active as ids', async () => {
+    const findUnique = vi.fn(async () => null);
+    const app = appWith(async () => [], { findUnique });
+    await request(app)
+      .get('/orders/mine')
+      .set('authorization', bearer(REQUESTER))
+      .expect(200);
+    await request(app)
+      .get('/orders/active')
+      .set('authorization', bearer(REQUESTER))
+      .expect(200);
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /orders: non-open statuses are scoped to the caller', () => {
+  it.each(['accepted', 'picked_up', 'completed'])(
+    '?status=%s only queries orders the caller requested or delivers',
+    async (status) => {
+      const findMany = vi.fn(async () => []);
+      await request(appWith(findMany))
+        .get(`/orders?status=${status}`)
+        .set('authorization', bearer(USER))
+        .expect(200);
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              { status },
+              { OR: [{ requesterId: USER }, { courierId: USER }] },
+            ],
+          },
+        }),
+      );
+    },
+  );
+
+  it('the open listing is not scoped', async () => {
+    const findMany = vi.fn(async () => []);
+    await request(appWith(findMany))
+      .get('/orders?status=open')
+      .set('authorization', bearer(USER))
+      .expect(200);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { AND: [{ status: 'open' }] } }),
+    );
   });
 });
