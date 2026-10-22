@@ -17,6 +17,11 @@
 # Scope (2026-10-20): Issue #6 - REDIS_HOST/PORT and USER_SERVICE_URL on order-service.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review: george-yeo
+# Tool: Claude Code (model: claude-opus-5), date: 2026-10-22
+# Scope (2026-10-22): Credit transfer consumer - REDIS_HOST/REDIS_PORT on credit-service
+#        and a credit-worker service consuming queue:credit:transfer from order-redis.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -202,6 +207,10 @@ services:
       # supplier-service already uses. No depends_on: the fetch is lazy and the key set is
       # refetched on an unknown kid, so a cold start recovers on its own.
       USER_SERVICE_URL: http://user-service:3001
+      # src/config.ts validates these for the API process too, so a broker typo fails at
+      # startup rather than at the first job. The API itself opens no Redis connection.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
     ports:
       - "${CREDIT_SERVICE_PORT:-3003}:3003"
     volumes:
@@ -215,6 +224,47 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  # Consumes order-service's credit_transfer jobs. A separate container from the API,
+  # mirroring supplier-worker: same build context and image, a different command, and a
+  # second entry point into the same src/ tree, so the worker and the HTTP route call
+  # one transferCredits.
+  credit-worker:
+    build:
+      context: ./credit-service
+      target: dev
+    container_name: foc-credit-worker
+    init: true
+    restart: unless-stopped
+    command: ["npm", "run", "worker:dev"]
+    # Let an in-flight transfer finish on `docker stop` (Docker's default is SIGKILL
+    # after 10 s). A transfer is one short transaction, so this is headroom, not a wait.
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: development
+      # The worker serves no HTTP, but src/config.ts validates one schema for both
+      # entry points, so PORT and USER_SERVICE_URL must be present.
+      PORT: 3003
+      DB_HOST: credit-db
+      DB_PORT: 5432
+      DB_NAME: ${CREDIT_DB_NAME}
+      # The same least-privilege role the API uses (NFR8.2.3). It can INSERT a
+      # dead_letter_jobs row and UPDATE its status, and still cannot touch
+      # transaction_log beyond SELECT and INSERT.
+      DB_USER: ${CREDIT_APP_USER}
+      DB_PASSWORD: ${CREDIT_APP_PASSWORD}
+      USER_SERVICE_URL: http://user-service:3001
+      # order-service's broker. Deliberately no depends_on for it: the worker is built
+      # to start without Redis and pick it up when it returns (maxRetriesPerRequest null
+      # plus an unbounded retryStrategy in src/worker/main.ts), and a depends_on would
+      # hide that rather than prove it.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./credit-service/src:/app/src
+    depends_on:
+      credit-db:
+        condition: service_healthy
 
   # ---- supplier-service ---------------------------------------------------
   # AI Assistance Disclosure:

@@ -5506,3 +5506,120 @@ Accepted all changes.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-22 — Credit Service: BullMQ credit-transfer queue consumer
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** `credit-service/credit-service-context.md` §4 (stack, BullMQ approved 2026-10-22), §5 (append-only), §6 (F19.3.1, F19.3.2), §9 (the presented edge case this implements the retry half of); the transfer queue contract agreed with order-service on 2026-10-20, verified against its producer (order-service commit `cb7ed49`); twelve implementation decisions given in chat on 2026-10-22 and quoted below.
+
+**Prompts (exact):**
+
+> Implement the credit-transfer queue consumer in credit-service.
+> Read credit-service/CONTEXT.md first.
+>
+> The producer is verified and matches the contract field for field (order-service commit cb7ed49). Do not re-analyse it.
+>
+> ## What the producer does — confirmed, build against this
+>
+>   Queue key:  queue:credit:transfer   (prefix queue:credit, name transfer)
+>   Job name:   credit_transfer
+>   jobId:      outbox-<outboxId>
+>   Payload:    { requestId, courierId }   — exactly two keys
+>   Published:  on completion, in the same prisma transaction as the status change, version-guarded
+>   Broker:     order-redis:6379
+>   attempts:   5  (1 initial + 4 retries)
+>   backoff:    { type: 'custom' }  — delays are MY responsibility
+>   removeOnComplete: true
+>   removeOnFail:     unset, so failed jobs stay in Redis
+>   Relay cadence:    ~1s from completion to the job landing
+>   No reply is sent back to order-service.
+>
+> ## Decisions — implement as given, do not revisit
+>
+> 1. **Separate worker container**, mirroring supplier-worker […]
+> 2. **BullMQ pinned to an exact version, no caret.** order-service's lockfile resolves 6.3.13. Record the dependency in CONTEXT.md §4 as an approved team decision.
+> 3. **Register the backoff strategy. This is load-bearing.** […] `5000 * 5 ** (attemptsMade - 1)` → 5s / 25s / 125s / 625s. Verify the *observed* delays in testing rather than trusting the config took.
+> 4. **Error classification — one explicit table in code**, not scattered catch blocks […]
+> 5. **dead_letter_jobs in credit-db, snake_case** […] Use `GENERATED ALWAYS AS IDENTITY`, not `BIGSERIAL`.
+> 6. **Grants — surgical, per table.** […] Never `GRANT ... ON ALL TABLES IN SCHEMA public`.
+> 7. **A dead-letter write failure must leave a trace.** […]
+> 8. **Redis unavailable at startup, or disappearing mid-run, must not kill the container.** […] Propose something explicit and tell me what you chose and why.
+> 9. **Concurrency and stall safety.** […] choose deliberately and say why.
+> 10. **compose.yaml and .env.example**: a credit-worker service […] Show me both diffs before applying.
+> 11. **Logging sufficient to narrate the workflow live** […]
+> 12. `init.sql` only runs on an empty volume, so the new table needs `docker compose down -v` on credit-db. Say so before doing it […]
+
+> Approved — apply both diffs, run docker compose down -v on credit-db, and proceed with the verification exactly as you proposed.
+>
+> Two things from the build prompt that your report didn't cover:
+>   - Item 9: what concurrency did you choose and why, and what did you check about BullMQ's 30s lockDuration against our transfer transaction?
+>   - Item 2: confirm package.json pins 6.3.13 exactly, no caret.
+>
+> Report the measured retry gaps as real numbers, not the configured values.
+
+**Key responses:**
+
+_One implementation, two entry points (decision 1)._ `src/worker/main.ts` is a second entry point into the existing `src/` tree; it calls the same `transferCredits` the HTTP route calls, so F19.3.1's logic, its guards and its single transaction exist once. `credit-worker` is a separate container built from the same context and image at `target: dev`, with an overridden command and the same bind-mounted `src`, mirroring supplier-worker.
+
+_The contract in one file._ `src/queue/transferQueue.ts` holds the queue key, prefix, name, job name, attempts, payload guard and backoff. Everything there is fixed by order-service's producer rather than chosen here, and a change to any of it makes the worker subscribe successfully and receive nothing, so it is deliberately not configurable.
+
+_Classification (decision 4)._ `src/worker/classifyTransferError.ts` is one `DISPOSITION_BY_CODE` map plus a two-line fallback, keyed on credit-service's own error `code`. Because the worker calls the service function directly it receives the `AppError` object, so the code is a typed field and nothing is inferred from an HTTP status. Unknown 4xx is permanent, 5xx and non-`AppError` throws retry.
+
+_Backoff (decision 3)._ Registered as `settings: { backoffStrategy }` on the Worker. The producer publishes `backoff: { type: 'custom' }`, so BullMQ asks the worker for the delay and an unregistered strategy would silently drop the agreed schedule.
+
+_Concurrency and stall safety (decision 9)._ `concurrency: 1`, chosen rather than copied: `transferCredits` takes `FOR UPDATE` on two balance rows in one transaction, so parallel jobs touching the same users would queue inside Postgres anyway, and one job at a time keeps a demo's log readable. `lockDuration` is left at BullMQ's 30 s default. The question was whether a transfer can exceed it: measured at **43.98 ms** from "job received" to "transferred credits" on the real end-to-end job, and 43.7 ms independently on another, roughly 680x of headroom, with no external call inside the transaction.
+
+_Redis resilience (decision 8)._ Three options the siblings do not set, in `src/queue/redisConnection.ts`: `maxRetriesPerRequest: null` (required by BullMQ for a Worker — with a finite limit the worker stops consuming after an outage while still looking alive), an unbounded `retryStrategy` capped at 10 s (ioredis's default stops reconnecting in some modes), and `enableOfflineQueue: true`. The client is constructed explicitly rather than passed as options because BullMQ 6 treats ioredis as an optional peer and cannot load it under native ESM — see Deviations.
+
+_Dead-letter write failure (decision 7)._ The insert has its own try/catch. On failure the whole job — payload, original error and the write error — goes to stderr with `DEAD-LETTER WRITE FAILED`, and the original error is still thrown so the job stays in BullMQ's failed set (`removeOnFail` is unset on the producer's side).
+
+**Verification actually run:**
+
+- `npx tsc --noEmit` clean. Full suite **123 tests in 13 files, all passing** (was 75 in 9).
+- **Real end-to-end through order-service's REST API**, not a synthetic job: created an order (202 Accepted, `pending`), its reserve job moved the requester to 20/7 reserved, then accept → pickup → deliver → complete. The transfer landed **~1.0 s** after completion: requester 20 → 13, courier 20 → 27, and a `transfer` log row naming both parties for amount 7.
+- Redelivery of an already-transferred request completed as **success**, logged `already applied (ALREADY_TRANSFERRED) … treating as success`, wrote no dead letter and moved no balance.
+- Unknown courier dead-lettered on **attempt 1 of 5**, not the fifth: `UNRESOLVED` row carrying the full payload and an `error_trace` naming `COURIER_NOT_FOUND`, and the job remained in BullMQ's failed set.
+- **Measured retry gaps**, from the worker's own log timestamps rather than the configured values: **5.098 s**, **25.008 s**, **125.003 s**, **625.034 s** (configured 5/25/125/625). Gaps 1-2 came from one run and 3-4 from a second, because an unrelated check restarted a container mid-run; the split is recorded rather than spliced. Corroborated independently by decoding Redis's own delayed-set score, which had attempt 5 scheduled exactly 625.000 s after attempt 4's failure. Attempt 5 then succeeded, credit-db having returned, so the run also shows the full ladder recovering rather than merely expiring.
+- Duplicate jobId: publishing `dup-1` twice moved credits **once** (requester -4, courier +4, one `transfer` row). Note that BullMQ did *not* dedupe the second publish - `removeOnComplete: true` had already freed the id - so the processor genuinely ran twice and the second was stopped by this service's own idempotency (the `ALREADY_TRANSFERRED` guard and the unique index), which is a stronger result than broker-level dedupe.
+- Transient recovery: with credit-db stopped, attempts 1 and 2 failed with `getaddrinfo ENOTFOUND credit-db` classified `NON_APP_ERROR` → retry; when the database returned, attempt 3 transferred the credits and completed.
+- Broker outage: stopped `order-redis`, restarted `credit-worker` so it started with no broker. The container stayed **Up**, logged `reconnecting in 2000ms` then `2500ms` (the `times * 500` strategy), and on Redis returning resumed consuming immediately — it processed the in-flight job's next attempt without a restart.
+- NFR8.2.3 against the live database as `credit_app`: `DELETE FROM transaction_log` and `UPDATE transaction_log` both `permission denied`, while `UPDATE dead_letter_jobs SET status='RESOLVED'` succeeded. The surgical grant holds.
+- Mutation checks, each applied then restored: flipping `COURIER_NOT_FOUND` to `'retry'` failed 2 tests at both levels; deleting `settings: { backoffStrategy }` failed **nothing**, which exposed a missing test — see Deviations.
+
+**Files:**
+
+- `credit-service/src/queue/transferQueue.ts` (created)
+- `credit-service/src/queue/redisConnection.ts` (created)
+- `credit-service/src/worker/classifyTransferError.ts` (created)
+- `credit-service/src/worker/transferJobProcessor.ts` (created)
+- `credit-service/src/worker/main.ts` (created)
+- `credit-service/src/db/queries/deadLetter.queries.ts` (created)
+- `credit-service/tests/worker/transferQueue.test.ts` (created)
+- `credit-service/tests/worker/classifyTransferError.test.ts` (created)
+- `credit-service/tests/worker/transferJobProcessor.test.ts` (created)
+- `credit-service/tests/worker/workerWiring.test.ts` (created)
+- `credit-service/src/db/init.sql` (modified: dead_letter_jobs)
+- `credit-service/src/db/grants.sql` (modified: dead_letter_jobs privileges)
+- `credit-service/src/config.ts` (modified: REDIS_HOST, REDIS_PORT)
+- `credit-service/tests/db/append-only.test.ts` (modified: UPDATE case strengthened; dead_letter_jobs privilege block added)
+- `credit-service/credit-service-context.md` (modified: §4 records BullMQ 6.3.13 and ioredis as the approved dependency)
+- `credit-service/package.json`, `package-lock.json` (modified: bullmq 6.3.13 and ioredis 5.11.1 pinned exactly; worker scripts)
+- `credit-service/.env.example`, `.env.test` (modified: REDIS_HOST, REDIS_PORT)
+- `compose.yaml` (modified: REDIS_* on credit-service; new credit-worker service)
+- `.env.example` (modified: comment recording credit-worker's broker)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **ioredis had to be added as a second dependency.** BullMQ 6 declares ioredis an optional peer and loads it lazily; under native ESM, which this service is, that load fails with *"BullMQ could not load the optional 'ioredis' package … pass an already-constructed client instance instead"*. The worker logged that error in a loop and consumed nothing. Fixed by installing `ioredis` pinned to `5.11.1` — the version order-service's lockfile resolves — and constructing the client explicitly. It is BullMQ's own transport rather than a separate design choice, and is recorded in §4 alongside BullMQ, but it is a dependency beyond the stack as originally approved and the team should ratify it.
+2. **A mutation check exposed a missing test, and the test was added because of it.** Deleting `settings: { backoffStrategy }` from the Worker left `tsc` and all 122 tests green: the suite covered the strategy *function* but never its *registration*, which is the part that matters. `tests/worker/workerWiring.test.ts` now mocks `bullmq` and `ioredis`, imports `main.ts`, and asserts the constructed Worker's queue name, prefix, concurrency, connection options and registered strategy. With the mutation re-applied it fails.
+3. **A test caught a real gap in what the dead letter records.** For a transient exhaustion the row's `error_trace` held only `"Error: Internal server error."` with no error code, while permanent failures carried theirs in the wrapped message. `errorTrace` now prefixes `[CODE]` for any `AppError`, so every row names the code an operator triages on.
+4. **`order-redis` has no persistence configured.** Observed directly: a delayed retry *did* survive `docker stop` / `docker start` of the Redis container, because the container filesystem and its default RDB snapshot survive that. It would not survive `docker compose down`, which removes the container. A transfer awaiting its 625 s retry is therefore lost on a full teardown, and the outbox row that produced it is already deleted, so nothing re-drives it. This is on order-service's side of the boundary and was raised with its owner.
+5. **"A job exhausting all attempts lands in dead_letter_jobs" is proven at the unit level against the real database, not end to end.** The two conditions are coupled: at the integration level the only way to force a *transient* failure is to make credit-db unreachable, and then the dead-letter write necessarily fails too. That path was exercised and is what decision 7's stderr trace exists for. The DB-up exhaustion path is covered by `transferJobProcessor.test.ts`, which asserts the row, its `UNRESOLVED` status and its `error_trace` against a real Postgres.
+6. **Two things outside credit-service that were already broken.** `user-service` would not start: the team's stage-14 work made `CREDIT_SERVICE_URL` required, and nothing supplies it — fixed locally in the gitignored `user-service/.env`, so the repo still needs a real fix. And `user-service` logs `relation "credit_allocation_outbox" does not exist` on every relay pass, the same empty-volume problem `init.sql` has here. Neither was touched beyond the local env file.
+7. **The four write endpoints remain unauthenticated**, unchanged by this work and still listed as invented in `API.md`. The worker does not go through HTTP, so the queue path is not affected, but the gap stands.
+
+**What I kept/changed/rejected:**
