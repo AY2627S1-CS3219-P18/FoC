@@ -9,6 +9,10 @@ Scope (2026-10-22, Claude Code, model: claude-sonnet-5): Added Log index rows #1
        into it). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
 Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #138 for
+       frontend Stage 16c (registration page). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -212,3 +216,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 135 | 2026-10-22 | user-service           | Stage 15b: Paginated `GET /users`                                                                  | listUsers is now paginated/searchable/filterable/sortable; returns { users, page, pageSize, total, totalPages }                                 |
 | 136 | 2026-10-22 | user-service           | Stage 15c: camelCase Responses                                                                     | All user-row responses now camelCase via toUserResponse; fixed an unrelated missing Change Password email template |
 | 137 | 2026-10-23 | frontend               | Stage 16b: Shared Auth Plumbing                                                                    | New AuthContext/login page/route guards/toast/OTP input replace LoginModal; proactive token refresh |
+| 138 | 2026-10-23 | frontend               | Stage 16c: Registration (`/register`)                                                              | New two-step register page (form + OTP) wired to /auth/register, verify-otp, resend-otp            |

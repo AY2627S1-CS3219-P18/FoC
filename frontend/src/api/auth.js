@@ -22,6 +22,12 @@
  *        proactive refresh scheduling without a circular import.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added register, verifyOtp and resendOtp, the calls Register.jsx needs, per
+ *        instructions.md Stage 16c (POST /auth/register, /auth/verify-otp, /auth/resend-otp).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { decodeAccessTokenClaims, refreshAccessToken, request, setAccessToken } from './http'
@@ -44,6 +50,22 @@ export async function logout() {
   } finally {
     setAccessToken(null)
   }
+}
+
+// 201 { message, code: 'OTP_SENT' }. 400 VALIDATION_ERROR, 409 USERNAME_TAKEN / EMAIL_TAKEN.
+export async function register({ username, email, password }) {
+  return request('/auth/register', { method: 'POST', json: { username, email, password } })
+}
+
+// 200 { message, code }. 400 INVALID_OTP / OTP_EXPIRED / OTP_ATTEMPTS_EXCEEDED.
+export async function verifyOtp({ email, otp, purpose }) {
+  return request('/auth/verify-otp', { method: 'POST', json: { email, otp, purpose } })
+}
+
+// 200 { message, code: 'OTP_SENT' }. 404 NO_PENDING_REGISTRATION, 429 OTP_RESEND_COOLDOWN /
+// OTP_RESEND_LIMIT (with Retry-After on cooldown).
+export async function resendOtp({ email, purpose }) {
+  return request('/auth/resend-otp', { method: 'POST', json: { email, purpose } })
 }
 
 // Page load: trade the refresh cookie for an access token, then rebuild the same user object login
