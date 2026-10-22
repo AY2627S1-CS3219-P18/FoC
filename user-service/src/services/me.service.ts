@@ -33,6 +33,11 @@
  *        instructions.md Stage 12e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: getOwnProfile also returns activeView, as specified in instructions.md Stage 15a.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -110,12 +115,12 @@ export async function changeActiveView(
 
 export async function getOwnProfile(
   userId: string,
-): Promise<{ username: string; email: string }> {
+): Promise<{ username: string; email: string; activeView: 'requester' | 'courier' }> {
   const user = await userQueries.findById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return { username: user.username, email: user.email };
+  return { username: user.username, email: user.email, activeView: user.active_view };
 }
 
 export async function changeUsername(
