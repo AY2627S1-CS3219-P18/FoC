@@ -16,16 +16,27 @@
  *        connected (chat, demo controls).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-opus-5), date: 2026-10-22
+ * Scope: The credit balance now comes from Credit Service's GET /credits/balance/:userId
+ *        instead of the hardcoded figures in src/data/users.js, so the nav pill and the
+ *        create-request affordability check show the signed-in user's real credits.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import * as authApi from '../api/auth'
+import { getBalance } from '../api/credits'
 import { setOnSessionExpired } from '../api/http'
 import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 import { requests as seedRequests } from '../data/requests'
 import { currentUser } from '../data/users'
 
 const DemoContext = createContext(null)
+
+/** Logged out, or the balance could not be read. Module-scoped so its identity is stable. */
+const NO_CREDITS = { available: 0, reserved: 0, total: 0 }
 
 export function DemoProvider({ children }) {
   // Real session from the User Service: null when logged out. `sessionReady` turns true once the
@@ -115,16 +126,40 @@ export function DemoProvider({ children }) {
     [isLoggedIn],
   )
 
-  // Balance figures come straight from users.js so every screen shows the same
-  // 14 available / 6 reserved / 20 total the blueprint specifies.
-  const credits = useMemo(
-    () => ({
-      available: currentUser.creditsAvailable,
-      reserved: currentUser.creditsReserved,
-      total: currentUser.creditsAvailable + currentUser.creditsReserved,
-    }),
-    [],
-  )
+  // --- credit balance (F19.5.1) ---------------------------------------------------------
+  // Read from Credit Service, not from src/data. Everything that shows a balance reads this:
+  // the nav pill and CreateRequest's affordability check, which previously compared an offer
+  // against the mockup's hardcoded 14.
+  const [credits, setCredits] = useState(NO_CREDITS)
+
+  const userId = session?.id ?? null
+
+  const refreshCredits = useCallback(async () => {
+    if (!userId) {
+      setCredits(NO_CREDITS)
+      return
+    }
+    try {
+      const b = await getBalance(userId)
+      setCredits({
+        available: b.unreservedBalance,
+        reserved: b.reservedBalance,
+        total: b.totalBalance,
+      })
+    } catch {
+      // 404 BALANCE_NOT_FOUND (no allocation yet), 503 (identity provider), or a network
+      // failure. The nav bar must never take the page down over a balance, so show zero and
+      // let the Wallet page, which has proper loading and error states, explain it.
+      setCredits(NO_CREDITS)
+    }
+  }, [userId])
+
+  // Refetch whenever the signed-in user changes, and clear on logout so one user's balance
+  // is never briefly visible to the next.
+  useEffect(() => {
+    if (!sessionReady) return
+    void refreshCredits()
+  }, [sessionReady, refreshCredits])
 
   const value = useMemo(
     () => ({
@@ -146,6 +181,7 @@ export function DemoProvider({ children }) {
       requireLogin,
       currentUser,
       credits,
+      refreshCredits,
     }),
     [
       isLoggedIn,
@@ -162,6 +198,7 @@ export function DemoProvider({ children }) {
       setRequestStatus,
       acceptRequest,
       credits,
+      refreshCredits,
     ],
   )
 
