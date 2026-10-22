@@ -42,12 +42,12 @@ describe('listUsers', () => {
     const suspended = await createActiveUser(3);
     await setUserStatus(suspended.id, 'suspended');
 
-    const users = await usersService.listUsers();
-    expect(users.map((u) => u.status).sort()).toEqual(['active', 'pending', 'suspended']);
-    for (const u of users) {
+    const result = await usersService.listUsers({ page: 1, sortBy: 'createdAt', sortDir: 'desc' });
+    expect(result.users.map((u) => u.status).sort()).toEqual(['active', 'pending', 'suspended']);
+    for (const u of result.users) {
       expect(u).not.toHaveProperty('password_hash');
       expect(Object.keys(u).sort()).toEqual(
-        ['active_view', 'created_at', 'email', 'id', 'role', 'status', 'updated_at', 'username'].sort(),
+        ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
       );
     }
   });
@@ -180,7 +180,7 @@ describe('changeUserStatus', () => {
 
       const result = await usersService.changeUserStatus('admin', t.id, 'suspended');
       expect(result.status).toBe('suspended');
-      expect(result.updated_at).toEqual(userBefore.updated_at);
+      expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
       expect((await getRefreshTokens(t.id)).map((x) => x.revoked_at)).toEqual(
         tokensBefore.map((x) => x.revoked_at),
@@ -194,7 +194,7 @@ describe('changeUserStatus', () => {
 
       const result = await usersService.changeUserStatus('admin', t.id, 'active');
       expect(result.status).toBe('active');
-      expect(result.updated_at).toEqual(userBefore.updated_at);
+      expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
       expect((await getRefreshTokens(t.id))[0]!.is_revoked).toBe(false);
     });
@@ -341,7 +341,7 @@ describe('changeUserRole', () => {
 
       const result = await usersService.changeUserRole(sa.id, target.id, 'admin');
       expect(result.role).toBe('admin');
-      expect(result.updated_at).toEqual(before.updated_at);
+      expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });
@@ -354,7 +354,7 @@ describe('changeUserRole', () => {
 
       const result = await usersService.changeUserRole(sa.id, target.id, 'user');
       expect(result.role).toBe('user');
-      expect(result.updated_at).toEqual(before.updated_at);
+      expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });

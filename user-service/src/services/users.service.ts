@@ -21,22 +21,19 @@
  *        shape, per instructions.md Stage 15b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Replaced toPublicUser/PublicUser with the shared toUserResponse mapper
+ *        (src/services/userResponse.ts), per instructions.md Stage 15c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
-import type { UserRow } from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
-
-export type PublicUser = Omit<UserRow, 'password_hash'>;
-
-// password_hash must never leave the service layer.
-export function toPublicUser(row: UserRow): PublicUser {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { password_hash, ...rest } = row;
-  return rest;
-}
+import { toUserResponse, type UserResponse } from './userResponse.js';
 
 /** Everything a caller without a role may see about another user: who they are, nothing else. */
 export interface PublicUserSummary {
@@ -75,7 +72,7 @@ export interface ListUsersParams {
 }
 
 export interface ListUsersResult {
-  users: PublicUser[];
+  users: UserResponse[];
   page: number;
   pageSize: number;
   total: number;
@@ -104,7 +101,7 @@ export async function listUsers({
   });
 
   return {
-    users: rows.map(toPublicUser),
+    users: rows.map(toUserResponse),
     page,
     pageSize: PAGE_SIZE,
     total,
@@ -113,19 +110,19 @@ export async function listUsers({
 }
 
 // The id's UUID format is validated at the controller before this is called.
-export async function getUserById(id: string): Promise<PublicUser> {
+export async function getUserById(id: string): Promise<UserResponse> {
   const row = await userQueries.findById(id);
   if (!row) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return toPublicUser(row);
+  return toUserResponse(row);
 }
 
 export async function changeUserStatus(
   requestorRole: string,
   targetId: string,
   status: 'active' | 'suspended',
-): Promise<PublicUser> {
+): Promise<UserResponse> {
   return withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(targetId, client);
     if (!locked) {
@@ -146,7 +143,7 @@ export async function changeUserStatus(
 
     // Already in the requested status: success, no write and no token revocation.
     if (locked.status === status) {
-      return toPublicUser(locked);
+      return toUserResponse(locked);
     }
 
     const updated = await userQueries.updateUserStatus(locked.id, status, client);
@@ -156,7 +153,7 @@ export async function changeUserStatus(
       await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
     }
 
-    return toPublicUser(updated);
+    return toUserResponse(updated);
   });
 }
 
@@ -164,7 +161,7 @@ export async function changeUserRole(
   requesterId: string,
   targetId: string,
   newRole: 'admin' | 'user',
-): Promise<PublicUser> {
+): Promise<UserResponse> {
   if (targetId === requesterId) {
     throw new AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE');
   }
@@ -197,7 +194,7 @@ export async function changeUserRole(
 
     // Already has the requested role: success, no write and no token revocation.
     if (locked.role === newRole) {
-      return toPublicUser(locked);
+      return toUserResponse(locked);
     }
 
     const updated = await userQueries.updateUserRole(locked.id, newRole, client);
@@ -205,6 +202,6 @@ export async function changeUserRole(
     // Same transaction as the role change, so the old role cannot be extended by refreshing.
     await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
 
-    return toPublicUser(updated);
+    return toUserResponse(updated);
   });
 }

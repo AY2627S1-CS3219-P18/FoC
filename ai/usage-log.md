@@ -5880,3 +5880,53 @@ Read `instructions.md` Stage 15 in full (15a-16g) first, per the first prompt, w
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15c: camelCase Responses
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 15c
+
+**Prompts (exact):**
+
+> after this, finish up this stage. but can the error raised in 15a be fixed easily?
+
+> finish up the git workflow first. then answer the question
+
+> just fold into 15c
+
+**Key responses:**
+First answered the 15a question: confirmed the stale `email.service.test.ts` failure (flagged in the Stage 15a entry) is an easy fixture fix, but found while checking it that the obvious fix - swapping the test's "no template" purpose to `'Change Password'` - would have hidden a real, pre-existing gap: `'Change Password'` IS wired up (Stage 12e's `initiatePasswordChange`/`confirmPasswordChange`, via `requestOtp` → `sendOtpEmail`), but `email.service.ts`'s `PURPOSE_COPY` map has no entry for it, so a real password-change OTP email would throw whenever SMTP is actually configured (not the dev console-log fallback). Used `'Admin Action'` instead - the one `purpose_enum` value with no implemented flow yet. Flagged the `'Change Password'` gap as a separate, unrelated finding; the user confirmed it wasn't currently live (`.env` has `SMTP_HOST` blank and `NODE_ENV=development`, so the dev fallback is active) but asked to fix it anyway before it surfaces during a real SMTP run or grading. Added a `'Change Password'` entry to `PURPOSE_COPY` (subject "Confirm your FoC password change"), same shape as the other three.
+
+Before implementing, ran a research subagent (read-only) to inventory every response body across `src/controllers/*.ts` and `src/services/*.ts`, confirming the complete set of snake_case-affected endpoints and every test asserting on `active_view`/`created_at`/`updated_at`/the old `GET /users` shape, versus tests asserting on raw DB rows (out of scope - DB columns stay snake_case).
+
+Created `src/services/userResponse.ts` with `toUserResponse(row)` → `{id, username, email, status, role, activeView, createdAt, updatedAt}`. Replaced every use of the old `toPublicUser`/`PublicUser` (both removed) with `toUserResponse`/`UserResponse` in `users.service.ts` (`listUsers`, `getUserById`, `changeUserStatus`, `changeUserRole`, including their no-op return paths) and `me.service.ts` (`changeActiveView`). Confirmed via the inventory that no other response body anywhere in the three controllers uses snake_case - `auth.controller.ts`'s login response and everything in `me.controller.ts` besides `updateActiveView` were already camelCase, and JWKS/JWT claims/error bodies are correctly left alone.
+
+Updated existing test assertions for the casing change (`tests/controllers/users.controller.test.ts`, `tests/controllers/me.controller.test.ts`, `tests/services/users.service.test.ts`, `tests/services/me.service.test.ts`), carefully leaving every assertion that reads a raw DB row via `getUserByEmail(...)` in snake_case (DB columns are unaffected). Also fixed the two Stage-15b-caused breaks explicitly deferred to this stage: `users.controller.test.ts`'s `GET /users` test now checks the full paginated key set instead of `['users']`, and `users.service.test.ts`'s `listUsers` call now passes the required `{page, sortBy, sortDir}`. Additionally adapted `tests/db/queries/users.queries.test.ts`'s `listAllUsers` tests to call `listUsersPage` (the function `listAllUsers` was replaced by in Stage 15b but whose tests were left for this stage, per the same table) - signature/fixture update, not new coverage.
+
+Verified: `tsc --noEmit` and `npm run lint` both clean throughout, including after the `PURPOSE_COPY` addition. `vitest run` (outside Docker, `DB_HOST=localhost DB_PORT=5434`): 550/550 passed both before and after the `PURPOSE_COPY` fix, including the previously-flagged `email.service.test.ts` failure, now fixed; `email.service.ts` is globally mocked in every other test file, so the added template entry doesn't affect them (confirmed via `tests/setup/setupFiles.ts`). Two different, unrelated concurrency tests (`races.concurrency.test.ts`, then on a separate run `lock-recheck.concurrency.test.ts`) each failed once and passed on an immediate re-run - pre-existing timing flakiness from running outside Docker, not caused by this change. Also verified against the running Docker stack (not just the test DB): logged in as the super admin, confirmed `GET /users`, `GET /users/:id`, and `PUT /users/:id/status` (both the write and no-op paths) all return exactly `{id, username, email, status, role, activeView, createdAt, updatedAt}` with no `password_hash`/snake_case keys. Could not live-verify the `PURPOSE_COPY` addition itself against the real Docker stack: `SMTP_HOST` is blank there, so the dev console-log fallback bypasses `PURPOSE_COPY` entirely regardless of its contents - confirmed correct by code inspection and the project's own `tests/services/email.service.test.ts` instead.
+
+**Files:**
+
+- `user-service/src/services/userResponse.ts` (created)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/src/services/email.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **Real gap found and fixed, outside Stage 15c's own scope**: `email.service.ts`'s `PURPOSE_COPY` map had no entry for `'Change Password'`, but that purpose has sent real OTP emails since Stage 12e. Whenever SMTP is actually configured (`NODE_ENV` isn't `development`, or `SMTP_HOST` is set in dev), `sendOtpEmail` threw for every password-change OTP request instead of sending one - invisible locally only because the dev console-log fallback was active. Not currently live in this repo's `.env` (confirmed with the user), but flagged as something that would break silently the moment SMTP is configured for a real run or grading. Fixed on the user's go-ahead: added a `'Change Password'` entry (subject "Confirm your FoC password change"), same shape as the other three. The exact subject/intro wording wasn't specified anywhere in instructions.md; chose copy consistent with the existing three entries' style rather than stopping to ask, same discretion already used when the Registration/Forgot Password/Change Email copy was originally written.
+
+**What I kept/changed/rejected:**
+Accepted all changes. Fix the error.
+
+**Author review:** gabriel yap
