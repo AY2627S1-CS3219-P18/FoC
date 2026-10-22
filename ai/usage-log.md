@@ -5491,3 +5491,34 @@ Asked George which status a non-UUID `:id` returns and where the check lives; im
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-10-22 — Frontend: required-field asterisks on the create-errand form
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George (2026-10-22, in session): mark required fields with `*`. Required set taken from the existing `POST /orders` validation (`MISSING_SUPPLIER`, `MISSING_DESCRIPTION`, `MISSING_DELIVERY_LOCATION`, `MISSING_CREDITS_OFFERED` in `order-service/src/services/orders.service.ts`).
+
+**Prompts (exact):**
+
+> also update the order creation frontend page, for required fields add the *
+> does the API for post order currently return which fields are invalid/empty?
+
+**Key responses:**
+
+- `CreateRequest.jsx`: the `label` helper takes a `required` flag. Pick-up from, What do you need? and Deliver to pass it; the Offer heading carries the same marker (Offer is hidden when editing). The marker is a `text-alert` asterisk hidden from screen readers plus an `sr-only` "(required)". Optional fields (complete-by, Anything else?) are unmarked.
+- Answered the question: `POST /orders` returns 400 `{ message }` with the human messages joined by newlines; it does not return field names or error codes. No API change made.
+- Verification: `vite build` succeeded on a copy of `frontend` with a fresh `npm ci`. Not checked visually in a browser.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified, log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
