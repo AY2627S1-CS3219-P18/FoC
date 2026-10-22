@@ -6,6 +6,10 @@
 --    the runtime and the test harness enforce identical privileges.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
 --    Author review:
+--  2026-10-22: Credit transfer consumer - dead_letter_jobs privileges, granted per
+--    table so transaction_log's append-only guarantee is untouched.
+--    No requirements, architecture, schema, or API decisions were made by the AI tool.
+--    Author review:
 
 -- The role name is a fixed constant. The team specified "a named least-privilege role"
 -- without naming it; `credit_app` is used throughout. Role creation (and its password)
@@ -27,3 +31,16 @@ GRANT SELECT, INSERT ON transaction_log TO credit_app;
 -- and so the intent is visible in the schema rather than implied by omission.
 REVOKE UPDATE, DELETE, TRUNCATE ON transaction_log FROM credit_app;
 REVOKE DELETE, TRUNCATE ON balances FROM credit_app;
+
+-- dead_letter_jobs: the worker inserts a row when a job will not run again, reads them
+-- back, and an administrator resolves one by UPDATEing status. DELETE and TRUNCATE are
+-- withheld: a dead letter is a record of a failure, not scratch space.
+--
+-- Granted per table on purpose. `GRANT ... ON ALL TABLES IN SCHEMA public` would hand
+-- credit_app UPDATE on transaction_log as a side effect and silently undo NFR8.2.3.
+GRANT SELECT, INSERT, UPDATE ON dead_letter_jobs TO credit_app;
+REVOKE DELETE, TRUNCATE ON dead_letter_jobs FROM credit_app;
+
+-- No sequence grant is needed: dead_letter_jobs.id is GENERATED ALWAYS AS IDENTITY,
+-- which the table privilege covers. BIGSERIAL would have needed one, and omitting it
+-- fails every INSERT.

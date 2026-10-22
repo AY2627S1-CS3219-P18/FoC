@@ -7,6 +7,14 @@
 //  2026-10-19: Week 9 - USER_SERVICE_URL, the origin the JWKS key set is fetched from.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-10-22: Credit transfer consumer - REDIS_HOST / REDIS_PORT, the broker the
+//    transfer worker consumes from. Same shape as the sibling services' env.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
+//  2026-10-22: Updated a comment's doc path after user-service's docs/local-dev-setup.md
+//    was renamed to docs/user-service-instructions.md. No requirements, architecture,
+//    schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { z } from 'zod';
 
@@ -23,6 +31,12 @@ const envSchema = z.object({
   // Origin of user-service, used only to build the JWKS URL. Same value compose already
   // gives supplier-service.
   USER_SERVICE_URL: z.string().url(),
+
+  // order-redis, the broker order-service publishes credit_transfer jobs to. Validated
+  // for the API process too, so a misconfigured broker fails at startup rather than at
+  // the first job. Same env-var names the sibling workers use.
+  REDIS_HOST: z.string().min(1),
+  REDIS_PORT: z.coerce.number().int().positive(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -47,6 +61,10 @@ export const config = {
     password: env.DB_PASSWORD,
   },
   userServiceUrl: env.USER_SERVICE_URL,
-  // Published by user-service; see user-service/docs/jwks-verification-guide.md.
+  // Published by user-service; see user-service/docs/user-service-instructions.md (Part 2).
   jwksUrl: new URL('/auth/.well-known/jwks.json', env.USER_SERVICE_URL),
+  redis: {
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+  },
 } as const;

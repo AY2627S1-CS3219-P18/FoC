@@ -1,3 +1,14 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+Scope: Updated a doc path reference after user-service's docs/local-dev-setup.md was renamed
+       to docs/user-service-instructions.md. No requirements, architecture, schema, or API
+       decisions were made by the AI tool. Note for the team: this file has been materially
+       edited by AI tools in earlier sessions (see ai/usage-log.md) without a header being
+       added at the time; this entry only covers today's edit, not that earlier history.
+Author review:
+-->
+
 # Credit Service — Development Context
 
 **Project:** CS3219 AY2627S1, FoC — peer-to-peer campus errand platform
@@ -61,7 +72,7 @@ service's database.
 1. ~~How Credit Service authenticates callers.~~ **RESOLVED — User Service publishes a
    JWKS at `/auth/.well-known/jwks.json` (2026-10-17) and Credit Service verifies RS256
    tokens locally, reading `sub` and `role` from the token. `GET /auth/verify` no longer
-   exists.** See `user-service/docs/jwks-verification-guide.md`. No longer blocks
+   exists.** See `user-service/docs/user-service-instructions.md` (Part 2). No longer blocks
    F19.5.2 or F20.2.1.
 2. Whether User Service calls `POST /credits/allocate` after OTP verification, or
    Credit Service subscribes to a registration event.
@@ -74,12 +85,21 @@ service's database.
 | Database | PostgreSQL | ACID transactions, row-level locking, unique constraints |
 | IDs | UUID | Team-wide convention |
 | Container | Docker, via root `compose.yaml` | M7 |
+| Queue client | BullMQ **6.3.13**, pinned exactly | Approved team decision, 2026-10-22 — see below |
 
 **Why PostgreSQL specifically.** NFR8.1.1 and NFR8.1.2 are ACID transactions.
 Concurrent balance updates need `SELECT ... FOR UPDATE` on the balance row. F19.3.2 is
 a unique constraint on `request_id`, enforced by the database rather than by
 check-then-write application logic that can itself race. Balances and transactions are
 rigidly structured with fixed fields; nothing here wants schema flexibility.
+
+**BullMQ — approved addition to this stack (team decision, 2026-10-22).** §11 requires
+asking before adding a dependency, and this one was approved on 2026-10-22. Order Service
+publishes credit-transfer jobs with BullMQ, so the library is fixed by the producer, not
+chosen here. It is pinned to **exactly 6.3.13** with no caret, matching the version
+order-service's lockfile resolves: producer and consumer must agree on the Redis key
+layout BullMQ writes, and a caret would let the two drift apart on a future install.
+supplier-service is on 6.3.10, so the versions in this repo are already not uniform.
 
 **Note on Node and concurrency.** Node's single-threaded event loop does *not* protect
 balances from races — multiple containers and multiple ticks can hit the same row.

@@ -6,6 +6,10 @@
  *        Redis failure).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-21): Credit transfer - credit_transfer rows relay to
+ *        queue:credit:transfer.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { OutboxRow } from '../db/outbox.repository.js';
@@ -53,6 +57,17 @@ describe('outbox relay tick', () => {
       payload: { requestId: 'o-2' },
     });
     expect(t.outbox.delete.mock.calls).toEqual([[1n], [2n]]);
+  });
+
+  it("routes credit_transfer rows to credit-service's transfer queue", async () => {
+    const t = setup([row(1, 'credit_transfer')]);
+
+    await expect(t.relayOnce()).resolves.toBe(1);
+    expect(t.enqueue).toHaveBeenCalledWith('queue:credit:transfer', {
+      id: 'outbox-1',
+      taskName: 'credit_transfer',
+      payload: { requestId: 'o-1' },
+    });
   });
 
   it('dead-letters a row with no queue and keeps going', async () => {

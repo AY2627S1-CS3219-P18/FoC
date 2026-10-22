@@ -8,6 +8,10 @@
    2026-10-19: Week 9 - JWKS authentication, the two transaction-history endpoints,
      and the pagination contract.
      Author review:
+   2026-10-22 (Claude Code, model: claude-sonnet-5): Updated a doc path reference after
+     user-service's docs/local-dev-setup.md was renamed to docs/user-service-instructions.md.
+     No requirements, architecture, schema, or API decisions were made by the AI tool.
+     Author review:
 -->
 
 # Credit Service API
@@ -28,7 +32,7 @@ Authorization: Bearer <token>
 
 Tokens are verified **locally** against User Service's JWKS at
 `{USER_SERVICE_URL}/auth/.well-known/jwks.json`, per
-`user-service/docs/jwks-verification-guide.md`. The key set is cached and refetched once
+`user-service/docs/user-service-instructions.md` (Part 2). The key set is cached and refetched once
 on an unknown `kid`; **RS256 is pinned** and the token's own `alg` header is never
 trusted. The two claims used are `sub` (the user id) and `role`.
 

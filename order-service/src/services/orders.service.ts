@@ -55,6 +55,11 @@
  *        check also caps at the INTEGER range (George, 2026-10-20: "validate the edit").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-21): Credit transfer - moving an order to `completed` (requester confirm or
+ *        the system's auto-complete) writes a `credit_transfer` outbox row in the same
+ *        transaction (transfer contract agreed with Wee Jean, 2026-10-20).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -62,6 +67,7 @@ import { insertOutboxRows } from '../db/outbox.repository.js';
 import {
   buildReleaseTask,
   buildReserveTask,
+  buildTransferTask,
   type OutboxTask,
 } from '../queue/tasks.js';
 import {
@@ -387,6 +393,12 @@ function creditTasksFor(
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
+  // Completion pays the courier: credit-service moves the reserved credits.
+  if (to === 'completed' && order.courierId) {
+    return [
+      buildTransferTask({ requestId: order.id, courierId: order.courierId }),
+    ];
+  }
   const endsOrder = to === 'cancelled' || to === 'expired' || to === 'failed';
   if (!endsOrder) return [];
   if (FUNDED_STATUSES.has(order.status) || options.releaseCredits) {
