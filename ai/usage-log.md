@@ -5752,3 +5752,30 @@ Verification run: `npm run build`/`npm run lint` not re-run (no TypeScript chang
 Accepted all changes, KIVing the remaining deviation/question for now.
 
 **Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15a: `activeView` on `GET /users/me`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 15a
+
+**Prompts (exact):**
+
+> let's start with the next stage
+
+**Key responses:**
+Read the current `getOwnProfile` (`user-service/src/services/me.service.ts`) and its controller (`getProfile` in `me.controller.ts`) first, confirmed neither existing test (`tests/controllers/auth.controller.test.ts`'s two `GET /users/me` calls) asserts the response's exact shape, so no test updates were needed for this sub-stage (per the "Changes to already-implemented code" table, that's Stage 15c's job). Changed `getOwnProfile` to also read `user.active_view` and return it as `activeView`, alongside the existing `username`/`email`. No other behavior changed. Verified against the running Docker stack (not just build/lint): logged in, confirmed `GET /users/me` returns exactly `{ username, email, activeView }`; called `PUT /users/me/active-view` to `courier`, confirmed the next `GET /users/me` reflects `activeView: "courier"`. `npm run build` and `npm run lint` both clean. `npm test`: 548 passed, 1 failed (549 total) - the one failure, `tests/services/email.service.test.ts > sendOtpEmail (SMTP path) > throws for a purpose that has no template, without sending`, is pre-existing and unrelated to this change (this branch never touches `email.service.ts` or its test): `email.service.ts`'s `PURPOSE_COPY` map already has a `"Change Email"` entry (added in Stage 12c per its own file header), so `sendOtpEmail` no longer throws for that purpose, but the test's expectation was never updated to match. Not fixed here, per Stage 15c's own instruction to stop and report rather than change a test failing for a reason other than key naming or the response shape - flagged below instead.
+
+**Files:**
+
+- `user-service/src/services/me.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. Pre-existing, unrelated test failure found while running the full suite: `tests/services/email.service.test.ts > sendOtpEmail (SMTP path) > throws for a purpose that has no template, without sending` expects `sendOtpEmail` to throw for purpose `'Change Email'`, but `email.service.ts` has had a `'Change Email'` template since Stage 12c, so it no longer throws. The test's expectation is stale, not the implementation. Left unfixed here per Stage 15c's instruction to stop and report rather than change it.
+
+**What I kept/changed/rejected:**
+KIVed the error for now, accepted all other changes.
+
+**Author review:** gabriel yap
