@@ -6129,3 +6129,46 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16e: Account Page (`/account`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16e (the account-page spec) and its Stage 16 decisions table; user-service's `me.controller.ts`/`me.service.ts` for the exact request/response shapes and error codes of each `/users/me/*` endpoint
+
+**Prompts (exact):**
+
+> done, go for hte next part
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16d PR #131) and branched `feat/stage-16e-account-page` from it, per the team's standing git workflow.
+
+Read `user-service/src/controllers/me.controller.ts` and `me.service.ts` to pin down each endpoint exactly: `PUT /users/me/username` returns `{username, email}` and can throw `USERNAME_UNCHANGED`/`USERNAME_TAKEN`; `PUT /users/me/email` only sends an OTP (`EMAIL_UNCHANGED`/`EMAIL_TAKEN`/`INVALID_PASSWORD`), confirmed via `POST /users/me/verify-otp` (`purpose: 'change_email'` — the only purpose that route accepts); `PUT /users/me/password` similarly only sends an OTP (`PASSWORD_UNCHANGED`/`INVALID_PASSWORD`), confirmed via `POST /users/me/confirm-password-change`, which also re-validates `PASSWORD_UNCHANGED` and can still throw `INVALID_OTP`/`OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` (traced into `otp.service.ts`'s `checkOtp`, the single place all three of those actually originate); the one `POST /users/me/resend-otp` route takes either purpose.
+
+Created `src/pages/Account.jsx`: a profile section plus three independent change sections (username, email, password), each its own local sub-component with its own form/OTP state. Username is a single-step form. Email and password are two-step within their own section (form, then an inline OTP step), matching the spec's "OTP shown inline in the same section." Password's new value is kept in the section's own state from the first step through to `confirm-password-change`, per the spec, so the user isn't asked to retype it.
+
+Extended `src/api/profile.js` with `changeUsername`, `changeEmail`, `verifyEmailChangeOtp`, `resendMeOtp`, `changePassword`, `confirmPasswordChange` — thin wrappers over `request()`. Added `src/context/AuthContext.jsx`'s `forceReauth(message)` for the spec's forced-relogin decision (clears client state the same way `logout()` does, without the `POST /auth/logout` call, since the backend has already revoked every refresh token for this user). Wired `/account` into `App.jsx` behind `RequireAuth`, and linked it from the nav by turning `TopNav.jsx`'s existing username/initials block (desktop and mobile) into a link to `/account`, since that was the only place already identifying the signed-in user — kept `TopNav.jsx` changes to just that.
+
+**A real bug, found only by actually running the password-change flow, not by reasoning about the code:** the spec's forced-relogin banner never appeared. Root-caused with Playwright plus console tracing (see `AuthContext.jsx`'s comment on `forceReauth` for the full trail): flipping auth state to anonymous from `/account` (a `RequireAuth`-protected route) makes `RequireAuth` re-render and fire its _own_ redirect to `/login`, racing `forceReauth`'s intended navigation for who gets to set the router state `/login` reads the banner text from. React Router v7 schedules a plain `navigate()`'s location update inside `React.startTransition` by default, so `RequireAuth`'s synchronous re-render (triggered by the plain `setUser`/`setStatus` calls) consistently won before this call's location update had landed — confirmed by tracing actual render order with temporary logging, not just reading the types. Tried three fixes in order before one worked: reordering the calls (no effect), wrapping the call in React DOM's own `flushSync` (no effect — react-router's internal `startTransition` isn't overridden by an outer `flushSync` boundary), and react-router v7's own `navigate(..., { flushSync: true })` option (still no effect, empirically — plausibly because this project uses the plain `<BrowserRouter>` API, not the data-router `RouterProvider` that option targets). Settled on sidestepping the race entirely: the message now travels through a small module-level variable in `AuthContext.jsx` (`pendingAuthMessage`/`consumePendingAuthMessage`/`clearPendingAuthMessage`) instead of router state, so it no longer matters which navigate call's state wins — `Login.jsx` reads it once via a pure lazy `useState` initializer (safe under StrictMode's double-invoked renders, since a plain read has no side effect) and clears it in a separate effect (idempotent, so a StrictMode double-invoked effect is harmless too).
+
+Verified: `npm run build` and `npm run lint` clean (the two new `only-export-components` warnings for the module-level pending-message functions are the same pre-existing category already present elsewhere in this codebase — `Toast.jsx`, `ApiNotice.jsx`, `DemoContext.jsx` — not a new kind of finding). Ran Playwright (headless Chromium, real Docker stack) end to end: the nav link reaches `/account`; profile shows the signed-in user's username/email; changing to the current username shows `USERNAME_UNCHANGED` inline; changing it for real updates the section, a success banner, and the nav's displayed name with no reload; the email section's wrong-password case shows `INVALID_PASSWORD` inline on the password field; the happy path sends an OTP (read from the user-service dev-console log), a wrong code shows "That code is incorrect.", and the right code updates the profile's email with no reload; the password section's happy path sends an OTP, and entering the right code immediately redirects to `/login` with "Password changed. Please sign in again with your new password." — not left on `/account`; the old password then fails login and the new one succeeds.
+
+**Files:**
+
+- `frontend/src/pages/Account.jsx` (created)
+- `frontend/src/api/profile.js` (modified)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/pages/Login.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -30,6 +30,14 @@
  *        requireLogin) instead of opening a modal.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Per instructions.md Stage 16e ("linked from the nav"): the username/initials block
+ *        (desktop and mobile) is now a link to /account instead of plain text, since that was
+ *        the only place in the nav that already identified the signed-in user. The Log out
+ *        control stays a separate control, not swallowed into the link.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -108,12 +116,15 @@ export default function TopNav() {
                   <Bell size={18} aria-hidden="true" />
                   <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-pill bg-orange" />
                 </button>
-                <span className="text-sm font-medium text-ink">
-                  {displayName}
-                </span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
-                  {initials}
-                </span>
+                <Link
+                  to="/account"
+                  className="flex h-10 items-center gap-2 rounded-btn px-1.5 hover:bg-surface-alt"
+                >
+                  <span className="text-sm font-medium text-ink">{displayName}</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
+                    {initials}
+                  </span>
+                </Link>
                 <button
                   type="button"
                   className="flex h-10 items-center gap-1.5 rounded-btn px-2 text-sm text-ink-70 hover:bg-surface-alt hover:text-ink"
@@ -185,19 +196,19 @@ export default function TopNav() {
             <div className="mt-auto">
               {isLoggedIn ? (
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-pill bg-surface-alt text-sm font-semibold text-ink">
-                    {initials}
-                  </span>
-                  <div className="min-w-0">
+                  <Link to="/account" className="flex items-center gap-3 min-w-0">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-pill bg-surface-alt text-sm font-semibold text-ink">
+                      {initials}
+                    </span>
                     <p className="truncate text-sm font-medium text-ink">{displayName}</p>
-                    <button
-                      type="button"
-                      className="text-xs text-ink-40 hover:text-ink"
-                      onClick={logout}
-                    >
-                      Log out
-                    </button>
-                  </div>
+                  </Link>
+                  <button
+                    type="button"
+                    className="text-xs text-ink-40 hover:text-ink"
+                    onClick={logout}
+                  >
+                    Log out
+                  </button>
                 </div>
               ) : (
                 <Button

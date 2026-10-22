@@ -17,6 +17,10 @@ Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #13
        frontend Stage 16d (forgot-password page). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
 Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #140 for
+       frontend Stage 16e (account page). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -222,3 +226,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 137 | 2026-10-23 | frontend               | Stage 16b: Shared Auth Plumbing                                                                    | New AuthContext/login page/route guards/toast/OTP input replace LoginModal; proactive token refresh |
 | 138 | 2026-10-23 | frontend               | Stage 16c: Registration (`/register`)                                                              | New two-step register page (form + OTP) wired to /auth/register, verify-otp, resend-otp            |
 | 139 | 2026-10-23 | frontend               | Stage 16d: Forgot Password (`/forgot-password`)                                                    | New three-step forgot-password page wired to /auth/forgot-password, verify-otp, reset-password      |
+| 140 | 2026-10-23 | frontend               | Stage 16e: Account Page (`/account`)                                                                | New account page (username/email/password changes); fixed a forced-relogin banner race bug          |
