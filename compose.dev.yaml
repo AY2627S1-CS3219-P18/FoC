@@ -16,6 +16,12 @@
 # environment-configured Vite proxy. No requirements, architecture, schema, or
 # API decisions were made by the AI tool.
 # Author review: tng wen xi
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+# Scope (2026-10-22): order-worker serves the read-only bull-board queue dashboard
+#        (QUEUE_DASHBOARD_PORT), published on the host's loopback only:
+#        http://localhost:3010/admin/queues. No requirements, architecture, schema,
+#        or API decisions were made by the AI tool.
+# Author review:
 
 services:
   frontend:
@@ -87,6 +93,9 @@ services:
       ]
     environment:
       NODE_ENV: development
+      QUEUE_DASHBOARD_PORT: 3010
+    ports:
+      - "127.0.0.1:3010:3010" # bull-board, this machine only
     develop:
       watch:
         - action: sync
