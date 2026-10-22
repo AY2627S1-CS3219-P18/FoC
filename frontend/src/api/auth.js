@@ -28,6 +28,12 @@
  *        instructions.md Stage 16c (POST /auth/register, /auth/verify-otp, /auth/resend-otp).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added forgotPassword and resetPassword, the calls ForgotPassword.jsx needs, per
+ *        instructions.md Stage 16d (POST /auth/forgot-password, /auth/reset-password).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { decodeAccessTokenClaims, refreshAccessToken, request, setAccessToken } from './http'
@@ -66,6 +72,19 @@ export async function verifyOtp({ email, otp, purpose }) {
 // OTP_RESEND_LIMIT (with Retry-After on cooldown).
 export async function resendOtp({ email, purpose }) {
   return request('/auth/resend-otp', { method: 'POST', json: { email, purpose } })
+}
+
+// 200 { message, code: 'OTP_SENT' }. 404 EMAIL_NOT_FOUND, 403 ACCOUNT_NOT_VERIFIED, 429
+// OTP_RESEND_COOLDOWN / OTP_RESEND_LIMIT (with Retry-After on cooldown).
+export async function forgotPassword({ email }) {
+  return request('/auth/forgot-password', { method: 'POST', json: { email } })
+}
+
+// 200 { message, code: 'PASSWORD_RESET_SUCCESS' }. 404 EMAIL_NOT_FOUND, 403
+// ACCOUNT_NOT_VERIFIED, 400 INVALID_OTP / OTP_EXPIRED / VALIDATION_ERROR, 429
+// OTP_ATTEMPTS_EXCEEDED.
+export async function resetPassword({ email, otp, newPassword }) {
+  return request('/auth/reset-password', { method: 'POST', json: { email, otp, newPassword } })
 }
 
 // Page load: trade the refresh cookie for an access token, then rebuild the same user object login

@@ -12,6 +12,15 @@
  *        ACCOUNT_NOT_VERIFIED to a redirect instead of showing it at all).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Reworded OTP_RESEND_LIMIT to name the actual wait ("about an hour"), per
+ *        instructions.md Stage 16d's note for the forgot-password resend limit. Checked
+ *        user-service/.env.example: OTP_RESEND_WINDOW_MINUTES=60 is one shared config across
+ *        every OTP purpose (registration included), not forgot-password-specific, so the
+ *        corrected wording applies to this one central entry rather than a per-page override.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -38,7 +47,7 @@ export const errorMessages = {
   },
   OTP_RESEND_COOLDOWN: { message: 'Please wait before requesting another code.', display: 'field' },
   OTP_RESEND_LIMIT: {
-    message: "You've reached the resend limit. Please try again later.",
+    message: "You've reached the resend limit. Please try again in about an hour.",
     display: 'field',
   },
   NO_PENDING_REGISTRATION: {

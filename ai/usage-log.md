@@ -6088,3 +6088,44 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16d: Forgot Password (`/forgot-password`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16d (the forgot-password spec) and its Stage 16 decisions table (OTP input behaviour, resend cooldown/limit wording, error display rules)
+
+**Prompts (exact):**
+
+> let's start 16d, dont forget ot pull main first, and the git workflow too
+
+> done. go for 16d
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16c PR #130) and branched `feat/stage-16d-forgot-password` from it, per the team's standing git workflow.
+
+Created `src/pages/ForgotPassword.jsx`: one page, three steps (`email`, `otp`, `password`) kept purely in component `useState` with no router state at all, so a reload always restarts at step 1 as specified. Step 1: email → `POST /auth/forgot-password` — `EMAIL_NOT_FOUND` inline, `ACCOUNT_NOT_VERIFIED` banner, `OTP_RESEND_COOLDOWN`/`OTP_RESEND_LIMIT` banner (the cooldown message appends the actual `Retry-After` seconds from `ApiError.retryAfterSeconds`). Step 2: `OtpInput` → `POST /auth/verify-otp` (`purpose: 'forgot_password'`, which `user-service/src/services/auth.service.ts`'s `verifyForgotPasswordOtp` checks without consuming the code) — `INVALID_OTP` clears/refocuses the boxes, `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` show inline pointing at resend, success stores the verified code in state and moves to step 3; `ResendButton` → `POST /auth/resend-otp` (`purpose: 'forgot_password'`). Step 3: new password (client complexity check) → `POST /auth/reset-password` with the email/OTP/new-password all held in state — `INVALID_OTP`/`OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` here (the code expiring between steps 2 and 3) route back to step 2 reusing the same `otpBannerError` state rather than a separate channel, success navigates to `/login` with a success banner.
+
+While reading `auth.service.ts` to confirm the exact error codes each endpoint can throw (`forgotPassword`, `verifyForgotPasswordOtp`, `resetPassword`, and `otp.service.ts`'s `checkOtp` for where `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` actually originate), checked `user-service/.env.example` for the Stage 16d spec's note that the resend-limit text should say "about an hour": `OTP_RESEND_WINDOW_MINUTES=60` is one config shared by every OTP purpose, not forgot-password-specific, so corrected `errorMessages.js`'s central `OTP_RESEND_LIMIT` text to name the real wait rather than add a per-page override — this also improves the existing registration flow's wording, which was accurate in effect but vague before.
+
+`src/api/auth.js` gained `forgotPassword` and `resetPassword` (thin wrappers over `request()`, bodies matching `auth.controller.ts`'s `forgotPasswordSchema`/`resetPasswordSchema`). `App.jsx` added the `/forgot-password` route (already linked from `Login.jsx` since Stage 16b).
+
+Verified: `npm run build` and `npm run lint` clean, no new findings. Ran Playwright (headless Chromium, real Docker stack) end to end, reading OTPs from the user-service container's dev-console email log and manipulating `users_otps.expires_at` directly in the Postgres container for the expiry case (a 60s resend cooldown shared across all OTP purposes made a literal `/auth/resend-otp` round trip impractical to chain immediately after the account's own registration email, so the expiry-recovery step reuses the already-known code after un-expiring the row, rather than requesting a fresh one): reload mid-flow restarts at step 1 (confirmed on a dedicated account to avoid a same-account double-send hitting that same cooldown); a wrong code at step 2 never reaches step 3 and shows "That code is incorrect."; the correct code reaches step 3; expiring the OTP in the DB while on step 3 and submitting sends the user back to step 2 with "That code has expired."; completing the reset lands on `/login` with "Password reset. Please log in with your new password."; the old password then fails login (`INVALID_CREDENTIALS`) and the new one succeeds.
+
+**Files:**
+
+- `frontend/src/pages/ForgotPassword.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
