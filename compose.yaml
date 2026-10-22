@@ -22,6 +22,12 @@
 #        and a credit-worker service consuming queue:credit:transfer from order-redis.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+# Scope (2026-10-22): order-redis persistence (George, 2026-10-22: RDB + AOF) - append-only
+#        file with everysec fsync alongside the default RDB snapshots, on the named volume
+#        order-redis-data, so queued credit jobs survive container recreation.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -99,6 +105,12 @@ services:
   order-redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # The relay deletes an outbox row once its job is enqueued, so Redis then holds the
+    # only copy of each credit job. AOF (fsync every second) bounds a crash to ~1 s of
+    # writes; Redis's default RDB snapshots are kept, and AOF rewrites use an RDB preamble.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - order-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -382,6 +394,7 @@ services:
 
 volumes:
   order-db-data:
+  order-redis-data:
   user-db-data:
   credit-db-data:
   supplier-db-data:
