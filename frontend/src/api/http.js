@@ -18,16 +18,23 @@
  *        client send the in-memory token in its handshake.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Stage 16b of instructions.md - proactive refresh (schedules a refresh 60s before the
+ *        current access token's exp, reusing the existing shared in-flight refresh; cancelled
+ *        whenever the token is cleared), ApiError now carries retryAfterSeconds from the
+ *        service's Retry-After header (for ResendButton's cooldown), and the JWT-claim decoder
+ *        moved here from api/auth.js as decodeAccessTokenClaims so this file can reuse it too.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.
 let accessToken = null
 let refreshing = null
 let onSessionExpired = () => {}
+let refreshTimer = null
 
-export const setAccessToken = (token) => {
-  accessToken = token
-}
 export const getAccessToken = () => accessToken
 export const setOnSessionExpired = (callback) => {
   onSessionExpired = callback
@@ -36,12 +43,13 @@ export const setOnSessionExpired = (callback) => {
 // Error envelope from the services: { status_code, error, message, timestamp, details? } (supplier
 // service) or { message, code } (user service).
 export class ApiError extends Error {
-  constructor(status, body) {
+  constructor(status, body, retryAfterSeconds) {
     super(body?.message || 'Request failed (' + status + ')')
     this.status = status
     this.code = body?.code
     this.body = body
     this.details = Array.isArray(body?.details) ? body.details : []
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -55,6 +63,48 @@ const readBody = async (response) => {
   }
 }
 
+// Decoded, not verified: the frontend only needs these for display, routing and refresh timing.
+// Each service verifies the token itself against user-service's JWKS before trusting anything.
+export function decodeAccessTokenClaims(token) {
+  const payload = token?.split('.')[1]
+  if (!payload) return null
+  try {
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    // atob gives bytes, not characters; this is the usual round-trip for non-ASCII claims.
+    const text = decodeURIComponent(
+      Array.from(json, (ch) => '%' + ch.charCodeAt(0).toString(16).padStart(2, '0')).join(''),
+    )
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+// Refreshes 60s before the current token's own exp. One timer at a time: replaced on every new
+// token, cleared when the token is cleared (logout, or a failed refresh).
+const REFRESH_SKEW_MS = 60_000
+function scheduleProactiveRefresh(token) {
+  const claims = decodeAccessTokenClaims(token)
+  if (!claims?.exp) return
+  const delay = claims.exp * 1000 - Date.now() - REFRESH_SKEW_MS
+  if (delay <= 0) return
+  refreshTimer = setTimeout(() => {
+    refreshAccessToken().catch(() => {
+      setAccessToken(null)
+      onSessionExpired()
+    })
+  }, delay)
+}
+
+export const setAccessToken = (token) => {
+  accessToken = token
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  if (token) scheduleProactiveRefresh(token)
+}
+
 // One refresh at a time: concurrent 401s share the same request.
 export function refreshAccessToken() {
   if (!refreshing) {
@@ -62,8 +112,8 @@ export function refreshAccessToken() {
       .then(async (response) => {
         const body = await readBody(response)
         if (!response.ok) throw new ApiError(response.status, body)
-        accessToken = body.accessToken
-        return accessToken
+        setAccessToken(body.accessToken)
+        return body.accessToken
       })
       .finally(() => {
         refreshing = null
@@ -122,7 +172,7 @@ async function send(path, { method = 'GET', query, json, form, headers = {} } = 
     try {
       await refreshAccessToken()
     } catch {
-      accessToken = null
+      setAccessToken(null)
       onSessionExpired()
       throw new ApiError(401, { message: 'Your session has expired. Please log in again.' })
     }
@@ -130,6 +180,9 @@ async function send(path, { method = 'GET', query, json, form, headers = {} } = 
   }
 
   const payload = await readBody(response)
-  if (!response.ok) throw new ApiError(response.status, payload)
+  if (!response.ok) {
+    const retryAfter = response.headers.get('Retry-After')
+    throw new ApiError(response.status, payload, retryAfter ? Number(retryAfter) : undefined)
+  }
   return payload
 }

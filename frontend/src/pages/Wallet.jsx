@@ -18,6 +18,13 @@
  *        users via GET /users/public, keeping the shortened-id fallback.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: /wallet is now wrapped in RequireAuth (App.jsx), which replaces the gating effect
+ *        that opened the deleted LoginModal via requireLogin. The signed-in user's id now
+ *        comes from the new AuthContext instead of DemoContext, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -26,7 +33,7 @@ import CreditPill from '../components/CreditPill'
 import { useApiNotice } from '../components/ApiNotice'
 import { useApi } from '../api/useApi'
 import { getBalance, listTransactions, resolveUserNames } from '../api/credits'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Credit Service's four transaction types (credit-service/API.md). The mock's earned/spent/
 // reserved/returned vocabulary is gone: the frontend follows the API, not the reverse.
@@ -74,12 +81,8 @@ function secondaryLine(t, who) {
 
 // Credit F1.5.1 balance with reserved/unreserved, F1.5.2 history, F2.1.1 logged detail.
 export default function Wallet() {
-  const { session, isLoggedIn, sessionReady, requireLogin } = useDemo()
-  const userId = session?.id ?? null
-
-  useEffect(() => {
-    if (sessionReady && !isLoggedIn) requireLogin('You need an account to view your credits.')
-  }, [sessionReady, isLoggedIn, requireLogin])
+  const { user, isLoggedIn, sessionReady } = useAuth()
+  const userId = user?.id ?? null
 
   const [filter, setFilter] = useState('All')
   const [expanded, setExpanded] = useState(null)

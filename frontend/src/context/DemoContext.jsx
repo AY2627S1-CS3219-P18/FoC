@@ -23,63 +23,26 @@
  *        create-request affordability check show the signed-in user's real credits.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Per instructions.md Stage 16b and the user's answer to 16a item 2 (full split now),
+ *        every real-auth piece (session/login/logout/isAdmin/credits/the order-socket
+ *        connection) moved to the new AuthContext. DemoContext shrinks to the demo-only
+ *        requester/courier role and the mocked request list; `loginPrompt` is dropped rather
+ *        than kept as dead state, since nothing opens a modal anymore (LoginModal deleted).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import * as authApi from '../api/auth'
-import { getBalance } from '../api/credits'
-import { setOnSessionExpired } from '../api/http'
-import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { requests as seedRequests } from '../data/requests'
 import { currentUser } from '../data/users'
 
 const DemoContext = createContext(null)
 
-/** Logged out, or the balance could not be read. Module-scoped so its identity is stable. */
-const NO_CREDITS = { available: 0, reserved: 0, total: 0 }
-
 export function DemoProvider({ children }) {
-  // Real session from the User Service: null when logged out. `sessionReady` turns true once the
-  // refresh cookie has been tried on page load, so screens do not flash a logged-out state.
-  const [session, setSession] = useState(null)
-  const [sessionReady, setSessionReady] = useState(false)
-  const isLoggedIn = session !== null
-  const systemRole = session?.role ?? null
-  const isAdmin = systemRole === 'admin' || systemRole === 'super admin'
   const [role, setRole] = useState('requester')
   const [requests, setRequests] = useState(seedRequests)
-  const [loginPrompt, setLoginPrompt] = useState(null) // { action: string } | null
-
-  useEffect(() => {
-    setOnSessionExpired(() => setSession(null))
-    authApi.restoreSession().then(
-      (user) => {
-        setSession(user)
-        setSessionReady(true)
-      },
-      () => setSessionReady(true),
-    )
-  }, [])
-
-  // Order events (#6/#59) need a signed-in user: one connection for the whole app.
-  useEffect(() => {
-    if (!isLoggedIn) return undefined
-    connectOrderSocket()
-    return () => disconnectOrderSocket()
-  }, [isLoggedIn])
-
-  const login = useCallback(async (identifier, password) => {
-    setSession(await authApi.login(identifier, password))
-    setLoginPrompt(null)
-  }, [])
-
-  const logout = useCallback(async () => {
-    try {
-      await authApi.logout()
-    } finally {
-      setSession(null)
-    }
-  }, [])
 
   // Session-only. Nothing is persisted; a refresh resets the demo.
   const setRequestStatus = useCallback((id, status) => {
@@ -113,93 +76,17 @@ export function DemoProvider({ children }) {
     )
   }, [])
 
-  // Gated actions keep the underlying page visible behind the scrim.
-  const requireLogin = useCallback(
-    (action, onAllowed) => {
-      if (isLoggedIn) {
-        onAllowed?.()
-        return true
-      }
-      setLoginPrompt({ action })
-      return false
-    },
-    [isLoggedIn],
-  )
-
-  // --- credit balance (F19.5.1) ---------------------------------------------------------
-  // Read from Credit Service, not from src/data. Everything that shows a balance reads this:
-  // the nav pill and CreateRequest's affordability check, which previously compared an offer
-  // against the mockup's hardcoded 14.
-  const [credits, setCredits] = useState(NO_CREDITS)
-
-  const userId = session?.id ?? null
-
-  const refreshCredits = useCallback(async () => {
-    if (!userId) {
-      setCredits(NO_CREDITS)
-      return
-    }
-    try {
-      const b = await getBalance(userId)
-      setCredits({
-        available: b.unreservedBalance,
-        reserved: b.reservedBalance,
-        total: b.totalBalance,
-      })
-    } catch {
-      // 404 BALANCE_NOT_FOUND (no allocation yet), 503 (identity provider), or a network
-      // failure. The nav bar must never take the page down over a balance, so show zero and
-      // let the Wallet page, which has proper loading and error states, explain it.
-      setCredits(NO_CREDITS)
-    }
-  }, [userId])
-
-  // Refetch whenever the signed-in user changes, and clear on logout so one user's balance
-  // is never briefly visible to the next.
-  useEffect(() => {
-    if (!sessionReady) return
-    void refreshCredits()
-  }, [sessionReady, refreshCredits])
-
   const value = useMemo(
     () => ({
-      isLoggedIn,
-      session,
-      sessionReady,
-      systemRole,
-      isAdmin,
-      login,
-      logout,
       role,
       setRole,
       requests,
       setRequests,
       setRequestStatus,
       acceptRequest,
-      loginPrompt,
-      setLoginPrompt,
-      requireLogin,
       currentUser,
-      credits,
-      refreshCredits,
     }),
-    [
-      isLoggedIn,
-      session,
-      sessionReady,
-      systemRole,
-      isAdmin,
-      login,
-      logout,
-      role,
-      requests,
-      loginPrompt,
-      requireLogin,
-      setRequestStatus,
-      acceptRequest,
-      credits,
-      refreshCredits,
-    ],
+    [role, requests, setRequestStatus, acceptRequest],
   )
 
   return <DemoContext.Provider value={value}>{children}</DemoContext.Provider>

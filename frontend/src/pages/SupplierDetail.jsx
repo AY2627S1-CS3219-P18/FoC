@@ -14,6 +14,11 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The detail page loads GET /api/v1/suppliers/:id, and the 'Also at' list from the list endpoint filtered by location_id. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: requireLogin replaced with AuthContext's requireAuth, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -26,7 +31,7 @@ import { useApiNotice } from '../components/ApiNotice'
 import { useApi } from '../api/useApi'
 import { getSupplier, listSuppliers } from '../api/suppliers'
 import { DAY_NAMES } from '../data/suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Supplier detail: one supplier as returned by GET /api/v1/suppliers/:id (§7.3). Other
 // suppliers at the same location are listed as a view over the flat list. Display only —
@@ -34,7 +39,7 @@ import { useDemo } from '../context/DemoContext'
 export default function SupplierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { requireLogin } = useDemo()
+  const { requireAuth } = useAuth()
 
   const { data: supplier, loading, error } = useApi(() => getSupplier(id), [id])
   // Other suppliers at the same location, from the list endpoint filtered by location_id.
@@ -49,7 +54,7 @@ export default function SupplierDetail() {
   const siblings = (nearby?.data ?? []).filter((s) => s.id !== supplier.id)
 
   const requestFromHere = () =>
-    requireLogin('You need an account to post an errand.', () =>
+    requireAuth('You need an account to post an errand.', () =>
       navigate('/requests/new?supplier=' + supplier.id),
     )
 

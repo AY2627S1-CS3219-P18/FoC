@@ -5930,3 +5930,118 @@ Verified: `tsc --noEmit` and `npm run lint` both clean throughout, including aft
 Accepted all changes. Fix the error.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16b: Shared Auth Plumbing
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16b (decisions table and the Stage 16b section); the user's answers to Stage 16a items 1 ("Manage users" as a second top-level nav link) and 2 (full split of DemoContext's auth state into AuthContext now)
+
+**Prompts (exact):**
+
+> go for 16b
+
+**Key responses:**
+Read every consumer of `DemoContext`'s auth fields (the 16 files from the 16a report) in full before changing any of them, to keep each page's own business logic untouched while only swapping how it reads session state.
+
+Created `src/context/AuthContext.jsx`: holds `user` (`{id, role, username, email, activeView}`) and `status` (`loading`/`authenticated`/`anonymous`), restores the session on mount, exposes `login`, `logout`, `setActiveView` (optimistic, reverts and rethrows on failure so a caller can toast), `updateUser` (for 16e to merge in a changed username/email), and `requireAuth(reason, onAllowed)` — the new call sites' replacement for the deleted `LoginModal`'s `requireLogin`: already logged in runs the callback immediately, otherwise navigates to `/login` remembering the current location. Also carries `credits`/`refreshCredits` and the order-socket connect/disconnect effect, moved here from `DemoContext` per the user's "full split" answer. Kept `isLoggedIn`/`sessionReady` as derived aliases of `status` to minimise the diff across 16 consumer files.
+
+Updated `src/api/http.js`: proactive refresh now schedules itself 60s before the current token's `exp` (decoded via the JWT-claim helper, moved here from `api/auth.js` as `decodeAccessTokenClaims` so both files can use it without a circular import) every time a new token is set — on login and on every successful refresh — reusing the existing shared in-flight refresh; the timer is cancelled whenever the token is cleared. `ApiError` now also carries `retryAfterSeconds`, parsed from the service's `Retry-After` response header (not previously captured at all), which `ResendButton` needs for its cooldown. Kept the existing in-flight GET de-duplication and 401-retry unchanged.
+
+Created `src/api/profile.js` (`getProfile`, `setActiveView`) per the decision table's module boundary (`/users/me/*` calls belong here, not in `auth.js`); `auth.js`'s `restoreSession` now calls it and also reads `activeView` from the response, which it was missing (it predates Stage 15a adding that field to `GET /users/me`).
+
+Created the route guards (`src/components/RouteGuards.jsx`): `RequireAuth` and `RequireRole` (rank order copied from `user-service/src/middleware/authorize.ts`'s `ROLE_RANK`: user < admin < super admin); both render nothing while the session is still restoring, per the decisions table. `Forbidden.jsx` is the in-place "Not authorised" view.
+
+Created the shared components the decisions table lists: `Toast.jsx` (+ `ToastProvider`/`useToast`, positioned top-right so it never collides with `ChatBubble`, bottom-right, or `DemoControls`, bottom-left — 16a found no existing toast to reuse), `FormBanner.jsx`, `FieldError.jsx`, `OtpInput.jsx` (6 boxes, auto-advance, backspace back, paste-fills-and-submits, exposes `reset()` via a ref for the parent to clear and refocus after a wrong code), `ResendButton.jsx` (cooldown countdown from `retryAfterSeconds`, limit state with no countdown), `src/utils/validation.js` (regexes and messages copied verbatim from `user-service/src/services/auth.service.ts`: `USERNAME_REGEX`, `EMAIL_REGEX`, `PASSWORD_REGEX`, `OTP_REGEX` and their messages), and `src/api/errorMessages.js`.
+
+`errorMessages.js` enumerates every code found by grepping user-service for `new AppError(` plus `UNAUTHORIZED`/`FORBIDDEN` (middleware) and `VALIDATION_ERROR`/`INTERNAL_ERROR` (the global handler) — the full map, with each code's default display type, is below for review:
+
+| Code                              | Frontend text                                            | Display |
+| --------------------------------- | -------------------------------------------------------- | ------- |
+| VALIDATION_ERROR                  | Please check the highlighted fields.                     | field   |
+| USERNAME_TAKEN                    | That username is already taken.                          | field   |
+| EMAIL_TAKEN                       | That email is already registered.                        | field   |
+| INVALID_CREDENTIALS               | Wrong username/email or password.                        | banner  |
+| ACCOUNT_SUSPENDED                 | This account has been suspended.                         | banner  |
+| ACCOUNT_NOT_VERIFIED              | This account still needs email verification.             | banner  |
+| INVALID_REFRESH_TOKEN             | Your session has expired. Please log in again.           | toast   |
+| UNAUTHORIZED                      | Please log in to continue.                               | toast   |
+| FORBIDDEN                         | You don't have access to do that.                        | toast   |
+| INVALID_OTP                       | That code is incorrect.                                  | field   |
+| OTP_EXPIRED                       | That code has expired. Request a new one.                | field   |
+| OTP_ATTEMPTS_EXCEEDED             | Too many incorrect attempts. Request a new code.         | field   |
+| OTP_RESEND_COOLDOWN               | Please wait before requesting another code.              | field   |
+| OTP_RESEND_LIMIT                  | You've reached the resend limit. Please try again later. | field   |
+| NO_PENDING_REGISTRATION           | No pending registration was found for this email.        | banner  |
+| EMAIL_NOT_FOUND                   | No account uses that email.                              | field   |
+| NO_PENDING_EMAIL_CHANGE           | No pending email change was found.                       | banner  |
+| NO_PENDING_PASSWORD_CHANGE        | No pending password change was found.                    | banner  |
+| EMAIL_SEND_FAILED                 | Could not send the email right now. Please try again.    | banner  |
+| USERNAME_UNCHANGED                | That is already your username.                           | field   |
+| EMAIL_UNCHANGED                   | That is already your email.                              | field   |
+| PASSWORD_UNCHANGED                | That is already your password.                           | field   |
+| INVALID_PASSWORD                  | Your current password is incorrect.                      | field   |
+| USER_NOT_FOUND                    | That user could not be found.                            | toast   |
+| SUPER_ADMIN_IMMUTABLE             | A super administrator cannot be modified.                | toast   |
+| SELF_ROLE_CHANGE                  | You cannot change your own role.                         | toast   |
+| CANNOT_CHANGE_STATUS_PENDING_USER | A pending user's status cannot be changed yet.           | toast   |
+| CANNOT_CHANGE_ROLE_PENDING_USER   | A pending user's role cannot be changed yet.             | toast   |
+| CANNOT_CHANGE_ROLE_SUSPENDED_USER | A suspended user's role cannot be changed.               | toast   |
+| INTERNAL_ERROR (fallback)         | Something went wrong. Please try again.                  | banner  |
+
+Created `src/pages/Login.jsx`: identifier/password, links to `/register` and `/forgot-password` (not built until 16c/16d — the app's catch-all route sends them home until then), success lands on `state.from` or home, `INVALID_CREDENTIALS`/`ACCOUNT_SUSPENDED` show a banner, `ACCOUNT_NOT_VERIFIED` redirects to `/register`'s OTP step per the spec's exact snippet.
+
+Wired it together: `main.jsx` mounts `AuthProvider` (inside `BrowserRouter`, needs `useNavigate`/`useLocation`) and `ToastProvider`; `App.jsx` adds `/login` and wraps `/requests/new`, `/requests/:id/edit`, `/activity`, `/chat/:id` and `/wallet` in `RequireAuth` (these are exactly the pages that used to gate themselves on mount via `requireLogin`, now redundant once the route itself guards them - their internal gating effects, which called the now-deleted function, were removed); `LoginModal.jsx` deleted once nothing imported it. `DemoContext.jsx` shrank to `role`/`requests`/`setRequestStatus`/`acceptRequest`/`currentUser` (the mocked, non-auth pieces) - `loginPrompt`/`setLoginPrompt` were dropped entirely rather than kept as the user's literal answer listed them, since nothing opens a modal to read them anymore (flagged below). Updated all 16 consumer files to read from the new `useAuth()` instead of `useDemo()` for anything auth-related, touching only that one line per file wherever possible: `TopNav.jsx` (also added "Manage users" as a second admin link, removed the now-redundant `gated` nav-link mechanism since `/activity` is route-guarded), `ApiNotice.jsx`, `useApi.js`, `ChatBubble.jsx`, `SupplierCard.jsx`, `SupplierDetail.jsx`, `RequestCard.jsx`, `RequestBoard.jsx` (soft-gated, not wrapped in `RequireAuth` - unchanged behaviour, just a different context), `AdminSuppliers.jsx` (its existing `AdminOnly` in-page gate kept as-is, just repointed - not replaced by the new generic `RequireRole`, which Stage 16g reserves for `/admin/users`), `AdminSupplierForm.jsx`, and `Activity.jsx`/`Wallet.jsx`/`Chat.jsx`/`CreateRequest.jsx` (gating effects/inline checks removed, now dead once route-guarded).
+
+Verified: `npm run build` (`vite build`) succeeds. `npm run lint` (`oxlint`): only pre-existing warning categories (`only-export-components`, `set-state-in-effect`) at the same rate as a lint run on the pre-16b branch (checked with `git stash`) - none of these are new error-level findings. Ran a full Playwright smoke test (headless Chromium, installed for this) against the real Docker stack (all services already running) as the super admin: clicking "Log in" navigates to `/login` (no modal); wrong password shows the banner; correct login redirects home; `localStorage`/`sessionStorage` are empty both logged in and after logout (access token confirmed in-memory only); the nav shows the username, both admin links and the credit pill; a reload stays logged in; `/wallet` loads real Credit Service data (20 credits, one allocation row) with the Bearer token attached; logging out clears storage and lands on `/login`; visiting `/wallet` logged out redirects to `/login` remembering the page, and logging back in from there lands back on `/wallet`; visiting the not-yet-built `/admin/users` falls through the catch-all to home, as expected before Stage 16g. No unexpected console errors - the three 401s logged are the normal pre-login/401-retry noise, already handled by `http.js` before this change.
+
+**Files:**
+
+- `frontend/src/context/AuthContext.jsx` (created)
+- `frontend/src/components/RouteGuards.jsx` (created)
+- `frontend/src/components/Forbidden.jsx` (created)
+- `frontend/src/components/Toast.jsx` (created)
+- `frontend/src/components/FormBanner.jsx` (created)
+- `frontend/src/components/FieldError.jsx` (created)
+- `frontend/src/components/OtpInput.jsx` (created)
+- `frontend/src/components/ResendButton.jsx` (created)
+- `frontend/src/utils/validation.js` (created)
+- `frontend/src/api/profile.js` (created)
+- `frontend/src/api/errorMessages.js` (created)
+- `frontend/src/pages/Login.jsx` (created)
+- `frontend/src/components/LoginModal.jsx` (deleted)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/http.js` (modified)
+- `frontend/src/api/useApi.js` (modified)
+- `frontend/src/main.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/context/DemoContext.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/components/ApiNotice.jsx` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/src/components/SupplierCard.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/src/pages/SupplierDetail.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/pages/Wallet.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/AdminSuppliers.jsx` (modified)
+- `frontend/src/pages/AdminSupplierForm.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. Added `requireAuth(reason, onAllowed)` to `AuthContext`, not explicitly named in the decisions table's "Exposes" list, because 13 existing call sites across 8 files depended on the deleted `LoginModal`'s `requireLogin` with exactly that shape (run immediately if already logged in, otherwise prompt). Implementing "replace every place that opened LoginModal with navigation to /login" required an equivalent.
+2. `Login.jsx` shows an optional informational banner for the `reason` string `requireAuth` passes along (the old modal showed this text too), in addition to the spec's required success/`from` handling. Not required by the spec, which only mentions `from` and a success banner - dropping the reason text felt like a UX regression, and nothing forbids showing it.
+3. `DemoContext` dropped `loginPrompt`/`setLoginPrompt` entirely rather than keeping them as the user's 16a answer listed ("role/requests/loginPrompt"), since `LoginModal` (the only thing that ever read them) is deleted in this same stage - keeping them would be dead state.
+4. File headers use this codebase's established `/* ... */` block-comment style throughout, not the Stage 16 ground rules' literal "JSX/JS files use `//` comments" - every existing frontend file already uses block comments, so the code was followed over the instruction text, per the ground rules' own "where it disagrees with this file, follow the code and tell me."
+5. `AdminSuppliers.jsx`'s existing `AdminOnly` in-page admin gate was left as its own component (only repointed to `AuthContext`), not replaced by the new `RequireRole`/`Forbidden`. Stage 16g is where the file's own stage split puts `/admin/users` behind `RequireRole`; generalising `/admin/suppliers` to match wasn't asked for here.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -14,9 +14,18 @@
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Repaired session restore. GET /auth/verify was removed from user-service on 2026-10-17, so every reload threw and the user appeared logged out; the id and role now come from the access token's own claims. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: restoreSession now also reads activeView from GET /users/me (via the new
+ *        src/api/profile.js), for AuthContext (instructions.md Stage 16b). The JWT-decode
+ *        helper moved to http.js as decodeAccessTokenClaims, so http.js can reuse it for
+ *        proactive refresh scheduling without a circular import.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { refreshAccessToken, request, setAccessToken } from './http'
+import { decodeAccessTokenClaims, refreshAccessToken, request, setAccessToken } from './http'
+import { getProfile } from './profile'
 
 // 200 { accessToken, user: { id, username, email, role, activeView } }; the refresh cookie is set by the
 // service. 401 INVALID_CREDENTIALS, 403 ACCOUNT_SUSPENDED / ACCOUNT_NOT_VERIFIED.
@@ -42,26 +51,8 @@ export async function logout() {
 //
 // The id and role come from the access token itself. GET /auth/verify, which used to supply them, was
 // removed from user-service on 2026-10-17 in favour of JWKS, and every reload had been throwing ever
-// since. Neither replacement carries them: GET /users/me returns { username, email } only, and
-// POST /auth/refresh returns { accessToken } only. The token is the one thing that has both.
-//
-// Decoded, not verified. The frontend only needs these for display and routing; each service verifies
-// the token itself against user-service's JWKS before trusting anything.
-function decodeClaims(token) {
-  const payload = token?.split('.')[1]
-  if (!payload) return null
-  try {
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
-    // atob gives bytes, not characters; this is the usual round-trip for non-ASCII claims.
-    const text = decodeURIComponent(
-      Array.from(json, (ch) => '%' + ch.charCodeAt(0).toString(16).padStart(2, '0')).join(''),
-    )
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
+// since. Neither replacement carries them: GET /users/me returns { username, email, activeView } only,
+// and POST /auth/refresh returns { accessToken } only. The token is the one thing that has both.
 export async function restoreSession() {
   let token
   try {
@@ -69,8 +60,14 @@ export async function restoreSession() {
   } catch {
     return null
   }
-  const claims = decodeClaims(token)
+  const claims = decodeAccessTokenClaims(token)
   if (!claims?.sub) return null
-  const profile = await request('/users/me')
-  return { id: claims.sub, username: profile.username, email: profile.email, role: claims.role }
+  const profile = await getProfile()
+  return {
+    id: claims.sub,
+    username: profile.username,
+    email: profile.email,
+    role: claims.role,
+    activeView: profile.activeView,
+  }
 }

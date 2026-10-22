@@ -11,6 +11,11 @@
  *        removed hours and activeRequests, which the list response does not carry. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: requireLogin replaced with AuthContext's requireAuth, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -20,7 +25,7 @@ import SupplierImage from './SupplierImage'
 import CategoryPills from './CategoryPills'
 import Button from './Button'
 import { qualifiedName } from '../data/suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Supplier F1.1 listing, F1.2.1 open/closed indicator, plus the bookmarking nice-to-have.
 // showLocation: false inside a location group (the heading already names it), true everywhere else.
@@ -30,12 +35,12 @@ export default function SupplierCard({
   showAction = true,
   showLocation = false,
 }) {
-  const { requireLogin } = useDemo()
+  const { requireAuth } = useAuth()
   const navigate = useNavigate()
   const [bookmarked, setBookmarked] = useState(supplier.id === 1 || supplier.id === 5)
 
   const requestFromHere = () =>
-    requireLogin('You need an account to post an errand.', () =>
+    requireAuth('You need an account to post an errand.', () =>
       navigate('/requests/new?supplier=' + supplier.id),
     )
 

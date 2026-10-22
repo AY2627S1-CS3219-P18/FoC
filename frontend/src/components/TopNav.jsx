@@ -18,6 +18,18 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-10-02
  * Scope: Added a Log out button to the desktop nav (it was only in the mobile menu), wired to the existing logout. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Per instructions.md Stage 16b: reads session/credits/logout/isAdmin from the new
+ *        AuthContext instead of DemoContext. Added the "Manage users" admin link next to
+ *        "Manage suppliers" (per the user's answer to 16a item 1). The special-cased
+ *        `gated` nav link and its onClick handler are gone: /activity is now wrapped in
+ *        RequireAuth at the route level, so clicking the link while logged out lands on
+ *        /login the same way opening the URL directly does. The two "Log in" buttons now
+ *        call requireAuth (AuthContext's replacement for the deleted LoginModal's
+ *        requireLogin) instead of opening a modal.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -26,20 +38,23 @@ import { Bell, LogOut, Menu, X } from 'lucide-react'
 import Logo from './Logo'
 import Button from './Button'
 import CreditPill from './CreditPill'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 const LINKS = [
   { to: '/suppliers', label: 'Suppliers' },
   { to: '/requests', label: 'Find errands' },
-  { to: '/activity', label: 'My activity', gated: 'You need an account to see your activity.' },
+  { to: '/activity', label: 'My activity' },
 ]
 
-const ADMIN_LINK = { to: '/admin/suppliers', label: 'Manage suppliers' }
+const ADMIN_LINKS = [
+  { to: '/admin/suppliers', label: 'Manage suppliers' },
+  { to: '/admin/users', label: 'Manage users' },
+]
 
 export default function TopNav() {
-  const { isLoggedIn, session, credits, requireLogin, logout, isAdmin } = useDemo()
-  const links = isAdmin ? [...LINKS, ADMIN_LINK] : LINKS
-  const displayName = session?.username ?? ''
+  const { isLoggedIn, user, credits, requireAuth, logout, isAdmin } = useAuth()
+  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS
+  const displayName = user?.username ?? ''
   const initials = displayName.slice(0, 2).toUpperCase()
   const [scrolled, setScrolled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -60,13 +75,6 @@ export default function TopNav() {
     'text-sm font-medium transition-colors duration-150 ' +
     (isActive ? 'text-ink' : 'text-ink-70 hover:text-ink')
 
-  const gate = (e, link) => {
-    if (link.gated && !isLoggedIn) {
-      e.preventDefault()
-      requireLogin(link.gated)
-    }
-  }
-
   return (
     <>
       <header
@@ -80,12 +88,7 @@ export default function TopNav() {
 
           <nav className="hidden items-center gap-8 lg:flex" aria-label="Main">
             {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={navLinkClass}
-                onClick={(e) => gate(e, link)}
-              >
+              <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.label}
               </NavLink>
             ))}
@@ -121,7 +124,7 @@ export default function TopNav() {
                 </button>
               </>
             ) : (
-              <Button size="sm" onClick={() => requireLogin('Log in to post and accept errands.')}>
+              <Button size="sm" onClick={() => requireAuth('Log in to post and accept errands.')}>
                 Log in
               </Button>
             )}
@@ -172,7 +175,6 @@ export default function TopNav() {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  onClick={(e) => gate(e, link)}
                   className="flex min-h-[44px] items-center border-b border-line text-base font-medium text-ink"
                 >
                   {link.label}
@@ -203,7 +205,7 @@ export default function TopNav() {
                   className="w-full"
                   onClick={() => {
                     setDrawerOpen(false)
-                    requireLogin('Log in to post and accept errands.')
+                    requireAuth('Log in to post and accept errands.')
                   }}
                 >
                   Log in
