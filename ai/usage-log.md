@@ -6246,3 +6246,82 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code (test files only), Debugging
+**Governing decision:** instructions.md Stage 7's ground rules (test stack, real-Postgres approach, mocking policy, `tests/concurrency/` layout for concurrency cases) applied to each gap's own stage text: Stage 12a-12e's Verification bullets (profile username/email/password change), Stage 13a's Verification bullets (JWKS `kid` lookup), and Stage 14b/14d's function descriptions and Backoff/Outcome-to-action tables (credit-allocation outbox queries and activation/bootstrap wiring)
+
+**Prompts (exact):**
+
+> Write the missing tests for everything implemented in Stages 1–16.
+>
+> 1. Read instructions.md and the current code (code wins where they disagree; tell me
+>    where they do). For each stage, compare its Verification bullets with the existing
+>    tests and list the gaps. Expect gaps mainly in Stages 14, 15 and 16, but check all. Before starting, don't forget the usual git workflow.
+> 2. Follow Stage 7's ground rules, test stack, layout (mirror src/, concurrency tests
+>    in tests/concurrency/), real-Postgres approach and mocking policy.
+> 3. Do not modify application code to make a test pass. If a test shows behaviour that
+>    contradicts instructions.md, leave it failing and report it as a finding.
+> 4. Do not test deferred features (NFR1, NFR2, NFR4, F5.3.2) for presence or absence.
+> 5. If the expected behaviour for a case isn't clearly specified, skip it. Do not
+>    pick a behaviour yourself.
+> 6. If a test would need a mock or new dependency that Stage 7 doesn't already allow
+>    (e.g. mocking credit-service HTTP for the Stage 14 relay, or any test tooling for
+>    frontend/), do not add it. Skip those tests and flag them.
+> 7. Add the AI disclosure header to every test file you create or modify, and give
+>    me the usage-log entry.
+>
+> At the end, report:
+>
+> - the tests added, per stage
+> - any failing tests (findings), with the bullet they test
+> - every skipped case and why: unclear behaviour, or a mock/tooling approval needed.
+>   For each, state the exact question I need to answer.
+
+> where did you stop in the test case creation?
+
+> also can you help me finish up hte git workflow for the test cases - with a new branch and a PR
+
+**Key responses:**
+Compared each stage's Verification bullets against existing tests across three sessions (the first was interrupted mid-task by a response cutoff). Confirmed Stage 12 (profile management: username/email/password change, 5 sub-stages) had zero test coverage — the largest gap found. Also found a small Stage 13a gap (`getJwks()` and the two `kid`-lookup failure modes were only exercised indirectly) and a Stage 14 gap (the credit-allocation outbox's query functions and `classifyResponseStatus` had no tests at all, beyond an earlier, narrower fix that only covered the outbox row `bootstrapTestUser` inserts).
+
+Added, per file (each carries its own AI disclosure header with the precise scope):
+
+- `tests/services/me.service.test.ts` / `tests/controllers/me.controller.test.ts`: Stage 12's remaining functions/routes (getOwnProfile, changeUsername, initiateEmailChange, verifyEmailChangeOtp, resendChangeEmailOtp, resendChangePasswordOtp, initiatePasswordChange, confirmPasswordChange and their HTTP routes). Deliberately did not re-test `requestOtp`/`checkOtp`'s generic cooldown/limit/expiry logic beyond one call-site check each — already covered purpose-agnostically in `otp.service.test.ts`.
+- `tests/concurrency/me.concurrency.test.ts`: the two Stage 12 concurrency Verification bullets with no coverage (concurrent username change to the same target from two accounts; concurrent `confirm-password-change` with the correct OTP).
+- `tests/utils/jwt.test.ts` / `tests/helpers/keys.ts`: Stage 13a's `getJwks()` and the missing-`kid`/unknown-`kid` failure paths, signing with the real key but a missing or fabricated `kid` (previously only exercised indirectly or conflated with the unrelated "wrong key pair" case).
+- `tests/services/auth.service.test.ts`: coverage for the credit-allocation outbox row `verifyRegistrationOtp` inserts on a successful activation, and its absence on a failing verify (Stage 14d).
+- `tests/db/queries/creditOutbox.queries.test.ts` (new): full integration coverage (real test DB) of all six outbox query functions — insert, find-due, mark-sent, mark-dead, record-failure (including backoff math), replay-dead.
+- `tests/services/creditOutbox.relay.test.ts` (new): unit tests for `classifyResponseStatus`, the one pure, no-I/O function in the relay.
+- `tests/helpers/db.ts`: added `getOutboxRowById`/`seedOutboxRow` helpers backing the two files above.
+
+Skipped, per the mocking-policy rule in the prompt (flagged, not worked around): `deliverCreditAllocation`, `runOutboxPass` and `startCreditOutboxRelay` in `creditOutbox.relay.ts` — all three make real outbound HTTP calls to credit-service, and Stage 7's mocking policy does not authorize mocking outbound HTTP (only `sendOtpEmail`/nodemailer and the config module are exempted). **Question for the team:** approve mocking credit-service's HTTP response for this one file, stand up a real stand-in HTTP server for it, or accept the gap?
+
+Did not reach Stage 15 or Stage 16 (frontend) in this pass, and the following existing source files still have no dedicated test file (some may be adequately exercised indirectly through controller/service tests, but that was not confirmed): `src/utils/userResponse.ts`, `src/utils/cookies.ts`, `src/utils/AppError.ts`, `src/utils/asyncHandler.ts`, `src/db/pool.ts`, `src/db/transaction.ts`, `src/scripts/replayCreditOutbox.ts`. This entry covers only what actually landed in the working tree, not the full original 7-point ask.
+
+Verified: `npx vitest run` — 25 files, 682 tests, 681 passed; the one failure (`auth.controller.test.ts`'s `resend-otp` 503 case, `ECONNRESET`/socket hang up) is pre-existing environment flakiness in a file untouched by this change — re-ran that file alone and it passed clean (176/176). `npx eslint` on all nine changed/new files: clean, no warnings.
+
+**Files:**
+
+- `user-service/tests/concurrency/me.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/db/queries/creditOutbox.queries.test.ts` (created)
+- `user-service/tests/services/creditOutbox.relay.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+Whether to approve mocking credit-service's HTTP response in `creditOutbox.relay.test.ts` (or a real stand-in server) so `deliverCreditAllocation`, `runOutboxPass` and `startCreditOutboxRelay` can be tested — currently skipped per Stage 7's mocking policy. Stage 15 and Stage 16 (frontend) test gaps, and the untested source files listed above, remain open for a follow-up pass.
+
+**What I kept/changed/rejected:**
+Accepted all changes, KIV the issue first.
+
+**Author review:** gabriel yap

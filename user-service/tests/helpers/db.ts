@@ -6,10 +6,17 @@
 //   credit_allocation_outbox test coverage on bootstrapTestUser. No requirements,
 //   architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-10-23: Added getOutboxRowById and seedOutboxRow for Stage 14's
+//   creditOutbox.queries.test.ts and the Stage 14d activation/bootstrap wiring tests, which had
+//   no test coverage at all before this change (Stage 14 itself deferred its tests to the
+//   end-of-project test stage). No requirements, architecture, schema, or API decisions were
+//   made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
 import type { OtpPurpose, OtpRow } from '../../src/db/queries/otp.queries.js';
+import type { CreditAllocationOutboxRow, OutboxStatus } from '../../src/db/queries/creditOutbox.queries.js';
 import type { RefreshTokenRow } from '../../src/db/queries/tokens.queries.js';
 import type { UserRow } from '../../src/db/queries/users.queries.js';
 
@@ -52,6 +59,43 @@ export async function getCreditAllocationOutboxRows(
     [userId],
   );
   return r.rows;
+}
+
+export async function getOutboxRowById(
+  id: string,
+): Promise<CreditAllocationOutboxRow | undefined> {
+  const r = await pool.query<CreditAllocationOutboxRow>(
+    'SELECT * FROM credit_allocation_outbox WHERE id = $1',
+    [id],
+  );
+  return r.rows[0];
+}
+
+// Inserts a row directly, bypassing insertCreditAllocation's transaction-only contract, so a
+// test can set up a specific status/attempts/next_attempt_at/last_error without going through
+// the relay or an activation flow.
+export async function seedOutboxRow(
+  userId: string,
+  overrides: {
+    status?: OutboxStatus;
+    attempts?: number;
+    nextAttemptAt?: Date;
+    lastError?: string | null;
+  } = {},
+): Promise<string> {
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO credit_allocation_outbox (user_id, status, attempts, next_attempt_at, last_error)
+     VALUES ($1, $2, $3, COALESCE($4, NOW()), $5)
+     RETURNING id`,
+    [
+      userId,
+      overrides.status ?? 'pending',
+      overrides.attempts ?? 0,
+      overrides.nextAttemptAt ?? null,
+      overrides.lastError ?? null,
+    ],
+  );
+  return r.rows[0]!.id;
 }
 
 export async function getRefreshTokens(userId: string): Promise<RefreshTokenRow[]> {
