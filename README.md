@@ -25,6 +25,10 @@ Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #14
        frontend Stage 16f (requester/courier toggle). No requirements, architecture, schema,
        or API decisions were made by the AI tool.
 Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #142 for
+       frontend Stage 16g (admin user management). No requirements, architecture, schema, or
+       API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -232,3 +236,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 139 | 2026-10-23 | frontend               | Stage 16d: Forgot Password (`/forgot-password`)                                                    | New three-step forgot-password page wired to /auth/forgot-password, verify-otp, reset-password      |
 | 140 | 2026-10-23 | frontend               | Stage 16e: Account Page (`/account`)                                                                | New account page (username/email/password changes); fixed a forced-relogin banner race bug          |
 | 141 | 2026-10-23 | frontend               | Stage 16f: Requester/Courier Toggle                                                                 | New nav toggle wired to AuthContext.setActiveView (already optimistic, built in 16b)                 |
+| 142 | 2026-10-23 | frontend               | Stage 16g: Admin User Management (`/admin/users`)                                                   | New admin user table (search/filter/sort/paginate) with gated suspend/promote row actions            |
