@@ -3,6 +3,10 @@
 // 26/09/2026: Stage 7 - tests for bootstrapSuperAdmin (config module mocked in this file only)
 // 2026-10-02: tests for bootstrapTestUser
 // Author review: Congchen
+// 2026-10-22: Added a test asserting bootstrapTestUser creates a pending
+//   credit_allocation_outbox row for the new user. No requirements, architecture, schema,
+//   or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,7 +26,12 @@ vi.mock('../../src/config.js', async (importOriginal) => {
 import { config } from '../../src/config.js';
 import * as userQueries from '../../src/db/queries/users.queries.js';
 import { bootstrapSuperAdmin, bootstrapTestUser } from '../../src/services/bootstrap.service.js';
-import { countUsers, getUserByUsername, truncateAll } from '../helpers/db.js';
+import {
+  countUsers,
+  getCreditAllocationOutboxRows,
+  getUserByUsername,
+  truncateAll,
+} from '../helpers/db.js';
 
 const superAdmin = config.superAdmin as { username: string; email: string; password: string };
 const original = { ...superAdmin };
@@ -151,6 +160,13 @@ describe('bootstrapTestUser', () => {
     const row = (await getUserByUsername('testuser'))!;
     expect(row).toMatchObject({ role: 'user', status: 'active', email: 'test@foc.test' });
     expect(await bcrypt.compare('Test-User-Pass1!', row.password_hash)).toBe(true);
+  });
+
+  it('creates a pending credit-allocation outbox row for the new user', async () => {
+    await bootstrapTestUser();
+    const row = (await getUserByUsername('testuser'))!;
+    const outboxRows = await getCreditAllocationOutboxRows(row.id);
+    expect(outboxRows).toEqual([{ status: 'pending' }]);
   });
 
   it('does nothing when any TEST_USER_* value is unset', async () => {

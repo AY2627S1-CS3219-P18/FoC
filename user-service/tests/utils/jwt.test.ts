@@ -2,10 +2,17 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - unit tests for jwt.ts (claim shape, algorithm, verification)
 // Author review:
+// 2026-10-23: Stage 13a - added getJwks() unit coverage and the two kid-lookup failure modes
+//   (missing kid, unknown kid) using the real signing key directly, per instructions.md Stage
+//   13a's own Verification bullets. These were previously only exercised indirectly through
+//   the GET /auth/.well-known/jwks.json controller test and signWithOtherKey (which conflates
+//   "no kid" with "wrong key entirely" since it never sets a kid at all).
+// Author review:
 import jwt from 'jsonwebtoken';
 import { describe, expect, it } from 'vitest';
-import { signAccessToken, verifyAccessToken } from '../../src/utils/jwt.js';
+import { getJwks, signAccessToken, verifyAccessToken } from '../../src/utils/jwt.js';
 import {
+  privateKey,
   publicKey,
   signExpiredToken,
   signToken,
@@ -72,5 +79,49 @@ describe('verifyAccessToken', () => {
       subject: 'attacker',
     });
     expect(() => verifyAccessToken(forged)).toThrow();
+  });
+
+  it('throws on a token with no kid header at all, even when signed by the real key', () => {
+    const noKid = jwt.sign({ role: 'user' }, privateKey(), {
+      algorithm: 'RS256',
+      subject: 'u1',
+      expiresIn: '15m',
+    });
+    expect(jwt.decode(noKid, { complete: true })!.header.kid).toBeUndefined();
+    expect(() => verifyAccessToken(noKid)).toThrow();
+  });
+
+  it('throws on a token whose kid matches neither known key, even when signed by the real key', () => {
+    const unknownKid = jwt.sign({ role: 'user' }, privateKey(), {
+      algorithm: 'RS256',
+      subject: 'u1',
+      expiresIn: '15m',
+      keyid: 'some-other-kid',
+    });
+    expect(() => verifyAccessToken(unknownKid)).toThrow();
+  });
+});
+
+describe('getJwks', () => {
+  it('returns exactly one key when JWT_PREVIOUS_KEY_ID / JWT_PREVIOUS_PUBLIC_KEY_PATH are unset', () => {
+    // .env.test does not set either, so this is the normal, no-rotation-in-progress case.
+    const { keys } = getJwks();
+    expect(keys).toHaveLength(1);
+  });
+
+  it('publishes the current key as a standard RSA JWK with use/alg/kid', () => {
+    const { keys } = getJwks();
+    const [key] = keys as Array<Record<string, unknown>>;
+    expect(key).toMatchObject({ kty: 'RSA', use: 'sig', alg: 'RS256' });
+    expect(typeof key!.n).toBe('string');
+    expect(typeof key!.e).toBe('string');
+    expect(key!.kid).toBe(process.env.JWT_KEY_ID);
+  });
+
+  it("round-trips: a freshly signed token's kid header matches getJwks()'s key", () => {
+    const token = signToken();
+    const { header } = jwt.decode(token, { complete: true })!;
+    const { keys } = getJwks();
+    expect(keys.map((k) => (k as { kid: string }).kid)).toContain(header.kid);
   });
 });

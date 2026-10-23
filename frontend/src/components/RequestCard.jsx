@@ -28,6 +28,12 @@
  *        version of this file described in Wen Xi's entries above was replaced.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isLoggedIn/the signed-in user from the new AuthContext instead of DemoContext,
+ *        and requireLogin replaced with requireAuth, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -37,7 +43,7 @@ import CreditPill from './CreditPill'
 import Button from './Button'
 import { qualifiedName } from '../data/suppliers'
 import { expiryLabel, fullTime, completeByLabel } from '../data/requests'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 import { acceptOrder, orderErrorMessage } from '../api/orders'
 import { useSupplier, useUserName } from '../api/lookups'
 
@@ -45,12 +51,12 @@ import { useSupplier, useUserName } from '../api/lookups'
 // Clicking the row expands it in place; there is no separate detail route.
 // `locationName` resolves the delivery location id; `onAccepted(order)` receives the accepted order.
 export default function RequestCard({ request, locationName, onAccepted }) {
-  const { isLoggedIn, session, requireLogin } = useDemo()
+  const { isLoggedIn, user, requireAuth } = useAuth()
   const [expanded, setExpanded] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [acceptError, setAcceptError] = useState(null)
 
-  const userId = session?.id
+  const userId = user?.id
   const supplier = useSupplier(request.supplierId)
   const requesterUsername = useUserName(request.requesterId)
   const isOwn = request.requesterId === userId
@@ -75,7 +81,7 @@ export default function RequestCard({ request, locationName, onAccepted }) {
 
   const onAccept = (e) => {
     e.stopPropagation()
-    requireLogin('You need an account to accept an errand.', accept)
+    requireAuth('You need an account to accept an errand.', accept)
   }
 
   const acceptSlot = () => {

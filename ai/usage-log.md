@@ -5774,3 +5774,616 @@ None.
 **Author review:**
 Accepted all changes.
 **Author review:** gabriel yap
+
+## 2026-10-22 — User Service: Docker-dependent verification of Stage 14 (outbox/relay/replay)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging | Implementation code
+**Governing decision:** instructions.md Stage 14a-14e "Verification" sections (already-written checklists this entry executes); the one code change (`user-service/src/db/pool.ts`) applies node-postgres's own documented requirement to attach a `pool.on('error', ...)` listener, not a new design decision.
+
+**Prompts (exact):**
+
+> you know the git workflow?
+
+> let's do the docker-dependent verification first then
+
+**Key responses:**
+Ran the full Docker-dependent verification matrix from instructions.md Stages 14a-14e end to end: `docker compose down -v && docker compose up --build` (approved by the user after the sandbox's auto-classifier flagged the volume deletion); confirmed `credit_allocation_outbox` table and `outbox_status_enum` schema; confirmed missing `CREDIT_SERVICE_URL` fails startup with a named error; exercised the relay against a live registration (OTP verify → 200 REGISTER_SUCCESS, one outbox row in the same transaction, delivered within ~1s, 20-credit balance on credit-service); confirmed a failed OTP verify creates no row; confirmed two concurrent correct verify-otp requests produce exactly one row; confirmed the super-admin bootstrap produces exactly one outbox row that gets delivered, and that restarting without `-v` does not duplicate it; stopped credit-service and confirmed the row stays `pending` with growing `attempts`/backoff and a `NETWORK ENOTFOUND`-style `last_error`, then confirmed delivery resumes once credit-service is back; backdated `next_attempt_at` repeatedly to drive a row to exactly 10 attempts and confirmed `dead`, and that the relay never picks a `dead` row back up; pointed `CREDIT_SERVICE_URL` at a nonexistent path to confirm a `404` goes straight to `dead` with `attempts = 1` and `last_error` starting `HTTP 404` (reverted after); reset a `sent` row to `pending` and confirmed redelivery gets `409` from credit-service, goes back to `sent`, and leaves the balance unchanged; inserted 12 due rows at once across 6 users and confirmed they all settled within ~1.1s (consistent with groups of 5 processed back-to-back, no inter-group wait); exercised `outbox:replay` for all documented cases - explicit dead ID, `--all-dead` against a mix of dead/pending/sent rows (only the dead ones reset, `attempts` zeroed, `last_error` left unchanged), replaying an already-`sent` or already-`pending` row reported as not reset, and no-args/invalid-UUID both printing usage and exiting `1`.
+
+Two findings came out of this:
+
+1. **Fixed - real bug, not a Stage 14 regression.** Stopping `user-db` while `user-service` was running crashed the process (`[nodemon] app crashed`), not just logged an error as Stage 14c's verification requires. Root cause: `user-service/src/db/pool.ts` (written in Stage 2c, long before Stage 14) never attached a `pool.on('error', ...)` listener, so an idle client's connection-reset surfaced as an unhandled EventEmitter `error` event. This is documented node-postgres behavior, unrelated to anything Stage 14 decided, and the first time this path got exercised was this verification run. Added the listener (one `console.error` line, same style the relay already uses); re-ran the test and the process now survives with one `console.error` line per failed pass.
+2. **Investigated, no action needed.** First pass at this check (immediately after the crash fix) seemed to show the relay stuck forever after a `user-db` restart (`getaddrinfo ENOTFOUND user-db` on every pass for 60s+), so the entry originally logged this as a suspected Node/Alpine DNS-caching bug needing a team decision. Re-tested twice more with a patient, timestamped watch (`docker logs -t`) instead of giving up after 60s, including one clean run that was timed end-to-end: `user-db` stopped at 14:11:17, restarted at 14:11:26, one `ECONNREFUSED` logged at 14:11:26 (the DB was still coming up), then silence, and a row inserted afterward was `sent` within 3s - full recovery in well under 20s with zero manual intervention. Another run took closer to 90s before failures stopped. So the relay does resume on its own, as Stage 14c's verification requires; recovery time is just inconsistent (seconds to ~1-2 minutes) under Docker Desktop, most likely transient embedded-DNS/connection-retry timing rather than a permanent stuck state. The original "never recovers" conclusion was an artifact of not waiting long enough on the very first run, not a reproducible bug. No code change; nothing further needed.
+
+Also hit an unrelated environment-only snag while bringing credit-service up fresh: `credit-service/src/db/grant-app-role.sh` failed inside `docker-entrypoint-initdb.d` with "bad interpreter: Permission denied" - the script's executable bit was not propagating through the Docker Desktop (macOS) bind mount, so `credit_app` was never created and `credit-service` couldn't authenticate. Worked around it for this session only by running `docker exec foc-credit-db bash /docker-entrypoint-initdb.d/02-grant-app-role.sh` by hand (no file changed, nothing committed); did not touch `grant-app-role.sh`'s permissions or `compose.yaml`, since this is a local macOS Docker Desktop quirk, not a code or schema issue, and may not reproduce on another machine or in CI.
+
+Verification run: `npm run build`/`npm run lint` not re-run (no TypeScript changed beyond the one-line `pool.ts` fix, verified instead by exercising the actual running containers end to end, matching Stage 14's own "Verification" sections above).
+
+**Files:**
+
+- `user-service/src/db/pool.ts` (modified: added `pool.on('error', ...)`)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. `credit-service/src/db/grant-app-role.sh` not being executable through the Docker Desktop bind mount on this machine - worth the team checking whether this reproduces for others or only here, since it would otherwise silently leave `credit-service` unable to authenticate on a fresh `docker compose up --build`.
+
+**What I kept/changed/rejected:**
+Accepted all changes, KIVing the remaining deviation/question for now.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15a: `activeView` on `GET /users/me`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 15a
+
+**Prompts (exact):**
+
+> let's start with the next stage
+
+**Key responses:**
+Read the current `getOwnProfile` (`user-service/src/services/me.service.ts`) and its controller (`getProfile` in `me.controller.ts`) first, confirmed neither existing test (`tests/controllers/auth.controller.test.ts`'s two `GET /users/me` calls) asserts the response's exact shape, so no test updates were needed for this sub-stage (per the "Changes to already-implemented code" table, that's Stage 15c's job). Changed `getOwnProfile` to also read `user.active_view` and return it as `activeView`, alongside the existing `username`/`email`. No other behavior changed. Verified against the running Docker stack (not just build/lint): logged in, confirmed `GET /users/me` returns exactly `{ username, email, activeView }`; called `PUT /users/me/active-view` to `courier`, confirmed the next `GET /users/me` reflects `activeView: "courier"`. `npm run build` and `npm run lint` both clean. `npm test`: 548 passed, 1 failed (549 total) - the one failure, `tests/services/email.service.test.ts > sendOtpEmail (SMTP path) > throws for a purpose that has no template, without sending`, is pre-existing and unrelated to this change (this branch never touches `email.service.ts` or its test): `email.service.ts`'s `PURPOSE_COPY` map already has a `"Change Email"` entry (added in Stage 12c per its own file header), so `sendOtpEmail` no longer throws for that purpose, but the test's expectation was never updated to match. Not fixed here, per Stage 15c's own instruction to stop and report rather than change a test failing for a reason other than key naming or the response shape - flagged below instead.
+
+**Files:**
+
+- `user-service/src/services/me.service.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. Pre-existing, unrelated test failure found while running the full suite: `tests/services/email.service.test.ts > sendOtpEmail (SMTP path) > throws for a purpose that has no template, without sending` expects `sendOtpEmail` to throw for purpose `'Change Email'`, but `email.service.ts` has had a `'Change Email'` template since Stage 12c, so it no longer throws. The test's expectation is stale, not the implementation. Left unfixed here per Stage 15c's instruction to stop and report rather than change it.
+
+**What I kept/changed/rejected:**
+KIVed the error for now, accepted all other changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Fix: `bootstrapTestUser` missing credit-allocation outbox row
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug, generate
+**Scope:** Debugging | Implementation code
+**Governing decision:** instructions.md ("one `credit_allocation_outbox` row for that user, created in the same transaction; it becomes `sent` and credit-service shows a 20-credit balance"); same pattern already implemented in `bootstrapSuperAdmin` (Stage 14d) and the registration flow (`auth.service.ts`)
+
+**Prompts (exact):**
+
+> btw the bootstrap doesnt create the 20 credit balance yet so the test user breaks
+>
+> is there a bootstrap for regular user?
+
+> wait can you remember the changes you did, and undo it first, i want to git commit my other cahnges first
+
+> okay redo the changes, then do the git workflow
+
+**Key responses:**
+Found `bootstrapTestUser` (`user-service/src/services/bootstrap.service.ts`), the opt-in seeded-normal-user bootstrap (`TEST_USER_*` env vars). Confirmed it created the user row but never inserted a `credit_allocation_outbox` row, unlike `bootstrapSuperAdmin` right above it and the real registration flow in `auth.service.ts`, both of which insert the outbox row in the same transaction as user creation per the governing decision already recorded in instructions.md. This is implementing the existing decision consistently, not a new schema/architecture choice. Wrapped `bootstrapTestUser`'s `createUser` call in `withTransaction` and added `creditOutboxQueries.insertCreditAllocation(created.id, client)` in the same transaction, mirroring `bootstrapSuperAdmin`. Verified: `tsc --noEmit` clean; `vitest run tests/services/bootstrap.service.test.ts` - all 17 existing tests pass unchanged (no test currently asserts the outbox row for this path - flagged below).
+
+**Files:**
+
+- `user-service/src/services/bootstrap.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. No test asserts the test-user bootstrap now creates its outbox row (mirroring however/whether the super-admin path is tested for this). Flagged, not added, since adding test coverage wasn't asked for.
+
+**What I kept/changed/rejected:**
+Asked to add test cases.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Fix: test coverage for the credit-allocation outbox row on `bootstrapTestUser`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** same as the entry above (instructions.md credit-allocation outbox decision)
+
+**Prompts (exact):**
+
+> let's add one
+
+**Key responses:**
+Added `getCreditAllocationOutboxRows(userId)` to `tests/helpers/db.ts` - no existing test helper queried `credit_allocation_outbox`; confirmed `truncateAll('users CASCADE')` already clears it via the table's `ON DELETE CASCADE` on `user_id`, so no change to `truncateAll` was needed. Added a test in `bootstrap.service.test.ts` asserting `bootstrapTestUser` leaves exactly one `pending` outbox row for the new user. Verified: `tsc --noEmit` clean; `npm run lint` clean; `vitest run tests/services/bootstrap.service.test.ts` - 18 tests pass (the 17 from the prior entry plus this new one).
+
+**Files:**
+
+- `user-service/tests/services/bootstrap.service.test.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15b: Paginated `GET /users`
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 15b (Design decisions table and the Stage 15b section)
+
+**Prompts (exact):**
+
+> read through instruction.md. im gonna implement stage 15b onwards. dont do anything first
+
+> follow the git workflow. before you start, do a pull to check whether there's anything i havent pulled
+
+> let's do 15b
+
+**Key responses:**
+Read `instructions.md` Stage 15 in full (15a-16g) first, per the first prompt, without making changes. Confirmed `main` had nothing unpulled, then branched `feat/stage-15b-paginated-users` off `main`. Replaced `listAllUsers` in `users.queries.ts` with `listUsersPage({ usernameContains, email, status, role, sortBy, sortDir, limit, offset })`, returning `{ rows, total }`: dynamic `WHERE` built only from provided filters, all values bound; `usernameContains` goes through a `LIKE '%'||$n||'%' ESCAPE '\'` with `\`, `%`, `_` escaped first; `sortBy`/`sortDir` are mapped through a fixed whitelist (`SORT_COLUMNS`/`SORT_DIRECTIONS`), never interpolated; ties broken by `id` in the same direction; total via `COUNT(*) OVER()`, falling back to a separate `COUNT(*)` query when the page comes back empty (past the last page) since the window function then returns no rows to read the count from. Updated `users.service.ts`'s `listUsers` to take `{ page, username, email, status, role, sortBy, sortDir }`, added the `PAGE_SIZE = 50` constant and offset math, and return `{ users, page, pageSize, total, totalPages }`. Updated `users.controller.ts`'s `list` to validate `req.query` with a `.strict()` Zod schema: `page` defaults to 1 and must be a positive integer; `username`/`email` are optional, lowercased (email also trimmed), with empty string treated as absent; `status`/`role`/`sortBy`/`sortDir` are closed enums; each field raises exactly one fixed error message regardless of which rule failed (wrong type, a repeated query param Express turns into an array, or not in the allowed set), via a small `enumFilterField` helper and matching `page`/`username`/`email` transforms. `sortDir`'s default (`desc` when absent and `sortBy` is absent or `createdAt`, `asc` otherwise) is applied in the controller after parsing, since it depends on `sortBy`. Verified: `tsc --noEmit` clean, `npm run lint` clean. `vitest run` against the exposed dev DB port (tests/ isn't mounted into the dev container, so ran outside Docker with `DB_HOST=localhost DB_PORT=5434`): 544 passed, 6 failed, matching exactly the expected fallout below plus the one pre-existing unrelated failure already flagged in the Stage 15a entry; reran the full suite once more to confirm two other failures seen on one pass (a concurrency test and a logout test) were pre-existing flakiness outside Docker, not caused by this change - they did not reproduce on the repeat run.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. `listUsers` maps rows with the existing `toPublicUser` (password_hash stripped, snake_case fields) rather than the Stage 15c `toUserResponse` mapper the Stage 15b text names, because that mapper doesn't exist until Stage 15c is implemented. This matches the file's own "Changes to already-implemented code" table, which lists the mapper swap as Stage 15c's change (row 4), separate from Stage 15b's pagination change (row 3) - not treated as an open question.
+2. Left 5 existing tests failing, unmodified: both `listAllUsers` tests in `users.queries.test.ts` (function removed), `users.service.test.ts`'s old no-argument `listUsers` call, and two `GET /users` tests in `users.controller.test.ts` expecting the old bare `{ users: [...] }` shape. Per the same table (row 5) and Stage 15c's own "Update existing tests" section, updating these is explicitly Stage 15c's job, not Stage 15b's.
+3. The pre-existing, unrelated `email.service.test.ts` failure already flagged in the Stage 15a log entry is still present; unrelated to this change, not touched.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-22 — Stage 15c: camelCase Responses
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 15c
+
+**Prompts (exact):**
+
+> after this, finish up this stage. but can the error raised in 15a be fixed easily?
+
+> finish up the git workflow first. then answer the question
+
+> just fold into 15c
+
+**Key responses:**
+First answered the 15a question: confirmed the stale `email.service.test.ts` failure (flagged in the Stage 15a entry) is an easy fixture fix, but found while checking it that the obvious fix - swapping the test's "no template" purpose to `'Change Password'` - would have hidden a real, pre-existing gap: `'Change Password'` IS wired up (Stage 12e's `initiatePasswordChange`/`confirmPasswordChange`, via `requestOtp` → `sendOtpEmail`), but `email.service.ts`'s `PURPOSE_COPY` map has no entry for it, so a real password-change OTP email would throw whenever SMTP is actually configured (not the dev console-log fallback). Used `'Admin Action'` instead - the one `purpose_enum` value with no implemented flow yet. Flagged the `'Change Password'` gap as a separate, unrelated finding; the user confirmed it wasn't currently live (`.env` has `SMTP_HOST` blank and `NODE_ENV=development`, so the dev fallback is active) but asked to fix it anyway before it surfaces during a real SMTP run or grading. Added a `'Change Password'` entry to `PURPOSE_COPY` (subject "Confirm your FoC password change"), same shape as the other three.
+
+Before implementing, ran a research subagent (read-only) to inventory every response body across `src/controllers/*.ts` and `src/services/*.ts`, confirming the complete set of snake_case-affected endpoints and every test asserting on `active_view`/`created_at`/`updated_at`/the old `GET /users` shape, versus tests asserting on raw DB rows (out of scope - DB columns stay snake_case).
+
+Created `src/services/userResponse.ts` with `toUserResponse(row)` → `{id, username, email, status, role, activeView, createdAt, updatedAt}`. Replaced every use of the old `toPublicUser`/`PublicUser` (both removed) with `toUserResponse`/`UserResponse` in `users.service.ts` (`listUsers`, `getUserById`, `changeUserStatus`, `changeUserRole`, including their no-op return paths) and `me.service.ts` (`changeActiveView`). Confirmed via the inventory that no other response body anywhere in the three controllers uses snake_case - `auth.controller.ts`'s login response and everything in `me.controller.ts` besides `updateActiveView` were already camelCase, and JWKS/JWT claims/error bodies are correctly left alone.
+
+Updated existing test assertions for the casing change (`tests/controllers/users.controller.test.ts`, `tests/controllers/me.controller.test.ts`, `tests/services/users.service.test.ts`, `tests/services/me.service.test.ts`), carefully leaving every assertion that reads a raw DB row via `getUserByEmail(...)` in snake_case (DB columns are unaffected). Also fixed the two Stage-15b-caused breaks explicitly deferred to this stage: `users.controller.test.ts`'s `GET /users` test now checks the full paginated key set instead of `['users']`, and `users.service.test.ts`'s `listUsers` call now passes the required `{page, sortBy, sortDir}`. Additionally adapted `tests/db/queries/users.queries.test.ts`'s `listAllUsers` tests to call `listUsersPage` (the function `listAllUsers` was replaced by in Stage 15b but whose tests were left for this stage, per the same table) - signature/fixture update, not new coverage.
+
+Verified: `tsc --noEmit` and `npm run lint` both clean throughout, including after the `PURPOSE_COPY` addition. `vitest run` (outside Docker, `DB_HOST=localhost DB_PORT=5434`): 550/550 passed both before and after the `PURPOSE_COPY` fix, including the previously-flagged `email.service.test.ts` failure, now fixed; `email.service.ts` is globally mocked in every other test file, so the added template entry doesn't affect them (confirmed via `tests/setup/setupFiles.ts`). Two different, unrelated concurrency tests (`races.concurrency.test.ts`, then on a separate run `lock-recheck.concurrency.test.ts`) each failed once and passed on an immediate re-run - pre-existing timing flakiness from running outside Docker, not caused by this change. Also verified against the running Docker stack (not just the test DB): logged in as the super admin, confirmed `GET /users`, `GET /users/:id`, and `PUT /users/:id/status` (both the write and no-op paths) all return exactly `{id, username, email, status, role, activeView, createdAt, updatedAt}` with no `password_hash`/snake_case keys. Could not live-verify the `PURPOSE_COPY` addition itself against the real Docker stack: `SMTP_HOST` is blank there, so the dev console-log fallback bypasses `PURPOSE_COPY` entirely regardless of its contents - confirmed correct by code inspection and the project's own `tests/services/email.service.test.ts` instead.
+
+**Files:**
+
+- `user-service/src/services/userResponse.ts` (created)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/src/services/email.service.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **Real gap found and fixed, outside Stage 15c's own scope**: `email.service.ts`'s `PURPOSE_COPY` map had no entry for `'Change Password'`, but that purpose has sent real OTP emails since Stage 12e. Whenever SMTP is actually configured (`NODE_ENV` isn't `development`, or `SMTP_HOST` is set in dev), `sendOtpEmail` threw for every password-change OTP request instead of sending one - invisible locally only because the dev console-log fallback was active. Not currently live in this repo's `.env` (confirmed with the user), but flagged as something that would break silently the moment SMTP is configured for a real run or grading. Fixed on the user's go-ahead: added a `'Change Password'` entry (subject "Confirm your FoC password change"), same shape as the other three. The exact subject/intro wording wasn't specified anywhere in instructions.md; chose copy consistent with the existing three entries' style rather than stopping to ask, same discretion already used when the Registration/Forgot Password/Change Email copy was originally written.
+
+**What I kept/changed/rejected:**
+Accepted all changes. Fix the error.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16b: Shared Auth Plumbing
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16b (decisions table and the Stage 16b section); the user's answers to Stage 16a items 1 ("Manage users" as a second top-level nav link) and 2 (full split of DemoContext's auth state into AuthContext now)
+
+**Prompts (exact):**
+
+> go for 16b
+
+**Key responses:**
+Read every consumer of `DemoContext`'s auth fields (the 16 files from the 16a report) in full before changing any of them, to keep each page's own business logic untouched while only swapping how it reads session state.
+
+Created `src/context/AuthContext.jsx`: holds `user` (`{id, role, username, email, activeView}`) and `status` (`loading`/`authenticated`/`anonymous`), restores the session on mount, exposes `login`, `logout`, `setActiveView` (optimistic, reverts and rethrows on failure so a caller can toast), `updateUser` (for 16e to merge in a changed username/email), and `requireAuth(reason, onAllowed)` — the new call sites' replacement for the deleted `LoginModal`'s `requireLogin`: already logged in runs the callback immediately, otherwise navigates to `/login` remembering the current location. Also carries `credits`/`refreshCredits` and the order-socket connect/disconnect effect, moved here from `DemoContext` per the user's "full split" answer. Kept `isLoggedIn`/`sessionReady` as derived aliases of `status` to minimise the diff across 16 consumer files.
+
+Updated `src/api/http.js`: proactive refresh now schedules itself 60s before the current token's `exp` (decoded via the JWT-claim helper, moved here from `api/auth.js` as `decodeAccessTokenClaims` so both files can use it without a circular import) every time a new token is set — on login and on every successful refresh — reusing the existing shared in-flight refresh; the timer is cancelled whenever the token is cleared. `ApiError` now also carries `retryAfterSeconds`, parsed from the service's `Retry-After` response header (not previously captured at all), which `ResendButton` needs for its cooldown. Kept the existing in-flight GET de-duplication and 401-retry unchanged.
+
+Created `src/api/profile.js` (`getProfile`, `setActiveView`) per the decision table's module boundary (`/users/me/*` calls belong here, not in `auth.js`); `auth.js`'s `restoreSession` now calls it and also reads `activeView` from the response, which it was missing (it predates Stage 15a adding that field to `GET /users/me`).
+
+Created the route guards (`src/components/RouteGuards.jsx`): `RequireAuth` and `RequireRole` (rank order copied from `user-service/src/middleware/authorize.ts`'s `ROLE_RANK`: user < admin < super admin); both render nothing while the session is still restoring, per the decisions table. `Forbidden.jsx` is the in-place "Not authorised" view.
+
+Created the shared components the decisions table lists: `Toast.jsx` (+ `ToastProvider`/`useToast`, positioned top-right so it never collides with `ChatBubble`, bottom-right, or `DemoControls`, bottom-left — 16a found no existing toast to reuse), `FormBanner.jsx`, `FieldError.jsx`, `OtpInput.jsx` (6 boxes, auto-advance, backspace back, paste-fills-and-submits, exposes `reset()` via a ref for the parent to clear and refocus after a wrong code), `ResendButton.jsx` (cooldown countdown from `retryAfterSeconds`, limit state with no countdown), `src/utils/validation.js` (regexes and messages copied verbatim from `user-service/src/services/auth.service.ts`: `USERNAME_REGEX`, `EMAIL_REGEX`, `PASSWORD_REGEX`, `OTP_REGEX` and their messages), and `src/api/errorMessages.js`.
+
+`errorMessages.js` enumerates every code found by grepping user-service for `new AppError(` plus `UNAUTHORIZED`/`FORBIDDEN` (middleware) and `VALIDATION_ERROR`/`INTERNAL_ERROR` (the global handler) — the full map, with each code's default display type, is below for review:
+
+| Code                              | Frontend text                                            | Display |
+| --------------------------------- | -------------------------------------------------------- | ------- |
+| VALIDATION_ERROR                  | Please check the highlighted fields.                     | field   |
+| USERNAME_TAKEN                    | That username is already taken.                          | field   |
+| EMAIL_TAKEN                       | That email is already registered.                        | field   |
+| INVALID_CREDENTIALS               | Wrong username/email or password.                        | banner  |
+| ACCOUNT_SUSPENDED                 | This account has been suspended.                         | banner  |
+| ACCOUNT_NOT_VERIFIED              | This account still needs email verification.             | banner  |
+| INVALID_REFRESH_TOKEN             | Your session has expired. Please log in again.           | toast   |
+| UNAUTHORIZED                      | Please log in to continue.                               | toast   |
+| FORBIDDEN                         | You don't have access to do that.                        | toast   |
+| INVALID_OTP                       | That code is incorrect.                                  | field   |
+| OTP_EXPIRED                       | That code has expired. Request a new one.                | field   |
+| OTP_ATTEMPTS_EXCEEDED             | Too many incorrect attempts. Request a new code.         | field   |
+| OTP_RESEND_COOLDOWN               | Please wait before requesting another code.              | field   |
+| OTP_RESEND_LIMIT                  | You've reached the resend limit. Please try again later. | field   |
+| NO_PENDING_REGISTRATION           | No pending registration was found for this email.        | banner  |
+| EMAIL_NOT_FOUND                   | No account uses that email.                              | field   |
+| NO_PENDING_EMAIL_CHANGE           | No pending email change was found.                       | banner  |
+| NO_PENDING_PASSWORD_CHANGE        | No pending password change was found.                    | banner  |
+| EMAIL_SEND_FAILED                 | Could not send the email right now. Please try again.    | banner  |
+| USERNAME_UNCHANGED                | That is already your username.                           | field   |
+| EMAIL_UNCHANGED                   | That is already your email.                              | field   |
+| PASSWORD_UNCHANGED                | That is already your password.                           | field   |
+| INVALID_PASSWORD                  | Your current password is incorrect.                      | field   |
+| USER_NOT_FOUND                    | That user could not be found.                            | toast   |
+| SUPER_ADMIN_IMMUTABLE             | A super administrator cannot be modified.                | toast   |
+| SELF_ROLE_CHANGE                  | You cannot change your own role.                         | toast   |
+| CANNOT_CHANGE_STATUS_PENDING_USER | A pending user's status cannot be changed yet.           | toast   |
+| CANNOT_CHANGE_ROLE_PENDING_USER   | A pending user's role cannot be changed yet.             | toast   |
+| CANNOT_CHANGE_ROLE_SUSPENDED_USER | A suspended user's role cannot be changed.               | toast   |
+| INTERNAL_ERROR (fallback)         | Something went wrong. Please try again.                  | banner  |
+
+Created `src/pages/Login.jsx`: identifier/password, links to `/register` and `/forgot-password` (not built until 16c/16d — the app's catch-all route sends them home until then), success lands on `state.from` or home, `INVALID_CREDENTIALS`/`ACCOUNT_SUSPENDED` show a banner, `ACCOUNT_NOT_VERIFIED` redirects to `/register`'s OTP step per the spec's exact snippet.
+
+Wired it together: `main.jsx` mounts `AuthProvider` (inside `BrowserRouter`, needs `useNavigate`/`useLocation`) and `ToastProvider`; `App.jsx` adds `/login` and wraps `/requests/new`, `/requests/:id/edit`, `/activity`, `/chat/:id` and `/wallet` in `RequireAuth` (these are exactly the pages that used to gate themselves on mount via `requireLogin`, now redundant once the route itself guards them - their internal gating effects, which called the now-deleted function, were removed); `LoginModal.jsx` deleted once nothing imported it. `DemoContext.jsx` shrank to `role`/`requests`/`setRequestStatus`/`acceptRequest`/`currentUser` (the mocked, non-auth pieces) - `loginPrompt`/`setLoginPrompt` were dropped entirely rather than kept as the user's literal answer listed them, since nothing opens a modal to read them anymore (flagged below). Updated all 16 consumer files to read from the new `useAuth()` instead of `useDemo()` for anything auth-related, touching only that one line per file wherever possible: `TopNav.jsx` (also added "Manage users" as a second admin link, removed the now-redundant `gated` nav-link mechanism since `/activity` is route-guarded), `ApiNotice.jsx`, `useApi.js`, `ChatBubble.jsx`, `SupplierCard.jsx`, `SupplierDetail.jsx`, `RequestCard.jsx`, `RequestBoard.jsx` (soft-gated, not wrapped in `RequireAuth` - unchanged behaviour, just a different context), `AdminSuppliers.jsx` (its existing `AdminOnly` in-page gate kept as-is, just repointed - not replaced by the new generic `RequireRole`, which Stage 16g reserves for `/admin/users`), `AdminSupplierForm.jsx`, and `Activity.jsx`/`Wallet.jsx`/`Chat.jsx`/`CreateRequest.jsx` (gating effects/inline checks removed, now dead once route-guarded).
+
+Verified: `npm run build` (`vite build`) succeeds. `npm run lint` (`oxlint`): only pre-existing warning categories (`only-export-components`, `set-state-in-effect`) at the same rate as a lint run on the pre-16b branch (checked with `git stash`) - none of these are new error-level findings. Ran a full Playwright smoke test (headless Chromium, installed for this) against the real Docker stack (all services already running) as the super admin: clicking "Log in" navigates to `/login` (no modal); wrong password shows the banner; correct login redirects home; `localStorage`/`sessionStorage` are empty both logged in and after logout (access token confirmed in-memory only); the nav shows the username, both admin links and the credit pill; a reload stays logged in; `/wallet` loads real Credit Service data (20 credits, one allocation row) with the Bearer token attached; logging out clears storage and lands on `/login`; visiting `/wallet` logged out redirects to `/login` remembering the page, and logging back in from there lands back on `/wallet`; visiting the not-yet-built `/admin/users` falls through the catch-all to home, as expected before Stage 16g. No unexpected console errors - the three 401s logged are the normal pre-login/401-retry noise, already handled by `http.js` before this change.
+
+**Files:**
+
+- `frontend/src/context/AuthContext.jsx` (created)
+- `frontend/src/components/RouteGuards.jsx` (created)
+- `frontend/src/components/Forbidden.jsx` (created)
+- `frontend/src/components/Toast.jsx` (created)
+- `frontend/src/components/FormBanner.jsx` (created)
+- `frontend/src/components/FieldError.jsx` (created)
+- `frontend/src/components/OtpInput.jsx` (created)
+- `frontend/src/components/ResendButton.jsx` (created)
+- `frontend/src/utils/validation.js` (created)
+- `frontend/src/api/profile.js` (created)
+- `frontend/src/api/errorMessages.js` (created)
+- `frontend/src/pages/Login.jsx` (created)
+- `frontend/src/components/LoginModal.jsx` (deleted)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/http.js` (modified)
+- `frontend/src/api/useApi.js` (modified)
+- `frontend/src/main.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/context/DemoContext.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/components/ApiNotice.jsx` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/src/components/SupplierCard.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/src/pages/SupplierDetail.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `frontend/src/pages/Wallet.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/AdminSuppliers.jsx` (modified)
+- `frontend/src/pages/AdminSupplierForm.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. Added `requireAuth(reason, onAllowed)` to `AuthContext`, not explicitly named in the decisions table's "Exposes" list, because 13 existing call sites across 8 files depended on the deleted `LoginModal`'s `requireLogin` with exactly that shape (run immediately if already logged in, otherwise prompt). Implementing "replace every place that opened LoginModal with navigation to /login" required an equivalent.
+2. `Login.jsx` shows an optional informational banner for the `reason` string `requireAuth` passes along (the old modal showed this text too), in addition to the spec's required success/`from` handling. Not required by the spec, which only mentions `from` and a success banner - dropping the reason text felt like a UX regression, and nothing forbids showing it.
+3. `DemoContext` dropped `loginPrompt`/`setLoginPrompt` entirely rather than keeping them as the user's 16a answer listed ("role/requests/loginPrompt"), since `LoginModal` (the only thing that ever read them) is deleted in this same stage - keeping them would be dead state.
+4. File headers use this codebase's established `/* ... */` block-comment style throughout, not the Stage 16 ground rules' literal "JSX/JS files use `//` comments" - every existing frontend file already uses block comments, so the code was followed over the instruction text, per the ground rules' own "where it disagrees with this file, follow the code and tell me."
+5. `AdminSuppliers.jsx`'s existing `AdminOnly` in-page admin gate was left as its own component (only repointed to `AuthContext`), not replaced by the new `RequireRole`/`Forbidden`. Stage 16g is where the file's own stage split puts `/admin/users` behind `RequireRole`; generalising `/admin/suppliers` to match wasn't asked for here.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16c: Registration (`/register`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16c (the registration form/OTP spec) and its Stage 16 decisions table (OTP input behaviour, resend cooldown/limit, error display rules, `ACCOUNT_NOT_VERIFIED` redirect snippet, `USERNAME_TAKEN`/`EMAIL_TAKEN` hint text)
+
+**Prompts (exact):**
+
+> let's start 16c, dont forget ot pull main first, and the git workflow too
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16b PR #129) and branched `feat/stage-16c-registration` from it, per the team's standing git workflow.
+
+Created `src/pages/Register.jsx`: one page, two steps (`form`, `otp`), starting at `location.state.step` (default `form`) exactly as Stage 16b's `Login.jsx` already sends it for `ACCOUNT_NOT_VERIFIED`. Form step: username/email/password with the Stage 16b client validators (blur + submit), `POST /auth/register`, success moves to the OTP step; `USERNAME_TAKEN`/`EMAIL_TAKEN` show inline on that field plus the "Already signed up? Log in to finish verifying" hint linking to `/login`; anything else falls back to a form banner via `errorMessages.describeError`. OTP step: `OtpInput` → `POST /auth/verify-otp` (`purpose: 'registration'`) — `INVALID_OTP` clears the boxes and refocuses via the component's exposed `reset()`, `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` show an inline error pointing at resend, success navigates to `/login` with a success banner. Resend uses `POST /auth/resend-otp` (`purpose: 'registration'`); `NO_PENDING_REGISTRATION` and anything else `ResendButton` doesn't itself handle (cooldown/limit) surface as a banner.
+
+When arriving from `Login.jsx`'s `ACCOUNT_NOT_VERIFIED` redirect (`location.state.step === 'otp'`, captured once at mount so it stays stable across the page's own step transitions), the OTP step instead shows a "Send a new code" button at the top (does not send automatically) and, if no email was carried in (the user logged in by username), an email field above the boxes with the boxes/resend/verify disabled until it's filled. This reuses the same `ResendButton` instance repositioned to the top rather than a second independent one, so there is one cooldown/limit state, not two that could disagree — `ResendButton` gained an optional `label` prop (default unchanged: "Resend code") to support this.
+
+`src/api/auth.js` gained `register`, `verifyOtp`, `resendOtp` — thin wrappers over the existing `request()` helper, bodies matching `user-service/src/controllers/auth.controller.ts`'s `registerSchema`/`verifyOtpSchema`/`resendOtpSchema` exactly (`{username,email,password}`, `{email,otp,purpose}`, `{email,purpose}`). `App.jsx` added the `/register` route.
+
+Verified: `npm run build` (`vite build`) succeeds; `npm run lint` (`oxlint`) shows no new findings in the touched files (same pre-existing warning set as the 16b branch). Ran Playwright (headless Chromium, against the real Docker stack already running) through three scenarios, reading each OTP from the user-service container's dev-console email log:
+
+1. Fresh registration happy path: form → `201` → OTP step (no stray email field, no "Send a new code" banner) → wrong code clears the boxes and shows "That code is incorrect." → correct code → `/login` with "Account verified. You can now log in." shown.
+2. Abandon-and-retry via username: registered, abandoned at OTP, logged in again with the username (not email) → redirected to `/register`'s OTP step with the "Send a new code" button and an email field, both gated until the email is filled; clicking it while still inside the registration OTP's cooldown surfaced "Resend in 60s" (cooldown working as intended, not a bug); verified with the original still-valid code → `/login` success banner again.
+3. Caught and fixed one of my own bugs before considering this done: the OTP step's "email field for a missing email" was gated only on `!initial.email`, so it also appeared (pre-filled, harmless but wrong per spec) on the ordinary post-registration flow, where the email is always known. Fixed to `arrivedFromLogin && !initial.email`; confirmed fixed by scenario 1 above.
+
+**Files:**
+
+- `frontend/src/pages/Register.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/components/ResendButton.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16d: Forgot Password (`/forgot-password`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 16d (the forgot-password spec) and its Stage 16 decisions table (OTP input behaviour, resend cooldown/limit wording, error display rules)
+
+**Prompts (exact):**
+
+> let's start 16d, dont forget ot pull main first, and the git workflow too
+
+> done. go for 16d
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16c PR #130) and branched `feat/stage-16d-forgot-password` from it, per the team's standing git workflow.
+
+Created `src/pages/ForgotPassword.jsx`: one page, three steps (`email`, `otp`, `password`) kept purely in component `useState` with no router state at all, so a reload always restarts at step 1 as specified. Step 1: email → `POST /auth/forgot-password` — `EMAIL_NOT_FOUND` inline, `ACCOUNT_NOT_VERIFIED` banner, `OTP_RESEND_COOLDOWN`/`OTP_RESEND_LIMIT` banner (the cooldown message appends the actual `Retry-After` seconds from `ApiError.retryAfterSeconds`). Step 2: `OtpInput` → `POST /auth/verify-otp` (`purpose: 'forgot_password'`, which `user-service/src/services/auth.service.ts`'s `verifyForgotPasswordOtp` checks without consuming the code) — `INVALID_OTP` clears/refocuses the boxes, `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` show inline pointing at resend, success stores the verified code in state and moves to step 3; `ResendButton` → `POST /auth/resend-otp` (`purpose: 'forgot_password'`). Step 3: new password (client complexity check) → `POST /auth/reset-password` with the email/OTP/new-password all held in state — `INVALID_OTP`/`OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` here (the code expiring between steps 2 and 3) route back to step 2 reusing the same `otpBannerError` state rather than a separate channel, success navigates to `/login` with a success banner.
+
+While reading `auth.service.ts` to confirm the exact error codes each endpoint can throw (`forgotPassword`, `verifyForgotPasswordOtp`, `resetPassword`, and `otp.service.ts`'s `checkOtp` for where `OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` actually originate), checked `user-service/.env.example` for the Stage 16d spec's note that the resend-limit text should say "about an hour": `OTP_RESEND_WINDOW_MINUTES=60` is one config shared by every OTP purpose, not forgot-password-specific, so corrected `errorMessages.js`'s central `OTP_RESEND_LIMIT` text to name the real wait rather than add a per-page override — this also improves the existing registration flow's wording, which was accurate in effect but vague before.
+
+`src/api/auth.js` gained `forgotPassword` and `resetPassword` (thin wrappers over `request()`, bodies matching `auth.controller.ts`'s `forgotPasswordSchema`/`resetPasswordSchema`). `App.jsx` added the `/forgot-password` route (already linked from `Login.jsx` since Stage 16b).
+
+Verified: `npm run build` and `npm run lint` clean, no new findings. Ran Playwright (headless Chromium, real Docker stack) end to end, reading OTPs from the user-service container's dev-console email log and manipulating `users_otps.expires_at` directly in the Postgres container for the expiry case (a 60s resend cooldown shared across all OTP purposes made a literal `/auth/resend-otp` round trip impractical to chain immediately after the account's own registration email, so the expiry-recovery step reuses the already-known code after un-expiring the row, rather than requesting a fresh one): reload mid-flow restarts at step 1 (confirmed on a dedicated account to avoid a same-account double-send hitting that same cooldown); a wrong code at step 2 never reaches step 3 and shows "That code is incorrect."; the correct code reaches step 3; expiring the OTP in the DB while on step 3 and submitting sends the user back to step 2 with "That code has expired."; completing the reset lands on `/login` with "Password reset. Please log in with your new password."; the old password then fails login (`INVALID_CREDENTIALS`) and the new one succeeds.
+
+**Files:**
+
+- `frontend/src/pages/ForgotPassword.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16e: Account Page (`/account`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16e (the account-page spec) and its Stage 16 decisions table; user-service's `me.controller.ts`/`me.service.ts` for the exact request/response shapes and error codes of each `/users/me/*` endpoint
+
+**Prompts (exact):**
+
+> done, go for hte next part
+
+**Key responses:**
+Pulled `main` first (fast-forwarded past the already-merged Stage 16d PR #131) and branched `feat/stage-16e-account-page` from it, per the team's standing git workflow.
+
+Read `user-service/src/controllers/me.controller.ts` and `me.service.ts` to pin down each endpoint exactly: `PUT /users/me/username` returns `{username, email}` and can throw `USERNAME_UNCHANGED`/`USERNAME_TAKEN`; `PUT /users/me/email` only sends an OTP (`EMAIL_UNCHANGED`/`EMAIL_TAKEN`/`INVALID_PASSWORD`), confirmed via `POST /users/me/verify-otp` (`purpose: 'change_email'` — the only purpose that route accepts); `PUT /users/me/password` similarly only sends an OTP (`PASSWORD_UNCHANGED`/`INVALID_PASSWORD`), confirmed via `POST /users/me/confirm-password-change`, which also re-validates `PASSWORD_UNCHANGED` and can still throw `INVALID_OTP`/`OTP_EXPIRED`/`OTP_ATTEMPTS_EXCEEDED` (traced into `otp.service.ts`'s `checkOtp`, the single place all three of those actually originate); the one `POST /users/me/resend-otp` route takes either purpose.
+
+Created `src/pages/Account.jsx`: a profile section plus three independent change sections (username, email, password), each its own local sub-component with its own form/OTP state. Username is a single-step form. Email and password are two-step within their own section (form, then an inline OTP step), matching the spec's "OTP shown inline in the same section." Password's new value is kept in the section's own state from the first step through to `confirm-password-change`, per the spec, so the user isn't asked to retype it.
+
+Extended `src/api/profile.js` with `changeUsername`, `changeEmail`, `verifyEmailChangeOtp`, `resendMeOtp`, `changePassword`, `confirmPasswordChange` — thin wrappers over `request()`. Added `src/context/AuthContext.jsx`'s `forceReauth(message)` for the spec's forced-relogin decision (clears client state the same way `logout()` does, without the `POST /auth/logout` call, since the backend has already revoked every refresh token for this user). Wired `/account` into `App.jsx` behind `RequireAuth`, and linked it from the nav by turning `TopNav.jsx`'s existing username/initials block (desktop and mobile) into a link to `/account`, since that was the only place already identifying the signed-in user — kept `TopNav.jsx` changes to just that.
+
+**A real bug, found only by actually running the password-change flow, not by reasoning about the code:** the spec's forced-relogin banner never appeared. Root-caused with Playwright plus console tracing (see `AuthContext.jsx`'s comment on `forceReauth` for the full trail): flipping auth state to anonymous from `/account` (a `RequireAuth`-protected route) makes `RequireAuth` re-render and fire its _own_ redirect to `/login`, racing `forceReauth`'s intended navigation for who gets to set the router state `/login` reads the banner text from. React Router v7 schedules a plain `navigate()`'s location update inside `React.startTransition` by default, so `RequireAuth`'s synchronous re-render (triggered by the plain `setUser`/`setStatus` calls) consistently won before this call's location update had landed — confirmed by tracing actual render order with temporary logging, not just reading the types. Tried three fixes in order before one worked: reordering the calls (no effect), wrapping the call in React DOM's own `flushSync` (no effect — react-router's internal `startTransition` isn't overridden by an outer `flushSync` boundary), and react-router v7's own `navigate(..., { flushSync: true })` option (still no effect, empirically — plausibly because this project uses the plain `<BrowserRouter>` API, not the data-router `RouterProvider` that option targets). Settled on sidestepping the race entirely: the message now travels through a small module-level variable in `AuthContext.jsx` (`pendingAuthMessage`/`consumePendingAuthMessage`/`clearPendingAuthMessage`) instead of router state, so it no longer matters which navigate call's state wins — `Login.jsx` reads it once via a pure lazy `useState` initializer (safe under StrictMode's double-invoked renders, since a plain read has no side effect) and clears it in a separate effect (idempotent, so a StrictMode double-invoked effect is harmless too).
+
+Verified: `npm run build` and `npm run lint` clean (the two new `only-export-components` warnings for the module-level pending-message functions are the same pre-existing category already present elsewhere in this codebase — `Toast.jsx`, `ApiNotice.jsx`, `DemoContext.jsx` — not a new kind of finding). Ran Playwright (headless Chromium, real Docker stack) end to end: the nav link reaches `/account`; profile shows the signed-in user's username/email; changing to the current username shows `USERNAME_UNCHANGED` inline; changing it for real updates the section, a success banner, and the nav's displayed name with no reload; the email section's wrong-password case shows `INVALID_PASSWORD` inline on the password field; the happy path sends an OTP (read from the user-service dev-console log), a wrong code shows "That code is incorrect.", and the right code updates the profile's email with no reload; the password section's happy path sends an OTP, and entering the right code immediately redirects to `/login` with "Password changed. Please sign in again with your new password." — not left on `/account`; the old password then fails login and the new one succeeds.
+
+**Files:**
+
+- `frontend/src/pages/Account.jsx` (created)
+- `frontend/src/api/profile.js` (modified)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/pages/Login.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16f: Requester/Courier Toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16f and its Stage 16 decisions table ("Active-view toggle" row: optimistic update, `PUT /users/me/active-view`, revert and toast on failure)
+
+**Prompts (exact):**
+
+> read through instrusction.md. let's start with 16f. don't forget to pull from main and branch first, and follow the git workflow.
+
+**Key responses:**
+Confirmed the current branch (`feat/stage-16f-requester-courier-toggle`) was already created from an up-to-date `main` (fast-forwarded past the merged Stage 16e PR #132), so no further pull/branch step was needed before writing code.
+
+Read `src/context/AuthContext.jsx` and found `setActiveView` already implemented in Stage 16b, in anticipation of this sub-stage: it optimistically updates `user.activeView`, calls `profileApi.setActiveView`, and reverts plus rethrows on failure. So 16f's own work is the UI: a new `src/components/ActiveViewToggle.jsx` (a two-segment "Requester"/"Courier" control reading `user.activeView`, calling `setActiveView` on click, and on a rethrown error showing a toast via `useToast()`/`describeError()`). Wired it into `TopNav.jsx` next to the credits pill on desktop and above the username row in the mobile drawer, shown only when logged in, per the spec's "keep TopNav changes minimal and list them."
+
+Grepped for every consumer of `DemoContext`'s mocked `role` (the "local `role` useState('requester')" the Stage 16 decisions table calls out) and found two: `src/components/DemoControls.jsx` (its own demo-only Role toggle, on the ground-rules do-not-modify list, left untouched) and `src/pages/Activity.jsx` (picks the default tab). Switched `Activity.jsx` to read `activeView` from `useAuth()` instead of `useDemo()`'s `role`.
+
+Verified: `npm run build` and `npm run lint` (`oxlint`) both clean, no new warnings from the changed files. Ran the app against the already-running Docker stack (user-service on :3001, user-db on :5434) with the frontend dev server, driving it with a headless Playwright/Chromium script (registered a test user via the API, read its OTP from the user-service dev-console log, verified and logged in): confirmed the toggle renders once logged in, clicking it flips `aria-pressed` instantly and the `users.active_view` column in Postgres matches, a reload keeps the same view, and stopping `foc-user-service` mid-click reverts the toggle and shows a toast reading "Something went wrong. Please try again." (the generic fallback in `errorMessages.js`, since a connection failure carries no backend `code`). Restarted the container and deleted the test user afterward.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (created)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16g: Admin User Management (`/admin/users`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16g (table columns, search/filter/sort/pagination, the row-actions permission table, confirmation and action-result rules); user-service's `users.controller.ts`/`users.service.ts` for the exact request/response shapes and the precise conditions each error code fires under
+
+**Prompts (exact):**
+
+> go for it
+
+**Key responses:**
+Checked out `main` (fast-forwarded past the merged Stage 16f PR #133) and branched `feat/stage-16g-admin-users`, per the team's standing git workflow.
+
+Read `user-service/src/routes/users.routes.ts`, `users.controller.ts` and `users.service.ts` to pin down the exact backend behaviour the row-actions menu needs to mirror: `GET /users` (admin+) takes `page/username/email/status/role/sortBy/sortDir`, defaults `sortBy` to `createdAt` and `sortDir` to `desc` when unset; `PUT /:id/status` (admin+) throws `SUPER_ADMIN_IMMUTABLE` (403) on a super-admin target, `FORBIDDEN` (403) when an admin targets another admin, and `CANNOT_CHANGE_STATUS_PENDING_USER` (422) on a pending target; `PUT /:id/role` (super admin only) throws `SELF_ROLE_CHANGE` (403) on the caller's own id, `SUPER_ADMIN_IMMUTABLE` (403) on a super-admin target, and `CANNOT_CHANGE_ROLE_PENDING_USER`/`CANNOT_CHANGE_ROLE_SUSPENDED_USER` (422) depending on target status. Every one of those codes was already in `errorMessages.js` from Stage 16b, so no new entries were needed there.
+
+Wrote `getRowActions(viewer, row)` in `AdminUsers.jsx` as a direct, side-by-side translation of those backend checks (own row / super-admin target / pending target → no menu at all; suspend shown for a super-admin viewer on any user-or-admin row, or an admin viewer only on a user-role row; promote/demote shown only for a super-admin viewer on an active row, promote if the target is `user`, demote if `admin`) — this is the single source the row menu, and nothing else, decides visibility from.
+
+Created `src/api/users.js` (`listUsers`, `updateUserStatus`, `updateUserRole`) and `src/pages/AdminUsers.jsx`: debounced (300ms, independent timers) username/email search boxes, status/role filter selects, click-to-sort username/email/created headers (status/role are not sortable, per spec), the existing `Pager`/`useApiNotice` components reused from `ApiNotice.jsx` (mapping its `metadata.currPage` naming onto the user-service response's `page` field), a three-dot row menu (visible on hover at `sm`+, always visible below it, closes on outside click), and a confirmation dialog reusing `AdminSuppliers.jsx`'s `DeleteDialog` visual pattern. Declined to import `AdminSuppliers.jsx`'s exported `selectClass` constant or its `Badge` component to avoid a styling dependency between the two unrelated admin screens; duplicated the (short) class strings locally instead. Wired `/admin/users` into `App.jsx` behind `RequireAuth` + `RequireRole minimum="admin"` (both nested, matching the stage text verbatim, even though `RequireRole` alone already re-implements the auth check).
+
+Verified: `npm run build` and `npm run lint` (oxlint) clean, no new warnings beyond the same `set-state-in-effect` category already present on `AdminSuppliers.jsx`'s identical page-reset effect. Ran the app against the real Docker stack with a headless Playwright/Chromium script driving three separate logged-in sessions (super admin, a promoted admin account, and a plain user), registering throwaway test users via the API and reading their OTPs from the user-service dev-console log: confirmed username-substring search, the pending-status filter, and username sort all changed the request/results; a pending row showed no menu; a super-admin viewer saw Suspend+Promote on an active plain user and Suspend+Demote on an active admin; promoting and suspending both updated the row in place and showed a success toast (confirmed by DB: suspending an admin revoked their refresh token in the same transaction, as Stage 9/10 already guaranteed); an admin viewer saw Unsuspend on a suspended plain user but no menu at all on another admin's row or their own row; a plain user hitting `/admin/users` directly got the "Not authorised" view with the URL unchanged and no "Manage users" nav link. Did not exercise the multi-page Pager path (only a handful of test users existed, so `totalPages` was always 1) — `Pager` itself is the same already-verified component `AdminSuppliers.jsx` uses, unchanged here.
+
+**Files:**
+
+- `frontend/src/api/users.js` (created)
+- `frontend/src/pages/AdminUsers.jsx` (created)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-10-23 — Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code (test files only), Debugging
+**Governing decision:** instructions.md Stage 7's ground rules (test stack, real-Postgres approach, mocking policy, `tests/concurrency/` layout for concurrency cases) applied to each gap's own stage text: Stage 12a-12e's Verification bullets (profile username/email/password change), Stage 13a's Verification bullets (JWKS `kid` lookup), and Stage 14b/14d's function descriptions and Backoff/Outcome-to-action tables (credit-allocation outbox queries and activation/bootstrap wiring)
+
+**Prompts (exact):**
+
+> Write the missing tests for everything implemented in Stages 1–16.
+>
+> 1. Read instructions.md and the current code (code wins where they disagree; tell me
+>    where they do). For each stage, compare its Verification bullets with the existing
+>    tests and list the gaps. Expect gaps mainly in Stages 14, 15 and 16, but check all. Before starting, don't forget the usual git workflow.
+> 2. Follow Stage 7's ground rules, test stack, layout (mirror src/, concurrency tests
+>    in tests/concurrency/), real-Postgres approach and mocking policy.
+> 3. Do not modify application code to make a test pass. If a test shows behaviour that
+>    contradicts instructions.md, leave it failing and report it as a finding.
+> 4. Do not test deferred features (NFR1, NFR2, NFR4, F5.3.2) for presence or absence.
+> 5. If the expected behaviour for a case isn't clearly specified, skip it. Do not
+>    pick a behaviour yourself.
+> 6. If a test would need a mock or new dependency that Stage 7 doesn't already allow
+>    (e.g. mocking credit-service HTTP for the Stage 14 relay, or any test tooling for
+>    frontend/), do not add it. Skip those tests and flag them.
+> 7. Add the AI disclosure header to every test file you create or modify, and give
+>    me the usage-log entry.
+>
+> At the end, report:
+>
+> - the tests added, per stage
+> - any failing tests (findings), with the bullet they test
+> - every skipped case and why: unclear behaviour, or a mock/tooling approval needed.
+>   For each, state the exact question I need to answer.
+
+> where did you stop in the test case creation?
+
+> also can you help me finish up hte git workflow for the test cases - with a new branch and a PR
+
+**Key responses:**
+Compared each stage's Verification bullets against existing tests across three sessions (the first was interrupted mid-task by a response cutoff). Confirmed Stage 12 (profile management: username/email/password change, 5 sub-stages) had zero test coverage — the largest gap found. Also found a small Stage 13a gap (`getJwks()` and the two `kid`-lookup failure modes were only exercised indirectly) and a Stage 14 gap (the credit-allocation outbox's query functions and `classifyResponseStatus` had no tests at all, beyond an earlier, narrower fix that only covered the outbox row `bootstrapTestUser` inserts).
+
+Added, per file (each carries its own AI disclosure header with the precise scope):
+
+- `tests/services/me.service.test.ts` / `tests/controllers/me.controller.test.ts`: Stage 12's remaining functions/routes (getOwnProfile, changeUsername, initiateEmailChange, verifyEmailChangeOtp, resendChangeEmailOtp, resendChangePasswordOtp, initiatePasswordChange, confirmPasswordChange and their HTTP routes). Deliberately did not re-test `requestOtp`/`checkOtp`'s generic cooldown/limit/expiry logic beyond one call-site check each — already covered purpose-agnostically in `otp.service.test.ts`.
+- `tests/concurrency/me.concurrency.test.ts`: the two Stage 12 concurrency Verification bullets with no coverage (concurrent username change to the same target from two accounts; concurrent `confirm-password-change` with the correct OTP).
+- `tests/utils/jwt.test.ts` / `tests/helpers/keys.ts`: Stage 13a's `getJwks()` and the missing-`kid`/unknown-`kid` failure paths, signing with the real key but a missing or fabricated `kid` (previously only exercised indirectly or conflated with the unrelated "wrong key pair" case).
+- `tests/services/auth.service.test.ts`: coverage for the credit-allocation outbox row `verifyRegistrationOtp` inserts on a successful activation, and its absence on a failing verify (Stage 14d).
+- `tests/db/queries/creditOutbox.queries.test.ts` (new): full integration coverage (real test DB) of all six outbox query functions — insert, find-due, mark-sent, mark-dead, record-failure (including backoff math), replay-dead.
+- `tests/services/creditOutbox.relay.test.ts` (new): unit tests for `classifyResponseStatus`, the one pure, no-I/O function in the relay.
+- `tests/helpers/db.ts`: added `getOutboxRowById`/`seedOutboxRow` helpers backing the two files above.
+
+Skipped, per the mocking-policy rule in the prompt (flagged, not worked around): `deliverCreditAllocation`, `runOutboxPass` and `startCreditOutboxRelay` in `creditOutbox.relay.ts` — all three make real outbound HTTP calls to credit-service, and Stage 7's mocking policy does not authorize mocking outbound HTTP (only `sendOtpEmail`/nodemailer and the config module are exempted). **Question for the team:** approve mocking credit-service's HTTP response for this one file, stand up a real stand-in HTTP server for it, or accept the gap?
+
+Did not reach Stage 15 or Stage 16 (frontend) in this pass, and the following existing source files still have no dedicated test file (some may be adequately exercised indirectly through controller/service tests, but that was not confirmed): `src/utils/userResponse.ts`, `src/utils/cookies.ts`, `src/utils/AppError.ts`, `src/utils/asyncHandler.ts`, `src/db/pool.ts`, `src/db/transaction.ts`, `src/scripts/replayCreditOutbox.ts`. This entry covers only what actually landed in the working tree, not the full original 7-point ask.
+
+Verified: `npx vitest run` — 25 files, 682 tests, 681 passed; the one failure (`auth.controller.test.ts`'s `resend-otp` 503 case, `ECONNRESET`/socket hang up) is pre-existing environment flakiness in a file untouched by this change — re-ran that file alone and it passed clean (176/176). `npx eslint` on all nine changed/new files: clean, no warnings.
+
+**Files:**
+
+- `user-service/tests/concurrency/me.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/db/queries/creditOutbox.queries.test.ts` (created)
+- `user-service/tests/services/creditOutbox.relay.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+Whether to approve mocking credit-service's HTTP response in `creditOutbox.relay.test.ts` (or a real stand-in server) so `deliverCreditAllocation`, `runOutboxPass` and `startCreditOutboxRelay` can be tested — currently skipped per Stage 7's mocking policy. Stage 15 and Stage 16 (frontend) test gaps, and the untested source files listed above, remain open for a follow-up pass.
+
+**What I kept/changed/rejected:**
+Accepted all changes, KIV the issue first.
+
+**Author review:** gabriel yap

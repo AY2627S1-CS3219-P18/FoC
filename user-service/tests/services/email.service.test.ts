@@ -2,6 +2,13 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - tests for the real email.service.ts (nodemailer mocked)
 // Author review:
+// 2026-10-22: Fixed a stale fixture - "throws for a purpose that has no template" used
+//   'Change Email', which has had a template since Stage 12c. Switched to 'Admin
+//   Action', the one purpose_enum value with no implemented flow yet (not 'Change
+//   Password': that purpose IS wired up (Stage 12e) and sends real OTP emails, but
+//   PURPOSE_COPY has no entry for it - a separate pre-existing gap, flagged, not fixed
+//   here). Fixture update, not a new test case.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sendMail, createTransport } = vi.hoisted(() => {
@@ -114,7 +121,7 @@ describe('sendOtpEmail (SMTP path)', () => {
   it('throws for a purpose that has no template, without sending', async () => {
     const { sendOtpEmail } = await loadEmailService({});
     await expect(
-      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Change Email' }),
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Admin Action' }),
     ).rejects.toThrow();
     expect(sendMail).not.toHaveBeenCalled();
   });
