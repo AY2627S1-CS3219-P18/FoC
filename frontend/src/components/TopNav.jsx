@@ -18,6 +18,33 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-10-02
  * Scope: Added a Log out button to the desktop nav (it was only in the mobile menu), wired to the existing logout. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Per instructions.md Stage 16b: reads session/credits/logout/isAdmin from the new
+ *        AuthContext instead of DemoContext. Added the "Manage users" admin link next to
+ *        "Manage suppliers" (per the user's answer to 16a item 1). The special-cased
+ *        `gated` nav link and its onClick handler are gone: /activity is now wrapped in
+ *        RequireAuth at the route level, so clicking the link while logged out lands on
+ *        /login the same way opening the URL directly does. The two "Log in" buttons now
+ *        call requireAuth (AuthContext's replacement for the deleted LoginModal's
+ *        requireLogin) instead of opening a modal.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Per instructions.md Stage 16e ("linked from the nav"): the username/initials block
+ *        (desktop and mobile) is now a link to /account instead of plain text, since that was
+ *        the only place in the nav that already identified the signed-in user. The Log out
+ *        control stays a separate control, not swallowed into the link.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Per instructions.md Stage 16f: added ActiveViewToggle next to the credits pill
+ *        (desktop) and above the username row (mobile drawer), shown only when logged in.
+ *        Minimal placement only — Gabriel may adjust the layout.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -26,20 +53,24 @@ import { Bell, LogOut, Menu, X } from 'lucide-react'
 import Logo from './Logo'
 import Button from './Button'
 import CreditPill from './CreditPill'
-import { useDemo } from '../context/DemoContext'
+import ActiveViewToggle from './ActiveViewToggle'
+import { useAuth } from '../context/AuthContext'
 
 const LINKS = [
   { to: '/suppliers', label: 'Suppliers' },
   { to: '/requests', label: 'Find errands' },
-  { to: '/activity', label: 'My activity', gated: 'You need an account to see your activity.' },
+  { to: '/activity', label: 'My activity' },
 ]
 
-const ADMIN_LINK = { to: '/admin/suppliers', label: 'Manage suppliers' }
+const ADMIN_LINKS = [
+  { to: '/admin/suppliers', label: 'Manage suppliers' },
+  { to: '/admin/users', label: 'Manage users' },
+]
 
 export default function TopNav() {
-  const { isLoggedIn, session, credits, requireLogin, logout, isAdmin } = useDemo()
-  const links = isAdmin ? [...LINKS, ADMIN_LINK] : LINKS
-  const displayName = session?.username ?? ''
+  const { isLoggedIn, user, credits, requireAuth, logout, isAdmin } = useAuth()
+  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS
+  const displayName = user?.username ?? ''
   const initials = displayName.slice(0, 2).toUpperCase()
   const [scrolled, setScrolled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -60,13 +91,6 @@ export default function TopNav() {
     'text-sm font-medium transition-colors duration-150 ' +
     (isActive ? 'text-ink' : 'text-ink-70 hover:text-ink')
 
-  const gate = (e, link) => {
-    if (link.gated && !isLoggedIn) {
-      e.preventDefault()
-      requireLogin(link.gated)
-    }
-  }
-
   return (
     <>
       <header
@@ -80,12 +104,7 @@ export default function TopNav() {
 
           <nav className="hidden items-center gap-8 lg:flex" aria-label="Main">
             {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={navLinkClass}
-                onClick={(e) => gate(e, link)}
-              >
+              <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.label}
               </NavLink>
             ))}
@@ -94,6 +113,7 @@ export default function TopNav() {
           <div className="hidden items-center gap-3 md:flex">
             {isLoggedIn ? (
               <>
+                <ActiveViewToggle />
                 <Link to="/wallet" aria-label={credits.available + ' credits available'}>
                   <CreditPill value={credits.available} size="md" />
                 </Link>
@@ -105,12 +125,15 @@ export default function TopNav() {
                   <Bell size={18} aria-hidden="true" />
                   <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-pill bg-orange" />
                 </button>
-                <span className="text-sm font-medium text-ink">
-                  {displayName}
-                </span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
-                  {initials}
-                </span>
+                <Link
+                  to="/account"
+                  className="flex h-10 items-center gap-2 rounded-btn px-1.5 hover:bg-surface-alt"
+                >
+                  <span className="text-sm font-medium text-ink">{displayName}</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
+                    {initials}
+                  </span>
+                </Link>
                 <button
                   type="button"
                   className="flex h-10 items-center gap-1.5 rounded-btn px-2 text-sm text-ink-70 hover:bg-surface-alt hover:text-ink"
@@ -121,7 +144,7 @@ export default function TopNav() {
                 </button>
               </>
             ) : (
-              <Button size="sm" onClick={() => requireLogin('Log in to post and accept errands.')}>
+              <Button size="sm" onClick={() => requireAuth('Log in to post and accept errands.')}>
                 Log in
               </Button>
             )}
@@ -161,10 +184,13 @@ export default function TopNav() {
             </div>
 
             {isLoggedIn && (
-              <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
-                <CreditPill value={credits.available} size="md" />
-                <span className="text-sm text-ink-70">available</span>
-              </Link>
+              <>
+                <ActiveViewToggle className="self-start" />
+                <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
+                  <CreditPill value={credits.available} size="md" />
+                  <span className="text-sm text-ink-70">available</span>
+                </Link>
+              </>
             )}
 
             <nav className="flex flex-col" aria-label="Mobile">
@@ -172,7 +198,6 @@ export default function TopNav() {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  onClick={(e) => gate(e, link)}
                   className="flex min-h-[44px] items-center border-b border-line text-base font-medium text-ink"
                 >
                   {link.label}
@@ -183,19 +208,19 @@ export default function TopNav() {
             <div className="mt-auto">
               {isLoggedIn ? (
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-pill bg-surface-alt text-sm font-semibold text-ink">
-                    {initials}
-                  </span>
-                  <div className="min-w-0">
+                  <Link to="/account" className="flex items-center gap-3 min-w-0">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-pill bg-surface-alt text-sm font-semibold text-ink">
+                      {initials}
+                    </span>
                     <p className="truncate text-sm font-medium text-ink">{displayName}</p>
-                    <button
-                      type="button"
-                      className="text-xs text-ink-40 hover:text-ink"
-                      onClick={logout}
-                    >
-                      Log out
-                    </button>
-                  </div>
+                  </Link>
+                  <button
+                    type="button"
+                    className="text-xs text-ink-40 hover:text-ink"
+                    onClick={logout}
+                  >
+                    Log out
+                  </button>
                 </div>
               ) : (
                 <Button
@@ -203,7 +228,7 @@ export default function TopNav() {
                   className="w-full"
                   onClick={() => {
                     setDrawerOpen(false)
-                    requireLogin('Log in to post and accept errands.')
+                    requireAuth('Log in to post and accept errands.')
                   }}
                 >
                   Log in

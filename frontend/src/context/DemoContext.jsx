@@ -16,59 +16,33 @@
  *        connected (chat, demo controls).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-opus-5), date: 2026-10-22
+ * Scope: The credit balance now comes from Credit Service's GET /credits/balance/:userId
+ *        instead of the hardcoded figures in src/data/users.js, so the nav pill and the
+ *        create-request affordability check show the signed-in user's real credits.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Per instructions.md Stage 16b and the user's answer to 16a item 2 (full split now),
+ *        every real-auth piece (session/login/logout/isAdmin/credits/the order-socket
+ *        connection) moved to the new AuthContext. DemoContext shrinks to the demo-only
+ *        requester/courier role and the mocked request list; `loginPrompt` is dropped rather
+ *        than kept as dead state, since nothing opens a modal anymore (LoginModal deleted).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import * as authApi from '../api/auth'
-import { setOnSessionExpired } from '../api/http'
-import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { requests as seedRequests } from '../data/requests'
 import { currentUser } from '../data/users'
 
 const DemoContext = createContext(null)
 
 export function DemoProvider({ children }) {
-  // Real session from the User Service: null when logged out. `sessionReady` turns true once the
-  // refresh cookie has been tried on page load, so screens do not flash a logged-out state.
-  const [session, setSession] = useState(null)
-  const [sessionReady, setSessionReady] = useState(false)
-  const isLoggedIn = session !== null
-  const systemRole = session?.role ?? null
-  const isAdmin = systemRole === 'admin' || systemRole === 'super admin'
   const [role, setRole] = useState('requester')
   const [requests, setRequests] = useState(seedRequests)
-  const [loginPrompt, setLoginPrompt] = useState(null) // { action: string } | null
-
-  useEffect(() => {
-    setOnSessionExpired(() => setSession(null))
-    authApi.restoreSession().then(
-      (user) => {
-        setSession(user)
-        setSessionReady(true)
-      },
-      () => setSessionReady(true),
-    )
-  }, [])
-
-  // Order events (#6/#59) need a signed-in user: one connection for the whole app.
-  useEffect(() => {
-    if (!isLoggedIn) return undefined
-    connectOrderSocket()
-    return () => disconnectOrderSocket()
-  }, [isLoggedIn])
-
-  const login = useCallback(async (identifier, password) => {
-    setSession(await authApi.login(identifier, password))
-    setLoginPrompt(null)
-  }, [])
-
-  const logout = useCallback(async () => {
-    try {
-      await authApi.logout()
-    } finally {
-      setSession(null)
-    }
-  }, [])
 
   // Session-only. Nothing is persisted; a refresh resets the demo.
   const setRequestStatus = useCallback((id, status) => {
@@ -102,67 +76,17 @@ export function DemoProvider({ children }) {
     )
   }, [])
 
-  // Gated actions keep the underlying page visible behind the scrim.
-  const requireLogin = useCallback(
-    (action, onAllowed) => {
-      if (isLoggedIn) {
-        onAllowed?.()
-        return true
-      }
-      setLoginPrompt({ action })
-      return false
-    },
-    [isLoggedIn],
-  )
-
-  // Balance figures come straight from users.js so every screen shows the same
-  // 14 available / 6 reserved / 20 total the blueprint specifies.
-  const credits = useMemo(
-    () => ({
-      available: currentUser.creditsAvailable,
-      reserved: currentUser.creditsReserved,
-      total: currentUser.creditsAvailable + currentUser.creditsReserved,
-    }),
-    [],
-  )
-
   const value = useMemo(
     () => ({
-      isLoggedIn,
-      session,
-      sessionReady,
-      systemRole,
-      isAdmin,
-      login,
-      logout,
       role,
       setRole,
       requests,
       setRequests,
       setRequestStatus,
       acceptRequest,
-      loginPrompt,
-      setLoginPrompt,
-      requireLogin,
       currentUser,
-      credits,
     }),
-    [
-      isLoggedIn,
-      session,
-      sessionReady,
-      systemRole,
-      isAdmin,
-      login,
-      logout,
-      role,
-      requests,
-      loginPrompt,
-      requireLogin,
-      setRequestStatus,
-      acceptRequest,
-      credits,
-    ],
+    [role, requests, setRequestStatus, acceptRequest],
   )
 
   return <DemoContext.Provider value={value}>{children}</DemoContext.Provider>

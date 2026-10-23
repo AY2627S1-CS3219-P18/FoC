@@ -16,6 +16,12 @@
  *        non-admin can resolve another user's name. Requested by the user-service owner.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: `list` now validates pagination/search/filter/sort query params, per
+ *        instructions.md Stage 15b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -38,6 +44,70 @@ const statusErrorMap: z.ZodErrorMap = (issue) => {
 
 const updateStatusSchema = z
   .object({ status: z.enum(['active', 'suspended'], { errorMap: statusErrorMap }) })
+  .strict();
+
+// A single, fixed message regardless of why the value failed (wrong type, repeated
+// param turned into an array by Express, or not one of `values`) - per instructions.md
+// Stage 15b, each query field has exactly one error message.
+function enumFilterField<T extends string>(values: readonly T[], message: string) {
+  return z.unknown().transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    if (typeof value === 'string' && (values as readonly string[]).includes(value)) {
+      return value as T;
+    }
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    return z.NEVER;
+  });
+}
+
+const pageQuerySchema = z.unknown().transform((value, ctx) => {
+  if (value === undefined) return 1;
+  if (typeof value === 'string') {
+    const page = Number(value);
+    if (Number.isInteger(page) && page >= 1) return page;
+  }
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Page must be a positive integer' });
+  return z.NEVER;
+});
+
+// Empty string (e.g. `?username=`) is treated as the param being absent.
+const usernameQuerySchema = z.unknown().transform((value, ctx) => {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Username must be a string' });
+    return z.NEVER;
+  }
+  return value === '' ? undefined : value.toLowerCase();
+});
+
+const emailQuerySchema = z.unknown().transform((value, ctx) => {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Email must be a string' });
+    return z.NEVER;
+  }
+  return value === '' ? undefined : value.trim().toLowerCase();
+});
+
+const listUsersQuerySchema = z
+  .object({
+    page: pageQuerySchema,
+    username: usernameQuerySchema,
+    email: emailQuerySchema,
+    status: enumFilterField(
+      ['pending', 'active', 'suspended'] as const,
+      "Status must be 'pending', 'active' or 'suspended'",
+    ),
+    role: enumFilterField(
+      ['user', 'admin', 'super admin'] as const,
+      "Role must be 'user', 'admin' or 'super admin'",
+    ),
+    sortBy: enumFilterField(
+      ['username', 'email', 'createdAt'] as const,
+      "sortBy must be 'username', 'email' or 'createdAt'",
+    ),
+    sortDir: enumFilterField(['asc', 'desc'] as const, "sortDir must be 'asc' or 'desc'"),
+  })
   .strict();
 
 // A page of transaction references is 20 ids; 50 leaves headroom without letting a
@@ -72,9 +142,21 @@ export const getPublicById = asyncHandler(async (req, res) => {
   res.status(200).json(user);
 });
 
-export const list = asyncHandler(async (_req, res) => {
-  const users = await usersService.listUsers();
-  res.status(200).json({ users });
+export const list = asyncHandler(async (req, res) => {
+  const parsed = listUsersQuerySchema.parse(req.query);
+  const sortBy = parsed.sortBy ?? 'createdAt';
+  const sortDir = parsed.sortDir ?? (sortBy === 'createdAt' ? 'desc' : 'asc');
+
+  const result = await usersService.listUsers({
+    page: parsed.page,
+    username: parsed.username,
+    email: parsed.email,
+    status: parsed.status,
+    role: parsed.role,
+    sortBy,
+    sortDir,
+  });
+  res.status(200).json(result);
 });
 
 export const getById = asyncHandler(async (req, res) => {

@@ -9,6 +9,26 @@ Scope (2026-10-22, Claude Code, model: claude-sonnet-5): Added Log index rows #1
        into it). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
 Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #138 for
+       frontend Stage 16c (registration page). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #139 for
+       frontend Stage 16d (forgot-password page). No requirements, architecture, schema, or
+       API decisions were made by the AI tool.
+Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #140 for
+       frontend Stage 16e (account page). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #141 for
+       frontend Stage 16f (requester/courier toggle). No requirements, architecture, schema,
+       or API decisions were made by the AI tool.
+Author review:
+Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #142 for
+       frontend Stage 16g (admin user management). No requirements, architecture, schema, or
+       API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -335,3 +355,16 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 128 | 2026-10-22 | credit-service         | Credit Service: BullMQ credit-transfer queue consumer                                              | Separate worker container consuming queue:credit:transfer, with dead_letter_jobs and append-only grants intact                                  |
 | 129 | 2026-10-22 | user-service           | User Service: local dev setup guide for CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair    | Wrote docs/local-dev-setup.md; declined a compose.yaml edit that deviated from the env_file design                                              |
 | 130 | 2026-10-22 | user-service           | User Service: merge jwks-verification-guide.md into local-dev-setup.md                             | Combined the two docs into one file; updated three cross-service path references                                                                |
+| 131 | 2026-10-22 | user-service           | User Service: Docker-dependent verification of Stage 14 (outbox/relay/replay)                      | Verified 14a-14e against real containers; fixed a pool.ts crash bug found during testing                                                        |
+| 132 | 2026-10-22 | user-service           | Stage 15a: `activeView` on `GET /users/me`                                                         | getOwnProfile now also returns activeView; flagged an unrelated stale test in email.service                                                    |
+| 133 | 2026-10-22 | user-service           | Fix: `bootstrapTestUser` missing credit-allocation outbox row                                      | Seeded test user now gets a credit_allocation_outbox row, same transaction as bootstrapSuperAdmin                                               |
+| 134 | 2026-10-22 | user-service           | Fix: test coverage for the credit-allocation outbox row on `bootstrapTestUser`                     | Added a test and a db helper asserting the seeded test user gets one pending outbox row                                                        |
+| 135 | 2026-10-22 | user-service           | Stage 15b: Paginated `GET /users`                                                                  | listUsers is now paginated/searchable/filterable/sortable; returns { users, page, pageSize, total, totalPages }                                 |
+| 136 | 2026-10-22 | user-service           | Stage 15c: camelCase Responses                                                                     | All user-row responses now camelCase via toUserResponse; fixed an unrelated missing Change Password email template |
+| 137 | 2026-10-23 | frontend               | Stage 16b: Shared Auth Plumbing                                                                    | New AuthContext/login page/route guards/toast/OTP input replace LoginModal; proactive token refresh |
+| 138 | 2026-10-23 | frontend               | Stage 16c: Registration (`/register`)                                                              | New two-step register page (form + OTP) wired to /auth/register, verify-otp, resend-otp            |
+| 139 | 2026-10-23 | frontend               | Stage 16d: Forgot Password (`/forgot-password`)                                                    | New three-step forgot-password page wired to /auth/forgot-password, verify-otp, reset-password      |
+| 140 | 2026-10-23 | frontend               | Stage 16e: Account Page (`/account`)                                                                | New account page (username/email/password changes); fixed a forced-relogin banner race bug          |
+| 141 | 2026-10-23 | frontend               | Stage 16f: Requester/Courier Toggle                                                                 | New nav toggle wired to AuthContext.setActiveView (already optimistic, built in 16b)                 |
+| 142 | 2026-10-23 | frontend               | Stage 16g: Admin User Management (`/admin/users`)                                                   | New admin user table (search/filter/sort/paginate) with gated suspend/promote row actions            |
+| 143 | 2026-10-23 | user-service           | Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox) | Filled Stage 12's zero coverage, a small Stage 13a gap, and Stage 14 outbox/relay test gaps; flagged relay HTTP-mocking question |

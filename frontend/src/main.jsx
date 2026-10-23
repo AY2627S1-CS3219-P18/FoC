@@ -14,21 +14,34 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Removed the admin mock store provider now that the admin screens use the Supplier Service. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Mounted AuthProvider and ToastProvider, per instructions.md Stage 16b. AuthProvider
+ *        wraps DemoProvider so DemoContext's (now demo-only) state stays independent of auth;
+ *        both need the router, so they sit inside BrowserRouter.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
+import { AuthProvider } from './context/AuthContext'
 import { DemoProvider } from './context/DemoContext'
+import { ToastProvider } from './components/Toast'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <DemoProvider>
-        <App />
-      </DemoProvider>
+      <AuthProvider>
+        <DemoProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </DemoProvider>
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

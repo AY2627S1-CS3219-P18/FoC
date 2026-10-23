@@ -8,16 +8,22 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: useReferenceData returns stable empty arrays, fixing a render loop that sent the list request hundreds of times. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isLoggedIn/sessionReady from the new AuthContext instead of DemoContext, per
+ *        instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
 import { listCategoryOptions, listLocationOptions } from './suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Runs `load` whenever `deps` change, once the session is known and the user is logged in (every
 // Supplier Service route needs a token). `reload` refetches with the same inputs.
 export function useApi(load, deps) {
-  const { isLoggedIn, sessionReady } = useDemo()
+  const { isLoggedIn, sessionReady } = useAuth()
   const [state, setState] = useState({ data: null, error: null, loading: true })
   const [nonce, setNonce] = useState(0)
 

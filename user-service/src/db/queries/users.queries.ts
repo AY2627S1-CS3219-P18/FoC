@@ -21,6 +21,10 @@
 // 2026-10-19: findPublicSummariesByIds for the public lookup (GET /users/public).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-10-22: Stage 15b - replaced listAllUsers with listUsersPage (paginated, filtered,
+//   sorted). Governing decision: instructions.md Stage 15b.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -188,11 +192,86 @@ export async function findPublicSummariesByIds(
   return result.rows;
 }
 
-export async function listAllUsers(db: Queryable = pool): Promise<UserRow[]> {
-  const result = await db.query<UserRow>(
-    `SELECT * FROM users ORDER BY created_at DESC`,
+const SORT_COLUMNS = {
+  username: "username",
+  email: "email",
+  createdAt: "created_at",
+} as const;
+
+const SORT_DIRECTIONS = {
+  asc: "ASC",
+  desc: "DESC",
+} as const;
+
+// Escapes \, % and _ so a LIKE pattern built from user input matches those characters
+// literally instead of as wildcards or the escape character itself.
+function escapeLikePattern(input: string): string {
+  return input.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+export interface ListUsersPageParams {
+  usernameContains?: string;
+  email?: string;
+  status?: "pending" | "active" | "suspended";
+  role?: "user" | "admin" | "super admin";
+  sortBy: keyof typeof SORT_COLUMNS;
+  sortDir: keyof typeof SORT_DIRECTIONS;
+  limit: number;
+  offset: number;
+}
+
+export async function listUsersPage(
+  { usernameContains, email, status, role, sortBy, sortDir, limit, offset }: ListUsersPageParams,
+  db: Queryable = pool,
+): Promise<{ rows: UserRow[]; total: number }> {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (usernameContains) {
+    values.push(`%${escapeLikePattern(usernameContains)}%`);
+    conditions.push(`username LIKE $${values.length} ESCAPE '\\'`);
+  }
+  if (email) {
+    values.push(email);
+    conditions.push(`email = $${values.length}`);
+  }
+  if (status) {
+    values.push(status);
+    conditions.push(`status = $${values.length}`);
+  }
+  if (role) {
+    values.push(role);
+    conditions.push(`role = $${values.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const sortColumn = SORT_COLUMNS[sortBy];
+  const sortDirection = SORT_DIRECTIONS[sortDir];
+
+  const result = await db.query<UserRow & { full_count: string }>(
+    `SELECT *, COUNT(*) OVER() AS full_count FROM users
+     ${whereClause}
+     ORDER BY ${sortColumn} ${sortDirection}, id ${sortDirection}
+     LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    [...values, limit, offset],
   );
-  return result.rows;
+
+  if (result.rows.length > 0) {
+    const total = Number(result.rows[0]!.full_count);
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      rows: result.rows.map(({ full_count, ...row }) => row),
+      total,
+    };
+  }
+
+  // A page past the end gets no rows from the window function above, so total
+  // needs its own query here.
+  const countResult = await db.query<{ count: string }>(
+    `SELECT COUNT(*) FROM users ${whereClause}`,
+    values,
+  );
+  return { rows: [], total: Number(countResult.rows[0]!.count) };
 }
 
 export async function updateUserStatus(
