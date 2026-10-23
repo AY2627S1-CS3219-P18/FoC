@@ -5,11 +5,15 @@
 // 2026-10-17: Stage 13a - default signToken/signExpiredToken to the configured JWT_KEY_ID,
 //   since verifyAccessToken now looks keys up by the token header's kid.
 // Author review:
+// 2026-10-23: Stage 13a test coverage - exported privateKey so jwt.test.ts can sign tokens with
+//   the real (known) key but a missing or fabricated kid, to test that lookup path directly
+//   instead of only through the unrelated "wrong key pair entirely" case.
+// Author review:
 import { generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import jwt from 'jsonwebtoken';
 
-const privateKey = () => readFileSync(process.env.JWT_PRIVATE_KEY_PATH!, 'utf8');
+export const privateKey = () => readFileSync(process.env.JWT_PRIVATE_KEY_PATH!, 'utf8');
 export const publicKey = () => readFileSync(process.env.JWT_PUBLIC_KEY_PATH!, 'utf8');
 
 export function signToken(
