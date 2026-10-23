@@ -13,6 +13,11 @@
  *        REDIS_HOST's; compose sets the container address.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): optional QUEUE_DASHBOARD_PORT - the worker serves bull-board only
+ *        when it is set (dev compose sets it).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -33,6 +38,8 @@ const EnvSchema = z.object({
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   CREDIT_SERVICE_URL: z.url().default('http://localhost:3003'),
+  /** Worker only: serve the bull-board queue dashboard on this port; unset = off. */
+  QUEUE_DASHBOARD_PORT: z.coerce.number().int().min(1).max(65535).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

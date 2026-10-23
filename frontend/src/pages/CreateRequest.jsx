@@ -55,6 +55,11 @@
  *        Wallet.jsx does, so a reload while signed in no longer opens it.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): Required-field asterisk (George) on Pick-up from, What do you need?,
+ *        Deliver to and Offer, the fields POST /orders rejects as missing.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: /requests/new and /requests/:id/edit are now wrapped in RequireAuth (App.jsx), which
@@ -237,9 +242,17 @@ function RequestForm({ order }) {
     }
   }
 
-  const label = (text, htmlFor) => (
+  const requiredMark = (
+    <>
+      <span aria-hidden="true" className="text-alert"> *</span>
+      <span className="sr-only"> (required)</span>
+    </>
+  )
+
+  const label = (text, htmlFor, required = false) => (
     <label htmlFor={htmlFor} className="block text-base font-semibold text-ink">
       {text}
+      {required && requiredMark}
     </label>
   )
 
@@ -252,7 +265,7 @@ function RequestForm({ order }) {
       <div className="mt-8 space-y-8">
         {/* 1. Pick-up from */}
         <section>
-          {label('Pick-up from', 'supplier')}
+          {label('Pick-up from', 'supplier', true)}
           {supplier ? (
             <div className="mt-2 flex items-center gap-3 rounded-card border border-line p-3">
               <div className="w-16 shrink-0">
@@ -291,7 +304,7 @@ function RequestForm({ order }) {
 
         {/* 2. What do you need? */}
         <section>
-          {label('What do you need?', 'description')}
+          {label('What do you need?', 'description', true)}
           <textarea
             id="description"
             rows={4}
@@ -313,7 +326,7 @@ function RequestForm({ order }) {
 
         {/* 3. Deliver to */}
         <section>
-          {label('Deliver to', 'location')}
+          {label('Deliver to', 'location', true)}
           {/* Delivery locations are the Supplier Service's location reference list (ids). */}
           <select
             id="location"
@@ -478,7 +491,10 @@ function RequestForm({ order }) {
         {/* 7. Offer: fixed once posted, so not shown when editing. */}
         {!isEdit && (
           <section>
-            <span className="block text-base font-semibold text-ink">Offer</span>
+            <span className="block text-base font-semibold text-ink">
+              Offer
+              {requiredMark}
+            </span>
             <div
               className={
                 'mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 ' +

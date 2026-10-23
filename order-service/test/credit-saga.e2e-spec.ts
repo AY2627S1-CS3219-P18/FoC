@@ -27,6 +27,11 @@
  *        credit_transfer job ({ requestId, courierId }) to queue:credit:transfer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): listOrders takes the caller's id (authz fix); the open-listing walk
+ *        passes REQUESTER.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -467,6 +472,7 @@ describe('listing (e2e)', () => {
     do {
       const result = await listOrders(
         prisma,
+        REQUESTER,
         cursor ? { ...query, cursor } : query,
       );
       if (!result.ok) throw new Error(JSON.stringify(result.errors));

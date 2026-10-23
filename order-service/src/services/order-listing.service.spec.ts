@@ -8,6 +8,11 @@
  * Scope (2026-10-20): `failed` status - status=failed is rejected as INVALID_STATUS.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): authz fix - listOrders takes the caller's id; non-open status filters
+ *        add a requester-or-courier scope, open / default does not.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -20,6 +25,8 @@ import {
 } from './order-listing.service.js';
 
 const ID = '0192f0c4-0000-7000-8000-000000000001';
+const CALLER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
+const OWN = { OR: [{ requesterId: CALLER }, { courierId: CALLER }] };
 
 function fake(rows: Partial<OrderRequest>[] = []) {
   const findMany = vi.fn(async () => rows as OrderRequest[]);
@@ -32,7 +39,7 @@ function fake(rows: Partial<OrderRequest>[] = []) {
 /** The `where.AND` list the listing built. */
 async function whereFor(query: Record<string, unknown>) {
   const { prisma, findMany } = fake();
-  const result = await listOrders(prisma, query);
+  const result = await listOrders(prisma, CALLER, query);
   expect(result.ok).toBe(true);
   return (
     findMany.mock.calls[0] as unknown as [{ where: { AND: unknown[] } }]
@@ -41,7 +48,7 @@ async function whereFor(query: Record<string, unknown>) {
 
 async function errorsFor(query: Record<string, unknown>) {
   const { prisma, findMany } = fake();
-  const result = await listOrders(prisma, query);
+  const result = await listOrders(prisma, CALLER, query);
   expect(findMany).not.toHaveBeenCalled();
   return result.ok ? [] : result.errors;
 }
@@ -73,6 +80,7 @@ describe('listOrders: filter registry', () => {
           { completeBy: null },
         ],
       },
+      OWN,
     ]);
   });
 
@@ -98,8 +106,29 @@ describe('listOrders: filter registry', () => {
     'cancelled',
     'expired',
   ])('allows status=%s', async (status) => {
-    expect(await whereFor({ status })).toEqual([{ status }]);
+    expect(await whereFor({ status })).toEqual(
+      status === 'open' ? [{ status }] : [{ status }, OWN],
+    );
   });
+
+  it('keeps the default and status=open listing public (no caller scope)', async () => {
+    expect(await whereFor({})).not.toContainEqual(OWN);
+    expect(await whereFor({ status: 'open' })).not.toContainEqual(OWN);
+  });
+
+  it.each([
+    'accepted',
+    'picked_up',
+    'delivered',
+    'completed',
+    'cancelled',
+    'expired',
+  ])(
+    'scopes status=%s to orders the caller requested or delivers',
+    async (status) => {
+      expect(await whereFor({ status, location: '12' })).toContainEqual(OWN);
+    },
+  );
 });
 
 describe('listOrders: 400 cases', () => {
@@ -197,7 +226,7 @@ describe('listOrders: 400 cases', () => {
 describe('listOrders: sorting and paging', () => {
   it('sorts soonest-expiring first by default, no-deadline orders last, id as tie-breaker', async () => {
     const { prisma, findMany } = fake();
-    await listOrders(prisma, {});
+    await listOrders(prisma, CALLER, {});
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [
@@ -219,13 +248,13 @@ describe('listOrders: sorting and paging', () => {
     ],
   ])('sort=%s&order=%s', async (sort, order, orderBy) => {
     const { prisma, findMany } = fake();
-    await listOrders(prisma, { sort, order });
+    await listOrders(prisma, CALLER, { sort, order });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy }));
   });
 
   it('returns no cursor when everything fits on one page', async () => {
     const { prisma } = fake([{ id: ID, credits: 1 }]);
-    await expect(listOrders(prisma, {})).resolves.toEqual({
+    await expect(listOrders(prisma, CALLER, {})).resolves.toEqual({
       ok: true,
       orders: [{ id: ID, credits: 1 }],
       nextCursor: null,
@@ -239,7 +268,7 @@ describe('listOrders: sorting and paging', () => {
       completeBy: null,
     }));
     const { prisma } = fake(rows);
-    const result = await listOrders(prisma, { sort: 'credits' });
+    const result = await listOrders(prisma, CALLER, { sort: 'credits' });
     if (!result.ok) throw new Error('expected ok');
 
     expect(result.orders).toHaveLength(PAGE_SIZE);
