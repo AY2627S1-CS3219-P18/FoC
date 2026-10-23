@@ -38,6 +38,13 @@
  *        control stays a separate control, not swallowed into the link.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Per instructions.md Stage 16f: added ActiveViewToggle next to the credits pill
+ *        (desktop) and above the username row (mobile drawer), shown only when logged in.
+ *        Minimal placement only — Gabriel may adjust the layout.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -46,6 +53,7 @@ import { Bell, LogOut, Menu, X } from 'lucide-react'
 import Logo from './Logo'
 import Button from './Button'
 import CreditPill from './CreditPill'
+import ActiveViewToggle from './ActiveViewToggle'
 import { useAuth } from '../context/AuthContext'
 
 const LINKS = [
@@ -105,6 +113,7 @@ export default function TopNav() {
           <div className="hidden items-center gap-3 md:flex">
             {isLoggedIn ? (
               <>
+                <ActiveViewToggle />
                 <Link to="/wallet" aria-label={credits.available + ' credits available'}>
                   <CreditPill value={credits.available} size="md" />
                 </Link>
@@ -175,10 +184,13 @@ export default function TopNav() {
             </div>
 
             {isLoggedIn && (
-              <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
-                <CreditPill value={credits.available} size="md" />
-                <span className="text-sm text-ink-70">available</span>
-              </Link>
+              <>
+                <ActiveViewToggle className="self-start" />
+                <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
+                  <CreditPill value={credits.available} size="md" />
+                  <span className="text-sm text-ink-70">available</span>
+                </Link>
+              </>
             )}
 
             <nav className="flex flex-col" aria-label="Mobile">
