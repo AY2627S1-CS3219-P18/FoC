@@ -60,6 +60,12 @@
  *        transaction (transfer contract agreed with Wee Jean, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): getOrder for GET /orders/:id - an order the viewer may not read
+ *        (canViewOrder) answers ORDER_NOT_FOUND like a missing one, so the endpoint does
+ *        not reveal which ids exist.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -80,6 +86,7 @@ import {
   SYSTEM_ACTOR,
   type ActorId,
 } from '../domain/order-status.js';
+import { canViewOrder, type Viewer } from '../domain/order-access.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import {
   eventsForEdit,
@@ -211,6 +218,25 @@ export const createOrder = async (
     ]);
     return created;
   });
+  return { ok: true, order };
+};
+
+export type GetOrderResult =
+  | { ok: true; order: OrderRequest }
+  | { ok: false; error: ErrorCode.ORDER_NOT_FOUND };
+
+/** One order, if `viewer` may read it (see canViewOrder); otherwise not found. */
+export const getOrder = async (
+  prisma: PrismaClient,
+  viewer: Viewer,
+  orderId: string,
+): Promise<GetOrderResult> => {
+  const order = await prisma.orderRequest.findUnique({
+    where: { id: orderId },
+  });
+  if (!order || !canViewOrder(order, viewer)) {
+    return { ok: false, error: ErrorCode.ORDER_NOT_FOUND };
+  }
   return { ok: true, order };
 };
 

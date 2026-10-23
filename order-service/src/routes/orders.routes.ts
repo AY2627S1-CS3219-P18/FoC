@@ -20,6 +20,10 @@
  *        ORDER_NOT_FOUND before reaching Prisma's @db.Uuid column (George).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-22): GET /orders/:id (George's spec), registered after the literal
+ *        /active and /mine paths so they are not captured as ids.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -49,6 +53,7 @@ export function ordersRouter(
   router.get('/', ordersController.getOrders(prisma));
   router.get('/active', ordersController.getActiveDeliveries(prisma));
   router.get('/mine', ordersController.getMyOrders(prisma));
+  router.get('/:id', ordersController.getOrderById(prisma));
   router.post('/', ordersController.createOrder(prisma));
   router.post('/:id/accept', transition('accepted'));
   router.post('/:id/pickup', transition('picked_up'));

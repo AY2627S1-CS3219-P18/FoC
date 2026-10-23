@@ -27,6 +27,13 @@
  *        credit_release dead letters (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): Observability (George, 2026-10-22) - credit jobs log one JSON line per
+ *        attempt (withAttemptLog); when QUEUE_DASHBOARD_PORT is set the worker also serves
+ *        a read-only bull-board over every queue on order-redis, including credit-service's
+ *        transfer queue.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -38,8 +45,17 @@ import { createHttpCreditsClient } from './clients/credits.client.js';
 import { createOutboxRepository } from './db/outbox.repository.js';
 import { createDeadLetterRepository } from './db/dead-letter.repository.js';
 import { createBullJobQueue, splitQueueKey } from './queue/bull-queue.js';
-import { CREDIT_QUEUE_KEY } from './queue/tasks.js';
-import { createOutboxRelay, startRelay } from './worker/outbox-relay.js';
+import { CREDIT_QUEUE_KEY, CREDIT_TRANSFER_QUEUE_KEY } from './queue/tasks.js';
+import {
+  createOutboxRelay,
+  OUTBOX_RELAY_QUEUE_KEY,
+  startRelay,
+} from './worker/outbox-relay.js';
+import { withAttemptLog } from './worker/job-attempt-log.js';
+import {
+  startQueueDashboard,
+  type QueueDashboard,
+} from './worker/queue-dashboard.js';
 import {
   createCreditJobProcessor,
   isFinalFailure,
@@ -48,6 +64,7 @@ import { Redis } from 'ioredis';
 import { createRedisEventPublisher } from './realtime/socket-sink.js';
 import {
   createReleaseRedrive,
+  RELEASE_REDRIVE_QUEUE_KEY,
   startReleaseRedrive,
 } from './worker/release-redrive.js';
 
@@ -106,7 +123,10 @@ const redrive = await startReleaseRedrive(
 const creditQueue = splitQueueKey(CREDIT_QUEUE_KEY);
 const creditWorker = new Worker(
   creditQueue.name,
-  createCreditJobProcessor({ prisma, credits, events }),
+  withAttemptLog(
+    CREDIT_QUEUE_KEY,
+    createCreditJobProcessor({ prisma, credits, events }),
+  ),
   { connection, prefix: creditQueue.prefix, concurrency: 1 },
 );
 creditWorker.on('error', (error) => {
@@ -128,6 +148,18 @@ creditWorker.on('failed', (job, error) => {
     });
 });
 
+// ---- Queue dashboard (bull-board), opt-in --------------------------------------
+let dashboard: QueueDashboard | undefined;
+if (env.QUEUE_DASHBOARD_PORT !== undefined) {
+  dashboard = await startQueueDashboard(connection, env.QUEUE_DASHBOARD_PORT, [
+    { name: queueName }, // maintenance sweep, BullMQ's default prefix
+    splitQueueKey(OUTBOX_RELAY_QUEUE_KEY),
+    splitQueueKey(CREDIT_QUEUE_KEY),
+    splitQueueKey(RELEASE_REDRIVE_QUEUE_KEY),
+    splitQueueKey(CREDIT_TRANSFER_QUEUE_KEY), // consumed by credit-service
+  ]);
+}
+
 let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
@@ -140,6 +172,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
       creditWorker.close(),
       relay.close(),
       redrive.close(),
+      dashboard?.close(),
     ]);
     await queue.close();
     await jobQueue.close();

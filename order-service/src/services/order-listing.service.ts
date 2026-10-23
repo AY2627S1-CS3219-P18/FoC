@@ -28,6 +28,13 @@
  *        2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): authz fix - listOrders takes the caller's id; a non-open `status`
+ *        filter only returns the caller's own orders (as requester or courier), so other
+ *        users' accepted / picked_up / completed rows are no longer listable (George,
+ *        2026-10-22). The default and status=open listing stays public.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -218,9 +225,18 @@ function afterCursor({ s: field, o: order, v, id }: Cursor): Where {
 
 // ---- entry point ------------------------------------------------------------------
 
-/** `query` is Express's parsed query string: values may be strings or arrays. */
+/** Only orders `userId` is part of, as requester or courier. */
+const involving = (userId: string): Where => ({
+  OR: [{ requesterId: userId }, { courierId: userId }],
+});
+
+/**
+ * `query` is Express's parsed query string: values may be strings or arrays.
+ * Open orders are public; any other status is scoped to `callerId`'s own orders.
+ */
 export async function listOrders(
   prisma: PrismaClient,
+  callerId: string,
   query: Record<string, unknown>,
 ): Promise<ListOrdersResult> {
   const errors: ListingProblem[] = [];
@@ -263,6 +279,10 @@ export async function listOrders(
     !errors.some((e) => e.param === 'status')
   ) {
     where.push(FILTERS.status.where(DEFAULT_STATUS));
+  }
+  // Only the open marketplace is public; past it, rows carry other users' ids.
+  if (parsed.status !== undefined && parsed.status !== 'open') {
+    where.push(involving(callerId));
   }
   if (
     typeof parsed.minCredits === 'number' &&

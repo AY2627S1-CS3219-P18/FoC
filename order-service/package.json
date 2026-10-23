@@ -26,6 +26,8 @@
     "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@bull-board/api": "9.10.4",
+    "@bull-board/express": "9.10.4",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@socket.io/redis-adapter": "^8.3.0",

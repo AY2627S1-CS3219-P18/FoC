@@ -41,6 +41,16 @@
  * Scope (2026-10-22): ORDER_NOT_FOUND maps to 404 in statusFor (George).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-10-22): GET /orders/:id - 200 with the order, 404 when it is missing or
+ *        the caller may not read it (George's spec: requester / courier / admin always,
+ *        anyone else only while open).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-10-22): GET /orders passes the caller's id to the listing (non-open statuses
+ *        are scoped to the caller's own orders) and answers 401 without one, like the
+ *        other handlers.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -89,7 +99,14 @@ export const createOrder =
 export const getOrders =
   (prisma: PrismaClient): RequestHandler =>
   async (req, res) => {
-    const result = await listOrders(prisma, req.query);
+    const callerId = req.user?.user_id;
+    if (!isUuid(callerId)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const result = await listOrders(prisma, callerId, req.query);
     if (!result.ok) {
       const message = result.errors
         .map((e) => `${ErrorMessage[e.code]} (${e.param})`)
@@ -138,6 +155,31 @@ export const getMyOrders =
     }
     const orders = await listMyOrders(prisma, userId, as);
     res.status(200).json({ ok: true, orders });
+  };
+
+/** One order, for its requester, courier or an admin; anyone else only while open. */
+export const getOrderById =
+  (prisma: PrismaClient): RequestHandler =>
+  async (req, res) => {
+    const user = req.user;
+    if (!user || !isUuid(user.user_id)) {
+      res
+        .status(401)
+        .json({ message: ErrorMessage[ErrorCode.UNAUTHENTICATED] });
+      return;
+    }
+    const result = await ordersService.getOrder(
+      prisma,
+      user,
+      req.params.id as string,
+    );
+    if (!result.ok) {
+      res
+        .status(statusFor([result.error]))
+        .json({ message: ErrorMessage[result.error] });
+      return;
+    }
+    res.status(200).json(result.order);
   };
 
 export const editOrder =
