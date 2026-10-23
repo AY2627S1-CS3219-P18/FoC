@@ -48,6 +48,12 @@
  *        DemoContext, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Per instructions.md Stage 16f: the default tab now reads activeView from AuthContext
+ *        (the real, persisted requester/courier view) instead of DemoContext's mocked `role`.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -59,7 +65,7 @@ import CreditPill from '../components/CreditPill'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import { useApiNotice } from '../components/ApiNotice'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 import { qualifiedName } from '../data/suppliers'
 import { LIFECYCLE, LIFECYCLE_LABELS, clockTime, completeByShort } from '../data/requests'
 import { useApi } from '../api/useApi'
@@ -106,8 +112,8 @@ async function loadActivity() {
 
 // Order F3.4.2 active requests, F5 cancellation, F6 editing, F1.4.1 / F4.1.3 credit outcomes.
 export default function Activity() {
-  const { role } = useDemo()
-  const [tab, setTab] = useState(role === 'courier' ? 'deliveries' : 'errands')
+  const { user } = useAuth()
+  const [tab, setTab] = useState(user?.activeView === 'courier' ? 'deliveries' : 'errands')
   const { data, loading, error, reload } = useApi(loadActivity, [])
   // Orders returned by an action, shown until the next fetch replaces `data`.
   const [changed, setChanged] = useState({ data: null, orders: {} })

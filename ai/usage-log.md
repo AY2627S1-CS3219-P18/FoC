@@ -6172,3 +6172,39 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16f: Requester/Courier Toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16f and its Stage 16 decisions table ("Active-view toggle" row: optimistic update, `PUT /users/me/active-view`, revert and toast on failure)
+
+**Prompts (exact):**
+
+> read through instrusction.md. let's start with 16f. don't forget to pull from main and branch first, and follow the git workflow.
+
+**Key responses:**
+Confirmed the current branch (`feat/stage-16f-requester-courier-toggle`) was already created from an up-to-date `main` (fast-forwarded past the merged Stage 16e PR #132), so no further pull/branch step was needed before writing code.
+
+Read `src/context/AuthContext.jsx` and found `setActiveView` already implemented in Stage 16b, in anticipation of this sub-stage: it optimistically updates `user.activeView`, calls `profileApi.setActiveView`, and reverts plus rethrows on failure. So 16f's own work is the UI: a new `src/components/ActiveViewToggle.jsx` (a two-segment "Requester"/"Courier" control reading `user.activeView`, calling `setActiveView` on click, and on a rethrown error showing a toast via `useToast()`/`describeError()`). Wired it into `TopNav.jsx` next to the credits pill on desktop and above the username row in the mobile drawer, shown only when logged in, per the spec's "keep TopNav changes minimal and list them."
+
+Grepped for every consumer of `DemoContext`'s mocked `role` (the "local `role` useState('requester')" the Stage 16 decisions table calls out) and found two: `src/components/DemoControls.jsx` (its own demo-only Role toggle, on the ground-rules do-not-modify list, left untouched) and `src/pages/Activity.jsx` (picks the default tab). Switched `Activity.jsx` to read `activeView` from `useAuth()` instead of `useDemo()`'s `role`.
+
+Verified: `npm run build` and `npm run lint` (`oxlint`) both clean, no new warnings from the changed files. Ran the app against the already-running Docker stack (user-service on :3001, user-db on :5434) with the frontend dev server, driving it with a headless Playwright/Chromium script (registered a test user via the API, read its OTP from the user-service dev-console log, verified and logged in): confirmed the toggle renders once logged in, clicking it flips `aria-pressed` instantly and the `users.active_view` column in Postgres matches, a reload keeps the same view, and stopping `foc-user-service` mid-click reverts the toggle and shows a toast reading "Something went wrong. Please try again." (the generic fallback in `errorMessages.js`, since a connection failure carries no backend `code`). Restarted the container and deleted the test user afterward.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (created)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/pages/Activity.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
