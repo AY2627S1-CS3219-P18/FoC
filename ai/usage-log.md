@@ -6208,3 +6208,41 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-10-23 — Stage 16g: Admin User Management (`/admin/users`)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code, Debugging
+**Governing decision:** instructions.md Stage 16g (table columns, search/filter/sort/pagination, the row-actions permission table, confirmation and action-result rules); user-service's `users.controller.ts`/`users.service.ts` for the exact request/response shapes and the precise conditions each error code fires under
+
+**Prompts (exact):**
+
+> go for it
+
+**Key responses:**
+Checked out `main` (fast-forwarded past the merged Stage 16f PR #133) and branched `feat/stage-16g-admin-users`, per the team's standing git workflow.
+
+Read `user-service/src/routes/users.routes.ts`, `users.controller.ts` and `users.service.ts` to pin down the exact backend behaviour the row-actions menu needs to mirror: `GET /users` (admin+) takes `page/username/email/status/role/sortBy/sortDir`, defaults `sortBy` to `createdAt` and `sortDir` to `desc` when unset; `PUT /:id/status` (admin+) throws `SUPER_ADMIN_IMMUTABLE` (403) on a super-admin target, `FORBIDDEN` (403) when an admin targets another admin, and `CANNOT_CHANGE_STATUS_PENDING_USER` (422) on a pending target; `PUT /:id/role` (super admin only) throws `SELF_ROLE_CHANGE` (403) on the caller's own id, `SUPER_ADMIN_IMMUTABLE` (403) on a super-admin target, and `CANNOT_CHANGE_ROLE_PENDING_USER`/`CANNOT_CHANGE_ROLE_SUSPENDED_USER` (422) depending on target status. Every one of those codes was already in `errorMessages.js` from Stage 16b, so no new entries were needed there.
+
+Wrote `getRowActions(viewer, row)` in `AdminUsers.jsx` as a direct, side-by-side translation of those backend checks (own row / super-admin target / pending target → no menu at all; suspend shown for a super-admin viewer on any user-or-admin row, or an admin viewer only on a user-role row; promote/demote shown only for a super-admin viewer on an active row, promote if the target is `user`, demote if `admin`) — this is the single source the row menu, and nothing else, decides visibility from.
+
+Created `src/api/users.js` (`listUsers`, `updateUserStatus`, `updateUserRole`) and `src/pages/AdminUsers.jsx`: debounced (300ms, independent timers) username/email search boxes, status/role filter selects, click-to-sort username/email/created headers (status/role are not sortable, per spec), the existing `Pager`/`useApiNotice` components reused from `ApiNotice.jsx` (mapping its `metadata.currPage` naming onto the user-service response's `page` field), a three-dot row menu (visible on hover at `sm`+, always visible below it, closes on outside click), and a confirmation dialog reusing `AdminSuppliers.jsx`'s `DeleteDialog` visual pattern. Declined to import `AdminSuppliers.jsx`'s exported `selectClass` constant or its `Badge` component to avoid a styling dependency between the two unrelated admin screens; duplicated the (short) class strings locally instead. Wired `/admin/users` into `App.jsx` behind `RequireAuth` + `RequireRole minimum="admin"` (both nested, matching the stage text verbatim, even though `RequireRole` alone already re-implements the auth check).
+
+Verified: `npm run build` and `npm run lint` (oxlint) clean, no new warnings beyond the same `set-state-in-effect` category already present on `AdminSuppliers.jsx`'s identical page-reset effect. Ran the app against the real Docker stack with a headless Playwright/Chromium script driving three separate logged-in sessions (super admin, a promoted admin account, and a plain user), registering throwaway test users via the API and reading their OTPs from the user-service dev-console log: confirmed username-substring search, the pending-status filter, and username sort all changed the request/results; a pending row showed no menu; a super-admin viewer saw Suspend+Promote on an active plain user and Suspend+Demote on an active admin; promoting and suspending both updated the row in place and showed a success toast (confirmed by DB: suspending an admin revoked their refresh token in the same transaction, as Stage 9/10 already guaranteed); an admin viewer saw Unsuspend on a suspended plain user but no menu at all on another admin's row or their own row; a plain user hitting `/admin/users` directly got the "Not authorised" view with the URL unchanged and no "Manage users" nav link. Did not exercise the multi-page Pager path (only a handful of test users existed, so `totalPages` was always 1) — `Pager` itself is the same already-verified component `AdminSuppliers.jsx` uses, unchanged here.
+
+**Files:**
+
+- `frontend/src/api/users.js` (created)
+- `frontend/src/pages/AdminUsers.jsx` (created)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -40,6 +40,12 @@
  * Scope: Added /account behind RequireAuth, per instructions.md Stage 16e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /admin/users behind RequireAuth + RequireRole(minimum="admin"), per
+ *        instructions.md Stage 16g.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect } from "react";
@@ -48,7 +54,7 @@ import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
 import DemoControls from "./components/DemoControls";
 import ChatBubble from "./components/ChatBubble";
-import { RequireAuth } from "./components/RouteGuards";
+import { RequireAuth, RequireRole } from "./components/RouteGuards";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -63,6 +69,7 @@ import Chat from "./pages/Chat";
 import Wallet from "./pages/Wallet";
 import AdminSuppliers from "./pages/AdminSuppliers";
 import AdminSupplierForm from "./pages/AdminSupplierForm";
+import AdminUsers from "./pages/AdminUsers";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -145,6 +152,16 @@ export default function App() {
           <Route
             path="/admin/suppliers/:id/edit"
             element={<AdminSupplierForm />}
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAuth>
+                <RequireRole minimum="admin">
+                  <AdminUsers />
+                </RequireRole>
+              </RequireAuth>
+            }
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
