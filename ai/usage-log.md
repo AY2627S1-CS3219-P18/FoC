@@ -6387,3 +6387,58 @@ Whether to approve mocking credit-service's HTTP response in `creditOutbox.relay
 Accepted all changes, KIV the issue first.
 
 **Author review:** gabriel yap
+
+
+## 2026-11-02 — Supplier Service: Authentication integration test fixtures
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2: RS256 bearer tokens verified against cached User Service JWKS.
+
+**Prompts (exact):**
+> I ran `npm test -- --run` in `supplier-service`: **339 passed, 6 failed**. Five [application integration tests](S:/CS3219-FoC/FoC/supplier-service/test/app.integration.test.ts) received `401` where they expected later route or role responses. One [authentication test (line 161)](S:/CS3219-FoC/FoC/supplier-service/test/middleware/authenticate.test.ts:161) expected an incorrectly signed token to be rejected but received `200`. The cause is not yet established, but I suspect it is due to stale authentication logic in my service, as it had not been updated since the shift to use RS256 bearer tokens from the User Service’s JWKS. Let's fix that first in a dedicated branch update-supplier-auth-integration
+
+**Key responses:**
+The middleware already performs local RS256 verification with JWKS. The integration tests used obsolete verification-endpoint fixtures, and changing the final Base64URL character in the signature test could leave its decoded bytes unchanged. Updated integration fixtures to generate signed tokens and a JWKS response, and modified a signature byte deterministically. No production authentication code changed. Before changes, the suite reproduced 339 passing and 6 failing tests; afterward `npm test -- --run` passed 345 tests and `npm run build` and `npm run lint` passed.
+
+**Files:**
+- `supplier-service/test/app.integration.test.ts` (modified)
+- `supplier-service/test/middleware/authenticate.test.ts` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+
+## 2026-11-02 — Supplier Service: Authentication documentation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2; existing `supplier-service/src/middleware/authenticate.ts`.
+
+**Prompts (exact):**
+> Ensure the relevant architecture and documentation within the service reflects the change
+
+**Key responses:**
+Updated the service README and architecture to describe existing local RS256 verification and JWKS caching, and corrected current authentication references in the project-state document while retaining historical notes. No requirements, architecture, schema, or API decisions were made. Checked the changed documentation against the implementation and ran `git diff --check`.
+
+**Files:**
+- `supplier-service/README.md` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
