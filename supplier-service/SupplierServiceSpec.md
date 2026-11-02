@@ -72,6 +72,9 @@ Scope: 2026-10-20 update — aligned the Phase 0 authentication task with cached
        local RS256 verification. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-02, Codex, model: GPT-6): Recorded Phase 5 verification status.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Supplier Service Implementation Spec
@@ -135,6 +138,12 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
   middleware needed) (§3).
 - Persistence-layer scaffolding (repository/DAO pattern) so Phase 1+ business logic depends on
   persistence interfaces, not raw SQL (§5).
+
+**Status (2026-11-02):** The 36 authorization cases for mutating endpoints pass, including
+checks that rejected requests do not call the mocked MySQL or Redis interfaces. Removing the
+lookup role guard caused nine cases to fail; the guard was restored. Endpoint-specific wording,
+performance verification, the API-only transcript and cross-role demonstration remain pending
+the team decisions listed in the Phase 5 plan.
 
 ### Acceptance criteria
 

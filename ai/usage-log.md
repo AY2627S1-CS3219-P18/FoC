@@ -6387,3 +6387,29 @@ Whether to approve mocking credit-service's HTTP response in `creditOutbox.relay
 Accepted all changes, KIV the issue first.
 
 **Author review:** gabriel yap
+
+## 2026-11-02 — Phase 5: Authorization verification
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug, docs
+**Scope:** Implementation code | Debugging | Refactor/Docs
+**Governing decision:** `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 1; `supplier-service/SupplierServiceSpec.md` Phase 5; existing JWKS authentication.
+
+**Prompts (exact):**
+> pull main into supplier-phase-5 branch and continue with phase 5 task
+
+**Key responses:**
+Fetched and merged origin/main; resolved README and usage-log conflicts, retaining both branches' indexed entries. Added tests for missing credentials, invalid tokens and an authenticated user on all 12 mutating endpoints, asserting no MySQL or Redis stub calls. Adapted authentication to signed tokens and a stubbed JWKS because main changed token verification. Temporarily removed the lookup role guard: nine cases failed; restored it afterward. The first full suite found five existing integration tests using obsolete placeholder tokens; updated those tests for JWKS. Final verification: `npx vitest run` passed 39 files and 381 tests; `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. The separate MinIO and seed suites were not run.
+
+**Files:**
+- `supplier-service/test/security/mutatingEndpoints.test.ts` (created)
+- `supplier-service/test/app.integration.test.ts` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Tasks 2–5 remain blocked on the team's endpoint wording, performance target, data volume, tool and database, and API/cross-role demonstration format, location and token source; see the Phase 5 plan's blocked decisions. No decisions were made by the agent.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

@@ -14,14 +14,34 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-02, Codex, model: GPT-6): updated integration test credentials for JWKS authentication.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../src/app.js';
 
+const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const kid = 'app-integration';
+function asRole(role: string): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const input = `${encode({ alg: 'RS256', kid })}.${encode({ sub: 'u-1', role, exp: Math.floor(Date.now() / 1000) + 300 })}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(input);
+  signer.end();
+  return `Bearer ${input}.${signer.sign(privateKey).toString('base64url')}`;
+}
+function stubJwks(): void {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+    keys: [{ ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256' }],
+  }), { status: 200 })));
+}
+
 describe('app (Phase 0 middleware chain)', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    stubJwks();
   });
 
   afterEach(() => {
@@ -35,11 +55,8 @@ describe('app (Phase 0 middleware chain)', () => {
   });
 
   it('returns 404 for an unknown route once authenticated', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ user_id: 'u-1', role: 'user' }), { status: 200 }),
-    );
 
-    const res = await request(app).get('/api/v1/__probe').set('Authorization', 'Bearer good-token');
+    const res = await request(app).get('/api/v1/__probe').set('Authorization', asRole('user'));
     expect(res.status).toBe(404);
   });
 
@@ -55,10 +72,7 @@ describe('app (Phase 0 middleware chain)', () => {
   });
 
   it('routes an authenticated user to the supplier list (empty database rows mocked out)', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ user_id: 'u-1', role: 'user' }), { status: 200 }),
-    );
-    const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', 'Bearer good-token');
+    const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', asRole('user'));
     // limit=51 fails validation before any database access, so no MySQL is needed for this test.
     expect(res.status).toBe(422);
   });
@@ -66,18 +80,12 @@ describe('app (Phase 0 middleware chain)', () => {
 
 describe('Phase 2 routes', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    stubJwks();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
-
-  const asRole = (role: string) =>
-    // A fresh Response per call: a Response body can only be read once.
-    vi.mocked(fetch).mockImplementation(
-      async () => new Response(JSON.stringify({ user_id: 'u-1', role }), { status: 200 }),
-    );
 
   it('rejects unauthenticated admin requests with 401', async () => {
     expect((await request(app).get('/api/v1/admin/suppliers')).status).toBe(401);
@@ -86,8 +94,7 @@ describe('Phase 2 routes', () => {
   });
 
   it('rejects the user role with 403 on every Phase 2 route', async () => {
-    asRole('user');
-    const auth = { Authorization: 'Bearer t' };
+    const auth = { Authorization: asRole('user') };
     expect((await request(app).get('/api/v1/admin/suppliers').set(auth)).status).toBe(403);
     expect((await request(app).get('/api/v1/admin/suppliers/1').set(auth)).status).toBe(403);
     expect((await request(app).post('/api/v1/admin/suppliers').set(auth)).status).toBe(403);
@@ -97,14 +104,12 @@ describe('Phase 2 routes', () => {
   });
 
   it('returns 400 for an admin create without an Idempotency-Key', async () => {
-    asRole('admin');
-    const res = await request(app).post('/api/v1/admin/suppliers').set('Authorization', 'Bearer t');
+    const res = await request(app).post('/api/v1/admin/suppliers').set('Authorization', asRole('admin'));
     expect(res.status).toBe(400);
   });
 
   it('returns 422 for an admin list with a bad limit', async () => {
-    asRole('super admin');
-    const res = await request(app).get('/api/v1/admin/suppliers?limit=10').set('Authorization', 'Bearer t');
+    const res = await request(app).get('/api/v1/admin/suppliers?limit=10').set('Authorization', asRole('super admin'));
     expect(res.status).toBe(422);
   });
 });

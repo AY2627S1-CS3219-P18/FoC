@@ -29,6 +29,9 @@ Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #14
        frontend Stage 16g (admin user management). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -368,3 +371,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 141 | 2026-10-23 | frontend               | Stage 16f: Requester/Courier Toggle                                                                 | New nav toggle wired to AuthContext.setActiveView (already optimistic, built in 16b)                 |
 | 142 | 2026-10-23 | frontend               | Stage 16g: Admin User Management (`/admin/users`)                                                   | New admin user table (search/filter/sort/paginate) with gated suspend/promote row actions            |
 | 143 | 2026-10-23 | user-service           | Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox) | Filled Stage 12's zero coverage, a small Stage 13a gap, and Stage 14 outbox/relay test gaps; flagged relay HTTP-mocking question |
+| 144 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
