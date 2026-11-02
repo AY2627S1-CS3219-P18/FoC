@@ -10,34 +10,78 @@
  * Scope: Dropped the venue-dependent location suffix now that qualifiedName always includes the supplier's location. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-16
+ * Scope: Kept the existing card compatible with order-service records by using explicit fallbacks
+ *        for cross-service supplier and requester data, and mapped additionalDetails to notes.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Order Service frontend integration - Accept calls POST /orders/:id/accept and shows the
+ *        rejection (403 own errand, 409 taken / expired / conflict); supplier, requester name and
+ *        delivery location resolve from their ids through the Supplier and User Services; the
+ *        signed-in user comes from the session instead of the demo user.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
+ *        version of this file described in Wen Xi's entries above was replaced.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isLoggedIn/the signed-in user from the new AuthContext instead of DemoContext,
+ *        and requireLogin replaced with requireAuth, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
-import { Star } from 'lucide-react'
 import SupplierImage from './SupplierImage'
 import StatusChip from './StatusChip'
 import CreditPill from './CreditPill'
 import Button from './Button'
-import { getSupplier, qualifiedName } from '../data/suppliers'
-import { getUser, firstName } from '../data/users'
+import { qualifiedName } from '../data/suppliers'
 import { expiryLabel, fullTime, completeByLabel } from '../data/requests'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
+import { acceptOrder, orderErrorMessage } from '../api/orders'
+import { useSupplier, useUserName } from '../api/lookups'
 
 // Courier board row (Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 validation).
 // Clicking the row expands it in place; there is no separate detail route.
-export default function RequestCard({ request }) {
-  const { isLoggedIn, currentUser, requireLogin, acceptRequest } = useDemo()
+// `locationName` resolves the delivery location id; `onAccepted(order)` receives the accepted order.
+export default function RequestCard({ request, locationName, onAccepted }) {
+  const { isLoggedIn, user, requireAuth } = useAuth()
   const [expanded, setExpanded] = useState(false)
+  const [accepting, setAccepting] = useState(false)
+  const [acceptError, setAcceptError] = useState(null)
 
-  const supplier = getSupplier(request.supplierId)
-  const requester = getUser(request.requesterId)
-  const isOwn = request.requesterId === currentUser.id
-  const takenByOther = request.status !== 'open' && request.courierId !== currentUser.id
-  const takenByMe = request.courierId === currentUser.id && request.status !== 'open'
+  const userId = user?.id
+  const supplier = useSupplier(request.supplierId)
+  const requesterUsername = useUserName(request.requesterId)
+  const isOwn = request.requesterId === userId
+  const takenByMe = request.status !== 'open' && request.courierId === userId
+  const takenByOther = request.status !== 'open' && !takenByMe
+  const supplierName = qualifiedName(supplier) || `Supplier #${request.supplierId}`
+  const requesterName = requesterUsername || `User ${request.requesterId.slice(-6)}`
+  const notes = request.notes ?? request.additionalDetails
+
+  const accept = async () => {
+    setAccepting(true)
+    setAcceptError(null)
+    try {
+      const { order } = await acceptOrder(request.id)
+      onAccepted?.(order)
+    } catch (err) {
+      setAcceptError(orderErrorMessage(err, 'accept'))
+    } finally {
+      setAccepting(false)
+    }
+  }
 
   const onAccept = (e) => {
     e.stopPropagation()
-    requireLogin('You need an account to accept an errand.', () => acceptRequest(request.id))
+    requireAuth('You need an account to accept an errand.', accept)
   }
 
   const acceptSlot = () => {
@@ -66,9 +110,16 @@ export default function RequestCard({ request }) {
       )
     }
     return (
-      <Button size="sm" className="w-full sm:w-auto" onClick={onAccept}>
-        Accept
-      </Button>
+      <div className="flex flex-col items-stretch gap-1 sm:items-end">
+        <Button size="sm" className="w-full sm:w-auto" disabled={accepting} onClick={onAccept}>
+          {accepting ? 'Accepting…' : 'Accept'}
+        </Button>
+        {acceptError && (
+          <span role="alert" className="text-xs text-alert sm:text-right">
+            {acceptError}
+          </span>
+        )}
+      </div>
     )
   }
 
@@ -106,7 +157,7 @@ export default function RequestCard({ request }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="min-w-0 text-sm font-semibold text-ink">
-              {qualifiedName(supplier)}
+              {supplierName}
             </h3>
             {/* On mobile the pill sits beside the name; on desktop it moves right. */}
             <span className="shrink-0 sm:hidden">
@@ -117,21 +168,17 @@ export default function RequestCard({ request }) {
           <p className="mt-1.5 max-w-prose text-base text-ink">&ldquo;{request.description}&rdquo;</p>
 
           <p className="mt-1.5 text-sm text-ink-70">
-            <span aria-hidden="true">&rarr;</span> {request.deliveryLocation}
+            <span aria-hidden="true">&rarr;</span> {locationName}
             <span className="text-ink-40"> · {completeByLabel(request.completeBy)}</span>
           </p>
           {/* The second clock: how long this stays on the board if nobody takes it. */}
-          {request.status === 'open' && (
+          {request.status === 'open' && request.completeBy && (
             <p className="mt-0.5 text-sm text-ink-40">
-              Offer {expiryLabel(request.expiresAt)}
+              Deadline {expiryLabel(request.completeBy)}
             </p>
           )}
 
-          <p className="mt-1 flex items-center gap-1 text-sm text-ink-40">
-            Posted by {firstName(requester)} ·
-            <Star size={12} className="fill-ink-40" aria-hidden="true" />
-            <span className="tnum">{requester?.rating}</span>
-          </p>
+          <p className="mt-1 text-sm text-ink-40">Posted by {requesterName}</p>
         </div>
 
         {/* Fixed width: otherwise an "Accept" vs "Taken" button resizes this column and
@@ -147,7 +194,7 @@ export default function RequestCard({ request }) {
           <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <dt className="text-ink-40">Additional details</dt>
-              <dd className="text-ink-70">{request.notes || 'None given'}</dd>
+              <dd className="text-ink-70">{notes || 'None given'}</dd>
             </div>
             <div>
               <dt className="text-ink-40">Deliver by</dt>
@@ -156,15 +203,14 @@ export default function RequestCard({ request }) {
               </dd>
             </div>
             <div>
-              <dt className="text-ink-40">Offer expires</dt>
-              <dd className="tnum text-ink-70">{fullTime(request.expiresAt)}</dd>
+              <dt className="text-ink-40">Posted</dt>
+              <dd className="tnum text-ink-70">
+                {request.createdAt ? fullTime(request.createdAt) : 'Not specified'}
+              </dd>
             </div>
             <div>
               <dt className="text-ink-40">Requester</dt>
-              <dd className="text-ink-70">
-                {requester?.name} · <span className="tnum">{requester?.errandsCompleted}</span>{' '}
-                errands completed
-              </dd>
+              <dd className="text-ink-70">{requesterName}</dd>
             </div>
           </dl>
         </div>

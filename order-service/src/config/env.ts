@@ -4,6 +4,20 @@
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-10-12): Added validated Redis connection settings for the
+ *        BullMQ maintenance worker.
+ * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - CREDIT_SERVICE_URL for the worker's HTTP credit
+ *        client (real client everywhere, George 2026-10-20). Localhost default mirrors
+ *        REDIS_HOST's; compose sets the container address.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): optional QUEUE_DASHBOARD_PORT - the worker serves bull-board only
+ *        when it is set (dev compose sets it).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -18,6 +32,14 @@ const EnvSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  USER_SERVICE_URL: z
+    .url({ protocol: /^https?$/ })
+    .default('http://localhost:3001'),
+  REDIS_HOST: z.string().min(1).default('localhost'),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
+  CREDIT_SERVICE_URL: z.url().default('http://localhost:3003'),
+  /** Worker only: serve the bull-board queue dashboard on this port; unset = off. */
+  QUEUE_DASHBOARD_PORT: z.coerce.number().int().min(1).max(65535).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

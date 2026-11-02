@@ -15,6 +15,12 @@
  *        errors, 404 and 409 from the service are shown. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isAdmin from the new AuthContext instead of DemoContext, per
+ *        instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -26,7 +32,7 @@ import { useApiNotice } from '../components/ApiNotice'
 import { AdminOnly } from './AdminSuppliers'
 import { useApi, useReferenceData } from '../api/useApi'
 import { createSupplier, getAdminSupplier, updateSupplier } from '../api/suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 import { DAY_NAMES } from '../data/suppliers'
 
 const MAX_PHOTOS = 10
@@ -81,7 +87,7 @@ function Field({ label, htmlFor, error, hint, children }) {
 // Loads the supplier for an edit, then hands it to the form. A create skips the load.
 export default function AdminSupplierForm() {
   const { id } = useParams()
-  const { isAdmin } = useDemo()
+  const { isAdmin } = useAuth()
   const { data, loading, error } = useApi(
     () => (id && isAdmin ? getAdminSupplier(id) : Promise.resolve(null)),
     [id, isAdmin],

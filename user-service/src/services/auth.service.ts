@@ -30,10 +30,15 @@
 // Author review:
 // 27/09/2026: Stage 12e - exported OTP_REGEX for reuse in me.service.ts
 // Author review:
+// 2026-10-21: Stage 14d - insert the credit-allocation outbox row after activation, same
+//   transaction/client. No requirements, architecture, schema, or API decisions were made by
+//   the AI tool — see instructions.md Stage 14 for the governing decision.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { config } from '../config.js';
+import * as creditOutboxQueries from '../db/queries/creditOutbox.queries.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
@@ -275,7 +280,7 @@ export async function verifyRegistrationOtp({
       if (!activated) {
         throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
       }
-      // TODO(credit-service): emit user-registered event here
+      await creditOutboxQueries.insertCreditAllocation(user.id, client);
     }
     return check;
   });

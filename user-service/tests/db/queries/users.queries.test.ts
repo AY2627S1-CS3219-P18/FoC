@@ -6,6 +6,9 @@
 // Author review:
 // 27/09/2026: Stage 10 - tests for updateUserRole
 // Author review:
+// 2026-10-22: Stage 15c - adapted the listAllUsers tests to listUsersPage, which replaced
+//   it in Stage 15b. Fixture/signature update, not new test cases.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -257,8 +260,10 @@ describe('updatePasswordHash', () => {
   });
 });
 
-describe('listAllUsers', () => {
-  it('returns users of every status, newest first, including password_hash', async () => {
+describe('listUsersPage', () => {
+  const defaultPage = { sortBy: 'createdAt' as const, sortDir: 'desc' as const, limit: 50, offset: 0 };
+
+  it('returns users of every status, newest first, including password_hash, and the total', async () => {
     const a = await users.createUser({ ...base, status: 'active' });
     const b = await users.createUser({
       username: 'bob',
@@ -274,14 +279,17 @@ describe('listAllUsers', () => {
     });
     await users.updateUserStatus(c.id, 'suspended');
 
-    const rows = await users.listAllUsers();
+    const { rows, total } = await users.listUsersPage(defaultPage);
     expect(rows.map((r) => r.status).sort()).toEqual(['active', 'pending', 'suspended']);
     expect(rows.map((r) => r.id)).toEqual([c.id, b.id, a.id]);
     expect(rows[0]).toHaveProperty('password_hash');
+    expect(total).toBe(3);
   });
 
-  it('returns an empty array when there are no users', async () => {
-    expect(await users.listAllUsers()).toEqual([]);
+  it('returns an empty array and a zero total when there are no users', async () => {
+    const { rows, total } = await users.listUsersPage(defaultPage);
+    expect(rows).toEqual([]);
+    expect(total).toBe(0);
   });
 });
 

@@ -9,7 +9,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { allocateInitialCredits, reserveCredits } from '../../src/services/credits.service.js';
 import {
-  cleanupUsers,
   closePool,
   countTransactions,
   newRequestId,
@@ -17,15 +16,11 @@ import {
   readBalance,
 } from '../helpers/db.js';
 
-const created: string[] = [];
-function trackUser(): string {
-  const id = newUserId();
-  created.push(id);
-  return id;
-}
+// No cleanup: the suite connects as the least-privilege role, which has no DELETE
+// (NFR8.2.3). globalSetup rebuilds the database for each run instead.
+const trackUser = (): string => newUserId();
 
 afterAll(async () => {
-  await cleanupUsers(created);
   await closePool();
 });
 

@@ -10,53 +10,178 @@
  * Scope: Shows the supplier's faculty where the old location text was shown. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The pick-up supplier picker and the preselected supplier (?supplier=id) load from the Supplier Service. The request itself is still mocked (Order Service not connected). No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Connected the post-errand button to the existing Order Service POST /orders endpoint and
+ *        added submission loading and error states. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review: tng wen xi
+ *
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Reused the create form for editing existing orders and submitted non-credit fields
+ *        through the existing order-service edit endpoint.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope: Order Service frontend integration - Post sends POST /orders (supplier id, delivery
+ *        location id from the supplier-service location list, credits, optional complete-by and
+ *        details), then shows a spinner until the reservation outcome arrives (order:created /
+ *        order:cancelled with its reason over the socket, with a /orders/mine re-check as a
+ *        fallback) and opens My activity. The stay-open and scheduled-posting fields stay hidden
+ *        (George, 2026-10-20) and their unused state is removed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Carried over Wen Xi's edit page (merged in PR #115) onto this form, per
+ *        George: /requests/:id/edit loads the errand from GET /orders/mine, mounts the form with
+ *        its fields, hides the offer, and saves with PATCH /orders/:id/edit (delivery location
+ *        id, complete-by or null, details or null).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
+ *        version of this file described in Wen Xi's entries above was replaced.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): `failed` status - the reservation outcome is order:created or
+ *        order:failed (with its reason); the re-check treats an order missing from
+ *        /orders/mine as failed, since that list leaves failed orders out.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
+ *        Wallet.jsx does, so a reload while signed in no longer opens it.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+ * Scope (2026-10-22): Required-field asterisk (George) on Pick-up from, What do you need?,
+ *        Deliver to and Offer, the fields POST /orders rejects as missing.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: /requests/new and /requests/:id/edit are now wrapped in RequireAuth (App.jsx), which
+ *        replaces the gating effect and the inline requireLogin check in onPost that opened
+ *        the deleted LoginModal. `credits` now comes from the new AuthContext instead of
+ *        DemoContext, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Bookmark, Minus, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Loader2, Minus, Plus } from 'lucide-react'
 import Button from '../components/Button'
 import SupplierImage from '../components/SupplierImage'
-import { useApi } from '../api/useApi'
+import { useApi, useReferenceData } from '../api/useApi'
 import { getSupplier, listSuppliers } from '../api/suppliers'
+import { createOrder, editOrder, listMyOrders, reserveFailureMessage } from '../api/orders'
+import { watchOrderEvents } from '../realtime/orderSocket'
 import { qualifiedName } from '../data/suppliers'
-import { bookmarkedLocations, otherLocations, locations } from '../data/locations'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 const MAX_CHARS = 200
-const EXPIRY_CHOICES = [15, 30, 45, 60, 120]
+const RECHECK_MS = 5000
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// The reservation runs asynchronously after the 202. Its outcome normally arrives as an order event;
+// if the socket is down or the event was missed, the caller's own orders are re-checked every few
+// seconds until the order leaves `pending`.
+async function reservationOutcome(orderId, watch) {
+  let done = false
+  const viaSocket = watch
+    .next(
+      (name, p) =>
+        p?.orderId === orderId && (name === 'order:created' || name === 'order:failed'),
+    )
+    .then(({ payload }) => ({ status: payload.status, reason: payload.reason }))
+  const viaRecheck = (async () => {
+    while (!done) {
+      await sleep(RECHECK_MS)
+      if (done) break
+      try {
+        const { orders } = await listMyOrders('requester')
+        const order = orders.find((o) => o.id === orderId)
+        // /orders/mine leaves failed orders out, so a just-created order missing from it has failed.
+        if (!order) return { status: 'failed' }
+        if (order.status !== 'pending') return { status: order.status }
+      } catch {
+        // keep waiting; the socket may still deliver
+      }
+    }
+    return new Promise(() => {})
+  })()
+  try {
+    return await Promise.race([viaSocket, viaRecheck])
+  } finally {
+    done = true
+  }
+}
 
 // Defaults follow the clock rather than a hardcoded date that goes stale overnight.
 const today = () => new Date().toISOString().slice(0, 10)
 
+const pad = (n) => String(n).padStart(2, '0')
+// Local date and time inputs for an ISO timestamp.
+const localDate = (iso) => {
+  const d = new Date(iso)
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+}
+const localTime = (iso) => {
+  const d = new Date(iso)
+  return pad(d.getHours()) + ':' + pad(d.getMinutes())
+}
+
+// Order F18 (Wen Xi's edit page, carried over): /requests/:id/edit reuses the form for one of the
+// requester's errands. The form mounts once that order is loaded, so its fields start from it.
+export default function CreateRequest() {
+  const { id: editId } = useParams()
+  const { data, loading, error } = useApi(
+    () => (editId ? listMyOrders('requester') : Promise.resolve(null)),
+    [editId],
+  )
+  if (!editId) return <RequestForm order={null} />
+  const order = data?.orders?.find((o) => o.id === editId)
+  if (order) return <RequestForm key={order.id} order={order} />
+  return (
+    <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
+      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Edit errand</h1>
+      {loading || (!data && !error) ? (
+        <p className="mt-4 text-sm text-ink-70">Loading errand…</p>
+      ) : (
+        <p role="alert" className="mt-4 text-sm text-alert">
+          {error ? error.message : 'This errand was not found.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Order F1.1.1 — supplier, description, delivery location, credits offered, expiration,
 // additional details. Plus the scheduled-errand and bookmarked-location nice-to-haves.
-export default function CreateRequest() {
+// `order` is the errand being edited (F18), or null when posting a new one.
+function RequestForm({ order }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { credits, isLoggedIn, requireLogin } = useDemo()
+  const { credits } = useAuth()
+  const isEdit = order !== null
 
-  // Gated when logged out (§9): the page stays visible behind the scrim.
-  useEffect(() => {
-    if (!isLoggedIn) requireLogin('You need an account to post an errand.')
-  }, [isLoggedIn, requireLogin])
-
-  const [supplierId, setSupplierId] = useState(params.get('supplier') || '')
-  const [description, setDescription] = useState('')
-  const [location, setLocation] = useState(locations[0].name)
-  const [postMode, setPostMode] = useState('now')
-  const [postDate, setPostDate] = useState(today)
-  const [postTime, setPostTime] = useState('11:30')
-  const [timing, setTiming] = useState('asap')
-  const [expiry, setExpiry] = useState(45)
-  const [date, setDate] = useState(today)
-  const [time, setTime] = useState('15:30')
+  const [supplierId, setSupplierId] = useState(
+    isEdit ? String(order.supplierId) : params.get('supplier') || '',
+  )
+  const [description, setDescription] = useState(order?.description ?? '')
+  const [locationId, setLocationId] = useState(isEdit ? String(order.deliveryLocationId) : '')
+  const [timing, setTiming] = useState(order?.completeBy ? 'later' : 'asap')
+  const [date, setDate] = useState(order?.completeBy ? localDate(order.completeBy) : today)
+  const [time, setTime] = useState(order?.completeBy ? localTime(order.completeBy) : '15:30')
   const [offer, setOffer] = useState(4)
-  const [extra, setExtra] = useState('')
+  const [extra, setExtra] = useState(order?.additionalDetails ?? '')
+  const [posting, setPosting] = useState(false)
+  const [postError, setPostError] = useState(null)
+  const { locations } = useReferenceData()
 
   // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
   const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
@@ -64,37 +189,83 @@ export default function CreateRequest() {
   const suppliers = supplierPage?.data ?? []
   const supplier = supplierId ? chosen : null
 
-  // An errand that is still collecting couriers past its own delivery deadline is incoherent.
-  // Warned about, not blocked - see AI-NOTES for the open question.
-  const goesOutAt = (() => {
-    if (postMode !== 'schedule') return Date.now()
-    const t = new Date(postDate + 'T' + postTime).getTime()
-    return Number.isNaN(t) ? Date.now() : t
-  })()
-
-  const deadlineTooTight = (() => {
-    if (timing !== 'later') return false
-    const deadline = new Date(date + 'T' + time)
-    if (Number.isNaN(deadline.getTime())) return false
-    return deadline.getTime() < goesOutAt + expiry * 60000
-  })()
-  const insufficient = offer > credits.available
+  const insufficient = !isEdit && offer > credits.available
   const remaining = credits.available - offer
+  const deadline = timing === 'later' ? new Date(date + 'T' + time) : null
+  const deadlineInvalid = deadline !== null && Number.isNaN(deadline.getTime())
+  const complete = Boolean(supplierId && description.trim() && locationId) && !deadlineInvalid
 
-  const label = (text, htmlFor) => (
+  // F18: PATCH /orders/:id/edit with the editable fields; credits stay as reserved.
+  const onSave = async () => {
+    setPosting(true)
+    setPostError(null)
+    try {
+      await editOrder(order.id, {
+        supplierId: Number(supplierId),
+        description: description.trim(),
+        deliveryLocationId: Number(locationId),
+        completeBy: deadline ? deadline.toISOString() : null,
+        additionalDetails: extra.trim() || null,
+      })
+      navigate('/activity')
+    } catch (e) {
+      setPostError(e.message)
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  const onPost = async () => {
+    setPosting(true)
+    setPostError(null)
+    const watch = watchOrderEvents() // before the POST, so a fast outcome is not missed
+    try {
+      const order = await createOrder({
+        supplierId: Number(supplierId),
+        description: description.trim(),
+        deliveryLocationId: Number(locationId),
+        credits: offer,
+        ...(deadline && { completeBy: deadline.toISOString() }),
+        additionalDetails: extra.trim() || null,
+      })
+      const outcome = await reservationOutcome(order.id, watch)
+      if (outcome.status === 'failed') {
+        setPostError(reserveFailureMessage(outcome.reason))
+      } else {
+        navigate('/activity')
+      }
+    } catch (e) {
+      setPostError(e.message)
+    } finally {
+      watch.stop()
+      setPosting(false)
+    }
+  }
+
+  const requiredMark = (
+    <>
+      <span aria-hidden="true" className="text-alert"> *</span>
+      <span className="sr-only"> (required)</span>
+    </>
+  )
+
+  const label = (text, htmlFor, required = false) => (
     <label htmlFor={htmlFor} className="block text-base font-semibold text-ink">
       {text}
+      {required && requiredMark}
     </label>
   )
 
   return (
     <div className="page-gutter mx-auto w-full max-w-[640px] py-8 pb-32 md:py-10 md:pb-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Post an errand</h1>
+      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
+        {isEdit ? 'Edit errand' : 'Post an errand'}
+      </h1>
 
       <div className="mt-8 space-y-8">
         {/* 1. Pick-up from */}
         <section>
-          {label('Pick-up from', 'supplier')}
+          {label('Pick-up from', 'supplier', true)}
           {supplier ? (
             <div className="mt-2 flex items-center gap-3 rounded-card border border-line p-3">
               <div className="w-16 shrink-0">
@@ -133,7 +304,7 @@ export default function CreateRequest() {
 
         {/* 2. What do you need? */}
         <section>
-          {label('What do you need?', 'description')}
+          {label('What do you need?', 'description', true)}
           <textarea
             id="description"
             rows={4}
@@ -155,37 +326,25 @@ export default function CreateRequest() {
 
         {/* 3. Deliver to */}
         <section>
-          {label('Deliver to', 'location')}
+          {label('Deliver to', 'location', true)}
+          {/* Delivery locations are the Supplier Service's location reference list (ids). */}
           <select
             id="location"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
             className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
           >
-            <optgroup label="Saved">
-              {bookmarkedLocations.map((l) => (
-                <option key={l.id} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="All locations">
-              {otherLocations.map((l) => (
-                <option key={l.id} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </optgroup>
+            <option value="">Choose a drop-off point</option>
+            {locations.map((l) => (
+              <option key={l.location_id} value={l.location_id}>
+                {l.location}
+              </option>
+            ))}
           </select>
-          {bookmarkedLocations.some((l) => l.name === location) && (
-            <p className="mt-1.5 flex items-center gap-1.5 text-sm text-ink-40">
-              <Bookmark size={13} className="fill-ink-40" aria-hidden="true" />
-              Saved location
-            </p>
-          )}
         </section>
 
         {/* 4. Post time: optional. When the request is sent out to the board.
+            Hidden for now (George, 2026-10-20); restore postMode/postDate/postTime state with it.
         <section>
           <span className="block text-base font-semibold text-ink">
             When should this go out?{' '}
@@ -291,6 +450,8 @@ export default function CreateRequest() {
         </section>
 
         {/* 6. Expiration: how long the request stays on the board unaccepted.
+            Hidden for now (George, 2026-10-20); restore EXPIRY_CHOICES, expiry state and
+            deadlineTooTight with it.
         <section>
           <span className="block text-base font-semibold text-ink">
             How long should this stay open?
@@ -327,52 +488,57 @@ export default function CreateRequest() {
           )}
         </section> */}
 
-        {/* 7. Offer */}
-        <section>
-          <span className="block text-base font-semibold text-ink">Offer</span>
-          <div
-            className={
-              'mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 ' +
-              (insufficient ? 'border-alert' : 'border-line')
-            }
-          >
-            <button
-              type="button"
-              onClick={() => setOffer((v) => Math.max(1, v - 1))}
-              disabled={offer <= 1}
-              aria-label="Offer one credit fewer"
-              className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
-            >
-              <Minus size={18} aria-hidden="true" />
-            </button>
-            <span className="tnum min-w-[3ch] text-center text-2xl font-semibold text-ink">
-              {offer}
+        {/* 7. Offer: fixed once posted, so not shown when editing. */}
+        {!isEdit && (
+          <section>
+            <span className="block text-base font-semibold text-ink">
+              Offer
+              {requiredMark}
             </span>
-            <button
-              type="button"
-              onClick={() => setOffer((v) => Math.min(10, v + 1))}
-              disabled={offer >= 10}
-              aria-label="Offer one credit more"
-              className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+            <div
+              className={
+                'mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 ' +
+                (insufficient ? 'border-alert' : 'border-line')
+              }
             >
-              <Plus size={18} aria-hidden="true" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setOffer((v) => Math.max(1, v - 1))}
+                disabled={offer <= 1}
+                aria-label="Offer one credit fewer"
+                className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+              >
+                <Minus size={18} aria-hidden="true" />
+              </button>
+              <span className="tnum min-w-[3ch] text-center text-2xl font-semibold text-ink">
+                {offer}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOffer((v) => Math.min(10, v + 1))}
+                disabled={offer >= 10}
+                aria-label="Offer one credit more"
+                className="flex h-11 w-11 items-center justify-center rounded-pill border border-line text-ink disabled:text-ink-40"
+              >
+                <Plus size={18} aria-hidden="true" />
+              </button>
+            </div>
 
-          {insufficient ? (
-            /* Credit F1.2.2 — insufficient credits. */
-            <p className="mt-2 max-w-prose text-sm text-alert">
-              You have <span className="tnum">{credits.total}</span> credits,{' '}
-              <span className="tnum">{credits.reserved}</span> of them reserved. Lower your offer or
-              wait for an errand to complete.
-            </p>
-          ) : (
-            <p className="mt-2 text-sm text-ink-40">
-              After posting, you&rsquo;ll have <span className="tnum">{remaining}</span> of{' '}
-              <span className="tnum">{credits.available}</span> credits available.
-            </p>
-          )}
-        </section>
+            {insufficient ? (
+              /* Credit F1.2.2 — insufficient credits. */
+              <p className="mt-2 max-w-prose text-sm text-alert">
+                You have <span className="tnum">{credits.total}</span> credits,{' '}
+                <span className="tnum">{credits.reserved}</span> of them reserved. Lower your offer or
+                wait for an errand to complete.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-ink-40">
+                After posting, you&rsquo;ll have <span className="tnum">{remaining}</span> of{' '}
+                <span className="tnum">{credits.available}</span> credits available.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* 8. Anything else? */}
         <section>
@@ -391,26 +557,34 @@ export default function CreateRequest() {
       {/* Footer bar: sticky to the viewport on mobile. */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface p-4 md:static md:mt-10 md:p-0 md:pt-6">
         <div className="page-gutter mx-auto flex max-w-[640px] flex-col gap-3 md:flex-row md:items-center md:justify-between md:px-0">
-          <p className="max-w-prose text-sm text-ink-70">
-            <span className="tnum">{offer}</span> credits will be reserved until this errand is
-            completed or cancelled
-            {postMode === 'schedule' && (
-              <span className="text-ink-40">
-                {' '}
-                · scheduled to go out {postDate} at {postTime}
-              </span>
+          <div className="space-y-1">
+            <p className="max-w-prose text-sm text-ink-70">
+              {isEdit ? (
+                'Update the details of this open errand.'
+              ) : (
+                <>
+                  <span className="tnum">{offer}</span> credits will be reserved until this errand
+                  is completed or cancelled
+                </>
+              )}
+            </p>
+            {postError && (
+              <p role="alert" className="max-w-prose text-sm text-alert">
+                {postError}
+              </p>
             )}
-          </p>
+          </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="ghost" className="flex-1 md:flex-none" onClick={() => navigate(-1)}>
               Cancel
             </Button>
             <Button
               className="flex-1 md:flex-none"
-              disabled={insufficient}
-              onClick={() => navigate('/activity')}
+              disabled={insufficient || !complete || posting}
+              onClick={isEdit ? onSave : onPost}
             >
-              {postMode === 'schedule' ? 'Schedule errand' : 'Post errand'}
+              {posting && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+              {isEdit ? (posting ? 'Saving…' : 'Save changes') : posting ? 'Posting…' : 'Post errand'}
             </Button>
           </div>
         </div>

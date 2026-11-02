@@ -5,19 +5,25 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Reads isLoggedIn from the new AuthContext instead of DemoContext, per
+ *        instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Link, useLocation } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
 import { totalUnread } from '../data/messages'
-import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
 
 // Shortcut into the conversations, fixed to the bottom-right.
 // Hidden when logged out - there are no conversations to reach - and hidden on the chat
 // screen itself, where it would point at the page you are already on.
 export default function ChatBubble() {
   const { pathname } = useLocation()
-  const { isLoggedIn } = useDemo()
+  const { isLoggedIn } = useAuth()
   if (!isLoggedIn || pathname.startsWith('/chat')) return null
 
   const unread = totalUnread()

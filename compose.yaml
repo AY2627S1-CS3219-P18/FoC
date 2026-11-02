@@ -6,6 +6,27 @@
 # Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the supplier-worker service and the
 #        PHOTO_STORE_* env lines / extra_hosts on supplier-service per Phase 4 plan Task 14. No
 #        requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review: george-yeo
+# Scope (2026-10-12): Added Redis and the separate order maintenance worker
+#        for automatic request completion and acceptance-deadline expiry.
+# Author review: george-yeo
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+# Scope (2026-10-20): Issue #4 - CREDIT_SERVICE_URL on order-worker. No requirements,
+#        architecture, schema, or API decisions were made by the AI tool.
+# Author review: george-yeo
+# Scope (2026-10-20): Issue #6 - REDIS_HOST/PORT and USER_SERVICE_URL on order-service.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review: george-yeo
+# Tool: Claude Code (model: claude-opus-5), date: 2026-10-22
+# Scope (2026-10-22): Credit transfer consumer - REDIS_HOST/REDIS_PORT on credit-service
+#        and a credit-worker service consuming queue:credit:transfer from order-redis.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
+# Scope (2026-10-22): order-redis persistence (George, 2026-10-22: RDB + AOF) - append-only
+#        file with everysec fsync alongside the default RDB snapshots, on the named volume
+#        order-redis-data, so queued credit jobs survive container recreation.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
 #
 # Production-like:  docker compose up --build
@@ -42,10 +63,16 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
+      # Issue #6: Socket.IO Redis adapter + worker events.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
+      USER_SERVICE_URL: http://user-service:3001
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"
     depends_on:
       order-db:
+        condition: service_healthy
+      order-redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -53,6 +80,42 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  order-worker:
+    build:
+      context: ./order-service
+      target: production
+    init: true
+    restart: unless-stopped
+    command: ["sh", "-c", "npx prisma migrate deploy && exec node dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
+      # Issue #4: the worker calls credit-service for reserve/release. No depends_on:
+      # failed calls are retried by BullMQ, so a cold start recovers on its own.
+      CREDIT_SERVICE_URL: http://credit-service:3003
+    depends_on:
+      order-db:
+        condition: service_healthy
+      order-redis:
+        condition: service_healthy
+
+  order-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # The relay deletes an outbox row once its job is enqueued, so Redis then holds the
+    # only copy of each credit job. AOF (fsync every second) bounds a crash to ~1 s of
+    # writes; Redis's default RDB snapshots are kept, and AOF rewrites use an RDB preamble.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - order-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   # ---- user-service -------------------------------------------------------
   # AI Assistance Disclosure:
@@ -114,13 +177,21 @@ services:
       POSTGRES_USER: ${CREDIT_DB_USER:?set CREDIT_DB_USER in .env}
       POSTGRES_PASSWORD: ${CREDIT_DB_PASSWORD:?set CREDIT_DB_PASSWORD in .env}
       POSTGRES_DB: ${CREDIT_DB_NAME:?set CREDIT_DB_NAME in .env}
+      # Read by 02-grant-app-role.sh. This role owns nothing and is never a superuser;
+      # it is what the service connects as, so NFR8.2.3's REVOKE actually binds.
+      CREDIT_APP_USER: ${CREDIT_APP_USER:?set CREDIT_APP_USER in .env}
+      CREDIT_APP_PASSWORD: ${CREDIT_APP_PASSWORD:?set CREDIT_APP_PASSWORD in .env}
     ports:
       - "${CREDIT_DB_PORT:-5435}:5432"
     volumes:
       - credit-db-data:/var/lib/postgresql/data
-      # The postgres image runs this on first start of an empty volume, the same way
-      # user-db loads its schema. Schema changes need the volume recreated.
-      - ./credit-service/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # The postgres image runs these on first start of an empty volume, in filename
+      # order, the same way user-db loads its schema. Schema changes need the volume
+      # recreated. grants.sql sits outside initdb.d deliberately: it must run after the
+      # role exists, not in filename order.
+      - ./credit-service/src/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./credit-service/src/db/grant-app-role.sh:/docker-entrypoint-initdb.d/02-grant-app-role.sh
+      - ./credit-service/src/db/grants.sql:/opt/credit-service/grants.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -141,8 +212,17 @@ services:
       DB_HOST: credit-db
       DB_PORT: 5432
       DB_NAME: ${CREDIT_DB_NAME}
-      DB_USER: ${CREDIT_DB_USER}
-      DB_PASSWORD: ${CREDIT_DB_PASSWORD}
+      # The least-privilege role, not the owner (NFR8.2.3).
+      DB_USER: ${CREDIT_APP_USER}
+      DB_PASSWORD: ${CREDIT_APP_PASSWORD}
+      # Origin the JWKS key set is fetched from, for local token verification. Same value
+      # supplier-service already uses. No depends_on: the fetch is lazy and the key set is
+      # refetched on an unknown kid, so a cold start recovers on its own.
+      USER_SERVICE_URL: http://user-service:3001
+      # src/config.ts validates these for the API process too, so a broker typo fails at
+      # startup rather than at the first job. The API itself opens no Redis connection.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
     ports:
       - "${CREDIT_SERVICE_PORT:-3003}:3003"
     volumes:
@@ -156,6 +236,47 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+
+  # Consumes order-service's credit_transfer jobs. A separate container from the API,
+  # mirroring supplier-worker: same build context and image, a different command, and a
+  # second entry point into the same src/ tree, so the worker and the HTTP route call
+  # one transferCredits.
+  credit-worker:
+    build:
+      context: ./credit-service
+      target: dev
+    container_name: foc-credit-worker
+    init: true
+    restart: unless-stopped
+    command: ["npm", "run", "worker:dev"]
+    # Let an in-flight transfer finish on `docker stop` (Docker's default is SIGKILL
+    # after 10 s). A transfer is one short transaction, so this is headroom, not a wait.
+    stop_grace_period: 30s
+    environment:
+      NODE_ENV: development
+      # The worker serves no HTTP, but src/config.ts validates one schema for both
+      # entry points, so PORT and USER_SERVICE_URL must be present.
+      PORT: 3003
+      DB_HOST: credit-db
+      DB_PORT: 5432
+      DB_NAME: ${CREDIT_DB_NAME}
+      # The same least-privilege role the API uses (NFR8.2.3). It can INSERT a
+      # dead_letter_jobs row and UPDATE its status, and still cannot touch
+      # transaction_log beyond SELECT and INSERT.
+      DB_USER: ${CREDIT_APP_USER}
+      DB_PASSWORD: ${CREDIT_APP_PASSWORD}
+      USER_SERVICE_URL: http://user-service:3001
+      # order-service's broker. Deliberately no depends_on for it: the worker is built
+      # to start without Redis and pick it up when it returns (maxRetriesPerRequest null
+      # plus an unbounded retryStrategy in src/worker/main.ts), and a depends_on would
+      # hide that rather than prove it.
+      REDIS_HOST: order-redis
+      REDIS_PORT: 6379
+    volumes:
+      - ./credit-service/src:/app/src
+    depends_on:
+      credit-db:
+        condition: service_healthy
 
   # ---- supplier-service ---------------------------------------------------
   # AI Assistance Disclosure:
@@ -273,6 +394,7 @@ services:
 
 volumes:
   order-db-data:
+  order-redis-data:
   user-db-data:
   credit-db-data:
   supplier-db-data:

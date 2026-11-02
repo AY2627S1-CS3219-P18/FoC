@@ -4,16 +4,19 @@
  * Scope: Project scaffolding / infrastructure only. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
+ * Scope (2026-10-20): Issue #4 - createApp no longer takes a credit client.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: george-yeo
  */
 
 import request from 'supertest';
 import { createApp } from './app.js';
-import { createStubCreditsClient } from './clients/credits.client.js';
 import type { PrismaClient } from './db/prisma.js';
 
 function appWith(queryRaw: () => Promise<unknown>) {
   const prisma = { $queryRaw: queryRaw } as unknown as PrismaClient;
-  return createApp({ prisma, credits: createStubCreditsClient() });
+  return createApp({ prisma });
 }
 
 describe('GET /health', () => {

@@ -6,6 +6,16 @@
 //    Author review:
 //  2026-09-25: Stage 6 pre-work - add OTP resend window config
 //    Author review:
+//  2026-10-02: Add optional TEST_USER_* env vars for a seeded normal user
+//    Author review: Congchen
+//  2026-10-17: Stage 13a - per-key env vars (JWT_KEY_ID, optional JWT_PREVIOUS_*) for
+//    JWKS-based key rotation. No requirements, architecture, schema, or API decisions were
+//    made by the AI tool — see instructions.md Stage 13 for the governing decision.
+//    Author review:
+//  2026-10-21: Stage 14a - add CREDIT_SERVICE_URL for the credit-allocation outbox relay.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool — see
+//    instructions.md Stage 14 for the governing decision.
+//    Author review:
 
 import { z } from "zod";
 
@@ -20,8 +30,12 @@ const envSchema = z
     DB_USER: z.string().min(1),
     DB_PASSWORD: z.string().min(1),
 
+    JWT_KEY_ID: z.string().min(1),
     JWT_PRIVATE_KEY_PATH: z.string().min(1),
     JWT_PUBLIC_KEY_PATH: z.string().min(1),
+    // Set together only during a key-rotation overlap window (Stage 13).
+    JWT_PREVIOUS_KEY_ID: z.string().min(1).optional(),
+    JWT_PREVIOUS_PUBLIC_KEY_PATH: z.string().min(1).optional(),
     ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive(),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive(),
 
@@ -35,10 +49,17 @@ const envSchema = z
     SUPER_ADMIN_EMAIL: z.string().min(1),
     SUPER_ADMIN_PASSWORD: z.string().min(1),
 
+    // Optional local-dev test user; seeded at startup only when all three are set.
+    TEST_USER_USERNAME: z.string().default(""),
+    TEST_USER_EMAIL: z.string().default(""),
+    TEST_USER_PASSWORD: z.string().default(""),
+
     OTP_TTL_MINUTES: z.coerce.number().int().positive(),
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
     OTP_MAX_RESENDS: z.coerce.number().int().positive(),
     OTP_RESEND_WINDOW_MINUTES: z.coerce.number().int().positive(),
+
+    CREDIT_SERVICE_URL: z.string().url(),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -84,8 +105,11 @@ export const config = {
     password: env.DB_PASSWORD,
   },
   jwt: {
+    keyId: env.JWT_KEY_ID,
     privateKeyPath: env.JWT_PRIVATE_KEY_PATH,
     publicKeyPath: env.JWT_PUBLIC_KEY_PATH,
+    previousKeyId: env.JWT_PREVIOUS_KEY_ID,
+    previousPublicKeyPath: env.JWT_PREVIOUS_PUBLIC_KEY_PATH,
     accessTokenTtlMinutes: env.ACCESS_TOKEN_TTL_MINUTES,
     refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
   },
@@ -106,5 +130,13 @@ export const config = {
     username: env.SUPER_ADMIN_USERNAME,
     email: env.SUPER_ADMIN_EMAIL,
     password: env.SUPER_ADMIN_PASSWORD,
+  },
+  testUser: {
+    username: env.TEST_USER_USERNAME,
+    email: env.TEST_USER_EMAIL,
+    password: env.TEST_USER_PASSWORD,
+  },
+  creditService: {
+    url: env.CREDIT_SERVICE_URL.replace(/\/$/, ""),
   },
 } as const;

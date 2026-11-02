@@ -8,7 +8,8 @@
     "build": "tsc",
     "test": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

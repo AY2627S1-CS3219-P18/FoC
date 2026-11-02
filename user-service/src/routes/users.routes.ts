@@ -10,6 +10,11 @@
  * Scope: Added PUT /:id/role as specified in instructions.md Stage 10.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
+ * Scope: Added GET /public and GET /public/:id, the public display-name lookup.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -18,6 +23,11 @@ import { authenticate } from '../middleware/authenticate.js';
 import { authorize } from '../middleware/authorize.js';
 
 const router = Router();
+
+// Must precede GET /:id, or ':id' captures the literal "public" and fails UUID validation.
+// authenticate only: any signed-in user may resolve a display name, no role required.
+router.get('/public', authenticate, usersController.listPublic);
+router.get('/public/:id', authenticate, usersController.getPublicById);
 
 router.get('/', authenticate, authorize('admin'), usersController.list);
 router.get('/:id', authenticate, authorize('admin'), usersController.getById);

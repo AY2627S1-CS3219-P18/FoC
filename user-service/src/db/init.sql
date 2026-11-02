@@ -1,10 +1,14 @@
 -- AI Assistance Disclosure:
 -- Tool: Claude Code (claude-sonnet-5)
 --  2026-09-24: Generated initial implementation as part of Stage 2b
---    Author review: No changes needed. 
+--    Author review: No changes needed.
 --  2026-09-25: Stage 5a - added 'pending' to status_enum
 --    Author review:
 --  2026-09-27: Stage 11 - added active_view_enum and users.active_view
+--    Author review:
+--  2026-10-21: Stage 14a - added outbox_status_enum and credit_allocation_outbox table for
+--    the credit-allocation transactional outbox. No requirements, architecture, schema, or API
+--    decisions were made by the AI tool — see instructions.md Stage 14 for the governing decision.
 --    Author review:
 
 DO $$ BEGIN
@@ -67,4 +71,21 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   user_agent TEXT,
   ip_address INET,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DO $$ BEGIN
+  CREATE TYPE outbox_status_enum AS ENUM ('pending', 'sent', 'dead');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS credit_allocation_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  status outbox_status_enum NOT NULL DEFAULT 'pending',
+  attempts SMALLINT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

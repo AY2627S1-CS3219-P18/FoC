@@ -7,6 +7,11 @@
 --    existing user-service/src/db/init.sql.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
 --    Author review: Wee Jean
+--  2026-10-22: Credit transfer consumer - dead_letter_jobs table for the BullMQ worker.
+--    Columns mirror the sibling services'; snake_case per the team decision of
+--    2026-10-22. No requirements, architecture, schema, or API decisions were made by
+--    the AI tool.
+--    Author review:
 
 -- ---------------------------------------------------------------------------
 -- Transaction types (F20.1.1)
@@ -101,6 +106,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS transaction_log_one_reservation_per_request
   ON transaction_log (request_id)
   WHERE transaction_type = 'reservation';
 
+-- F19.4.1 - release is idempotent on requestId (team decision 2026-10-16), enforced the
+-- same way as transfer and reservation.
+CREATE UNIQUE INDEX IF NOT EXISTS transaction_log_one_release_per_request
+  ON transaction_log (request_id)
+  WHERE transaction_type = 'release';
+
 -- Supports F19.5.2 ("records in which they are the originating or destination user").
 CREATE INDEX IF NOT EXISTS transaction_log_originating_user_idx
   ON transaction_log (originating_user_id, created_at DESC);
@@ -108,20 +119,44 @@ CREATE INDEX IF NOT EXISTS transaction_log_destination_user_idx
   ON transaction_log (destination_user_id, created_at DESC);
 
 -- ---------------------------------------------------------------------------
--- NFR8.2.3 - append-only transaction log.  NOT YET ENFORCED.  Week 7.
+-- NFR8.2.3 - append-only transaction log.
 --
--- context §5 specifies enforcement by `REVOKE UPDATE, DELETE` on the application
--- role. Two things are still undecided, so the statements are left inert rather
--- than guessed at:
+-- Enforced by privilege, not by application code (context §5). The tables above are
+-- owned by the bootstrap superuser; the service connects as a separate least-privilege
+-- role that is never granted UPDATE or DELETE on transaction_log.
 --
---   1. The application role has no name yet. The sibling services connect as the
---      `postgres` superuser, and a superuser bypasses REVOKE entirely, so a REVOKE
---      written today would enforce nothing.
---   2. Creating a dedicated least-privilege role changes compose.yaml and .env,
---      which are outside this service folder.
---
--- Once the team names the role, uncomment and substitute it:
---
---   REVOKE UPDATE, DELETE ON transaction_log FROM <application_role>;
---
+-- The grant matrix lives in grants.sql so that the container bootstrap
+-- (grant-app-role.sh) and the test harness (tests/setup/globalSetup.ts) apply exactly
+-- the same privileges. Role creation differs between the two only in where the
+-- password comes from.
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- dead_letter_jobs
+--
+-- Where a credit_transfer job lands once BullMQ will not run it again: either the
+-- failure is permanent (an UnrecoverableError from the classification table in
+-- src/worker/classifyTransferError.ts) or the fifth attempt has failed.
+--
+-- Columns mirror the sibling services' dead_letter_jobs (order-service's Prisma model
+-- and supplier-service's init.sql) so an administrator sees one shape across the
+-- system. Names are snake_case here, matching this service's own schema rather than
+-- order-service's camelCase (team decision 2026-10-22).
+--
+-- GENERATED ALWAYS AS IDENTITY rather than BIGSERIAL: BIGSERIAL creates a sequence
+-- that needs its own GRANT USAGE, SELECT, and without it every INSERT by credit_app
+-- fails. An identity column is covered by the table privilege alone.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  job_id       TEXT NOT NULL,
+  task_name    TEXT NOT NULL,
+  payload      JSONB NOT NULL,
+  error_trace  TEXT NOT NULL,
+  failed_at    TIMESTAMPTZ NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'UNRESOLVED'
+);
+
+-- An administrator's query is "what is still outstanding?", so status is the index.
+CREATE INDEX IF NOT EXISTS dead_letter_jobs_status_idx
+  ON dead_letter_jobs (status);

@@ -68,6 +68,10 @@ Scope: 2026-09-30 update — recorded the Phase 4 status note and the team's Pha
        Tool: Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API
        decisions were made by the AI tool; the change records the team's decisions of 2026-09-30.
 Author review:
+Scope: 2026-10-20 update — aligned the Phase 0 authentication task with cached JWKS retrieval and
+       local RS256 verification. No requirements, architecture, schema, or API decisions were made
+       by the AI tool.
+Author review: tng wen xi
 -->
 
 # Supplier Service Implementation Spec
@@ -81,22 +85,22 @@ requirement / GitHub issue it satisfies.
 before writes, writes before the soft-delete/downstream workflow, core endpoints before
 cross-cutting hardening) — not by sprint priority. `docs/FoC-ProductBacklog.md`'s Priority/Planned
 Week columns remain the team's authoritative scheduling reference; this ordering only sequences
-work *within* the Supplier Service so that later phases can build on working earlier ones.
+work _within_ the Supplier Service so that later phases can build on working earlier ones.
 
 **Issue mapping.** Supplier Service backlog items are tracked as GitHub issues in
 `AY2627S1-CS3219-P18/FoC`:
 
-| Issue | Backlog ID | Title |
-| --- | --- | --- |
-| [#40](https://github.com/AY2627S1-CS3219-P18/FoC/issues/40) | F6.1 | Persist campus supplier details |
-| [#41](https://github.com/AY2627S1-CS3219-P18/FoC/issues/41) | F7.1 | List active suppliers in requester mode |
-| [#42](https://github.com/AY2627S1-CS3219-P18/FoC/issues/42) | F7.2 | Display supplier details |
-| [#43](https://github.com/AY2627S1-CS3219-P18/FoC/issues/43) | F8.1 | View and manage campus suppliers (admin) |
-| [#44](https://github.com/AY2627S1-CS3219-P18/FoC/issues/44) | F8.2 | Create campus suppliers (admin) |
-| [#45](https://github.com/AY2627S1-CS3219-P18/FoC/issues/45) | F8.3 | Update campus suppliers (admin) |
-| [#46](https://github.com/AY2627S1-CS3219-P18/FoC/issues/46) | F8.4 | Soft-delete campus suppliers (admin) |
-| [#60](https://github.com/AY2627S1-CS3219-P18/FoC/issues/60) | NFR6.1 | Protect supplier records from unauthorized modification |
-| [#61](https://github.com/AY2627S1-CS3219-P18/FoC/issues/61) | NFR7.1 | Maintain supplier-list performance at scale |
+| Issue                                                       | Backlog ID | Title                                                   |
+| ----------------------------------------------------------- | ---------- | ------------------------------------------------------- |
+| [#40](https://github.com/AY2627S1-CS3219-P18/FoC/issues/40) | F6.1       | Persist campus supplier details                         |
+| [#41](https://github.com/AY2627S1-CS3219-P18/FoC/issues/41) | F7.1       | List active suppliers in requester mode                 |
+| [#42](https://github.com/AY2627S1-CS3219-P18/FoC/issues/42) | F7.2       | Display supplier details                                |
+| [#43](https://github.com/AY2627S1-CS3219-P18/FoC/issues/43) | F8.1       | View and manage campus suppliers (admin)                |
+| [#44](https://github.com/AY2627S1-CS3219-P18/FoC/issues/44) | F8.2       | Create campus suppliers (admin)                         |
+| [#45](https://github.com/AY2627S1-CS3219-P18/FoC/issues/45) | F8.3       | Update campus suppliers (admin)                         |
+| [#46](https://github.com/AY2627S1-CS3219-P18/FoC/issues/46) | F8.4       | Soft-delete campus suppliers (admin)                    |
+| [#60](https://github.com/AY2627S1-CS3219-P18/FoC/issues/60) | NFR6.1     | Protect supplier records from unauthorized modification |
+| [#61](https://github.com/AY2627S1-CS3219-P18/FoC/issues/61) | NFR7.1     | Maintain supplier-list performance at scale             |
 
 No GitHub issue exists yet for the infrastructure in Phase 0 (schema, auth wiring, error/rate-limit
 middleware) — it is a prerequisite for every issue above rather than its own backlog item.
@@ -117,8 +121,8 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
 - Run the full MySQL DDL from §6.4 as migrations: `faculties`, `supplier_locations`, `supplier`,
   `supplier_categories`, `supplier_category_map`, `supplier_hours`, `supplier_photos`,
   `dead_letter_jobs`.
-- Presentation-layer auth middleware: verify the bearer JWT against the User Service's
-  `GET /auth/verify` contract (§7 intro), attach the resolved identity/role to the request, and
+- Presentation-layer auth middleware: fetch and cache the User Service's JWKS, verify the bearer JWT
+  locally with RS256, attach the resolved identity/role to the request, and
   reject unauthenticated requests. This is the core of NFR6.1 (#60) — "every modification request
   shall undergo token verification; non-administrative requests shall be rejected without
   modifying persistent state."
@@ -144,7 +148,7 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
 
 ### Out of scope / deferred
 
-- Redis job *processing* (worker, retry, dead-letter insertion) — wired up in Phase 4, though the
+- Redis job _processing_ (worker, retry, dead-letter insertion) — wired up in Phase 4, though the
   `dead_letter_jobs` table is created now since it's part of the same migration set.
 - Health-check endpoints (§7.5: explicitly deferred per the architecture document).
 
@@ -185,12 +189,12 @@ for `GET /api/v1/suppliers`, `GET /api/v1/suppliers/:id`, and the two reference 
 - F7.1.2: list supports search/filter by name, location, or current open status.
 - F7.2.1: detail view returns all F6.1 fields.
 - F7.2.2: detail view has a defined fallback for unpopulated optional fields (e.g., no photos, no
-  description) — the architecture doesn't prescribe the fallback *content*; this is a UI-layer
+  description) — the architecture doesn't prescribe the fallback _content_; this is a UI-layer
   concern the SPA implementation should define, since the API simply omits/nulls empty fields.
 
 ### Out of scope / deferred
 
-- Photo upload (nothing to upload yet — creation lands in Phase 2). Photo *read* (returning
+- Photo upload (nothing to upload yet — creation lands in Phase 2). Photo _read_ (returning
   `photos[]` with signed `photoLocation` URLs) is in scope since it's part of the summary/detail
   envelope, but will return an empty array until Phase 2 exists.
 - Admin-only fields (`isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, `version`) —
@@ -333,7 +337,7 @@ workflow), §7.5/§8.1/§8.2 (Redis job contract, retries, dead-letter).
   unknown or already deleted supplier. The delete and its outbox row commit in one transaction
   (§8.1). All API responses use `id`.
 - Transactional outbox: table `outbox (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, task_name
-  VARCHAR(255) NOT NULL, payload JSON NOT NULL, version BIGINT UNSIGNED NOT NULL)`, where `version`
+VARCHAR(255) NOT NULL, payload JSON NOT NULL, version BIGINT UNSIGNED NOT NULL)`, where `version`
   is the supplier version. All background tasks (the suspension job, and the excluded-photo cleanup
   from `PUT` and reactivation) are written to it inside the write transaction. A relay, driven by a
   BullMQ job scheduler every second in the worker, reads rows ordered by `version` then `id`, adds
@@ -361,7 +365,7 @@ workflow), §7.5/§8.1/§8.2 (Redis job contract, retries, dead-letter).
   tests), `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run test:minio` (2 files, 9
   tests), `docker compose config --quiet` and `docker compose build supplier-worker` passed. Run by
   hand on 2026-09-30 against MySQL 8, Redis, MinIO and the API/worker containers (a local stub stood
-  in for the User Service `GET /auth/verify`): delete, Redis outage, worker down, delayed retry,
+  in for the User Service JWKS endpoint): delete, Redis outage, worker down, delayed retry,
   bad rows and reactivation behaved as described above; with the worker idle, `docker stop`
   completed in about 3 s with the graceful-shutdown log lines. Not verified: stopping the worker
   during an in-flight job.

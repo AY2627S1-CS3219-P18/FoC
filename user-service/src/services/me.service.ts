@@ -33,6 +33,17 @@
  *        instructions.md Stage 12e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: getOwnProfile also returns activeView, as specified in instructions.md Stage 15a.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: changeActiveView now returns the camelCase toUserResponse shape, per
+ *        instructions.md Stage 15c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -50,7 +61,7 @@ import {
   USERNAME_REGEX,
 } from './auth.service.js';
 import { checkOtp, requestOtp, type RequestOtpResult } from './otp.service.js';
-import { toPublicUser, type PublicUser } from './users.service.js';
+import { toUserResponse, type UserResponse } from './userResponse.js';
 
 const BCRYPT_WORK_FACTOR = 10;
 
@@ -100,22 +111,22 @@ function throwOnUnsentOtp(result: RequestOtpResult): void {
 export async function changeActiveView(
   userId: string,
   activeView: 'requester' | 'courier',
-): Promise<PublicUser> {
+): Promise<UserResponse> {
   const row = await userQueries.updateActiveView(userId, activeView);
   if (!row) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return toPublicUser(row);
+  return toUserResponse(row);
 }
 
 export async function getOwnProfile(
   userId: string,
-): Promise<{ username: string; email: string }> {
+): Promise<{ username: string; email: string; activeView: 'requester' | 'courier' }> {
   const user = await userQueries.findById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return { username: user.username, email: user.email };
+  return { username: user.username, email: user.email, activeView: user.active_view };
 }
 
 export async function changeUsername(

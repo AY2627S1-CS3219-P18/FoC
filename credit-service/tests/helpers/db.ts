@@ -3,9 +3,15 @@
 //  2026-09-26: Recess iteration - test database helpers.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review: Wee Jean
+//  2026-10-16: Week 7/8 catch-up - cleanupUsers removed: the suite now connects as the
+//    least-privilege role, which has no DELETE anywhere (NFR8.2.3). Isolation comes
+//    from a database rebuilt per run plus a fresh UUID per case.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { randomUUID } from 'node:crypto';
 import pool from '../../src/db/pool.js';
+import { allocateInitialCredits, reserveCredits } from '../../src/services/credits.service.js';
 
 export const newUserId = (): string => randomUUID();
 export const newRequestId = (): string => randomUUID();
@@ -30,15 +36,30 @@ export async function countTransactions(userId: string): Promise<number> {
   return Number(rows[0]?.count ?? '0');
 }
 
-/** Removes only the rows a test created, so runs do not interfere with each other. */
-export async function cleanupUsers(userIds: string[]): Promise<void> {
-  if (userIds.length === 0) return;
-  await pool.query(
-    `DELETE FROM transaction_log
-      WHERE originating_user_id = ANY($1::uuid[]) OR destination_user_id = ANY($1::uuid[])`,
-    [userIds],
+export async function countTransactionsForRequest(requestId: string): Promise<number> {
+  const { rows } = await pool.query<{ count: string }>(
+    'SELECT COUNT(*)::text AS count FROM transaction_log WHERE request_id = $1',
+    [requestId],
   );
-  await pool.query('DELETE FROM balances WHERE user_id = ANY($1::uuid[])', [userIds]);
+  return Number(rows[0]?.count ?? '0');
+}
+
+/** A funded user with `amount` credits reserved against a fresh request. */
+export async function givenReservation(
+  amount: number,
+): Promise<{ requesterId: string; requestId: string }> {
+  const requesterId = newUserId();
+  const requestId = newRequestId();
+  await allocateInitialCredits(requesterId);
+  await reserveCredits(requesterId, requestId, amount);
+  return { requesterId, requestId };
+}
+
+/** A user who exists and has been allocated their starting credits. */
+export async function givenFundedUser(): Promise<string> {
+  const userId = newUserId();
+  await allocateInitialCredits(userId);
+  return userId;
 }
 
 export async function closePool(): Promise<void> {

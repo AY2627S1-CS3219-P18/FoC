@@ -12,37 +12,78 @@
  * Author review: Congchen
  */
 
-import { useEffect } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import TopNav from './components/TopNav'
-import Footer from './components/Footer'
-import LoginModal from './components/LoginModal'
-import DemoControls from './components/DemoControls'
-import ChatBubble from './components/ChatBubble'
-import Landing from './pages/Landing'
-import Suppliers from './pages/Suppliers'
-import SupplierDetail from './pages/SupplierDetail'
-import CreateRequest from './pages/CreateRequest'
-import RequestBoard from './pages/RequestBoard'
-import Activity from './pages/Activity'
-import Chat from './pages/Chat'
-import Wallet from './pages/Wallet'
-import AdminSuppliers from './pages/AdminSuppliers'
-import AdminSupplierForm from './pages/AdminSupplierForm'
+/*
+ * AI Assistance Disclosure:
+ * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
+ * Scope: Added the route for editing an existing request.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
+ * Scope: Added /login; wrapped the four pages that used to gate themselves via the deleted
+ *        LoginModal (Activity, Wallet, Chat, CreateRequest, including the edit route) in
+ *        RequireAuth; removed the LoginModal mount, per instructions.md Stage 16b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /register, per instructions.md Stage 16c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /forgot-password, per instructions.md Stage 16d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /account behind RequireAuth, per instructions.md Stage 16e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
+ * Scope: Added /admin/users behind RequireAuth + RequireRole(minimum="admin"), per
+ *        instructions.md Stage 16g.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ */
+
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import TopNav from "./components/TopNav";
+import Footer from "./components/Footer";
+import DemoControls from "./components/DemoControls";
+import ChatBubble from "./components/ChatBubble";
+import { RequireAuth, RequireRole } from "./components/RouteGuards";
+import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import Account from "./pages/Account";
+import Suppliers from "./pages/Suppliers";
+import SupplierDetail from "./pages/SupplierDetail";
+import CreateRequest from "./pages/CreateRequest";
+import RequestBoard from "./pages/RequestBoard";
+import Activity from "./pages/Activity";
+import Chat from "./pages/Chat";
+import Wallet from "./pages/Wallet";
+import AdminSuppliers from "./pages/AdminSuppliers";
+import AdminSupplierForm from "./pages/AdminSupplierForm";
+import AdminUsers from "./pages/AdminUsers";
 
 function ScrollToTop() {
-  const { pathname } = useLocation()
+  const { pathname } = useLocation();
   // Block body: an implicit return makes React treat the result as a cleanup function.
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
-  return null
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
 }
 
 export default function App() {
-  const { pathname } = useLocation()
+  const { pathname } = useLocation();
   // The chat thread fills the viewport, so it does not carry the marketing footer.
-  const showFooter = !pathname.startsWith('/chat')
+  const showFooter = !pathname.startsWith("/chat");
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -51,24 +92,83 @@ export default function App() {
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route
+            path="/account"
+            element={
+              <RequireAuth>
+                <Account />
+              </RequireAuth>
+            }
+          />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/suppliers/:id" element={<SupplierDetail />} />
-          <Route path="/requests/new" element={<CreateRequest />} />
+          <Route
+            path="/requests/new"
+            element={
+              <RequireAuth>
+                <CreateRequest />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/requests/:id/edit"
+            element={
+              <RequireAuth>
+                <CreateRequest />
+              </RequireAuth>
+            }
+          />
           <Route path="/requests" element={<RequestBoard />} />
-          <Route path="/activity" element={<Activity />} />
+          <Route
+            path="/activity"
+            element={
+              <RequireAuth>
+                <Activity />
+              </RequireAuth>
+            }
+          />
           <Route path="/chat" element={<Navigate to="/chat/r6" replace />} />
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/wallet" element={<Wallet />} />
+          <Route
+            path="/chat/:id"
+            element={
+              <RequireAuth>
+                <Chat />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/wallet"
+            element={
+              <RequireAuth>
+                <Wallet />
+              </RequireAuth>
+            }
+          />
           <Route path="/admin/suppliers" element={<AdminSuppliers />} />
           <Route path="/admin/suppliers/new" element={<AdminSupplierForm />} />
-          <Route path="/admin/suppliers/:id/edit" element={<AdminSupplierForm />} />
+          <Route
+            path="/admin/suppliers/:id/edit"
+            element={<AdminSupplierForm />}
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <RequireAuth>
+                <RequireRole minimum="admin">
+                  <AdminUsers />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       {showFooter && <Footer />}
-      <LoginModal />
       <ChatBubble />
       <DemoControls />
     </div>
-  )
+  );
 }

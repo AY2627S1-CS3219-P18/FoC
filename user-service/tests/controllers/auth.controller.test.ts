@@ -4,6 +4,11 @@
 // Author review:
 // 27/09/2026: Stage 11 - updated fixtures for the new activeView field
 // Author review:
+// 2026-10-17: Stage 13b/13c - replaced GET /auth/verify tests with GET
+//   /auth/.well-known/jwks.json tests; the two unrelated "token still valid" checks that
+//   reused /auth/verify now use GET /users/me instead. Governing decision: instructions.md
+//   Stage 13b and 13c.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -43,7 +48,7 @@ import {
   registerPending,
   userInput,
 } from '../helpers/fixtures.js';
-import { signExpiredToken, signToken, signWithOtherKey, tamperSignature } from '../helpers/keys.js';
+import { signExpiredToken, signToken } from '../helpers/keys.js';
 
 resetEmailMock();
 beforeEach(truncateAll);
@@ -611,7 +616,7 @@ describe('POST /auth/logout', () => {
     const { accessToken, refreshToken } = await loginTokens(user);
     await post('/auth/logout').set('Cookie', refreshCookie(refreshToken));
     const res = await request(app)
-      .get('/auth/verify')
+      .get('/users/me')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
   });
@@ -703,56 +708,34 @@ describe('POST /auth/refresh', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+describe('GET /auth/.well-known/jwks.json', () => {
+  it('requires no Authorization header: 200 { keys: [...] }', async () => {
+    const res = await request(app).get('/auth/.well-known/jwks.json');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.keys)).toBe(true);
+    expect(res.body.keys).toHaveLength(1);
+  });
+
+  it('publishes the current key in JWK format, matching the kid on a freshly issued token', async () => {
+    const res = await request(app).get('/auth/.well-known/jwks.json');
+    const [key] = res.body.keys;
+    expect(key).toMatchObject({ kty: 'RSA', use: 'sig', alg: 'RS256' });
+    expect(typeof key.n).toBe('string');
+    expect(typeof key.e).toBe('string');
+
+    const token = signToken();
+    const { header } = jwt.decode(token, { complete: true })!;
+    expect(header.kid).toBe(key.kid);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 describe('GET /auth/verify', () => {
-  const INVALID = { message: 'Invalid token', code: 'INVALID_TOKEN' };
-  const get = (token?: string, scheme = 'Bearer') => {
-    const r = request(app).get('/auth/verify');
-    return token === undefined ? r : r.set('Authorization', `${scheme} ${token}`);
-  };
-
-  it('valid access token: 200 { user_id, role }', async () => {
-    const user = await createActiveUser(1);
-    const { accessToken } = await loginTokens(user);
-    const res = await get(accessToken);
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ user_id: user.id, role: 'user' });
-  });
-
-  it('returns the role from the token claims', async () => {
-    const res = await get(signToken({ sub: 'abc', role: 'super admin' }));
-    expect(res.body).toEqual({ user_id: 'abc', role: 'super admin' });
-  });
-
-  it('no Authorization header: 401 INVALID_TOKEN', async () => {
-    const res = await get();
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual(INVALID);
-  });
-
-  it('non-Bearer scheme: 401 INVALID_TOKEN', async () => {
-    const res = await get(signToken(), 'Basic');
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual(INVALID);
-  });
-
-  it.each([
-    ['garbage', () => 'not-a-token'],
-    ['expired', () => signExpiredToken()],
-    ['tampered signature', () => tamperSignature(signToken())],
-    ['well-formed but signed with a different key pair', () => signWithOtherKey()],
-  ])('%s token: 401 INVALID_TOKEN', async (_n, make) => {
-    const res = await get(make());
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual(INVALID);
-  });
-
-  it('does not check user status: a suspended user’s unexpired token still verifies', async () => {
-    const user = await createActiveUser(1);
-    const { accessToken } = await loginTokens(user);
-    await setUserStatus(user.id, 'suspended');
-    const res = await get(accessToken);
-    expect(res.status).toBe(200);
-    expect(res.body.user_id).toBe(user.id);
+  it('no longer exists: 404', async () => {
+    const res = await request(app)
+      .get('/auth/verify')
+      .set('Authorization', `Bearer ${signToken()}`);
+    expect(res.status).toBe(404);
   });
 });
 
@@ -1505,7 +1488,7 @@ describe('POST /auth/reset-password', () => {
       const { accessToken } = await loginTokens(user);
       await reset(user.email, otp);
       const res = await request(app)
-        .get('/auth/verify')
+        .get('/users/me')
         .set('Authorization', `Bearer ${accessToken}`);
       expect(res.status).toBe(200);
     });

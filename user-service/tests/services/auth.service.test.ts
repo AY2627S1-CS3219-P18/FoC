@@ -4,6 +4,12 @@
 // Author review:
 // 27/09/2026: Stage 11 - updated fixtures for the new activeView field
 // Author review:
+// 2026-10-23: Stage 14d - added coverage for the credit_allocation_outbox row
+//   verifyRegistrationOtp inserts on a successful activation (and the absence of one on a
+//   failing verify), which had no test coverage at all before this change (Stage 14 deferred
+//   its tests to the end-of-project test stage). No requirements, architecture, schema, or API
+//   decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
@@ -14,6 +20,7 @@ import {
   backdateOtps,
   countUsers,
   expireOtps,
+  getCreditAllocationOutboxRows,
   getOtps,
   getRefreshTokenByPlain,
   getRefreshTokens,
@@ -325,6 +332,30 @@ describe('verifyRegistrationOtp', () => {
       authService.verifyRegistrationOtp({ email: u.email, otp: wrongOtp(latestOtpFor(u.email)) }),
     );
     expect((await getOtps(u.id))[0]!.attempts_count).toBe(1);
+  });
+
+  // Stage 14d: activation inserts a credit_allocation_outbox row in the same transaction.
+  it('inserts exactly one pending credit_allocation_outbox row for the user on activation', async () => {
+    const u = await registerPending(1);
+    await authService.verifyRegistrationOtp({ email: u.email, otp: latestOtpFor(u.email) });
+    const rows = await getCreditAllocationOutboxRows(u.id);
+    expect(rows).toEqual([{ status: 'pending' }]);
+  });
+
+  it('a failing verify (wrong OTP) creates no outbox row', async () => {
+    const u = await registerPending(1);
+    await appError(
+      authService.verifyRegistrationOtp({ email: u.email, otp: wrongOtp(latestOtpFor(u.email)) }),
+    );
+    expect(await getCreditAllocationOutboxRows(u.id)).toEqual([]);
+  });
+
+  it('a failing verify (expired OTP) creates no outbox row', async () => {
+    const u = await registerPending(1);
+    const otp = latestOtpFor(u.email);
+    await expireOtps(u.id);
+    await appError(authService.verifyRegistrationOtp({ email: u.email, otp }));
+    expect(await getCreditAllocationOutboxRows(u.id)).toEqual([]);
   });
 });
 

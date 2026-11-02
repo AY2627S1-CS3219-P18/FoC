@@ -2359,4 +2359,888 @@ Validation / errors:
 Concurrency:
 
 - Two concurrent `confirm-password-change` calls with the correct OTP → exactly one `200`, the other `400 INVALID_OTP`, password changed once
+
+## Stage 13: Auth Distribution — JWKS Instead of `GET /auth/verify`
+
+> **Scope**: Replace the current inter-service auth pattern — `supplier-service` (and, going
+> forward, `order-service` and `credit-service`) calling `GET /auth/verify` on `user-service`
+> for every request — with each consuming service verifying the access token itself, locally,
+> against `user-service`'s public key. `user-service` publishes its public key(s) at a JWKS
+> endpoint instead of answering a per-request verify call. This stage only covers `user-service`
+> (signing/publishing side) and a guide for implementers; it does not implement verification
+> inside `order-service`, `supplier-service`, or `credit-service` — see Stage 13d.
+>
+> This supersedes the auth pattern documented in `SupplierServiceArchitecture.md §7` and
+> `SupplierServiceSpec.md`. **Scope correction (2026-10-17):** those two docs are _not_ updated
+> as part of this stage — the user-service owner only touches `user-service` and this file;
+> updating the supplier-service docs is left to that service's own owner.
+
+### Design decisions (already made, do not change)
+
+| Rule                                     | Value                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signing algorithm                        | RS256, unchanged. `user-service` keeps signing with its private key; nothing about `signAccessToken`'s claims changes.                                                                                                                                                                                                                               |
+| Key pair for this stage                  | Reuse the existing `user-service/keys/private.pem` / `public.pem` (RSA-2048) as the first key published via JWKS. No new key pair is generated for this stage.                                                                                                                                                                                       |
+| Distribution mechanism                   | JWKS. `user-service` exposes its public key(s) at a new, unauthenticated endpoint; consuming services fetch and cache them instead of calling an endpoint per request.                                                                                                                                                                               |
+| JWKS endpoint                            | `GET /auth/.well-known/jwks.json` on `user-service`, mounted on the existing `/auth` router. Public, no `authenticate` middleware. Returns `{ keys: [...] }`, standard JWK format (RFC 7517).                                                                                                                                                        |
+| Token claims                             | Unchanged (`sub` → `user_id`, `role`). No `aud` claim. The only addition is `kid` in the **JWT header** (not the payload), identifying which key signed the token.                                                                                                                                                                                   |
+| Key rotation mechanism                   | Smooth transfer via JWKS: when rotating, the new key's public half is published under a new `kid` and signing cuts over to it; the just-retired key's public half stays published under its own `kid` (as the "previous" key) until its most recently issued tokens (max lifetime: `ACCESS_TOKEN_TTL_MINUTES`) have all expired, then it is dropped. |
+| Key/kid configuration                    | One set of env vars per key, not a keystore file. Current signing key: `JWT_KEY_ID`, `JWT_PRIVATE_KEY_PATH`, `JWT_PUBLIC_KEY_PATH` (the last two already exist). Previous key, set only during a rotation overlap window: `JWT_PREVIOUS_KEY_ID`, `JWT_PREVIOUS_PUBLIC_KEY_PATH` (optional; no private key needed for a retired key).                 |
+| Access token lifetime                    | Unchanged — `ACCESS_TOKEN_TTL_MINUTES` (currently 15). Not part of this stage.                                                                                                                                                                                                                                                                       |
+| Cutover                                  | Instant/hard cutover. `GET /auth/verify` is removed in this stage, not deprecated alongside the new endpoint. There is no dual-support window at the API level (the key-rotation overlap above is a separate, narrower concept — it overlaps _keys_ in the JWKS, not _verification methods_).                                                        |
+| Services in scope for consuming the JWKS | `order-service`, `supplier-service`, `credit-service` — all three.                                                                                                                                                                                                                                                                                   |
+| Who implements the consuming side        | Not this stage. Stage 13d is a guide only; each service's own implementer writes and owns their verification code.                                                                                                                                                                                                                                   |
+
+---
+
+### Stage 13a: Per-Key Config + Signing/Verification by `kid`
+
+#### Add to `user-service/src/config.ts`
+
+- `JWT_KEY_ID` (required) — the `kid` for the current signing key.
+- `JWT_PREVIOUS_KEY_ID` (optional) and `JWT_PREVIOUS_PUBLIC_KEY_PATH` (optional) — set together
+  only during a rotation overlap window; both absent otherwise.
+- Expose these under `config.jwt` alongside the existing `privateKeyPath` / `publicKeyPath`.
+
+#### Change `user-service/src/utils/jwt.ts`
+
+- Load the current key as `{ kid: config.jwt.keyId, privateKey, publicKey }` from the existing
+  paths.
+- If both `JWT_PREVIOUS_KEY_ID` and `JWT_PREVIOUS_PUBLIC_KEY_PATH` are set, also load a previous
+  key as `{ kid, publicKey }` (no private key).
+- `signAccessToken` — same claims as today; add the `keyid` sign option (`jsonwebtoken`'s
+  built-in way of setting the JWT header's `kid`) set to the current key's `kid`.
+- `verifyAccessToken` — decode the token's header first to read `kid`, look it up against the
+  known keys (current, and previous if loaded), and verify with whichever key's public half
+  matches. An unknown or missing `kid` is treated as an invalid token (same `401` behavior as
+  any other verification failure today — no new error shape).
+- Add `getJwks()` — returns `{ keys: [...] }`: for each known public key, export it as a JWK
+  (Node's `crypto.createPublicKey(pem).export({ format: 'jwk' })` already yields `{ kty, n, e }`
+  for an RSA key — no extra dependency needed) and add `kid`, `use: 'sig'`, `alg: 'RS256'`.
+
+#### Verification
+
+- A token signed by the current key verifies and its `kid` round-trips through `getJwks()`'s
+  output.
+- A token with no `kid` header, or a `kid` that matches neither known key, fails verification
+  the same way a bad-signature token does today.
+- With `JWT_PREVIOUS_KEY_ID` / `JWT_PREVIOUS_PUBLIC_KEY_PATH` unset (the normal case), `getJwks()`
+  returns exactly one key.
+
+---
+
+### Stage 13b: JWKS Endpoint
+
+#### Add to `user-service/src/controllers/auth.controller.ts`
+
+- `jwks` — `asyncHandler`, no auth check, calls `getJwks()` and returns `200` with its result
+  directly.
+
+#### Add to `user-service/src/routes/auth.routes.ts`
+
+```ts
+router.get("/.well-known/jwks.json", authController.jwks);
+```
+
+#### Remove from `user-service/src/routes/auth.routes.ts` and `auth.controller.ts`
+
+- `router.get('/verify', authController.verify)` and the `verify` controller itself (Stage 13c
+  covers the knock-on test/doc updates this removal needs).
+
+#### Verification
+
+- `GET /auth/.well-known/jwks.json` requires no `Authorization` header and returns `200` with
+  the current key in JWK format.
+- `GET /auth/verify` no longer exists (`404`).
+
+---
+
+### Stage 13c: Remove `GET /auth/verify` — Tests and Docs
+
+#### `user-service` tests
+
+- `tests/controllers/auth.controller.test.ts` — remove the `describe('GET /auth/verify', ...)`
+  block. The two unrelated tests that reuse `GET /auth/verify` purely as a "is this access token
+  still valid" check (one under `POST /auth/logout`, one under password reset) need a different
+  authenticated route to check against instead — `GET /users/me` already exists and is
+  `authenticate`-protected.
+- `tests/middleware/authenticate.test.ts` — remove the
+  `describe('authenticate and GET /auth/verify agree on the same token', ...)` block (the thing
+  it was cross-checking against no longer exists).
+- Add coverage for the new behavior: the JWKS endpoint's shape and public-access, and
+  `verifyAccessToken`/`signAccessToken` round-tripping by `kid` (Stage 13a's verification bullets
+  above, as actual test cases).
+
+#### Docs
+
+**Scope correction (2026-10-17):** out of scope for this stage. `supplier-service/SupplierServiceArchitecture.md §7`
+and `supplier-service/SupplierServiceSpec.md` still describe calling `GET /auth/verify`; the
+user-service owner does not touch them — the user is notifying the supplier-service owner
+directly to update them, pointing at the JWKS flow and the Stage 13d guide. (Root `README.md`
+was checked and has no such contract-description prose to update — only historical Log-index
+rows mentioning the old endpoint, which stay as-is.)
+
+---
+
+### Stage 13d: Guide for `order-service` / `supplier-service` / `credit-service` Implementers
+
+This is documentation, not implementation — write a guide (not code) for whoever implements
+token verification in each of the three consuming services. It must cover, at minimum:
+
+- Fetching the JWKS from `GET {USER_SERVICE_URL}/auth/.well-known/jwks.json`.
+- Caching keys by `kid` and a reasonable refetch strategy for a `kid` not currently in the
+  cache (so key rotation doesn't require restarting every consuming service).
+- Verifying the token's signature (RS256) against the matched key, and reading `sub` → `user_id`
+  and `role` off the verified payload — the same two fields `GET /auth/verify` used to return.
+- Rejecting with `401` on a missing/invalid/unverifiable token, consistent with how
+  `user-service`'s own `authenticate` middleware already behaves.
+- Noting that `supplier-service/src/middleware/authenticate.ts` currently calls the
+  now-removed `GET /auth/verify` and must be rewritten by its implementer following this guide —
+  this stage does not rewrite it.
+
+Each service's own implementer writes and owns that service's verification code; this guide
+only tells them how, per the decisions in this stage.
+
 - Running `POST /auth/login` with the OLD password in a loop while the reset completes → no non-revoked refresh token survives from an old-password login after the change commits
+
+# Stage 14: Initial Credit Allocation via Transactional Outbox
+
+> **Scope**: When a user becomes active, user-service tells credit-service to allocate their
+> initial credits. The request is recorded in an outbox table in `user-db` in the **same
+> transaction** as the activation, and a relay running inside user-service delivers it to
+> credit-service's `POST /credits/allocate` over HTTP, retrying on failure. Credit-service's side
+> is already built and is not touched in this stage.
+>
+> Activation points covered: registration OTP verification (`verifyRegistrationOtp`) and the
+> super admin bootstrap (when it actually creates the super admin).
+>
+> Backlog refs: F19.1.1 (allocation itself is credit-service's; this stage triggers it). D3 Parts 2–3.
+>
+> **Before starting:** if any `[DECIDE]` placeholder remains anywhere in this stage, stop and ask
+> me. Do not pick a value yourself.
+
+### Design decisions (already made, do not change)
+
+| Rule                    | Value                                                                                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transport               | HTTP. `POST {CREDIT_SERVICE_URL}/credits/allocate`, JSON body `{ "userId": "<uuid>" }`. No message broker.                                                                                                       |
+| Credit-service contract | `201` = allocated. `409 ALREADY_ALLOCATED` = already allocated, nothing granted. Credit dedupes on `userId` only. No service-to-service auth. No `Idempotency-Key` or other custom header is sent.               |
+| Durability              | Transactional outbox: the outbox row is inserted with the same `client` and in the same `withTransaction` as the activation (or the super admin insert). Both commit or neither does.                            |
+| Relay location          | Inside user-service. Started from `server.ts` after the super admin bootstrap. `app.ts` must not start it (tests import `app`).                                                                                  |
+| Poll interval           | 1 second between passes                                                                                                                                                                                          |
+| Batch size              | 5 rows per group; a pass repeats groups until no row is due (see "Delivery within a pass")                                                                                                                       |
+| Request timeout         | 3 seconds per call                                                                                                                                                                                               |
+| Claiming                | None. Two relays may deliver the same row; Credit's `409` makes that harmless. Do not add `FOR UPDATE SKIP LOCKED`, a claim column, or any other claiming mechanism.                                             |
+| Max attempts            | 10 failed attempts, then the row is `dead`                                                                                                                                                                       |
+| Backoff                 | Exponential with full jitter (see "Backoff" below)                                                                                                                                                               |
+| Dead rows               | Kept. Recovered only by the replay script (Stage 14e).                                                                                                                                                           |
+| Sent rows               | Kept with `status = 'sent'`, never deleted                                                                                                                                                                       |
+| Observability           | The outbox row is the record: `status`, `attempts`, `last_error`, `updated_at`. No per-attempt log lines. The only console output is `console.error` when a whole relay pass fails (e.g. `user-db` unreachable). |
+| Super admin             | Gets credits. Bootstrap inserts an outbox row only when it actually created the super admin.                                                                                                                     |
+| Already-active users    | Ignored. No backfill.                                                                                                                                                                                            |
+| Config                  | `CREDIT_SERVICE_URL` is an env var. Every other value in this table is a constant in code.                                                                                                                       |
+
+### Outcome → action
+
+| Outcome of a delivery attempt                                                                                            | Action                                                             |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Any `2xx` (including `201`)                                                                                              | `sent`                                                             |
+| `409`                                                                                                                    | `sent`                                                             |
+| `400`, `401`, `403`, `404`, `500`                                                                                        | `dead` immediately (`attempts` incremented, `last_error` recorded) |
+| `429`, and any `5xx` other than `500` (e.g. `502`, `503`, `504`)                                                         | Retry with backoff; `dead` once `attempts` reaches 10              |
+| Timeout (3 s) or network error (`ECONNREFUSED`, `ENOTFOUND`, `ECONNRESET`, etc.)                                         | Retry with backoff; `dead` once `attempts` reaches 10              |
+| `408`, `425` (may resolve on their own)                                                                                  | Retry with backoff; `dead` once `attempts` reaches 10              |
+| Any other status not listed above, including every other `3xx` and `4xx` (won't resolve without a code or config change) | `dead` immediately (`attempts` incremented, `last_error` recorded) |
+
+`last_error` format:
+
+- HTTP response: `HTTP <status>` followed by the response body's `code` if the body is JSON and has one, e.g. `HTTP 500 BALANCE_INVARIANT_VIOLATION`. Never store the full response body.
+- Timeout: `TIMEOUT`
+- Network error: `NETWORK <error code>`, e.g. `NETWORK ECONNREFUSED`
+
+### Backoff
+
+`attempts` counts failed attempts. After the n-th failed attempt (n = the new `attempts` value):
+
+- If n ≥ 10 → `status = 'dead'`
+- Otherwise → `next_attempt_at = clock_timestamp() + (random() × min(300, 1 × 2^(n−1))) seconds`
+
+So the caps on the wait are 1, 2, 4, …, 256 seconds, and the actual wait is a random value between 0 and the cap. Compute this in SQL (clock rule: the database owns time), not with `Date.now()` or `Math.random()`. A row whose wait has passed is picked up by the next group, in the same pass or the next one.
+
+### Delivery within a pass
+
+A pass works through the backlog in groups of 5:
+
+1. `findDueCreditAllocations(5)`
+2. If it returns no rows, the pass ends.
+3. Otherwise, send all of the returned rows concurrently, wait until every request has settled (`Promise.allSettled`, so one failure never stops the others' results from being recorded), and record each result.
+4. Go back to step 1 immediately. There is no 1-second wait between groups.
+
+A pass ends only when no row is due. Rows still waiting out their backoff are not due, so they don't keep the pass going; a row whose wait expires during the pass is picked up by a later group in the same pass. Each group takes at most 3 s (the request timeout).
+
+Passes never overlap within one process: schedule the next pass 1 second after the current pass finishes (chained `setTimeout`), not with `setInterval`.
+
+---
+
+## Changes to already-implemented code (do these as part of the sub-stages below)
+
+| #   | File                                                     | Change                                                                                                                                              | Where specified |
+| --- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 1   | `src/db/init.sql`                                        | New `outbox_status_enum` and `credit_allocation_outbox` table                                                                                       | Stage 14a       |
+| 2   | `.env.example`, `.env`, `.env.test`, `src/config.ts`     | Add `CREDIT_SERVICE_URL`                                                                                                                            | Stage 14a       |
+| 3   | `src/services/auth.service.ts` (`verifyRegistrationOtp`) | Insert the outbox row after `activateUser` succeeds, same `client`. Replace the `// TODO(credit-service): emit user-registered event here` comment. | Stage 14d       |
+| 4   | Super admin bootstrap                                    | Run `createSuperAdmin` and the outbox insert in one `withTransaction`; insert the outbox row only if `createSuperAdmin` returned a row              | Stage 14d       |
+| 5   | `src/server.ts`                                          | Start the relay after the bootstrap                                                                                                                 | Stage 14c       |
+| 6   | `package.json`                                           | Add the `outbox:replay` script                                                                                                                      | Stage 14e       |
+
+---
+
+## Stage 14a: Schema + Config
+
+### Update `src/db/init.sql`
+
+Add, using the same safe-creation pattern as the existing enums:
+
+```sql
+DO $$ BEGIN
+  CREATE TYPE outbox_status_enum AS ENUM ('pending', 'sent', 'dead');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS credit_allocation_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  status outbox_status_enum NOT NULL DEFAULT 'pending',
+  attempts SMALLINT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+`init.sql` only runs on a fresh volume. Remind me in your summary to reset with `docker compose down -v` (dev data only), and that the test database is rebuilt from `init.sql` by `globalSetup.ts`.
+
+### Update `.env.example`, `.env`, `.env.test`
+
+```env
+# Credit service
+CREDIT_SERVICE_URL=http://credit-service:3003
+```
+
+In `.env.test` use `http://localhost:3003` (no test calls it yet).
+
+### Update `src/config.ts`
+
+- Add `CREDIT_SERVICE_URL` to the Zod schema as a required URL string.
+- Expose it as `config.creditService.url`.
+- Strip a trailing slash if present, so `${url}/credits/allocate` is always well-formed.
+
+### Verification
+
+- `docker compose down -v && docker compose up --build` starts cleanly
+- `\d credit_allocation_outbox` shows the table; `\dT+ outbox_status_enum` shows `pending`, `sent`, `dead`
+- Remove `CREDIT_SERVICE_URL` from `.env` → the app exits with a clear error naming it (revert afterwards)
+
+---
+
+## Stage 14b: Outbox Queries
+
+### Create `src/db/queries/creditOutbox.queries.ts`
+
+All functions take `db: Queryable` as the last parameter (default `pool` where the function is not transaction-only).
+
+- `insertCreditAllocation(userId, db)` — `INSERT INTO credit_allocation_outbox (user_id) VALUES ($1) RETURNING id`. Transaction-only: `db` is required.
+- `findDueCreditAllocations(limit, db = pool)` — rows with `status = 'pending' AND next_attempt_at <= clock_timestamp()`, ordered by `next_attempt_at, created_at`, `LIMIT $1`. Plain read, no locking (see Claiming).
+- `markCreditAllocationSent(id, db = pool)` — `SET status = 'sent', updated_at = NOW() WHERE id = $1 AND status = 'pending'`. Returns whether a row was updated.
+- `markCreditAllocationDead(id, lastError, db = pool)` — `SET status = 'dead', attempts = attempts + 1, last_error = $2, updated_at = NOW() WHERE id = $1 AND status = 'pending'`. Returns whether a row was updated.
+- `recordCreditAllocationFailure(id, lastError, { maxAttempts, baseDelaySeconds, maxDelaySeconds }, db = pool)` — one conditional `UPDATE ... WHERE id = $1 AND status = 'pending'` that:
+  - sets `attempts = attempts + 1`, `last_error = $2`, `updated_at = NOW()`
+  - sets `status = 'dead'` if `attempts + 1 >= maxAttempts`, else leaves it `'pending'`
+  - when still pending, sets `next_attempt_at = clock_timestamp() + make_interval(secs => random() * LEAST(maxDelaySeconds, baseDelaySeconds * power(2, attempts)))`. In an `UPDATE`, `attempts` on the right-hand side is the **old** value (n − 1), which gives the 2^(n−1) cap from the Backoff section.
+
+  Returns whether a row was updated. `maxAttempts`, `baseDelaySeconds` and `maxDelaySeconds` are passed as query parameters from the relay's constants, not hard-coded in the SQL.
+
+- `replayDeadCreditAllocations(ids: string[] | null, db = pool)` — `SET status = 'pending', attempts = 0, next_attempt_at = NOW(), updated_at = NOW() WHERE status = 'dead'` and, when `ids` is not null, `AND id = ANY($1)`. Leave `last_error` unchanged. `RETURNING id`.
+
+Every state change is a conditional `UPDATE ... WHERE status = '<expected>'` (convention 3), so a relay can never move a row out of `sent` or `dead`.
+
+### Verification
+
+- Covered through 14c–14e.
+
+---
+
+## Stage 14c: The Relay
+
+### Create `src/services/creditOutbox.relay.ts`
+
+Constants at the top of the file:
+
+```ts
+const POLL_INTERVAL_MS = 1000;
+const BATCH_SIZE = 5;
+const REQUEST_TIMEOUT_MS = 3000;
+const MAX_ATTEMPTS = 10;
+const BASE_DELAY_SECONDS = 1;
+const MAX_DELAY_SECONDS = 300;
+```
+
+**`classifyResponseStatus(status: number)`** — pure function, no I/O. Returns `'sent' | 'dead' | 'retry'` per the Outcome → action table. Keep it separate so it can be unit-tested later.
+
+**`deliverCreditAllocation(userId)`**:
+
+- Sends the request:
+
+  ```ts
+  fetch(`${config.creditService.url}/credits/allocate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  ```
+
+- Returns `{ action: 'sent' | 'dead' | 'retry', error?: string }`, where `error` follows the `last_error` format
+- A timeout → `retry`, `TIMEOUT`. Any other thrown network error → `retry`, `NETWORK <code>` (use the error's `cause.code` if present, else `UNKNOWN`)
+- Read the response body only to extract `code` for `last_error`. If the body isn't JSON, ignore it. Never store or log the body.
+
+**One pass**: follows "Delivery within a pass" (groups of `BATCH_SIZE`, sent concurrently, repeated until no row is due). For each result in a group:
+
+- `sent` → `markCreditAllocationSent`; `dead` → `markCreditAllocationDead`; `retry` → `recordCreditAllocationFailure` (passing `MAX_ATTEMPTS`, `BASE_DELAY_SECONDS`, `MAX_DELAY_SECONDS`)
+- A `false` return from any of these (row no longer pending, e.g. another relay already handled it) is not an error. Skip it.
+
+**`startCreditOutboxRelay(): { stop(): Promise<void> }`**:
+
+- Runs a pass, then schedules the next one `POLL_INTERVAL_MS` after the pass finishes
+- If a pass throws (e.g. `user-db` unreachable), `console.error` a single line with the error message (no user data, no response bodies) and continue with the next scheduled pass. The relay must never crash the process.
+- `stop()` cancels the next scheduled pass and resolves once any in-flight pass finishes
+
+### Update `src/server.ts`
+
+- After the super admin bootstrap completes, call `startCreditOutboxRelay()`.
+- If `server.ts` already handles shutdown signals, call `stop()` there. If it doesn't, do not add signal handling in this stage; tell me instead.
+- `app.ts` must not import or start the relay.
+
+### Verification
+
+- With credit-service running: a pending row becomes `sent` within about a second, and credit-service shows a balance for that user
+- With credit-service stopped (`docker compose stop credit-service`): the row stays `pending`, `attempts` goes up over time, `last_error` shows a `NETWORK ...` error, and `next_attempt_at` moves further out roughly as described in Backoff. Start credit-service again → the row becomes `sent` at its next due attempt
+- Backdate `next_attempt_at` between attempts to speed it up: after the 10th failed attempt the row is `dead`, and the relay stops picking it up
+- Insert more than 5 due rows at once (e.g. several pending rows via SQL for existing users) → they are delivered in groups of at most 5 within a single pass, with no 1-second gap between groups
+- Set `CREDIT_SERVICE_URL=http://credit-service:3003/nonexistent` → credit-service returns `404` → the row goes straight to `dead` with `attempts = 1` and `last_error` starting `HTTP 404` (revert afterwards)
+- Manually set a `sent` row back to `pending` → the relay delivers it again, credit-service returns `409`, the row becomes `sent`, and the user's balance is unchanged
+- While credit-service is down, the rest of user-service (login, register, etc.) responds normally
+- Stop `user-db` while user-service is running → one `console.error` line per failed pass, no crash; restart `user-db` → the relay resumes on its own
+
+---
+
+## Stage 14d: Wire Into Activation and Bootstrap
+
+### Update `verifyRegistrationOtp` in `src/services/auth.service.ts`
+
+- In the existing `withTransaction`, immediately after `activateUser(user.id, client)` returns `true`, call `insertCreditAllocation(user.id, client)`.
+- Remove the `// TODO(credit-service): emit user-registered event here` comment.
+- Nothing else in the function changes. In particular, the response does not wait for credit-service: verification succeeds even if credit-service is down.
+
+### Update the super admin bootstrap
+
+- Wrap `createSuperAdmin` and the outbox insert in one `withTransaction`, passing `client` to both.
+- Insert the outbox row only if `createSuperAdmin` returned a row (the insert was not skipped by `ON CONFLICT DO NOTHING`).
+- The existing "insert was skipped → re-check whether a super admin exists" logic is unchanged.
+- An already-existing super admin gets no outbox row (no backfill).
+
+### Verification
+
+- Register → verify OTP → `200 REGISTER_SUCCESS`; one `credit_allocation_outbox` row for that user, created in the same transaction; it becomes `sent` and credit-service shows a 20-credit balance
+- A failing verify (wrong OTP, expired OTP, attempts exceeded) creates no outbox row
+- Two concurrent correct `verify-otp` requests → exactly one outbox row (only one activation succeeds)
+- `docker compose down -v && docker compose up --build` → exactly one outbox row for the super admin, which becomes `sent`
+- Restart the containers without `-v` → no new outbox row for the super admin
+- With credit-service stopped, registration verification still returns `200 REGISTER_SUCCESS`
+
+---
+
+## Stage 14e: Replay Script
+
+### Create `src/scripts/replayCreditOutbox.ts`
+
+Usage:
+
+```bash
+npm run outbox:replay -- <outbox-id> [<outbox-id> ...]
+npm run outbox:replay -- --all-dead
+```
+
+- No arguments, or an argument that is neither `--all-dead` nor a UUID → print usage and exit `1`
+- Calls `replayDeadCreditAllocations` (with the IDs, or `null` for `--all-dead`)
+- Prints the IDs that were reset. For explicit IDs, also prints the ones that were not reset (not found, or not `dead`). Only `dead` rows are ever reset.
+- Ends the pool before exiting; exit `0` on success
+
+### Update `package.json`
+
+```json
+"outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"
+```
+
+Run it in dev with `docker exec -it foc-user-service npm run outbox:replay -- --all-dead`.
+
+### Verification
+
+- A `dead` row replayed by ID → `status = 'pending'`, `attempts = 0`, `last_error` unchanged; the relay then delivers it
+- `--all-dead` resets every `dead` row and nothing else
+- Replaying the ID of a `sent` or `pending` row → reported as not reset, row unchanged
+- No arguments or an invalid ID → usage message, exit code `1`
+
+---
+
+### Tests
+
+Deferred to the end-of-project test stage. Do not write tests in this stage.
+
+# Stage 15: User Service Changes for Frontend Integration
+
+> **Scope**: Backend changes the frontend needs. They are made before any frontend work:
+>
+> - `GET /users/me` also returns `activeView`
+> - `GET /users` becomes paginated, searchable, filterable and sortable
+> - every user-service JSON response uses camelCase keys
+>
+> DB columns stay snake_case.
+>
+> Backlog refs: F4.1.1, F5.2.2, F5.3.1.
+>
+> **Before starting:** if any `[DECIDE]` placeholder remains anywhere in Stages 15–16, stop and ask me. Do not pick a value yourself.
+
+### Design decisions (already made, do not change)
+
+| Rule                        | Value                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Response key convention     | camelCase for every JSON response from user-service. DB columns stay snake_case. Mapping happens in the service layer, in one place.                   |
+| Consumers of user responses | The frontend is the only consumer. No other service reads user-service response bodies, so this is not a breaking change for other services.           |
+| `GET /users/me`             | Returns `{ username, email, activeView }`                                                                                                              |
+| `GET /users` change         | Changed in place (no new endpoint). The old bare `{ users: [...] }` shape is replaced.                                                                 |
+| Pagination                  | Offset-based, `page` is 1-based, page size fixed at 50 (a constant, not a query param). A page past the end returns `200` with an empty `users` array. |
+| Total count                 | Returned, so the frontend can show the total number of pages                                                                                           |
+| Search                      | Two separate params: `username` (substring match) and `email` (exact match). Combined with AND.                                                        |
+| Filters                     | `status` and `role`, each optional, combined with search using AND                                                                                     |
+| Sort                        | `sortBy` one of `username`, `email`, `createdAt`; `sortDir` one of `asc`, `desc`. Not sortable by status or role. Default: `createdAt` `desc`.         |
+| Query param names           | `page`, `username`, `email`, `status`, `role`, `sortBy`, `sortDir`                                                                                     |
+| Pending users               | Still included (Stage 9 rule unchanged); `status` filter can isolate them                                                                              |
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                   | Change                                                                                                                                | Where specified |
+| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| 1   | `src/services/me.service.ts` (`getOwnProfile`)                         | Also return `activeView`                                                                                                              | Stage 15a       |
+| 2   | `src/db/queries/users.queries.ts` (`listAllUsers`)                     | Replaced by a paginated, filtered query plus a count                                                                                  | Stage 15b       |
+| 3   | `src/services/users.service.ts`, `src/controllers/users.controller.ts` | `listUsers` takes the query params and returns the paginated shape                                                                    | Stage 15b       |
+| 4   | Every service function that returns a user row                         | Return the camelCase response shape via one shared mapper instead of a `password_hash`-stripped DB row                                | Stage 15c       |
+| 5   | Existing tests                                                         | Update assertions that expect snake_case keys or the old `GET /users` shape. These are fixture/assertion updates, not new test cases. | Stage 15c       |
+
+---
+
+## Stage 15a: `activeView` on `GET /users/me`
+
+### Update `src/services/me.service.ts`
+
+`getOwnProfile(userId)` returns `{ username, email, activeView }`, where `activeView` comes from `user.active_view`. Nothing else changes.
+
+### Verification
+
+- `GET /users/me` → `200`, `{ username, email, activeView }`, no other fields
+- After `PUT /users/me/active-view {activeView: 'courier'}`, `GET /users/me` returns `activeView: 'courier'`
+
+---
+
+## Stage 15b: Paginated `GET /users`
+
+### Update `src/db/queries/users.queries.ts`
+
+Replace `listAllUsers` with `listUsersPage({ usernameContains, email, status, role, sortBy, sortDir, limit, offset }, db = pool)`:
+
+- Returns `{ rows, total }`. `total` counts **every** row matching the filters, ignoring `limit`/`offset`. Use the same `WHERE` clause for the count as for the rows: either a separate `COUNT(*)` query or `COUNT(*) OVER()`. If you use the window form, an empty page (past the end) still needs a correct `total`, so run a separate count when no rows come back.
+- `usernameContains`: `username LIKE '%' || $n || '%' ESCAPE '\'`, with `\`, `%` and `_` in the input escaped first, so user input is matched literally. Usernames are stored lowercase, and the controller lowercases the input.
+- `email`: exact `email = $n`
+- `status`, `role`: exact match
+- All values are bound parameters. `sortBy` and `sortDir` are **never** interpolated from input: map them through a fixed whitelist (`username` → `username`, `email` → `email`, `createdAt` → `created_at`; `asc`/`desc` → `ASC`/`DESC`).
+- Order by the chosen column, then `id` (same direction) as a tie-breaker
+- `LIMIT $limit OFFSET $offset`
+
+### Update `src/services/users.service.ts`
+
+`listUsers({ page, username, email, status, role, sortBy, sortDir })`:
+
+- `PAGE_SIZE = 50` constant at the top of the file
+- `offset = (page - 1) * PAGE_SIZE`
+- Calls `listUsersPage`, maps each row with the Stage 15c mapper
+- Returns `{ users, page, pageSize: PAGE_SIZE, total, totalPages: Math.ceil(total / PAGE_SIZE) }`
+
+### Update `src/controllers/users.controller.ts` (`list`)
+
+Validate `req.query` with Zod (`.strict()`, so an unknown param → `"Request contains unexpected fields"` via the global handler), messages in the existing style:
+
+- `page`: optional, default `1`, coerced to an integer ≥ 1 → `"Page must be a positive integer"`
+- `username`: optional string, lowercased (not trimmed, consistent with `usernameField`); empty string treated as absent → type error `"Username must be a string"`
+- `email`: optional string, trimmed and lowercased (same normalisation as `emailField`, but optional); empty string treated as absent → type error `"Email must be a string"`
+- `status`: optional, one of `pending`, `active`, `suspended` → `"Status must be 'pending', 'active' or 'suspended'"`
+- `role`: optional, one of `user`, `admin`, `super admin` → `"Role must be 'user', 'admin' or 'super admin'"`
+- `sortBy`: optional, one of `username`, `email`, `createdAt` → `"sortBy must be 'username', 'email' or 'createdAt'"`
+- `sortDir`: optional, one of `asc`, `desc` → `"sortDir must be 'asc' or 'desc'"`. When absent: `desc` if `sortBy` is absent or `createdAt`, otherwise `asc`.
+- A repeated param (Express turns `?status=a&status=b` into an array) fails the string type check → `400 VALIDATION_ERROR`
+
+Return `200` with the service result.
+
+### Verification
+
+- `GET /users` (no params) → `200`, `{ users, page: 1, pageSize: 50, total, totalPages }`, sorted by `createdAt` desc
+- With more than 50 users: `page=2` returns the next rows with no overlap or gap versus `page=1`
+- `page` past the last page → `200`, `users: []`, `total` still correct
+- `page=0`, `page=-1`, `page=abc`, `page=1.5` → `400 VALIDATION_ERROR`, `"Page must be a positive integer"`
+- `username=ali` matches `alice` and `malik`; `username=%` matches only usernames that literally contain `%` (none, given the username format rule)
+- `email=Alice@Example.com` matches `alice@example.com` exactly; `email=alice` matches nothing
+- `username` + `email` + `status` + `role` combined → only rows matching all of them
+- `status=pending` returns pending users
+- `role=super admin` (URL-encoded) returns the super admin
+- `sortBy=username&sortDir=asc` → alphabetical; `sortBy=status` → `400 VALIDATION_ERROR`
+- Unknown param (e.g. `?foo=1`) → `400 VALIDATION_ERROR`, `"Request contains unexpected fields"`
+- Regular user → `403 FORBIDDEN`; no token → `401 UNAUTHORIZED` (unchanged)
+- No `password_hash` (or `passwordHash`) on any entry
+
+---
+
+## Stage 15c: camelCase Responses
+
+### Create `src/services/userResponse.ts`
+
+`toUserResponse(row)` returns `{ id, username, email, status, role, activeView, createdAt, updatedAt }` from a DB user row. It must never include the password hash. Every service function that currently returns a user row with `password_hash` stripped uses this mapper instead (at least `listUsers`, `getUserById`, `changeUserStatus`, `changeUserRole`, `changeActiveView`, including their no-op return paths).
+
+### Sweep the rest of the service
+
+Search every controller and service for any other response body with a snake_case key and convert it. Leave these alone:
+
+- the JWKS response (its keys are fixed by RFC 7517)
+- JWT claims (`sub`, `role`)
+- error bodies (already `{ message, code }`)
+
+List every response you changed in your summary.
+
+### Update existing tests
+
+Update assertions that expect snake_case keys (e.g. `active_view`, `created_at`) or the old `GET /users` shape. Do not add new test cases. If an existing test now fails for a reason other than key naming or the response shape, stop and report it instead of changing it.
+
+### Verification
+
+- `GET /users/:id`, `PUT /users/:id/status`, `PUT /users/:id/role`, `PUT /users/me/active-view` all return `{ id, username, email, status, role, activeView, createdAt, updatedAt }`
+- The no-op paths of status and role changes return the same shape
+- `POST /auth/login`'s `user` object is unchanged (`{ id, username, email, role, activeView }`)
+- The full existing test suite passes after the assertion updates
+
+---
+
+# Stage 16: Frontend — User Service Integration
+
+> **Scope**: Wire `frontend/` to user-service:
+>
+> - shared auth plumbing
+> - login, registration (with OTP) and forgot password as pages
+> - the `/account` page
+> - the requester/courier toggle
+> - admin user management
+>
+> Backlog refs: F1, F2, F3, F4, F5.1, F5.2.2, F5.3.1, F5.3.3.
+>
+> **Ground rules for every sub-stage:**
+>
+> - Work in `frontend/` only. Never touch `foc-mockup/`.
+> - Read the current code before changing it. Where it disagrees with this file, follow the code and tell me.
+> - Do not modify `src/realtime/orderSocket.js`, `src/data/users.js`, `src/components/DemoControls.jsx` or `AI-NOTES.md`. If you think one of them needs a change, stop and tell me why.
+> - Do not change other teammates' pages except where a sub-stage says to (e.g. reading auth state). List every file outside user-service screens you touched.
+> - React 18, JSX (no TypeScript), react-router-dom, Context API, Tailwind, lucide-react, native `fetch` through `src/api/http.js`. Do not add React Query, Redux, axios or a form library.
+> - No tests in this stage (see the end of this file).
+
+### Design decisions (already made, do not change)
+
+| Rule                              | Value                                                                                                                                                                                                                                                                                        |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend access                    | Relative same-origin paths through the existing Vite dev proxy (`/auth`, `/users` → user-service). No `VITE_*` URL in the browser bundle.                                                                                                                                                    |
+| Access token                      | In memory only (never `localStorage`/`sessionStorage`). Attached as `Bearer` to every backend call, including supplier, order and credit.                                                                                                                                                    |
+| Refresh                           | Both: refresh-on-401-and-retry (exists in `http.js`) and proactive refresh before expiry. Concurrent callers share one in-flight refresh (exists in `http.js`).                                                                                                                              |
+| Auth state                        | A new `src/context/AuthContext.jsx`, separate from `DemoContext`                                                                                                                                                                                                                             |
+| API modules                       | `src/api/auth.js` (auth/OTP/reset), new `src/api/profile.js` (`/users/me/*`), new `src/api/users.js` (admin `/users*`)                                                                                                                                                                       |
+| Session restore                   | On load: `POST /auth/refresh`, decode the JWT for `id` and `role`, `GET /users/me` for `username`, `email`, `activeView`                                                                                                                                                                     |
+| Pages, not modals                 | Login, registration, forgot password are pages. `LoginModal` is replaced.                                                                                                                                                                                                                    |
+| Paths                             | `/login`, `/register` (one page: form step → OTP step), `/forgot-password` (one page: email → OTP → new password), `/account`, `/admin/users`. No frontend path may start with `/auth`, `/users`, `/credits`, `/orders`, `/api/v1` or `/socket.io` (the dev proxy would catch it on reload). |
+| Landing after login               | The page the user was sent away from, else home. Same for every role.                                                                                                                                                                                                                        |
+| Not logged in on a protected page | Redirect to `/login`, remembering the page                                                                                                                                                                                                                                                   |
+| Wrong role                        | Admin links hidden from non-admins. Opening an admin URL anyway shows a 403 "Not authorised" view **in place** (URL unchanged).                                                                                                                                                              |
+| Logout                            | Clear all client auth state even if `POST /auth/logout` fails, then go to `/login`                                                                                                                                                                                                           |
+| Refresh failure                   | Same as logout (clear, go to `/login`)                                                                                                                                                                                                                                                       |
+| Client validation                 | Mirror backend format rules (username, email, password complexity, 6-digit OTP) for instant feedback; the backend still enforces them                                                                                                                                                        |
+| Error display                     | Inline under the field for field-specific errors; banner at the top of the form for whole-form errors (e.g. invalid credentials, account suspended); toast for background errors (e.g. failed view toggle)                                                                                   |
+| Error text                        | The frontend maps backend `code` → its own text from one central map, with consistent phrasing. Backend `message` is not shown verbatim.                                                                                                                                                     |
+| OTP input                         | 6 boxes, digits only, auto-advance, backspace moves back, pasting a 6-digit code fills all boxes, auto-submits when all 6 are filled. On a wrong code: clear and refocus the first box.                                                                                                      |
+| Resend                            | During cooldown: disable resend with a countdown from `Retry-After`. On `OTP_RESEND_LIMIT`: disable resend, show the limit text, no countdown.                                                                                                                                               |
+| Unverified login                  | `ACCOUNT_NOT_VERIFIED` from login → go to `/register` at the OTP step (see 16c)                                                                                                                                                                                                              |
+| Register `409`                    | Show the taken error plus a hint: "Already signed up? Log in to finish verifying" linking to `/login`                                                                                                                                                                                        |
+| Forgot password OTP               | Checked with `verify-otp` (`forgot_password`) before the new-password step is shown                                                                                                                                                                                                          |
+| `/account`                        | Sections for profile view, change username, change email, change password                                                                                                                                                                                                                    |
+| Active-view toggle                | Optimistic: update UI immediately, call `PUT /users/me/active-view`, revert and toast on failure                                                                                                                                                                                             |
+| Admin row actions                 | A three-dot menu on each row, shown on hover: promote/demote and suspend/unsuspend. Each action asks for confirmation first. Promote/demote hidden from plain admins.                                                                                                                        |
+
+### AI logging
+
+Same as earlier stages: header comment on every file created **or modified**, and a usage-log entry per sub-stage in the existing format. JSX/JS files use `//` comments at the top of the file.
+
+---
+
+## Stage 16a: Read and Report (no code changes)
+
+Read `frontend/` before writing anything. Read `AI-NOTES.md` for context but do not edit it. Then report the following and **stop and wait for my answers**:
+
+1. **Admin supplier pages**: their route paths in `App.jsx`, and how a user reaches them (nav link, landing-page link, typed URL only). I will tell you where the Admin link goes and how it reaches `/admin/users`.
+2. **`DemoContext` session consumers**: every file that reads session or auth state (`session`, `role`, `isAdmin`, login/logout functions, the local `role` `useState('requester')`) from `DemoContext`, and what each one reads. I will tell you how those consumers move to `AuthContext`.
+3. **`http.js`**: confirm how the in-memory token, shared in-flight refresh and 401-retry work today, and where a proactive refresh and a "refresh failed → logged out" hook would attach.
+4. **`LoginModal.jsx`**: every place that opens it.
+5. **Home**: which route is home.
+6. **Routes**: any existing frontend route that starts with a proxied prefix (`/auth`, `/users`, `/credits`, `/orders`, `/api/v1`, `/socket.io`).
+7. **Toasts/banners**: any existing toast, banner or notice component (e.g. `ApiNotice.jsx`) that should be reused instead of building a new one.
+
+---
+
+## Stage 16b: Shared Auth Plumbing
+
+### `src/context/AuthContext.jsx`
+
+- Holds `user` (`{ id, role, username, email, activeView }`) and a status (`loading` | `authenticated` | `anonymous`)
+- On mount: session restore (see decisions table). While restoring, protected routes render nothing (or a spinner), not a redirect.
+- Exposes `login(identifier, password)`, `logout()`, `setActiveView(...)`, and a way for other sub-stages to update `username`/`email` after a profile change
+- Consumers move off `DemoContext` exactly as I specified in my answer to 16a item 2
+
+### `src/api/http.js`
+
+- **Proactive refresh**: after each new access token, schedule a refresh 60 seconds before its `exp` (read from the decoded token). Reuse the existing shared in-flight refresh. Cancel the timer on logout.
+- **Refresh failure** (proactive or after a 401): notify `AuthContext`, which clears state and goes to `/login`, remembering the current page
+- Keep the existing in-flight GET de-duplication and 401-retry unchanged
+
+### Route guards (in or next to `App.jsx`)
+
+- `RequireAuth`: anonymous → `<Navigate to="/login" state={{ from: location }} replace />`
+- `RequireRole minimum="admin"`: same rank order as the backend (`user` < `admin` < `super admin`); below it → render `<Forbidden />` in place
+
+### Components
+
+- `src/components/Forbidden.jsx`: "Not authorised" view with a link home
+- `src/components/Toast.jsx` + a small toast provider (or reuse what 16a item 7 found)
+- `src/components/FormBanner.jsx`: whole-form error/success banner
+- `src/components/FieldError.jsx`: inline field error
+- `src/components/OtpInput.jsx`: the 6-box input from the decisions table. Props: `onComplete(code)`, `disabled`, and a way for the parent to clear and refocus it after a wrong code.
+- `src/components/ResendButton.jsx`: handles the cooldown countdown (`Retry-After`) and the limit state
+- `src/utils/validation.js`: client-side mirrors of the backend rules (same regexes/limits as `auth.service.ts`)
+- `src/api/errorMessages.js`: one map from backend `code` → frontend text, plus which display type (field / banner / toast) each code uses by default. Cover every code user-service can return to the frontend. Put the full map in your summary so I can review the phrasing.
+
+### `/login` page
+
+- `src/pages/Login.jsx`: identifier + password, links to `/register` and `/forgot-password`
+- Success → `state.from` or home
+- `INVALID_CREDENTIALS`, `ACCOUNT_SUSPENDED` → banner
+- `ACCOUNT_NOT_VERIFIED`:
+  ```js
+  if (err.code === "ACCOUNT_NOT_VERIFIED") {
+    navigate("/register", {
+      state: {
+        step: "otp",
+        email: identifier.includes("@") ? identifier : null,
+      },
+    });
+    return;
+  }
+  ```
+- Shows a success banner when arriving with one in router state (from 16c/16d)
+- Replace every place that opened `LoginModal` with navigation to `/login`. Delete `LoginModal.jsx` once nothing uses it.
+
+### Logout
+
+The TopNav logout button calls `AuthContext.logout()`: call `POST /auth/logout`, then clear state and go to `/login` whether or not the call succeeded. Do not redirect to a "from" page after an explicit logout.
+
+### Verification
+
+- Reload while logged in → still logged in; `username`, `email`, `role`, `activeView` populated
+- No access token in `localStorage`/`sessionStorage` (check DevTools)
+- Wait (or shorten the TTL in dev) → a proactive refresh happens before expiry, no 401 seen by pages
+- Revoke the refresh token in the DB → the next refresh fails → `/login`
+- Open `/account` logged out → `/login` → log in → back on `/account`
+- Regular user opens `/admin/users` → 403 view, URL unchanged, no Admin link in nav
+- Logout with user-service stopped → still lands on `/login` with state cleared
+- Login with a pending account via email → `/register` OTP step with email filled; via username → OTP step with an email field
+- Supplier/order/credit calls still carry the `Bearer` token
+
+---
+
+## Stage 16c: Registration (`/register`)
+
+`src/pages/Register.jsx`, one page with two steps. Starts at the step given in `location.state.step`, default `form`.
+
+**Form step**:
+
+- `username`, `email`, `password` with client validation → `POST /auth/register`
+- On `201` → OTP step, carrying the email
+- `USERNAME_TAKEN` / `EMAIL_TAKEN` → inline on that field, plus the "Already signed up? Log in to finish verifying" hint linking to `/login`
+
+**OTP step**:
+
+- If no email was carried in (arrived from login with a username), show an email field above the boxes. Resend and verify are disabled until it's filled.
+- When arrived from login (`state.step === 'otp'`): show a clear **"Send a new code"** button at the top, since the original code has probably expired. Do not send automatically.
+- `OtpInput` → `POST /auth/verify-otp` (`purpose: 'registration'`)
+- `ResendButton` → `POST /auth/resend-otp` (`purpose: 'registration'`)
+- Success → `/login` with a success banner
+- `INVALID_OTP` → clear boxes, inline error
+- `OTP_EXPIRED`, `OTP_ATTEMPTS_EXCEEDED` → error pointing at resend
+- `NO_PENDING_REGISTRATION` on resend → banner
+
+### Verification
+
+- Full happy path: register → OTP (dev console) → login works
+- Wrong code → boxes clear, attempts persist (DB)
+- Pasting a 6-digit code fills and submits
+- Non-digits can't be typed
+- Resend immediately → countdown from `Retry-After`; 6th resend → limit text, no countdown
+- Register again with the same username within 10 minutes → `USERNAME_TAKEN` inline + hint
+- Abandon at OTP, later log in with correct credentials → lands on the OTP step; "Send a new code" → new code works
+- Same via username → email field shown, works once filled
+
+---
+
+## Stage 16d: Forgot Password (`/forgot-password`)
+
+`src/pages/ForgotPassword.jsx`, one page, three steps. The email and verified OTP are kept in component state only; a reload restarts at the email step.
+
+1. **Email** → `POST /auth/forgot-password`
+   - `EMAIL_NOT_FOUND` → inline
+   - `ACCOUNT_NOT_VERIFIED` → banner
+   - Cooldown/limit → resend-style messaging
+2. **OTP** → `OtpInput` → `POST /auth/verify-otp` (`purpose: 'forgot_password'`, non-consuming)
+   - Success → step 3
+   - Resend via `POST /auth/resend-otp` (`purpose: 'forgot_password'`). Limit text says "about an hour".
+3. **New password** (client complexity check) → `POST /auth/reset-password` with email, OTP, new password
+   - Success → `/login` with a success banner
+   - `INVALID_OTP` / `OTP_EXPIRED` / `OTP_ATTEMPTS_EXCEEDED` here (e.g. the code expired between steps) → back to step 2 with the error
+
+### Verification
+
+- Happy path end to end; old password then fails at login
+- Wrong code at step 2 never shows step 3
+- Expire the OTP in the DB while on step 3 → submit → back at step 2 with the expiry error
+- Reload mid-flow → back at step 1
+
+---
+
+## Stage 16e: Account Page (`/account`)
+
+`src/pages/Account.jsx` behind `RequireAuth`, linked from the nav. Calls go through `src/api/profile.js`.
+
+- **Profile**: `username`, `email` from `AuthContext` (`GET /users/me` already loaded)
+- **Change username**: `PUT /users/me/username`
+  - `USERNAME_UNCHANGED` / `USERNAME_TAKEN` → inline
+  - Success → update `AuthContext`, success banner in the section
+- **Change email**: current password + new email → `PUT /users/me/email` → OTP shown inline in the same section → `POST /users/me/verify-otp` (`change_email`)
+  - Resend: `POST /users/me/resend-otp` (`change_email`)
+  - `INVALID_PASSWORD` → inline on current password
+  - `EMAIL_UNCHANGED` / `EMAIL_TAKEN` → inline on new email
+  - Success → update `AuthContext`
+- **Change password**: current + new password → `PUT /users/me/password` → OTP inline → `POST /users/me/confirm-password-change` with the OTP and the **same** new password, kept in component state from the first step so the user doesn't retype it
+  - Resend: `POST /users/me/resend-otp` (`change_password`)
+  - `PASSWORD_UNCHANGED` → inline
+- **After a successful password change**: the backend revokes **all** of the user's refresh tokens, including this browser's. Decided: immediate forced re-login. Right after the success response, clear all client auth state (same as `AuthContext.logout()`'s state-clearing, but skip the `POST /auth/logout` call since the refresh token is already revoked) and redirect to `/login` with a banner telling the user to sign in again with their new password. Do not wait for the next proactive refresh to catch this.
+
+### Verification
+
+- Each section's happy path; the nav and profile show new values without a reload
+- Each inline error above
+- OTP cooldown and limit behave as in 16c
+- Password change → immediately redirected to `/login` with the "sign in again" banner, not left on `/account` until the next refresh fails
+
+---
+
+## Stage 16f: Requester/Courier Toggle
+
+- The toggle reads `AuthContext.user.activeView`
+- On change: update immediately, call `PUT /users/me/active-view`. On failure, revert and show a toast.
+- Anything that previously read the local `role` state in `DemoContext` reads `activeView` from `AuthContext`, as specified in my 16a answer
+- Gabriel will adjust `TopNav.jsx` layout if needed; keep TopNav changes minimal and list them
+
+### Verification
+
+- Toggle → UI changes instantly; the DB column updates
+- Reload → the same view persists
+- Stop user-service, toggle → UI reverts, toast shown
+- Log in on another browser → same view
+
+---
+
+## Stage 16g: Admin User Management (`/admin/users`)
+
+`src/pages/AdminUsers.jsx` behind `RequireAuth` + `RequireRole minimum="admin"`. Reached as I specified in my 16a answer. Calls go through `src/api/users.js`.
+
+- **Table columns**: username, email, status, role, created (date)
+- **Search**: two boxes, username (substring) and email (exact), 300 ms debounce, AND-combined. Empty boxes are omitted from the query.
+- **Filters**: status (pending/active/suspended/any), role (user/admin/super admin/any)
+- **Sort**: click the username, email or created header to sort; click again to flip direction. Status and role headers are not sortable. Default: created, newest first.
+- **Pagination**: 50 per page, prev/next plus "Page X of Y" from `totalPages`. Changing search, filter or sort resets to page 1.
+- **Row actions**: a three-dot menu, visible on row hover; always visible on touch / small screens. It shows only the actions the backend would allow:
+
+| Caller      | Target row                  | Suspend / Unsuspend    | Promote / Demote                 |
+| ----------- | --------------------------- | ---------------------- | -------------------------------- |
+| admin       | user (active/suspended)     | shown                  | hidden                           |
+| admin       | admin, super admin, own row | hidden                 | hidden                           |
+| super admin | user or admin (active)      | shown                  | Promote if user, Demote if admin |
+| super admin | user or admin (suspended)   | shown                  | hidden (backend `422`)           |
+| any         | pending row                 | hidden (backend `422`) | hidden (backend `422`)           |
+| any         | super admin row, own row    | no menu                | no menu                          |
+
+If a row has no allowed actions, show no menu.
+
+- **Confirmation**: each action opens a confirmation dialog naming the user and the action
+- **Action results**: success → update the row from the response, success toast. Error (including a stale-state `403`/`422` from a race) → toast, then refetch the current page.
+
+### Verification
+
+- Admin and super admin each see exactly the actions in the table above
+- Plain user → 403 view
+- Search, filters and sort each change the request params and results; combinations AND together
+- Page past the end (e.g. after a filter shrinks results) shows an empty state, and "Page X of Y" stays correct
+- Suspend → the row shows suspended; that user's next refresh fails (logged out)
+- Promote → the row shows admin
+- Menu works on a phone-width viewport with no hover
+
+---
+
+## After Stage 16
+
+### Deviations
+
+List every place where you deviated from this file and why.
+
+### Reminder: tests still owed
+
+Tests have not been written for:
+
+- Stage 14 (outbox, relay, replay script)
+- Stage 15 (paginated `GET /users`, camelCase responses, `activeView` on `/users/me`)
+- Stage 16 (frontend)
+
+Also check every other stage for gaps against its Verification list. Write these in the end-of-project test stage, following the Stage 7 ground rules.
+
+### Kept in view (not in this stage)
+
+- **NFR4** (session inactivity timeout, 7-day limit, expiry warning). Design notes so far:
+  - server-side enforcement
+  - activity = scroll, touch and API calls, shared across tabs via BroadcastChannel
+  - 1-minute warning configured in the frontend, 30-minute timeout in the backend
+  - user-service never sees other services' API calls, so the frontend must report activity to it (endpoint and reporting rate still undecided)
+- **F5.3.2**: an admin user-detail page with a user's credit transactions and their orders. Needs a credit-service endpoint, and order data.
+- **NFR3** masking: emails are shown unmasked in the admin list for now.
+- **`orderSocket.js`**: may need to disconnect on logout and use refreshed tokens. Flag it to the order-service owner if so.
