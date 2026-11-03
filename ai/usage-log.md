@@ -6387,3 +6387,108 @@ Whether to approve mocking credit-service's HTTP response in `creditOutbox.relay
 Accepted all changes, KIV the issue first.
 
 **Author review:** gabriel yap
+
+## 2026-11-02 — CI: GitHub Actions for all five services, plus the two fixes it needed
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** The user's CI/CD brief of 2026-11-02, quoted below, following the read-only CI readiness audit of the same day. Service-container settings are derived from each suite's existing setup files, not decided here.
+
+**Prompts (exact):**
+
+> Set up CI for this repo. GitHub Actions, Node 24, all four backend services plus the frontend.
+>
+> Read first, then implement:
+>   - each service's test setup, especially user-service's and credit-service's globalSetup, so the Postgres service containers match what they actually expect (ports, database names, roles, passwords, and credit-service's grants.sql step). Derive these, do not guess.
+>   - order-service's package.json and prisma config.
+>
+> ## Code fixes
+>
+> 1. order-service: add a postinstall script running prisma generate. It fails without DATABASE_URL, so supply a dummy fallback so that `npm ci && npm test` works unaided. Confirm the unit suite still passes with DATABASE_URL pointing at a dead port.
+> 2. supplier-service: bump @types/node to ^24 and regenerate the lockfile. It currently pins ^20 against a Node 24 image and ERESOLVEs on newer npm.
+> 3. order-service/src/generated/ is untracked and not gitignored — add it to .gitignore rather than committing it, since postinstall regenerates it.
+>
+> ## The workflow
+>
+> One job per service, not a matrix — they need different setups. Trigger on pull request and on push to main. Pin Node 24 everywhere and cache npm per service.
+>
+>   user-service    → Postgres service container, npm ci, npm test
+>   credit-service  → Postgres service container, npm ci, npm test
+>   order-service   → npm ci, db:generate with a dummy URL, npm test (unit suite only — the e2e config is separate and needs Postgres, Redis and migrations)
+>   supplier-service→ npm ci, npm test
+>   frontend        → npm ci, npm run lint, npm run build
+>
+> Give every service container a health check and wait for it.
+>
+> supplier-service has 5 genuinely broken tests in test/app.integration.test.ts — stale from the JWKS migration, not a CI problem, and not mine to fix. Exclude that one file from the CI run with a comment saying exactly why, naming it as supplier-service's owner's fix and marking the exclusion as temporary. Do not touch the tests themselves.
+>
+> ## Verify
+>
+> Run each job's command sequence locally the way CI would — clean node_modules, npm ci, the real steps — and report what actually passes. Do not claim a job is green without having run it.
+>
+> Everything here is outside credit-service/, so show me each diff before applying it.
+
+> Approved — apply all five and run each job's sequence locally.
+>
+> On your two questions:
+>   - Keep both db:generate steps. The redundancy is cheap and it keeps the job working if install scripts are ever disabled.
+>   - Don't add --max-warnings 0 to the frontend lint. Eight existing warnings would make CI red on day one and someone would have to clear them. The valuable part of that job is npm run build, which catches broken imports — the socket.io-client class of bug. Leave lint informational for now.
+>
+> Two things to confirm while you're applying:
+>   - Each job has the right working directory set, either via defaults.run.working-directory or per step. The trimmed snippet didn't show it.
+>   - Add a comment on the order-service job saying the e2e suite (vitest.config.e2e.ts) is deliberately out of scope for now because it needs Postgres, Redis and migrations — same style as the supplier exclusion, so the gap is recorded rather than invisible.
+>
+> Report actual pass counts per job from the real runs, not expected ones.
+
+> Approved — commit and push. The first Actions run on the PR is the real verification, so don't re-run anything containerised locally.
+>
+> On the flaky authenticate.test.ts: leave it in for now, I'm reporting it to supplier-service's owner today with the diagnosis and the fix. If it isn't fixed by tomorrow, add it to the exclusion with the same style of comment, since a job that's red one run in four will train everyone to ignore CI.
+>
+> Note the frontend lint is now at 14 warnings, up from 8 when you first checked. Worth a line in the PR description so it doesn't drift further unnoticed.
+
+**Key responses:**
+
+_Derived, not guessed._ Both Postgres service containers were read off the suites that use them. `user-service/tests/setup/globalSetup.ts` connects to the `postgres` maintenance database as `DB_USER`/`DB_PASSWORD`, drops and recreates `DB_NAME`, then applies `src/db/init.sql`; the committed `.env.test` fixes those to postgres/postgres on port 5434. `credit-service`'s does the same and then creates the least-privilege role and applies `grants.sql` with `credit_app` rewritten to the test role, so the suite runs under the same privileges as production (NFR8.2.3) — which is why CI needs no separate grants step. Neither needs the gitignored RS256 keypair: both generate a throwaway pair at run time.
+
+_Fix 3 turned out to be unnecessary._ `src/generated/` is already in `order-service/.gitignore` line 7. The earlier audit reported otherwise because `git check-ignore` was called on the path without a trailing slash while the directory did not exist, so the directory-only pattern did not match. No change made.
+
+_Fix 1 had an interaction worth recording._ The Dockerfile's `deps` stage runs `npm ci` with only `package.json` and the lockfile copied, before the source arrives, so a plain `postinstall: prisma generate` would have broken the image build. The script skips when `prisma/schema.prisma` is absent; the `build` stage still generates explicitly once the source is there.
+
+_Fix 2 was a real latent break, not just a host artefact._ `@types/node@^20` against `vitest@5`'s peerOptional of `^22 || >=24` resolves on npm 11.19.1 and aborts on 11.6.2. The lockfile was regenerated inside `node:24-alpine` so the diff is the two packages that changed rather than 36 lines of unrelated `"peer": true` churn a different npm emits.
+
+**Verification actually run** — each job's sequence, with `node_modules` deleted first:
+
+| Job | Result |
+|---|---|
+| user-service | **682/682** on Linux Node 24; 667/682 on the Windows host |
+| credit-service | **123/123**, 13 files |
+| order-service | **613/613**, 14 files |
+| supplier-service | **336/336** with the excluded file, but see below |
+| frontend | lint exit 0 (14 warnings), **build exit 0**, 385.62 kB bundle |
+
+The 15 `user-service` failures on the Windows host are all `tests/config.test.ts`, which `spawnSync`s the extensionless `node_modules/.bin/tsx` shim. Previously asserted to be host-specific; now proven, by running the suite inside `node:24-slim` against the compose-network Postgres: 25 files, 682 tests, zero failures.
+
+For order-service, the brief's two conditions were checked literally: with `node_modules` and `src/generated` deleted and no `DATABASE_URL` in the environment, `npm ci` alone emitted `✔ Generated Prisma Client (7.10.0)`; and the unit suite then passed 613/613 with `DATABASE_URL` pointed at `localhost:59999`.
+
+Also verified rather than assumed: `user-service` and `supplier-service` both use `"test": "vitest"`, which is watch mode and would hang a CI job. Vitest self-detects `CI=true`, which GitHub Actions sets. Confirmed inside `node:24-alpine` that `CI=true npm test -- --exclude test/app.integration.test.ts` runs once and excludes correctly.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (created)
+- `order-service/scripts/prisma-generate.mjs` (created)
+- `order-service/package.json` (modified: postinstall)
+- `supplier-service/package.json` (modified: @types/node ^24)
+- `supplier-service/package-lock.json` (modified: regenerated, 16 lines)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **A second, previously unknown flaky test in supplier-service.** `test/middleware/authenticate.test.ts > rejects expired and incorrectly signed tokens` fails intermittently — measured at **2 failures in 8 runs of the real CI command**, while passing 6/6 when that file runs alone. Cause: the test tampers a token with `token({}, kid).replace(/.$/, "x")`, replacing only the final base64url character. A 2048-bit RSA signature base64url-encodes to 342 characters whose last character carries just 2 significant bits, so several substitutions decode to the identical byte sequence and the tampered token still verifies. It is not in the excluded file. Left in at the user's instruction, who is reporting it to supplier-service's owner with the diagnosis; to be added to the exclusion if unfixed by 2026-11-03. The fix is to corrupt a byte in the middle of the signature rather than the last character.
+2. **Frontend lint warning count: the "8 → 14 drift" could not be substantiated.** The figure of 8 came from a 2026-10-22 command that piped `npm run lint` through `tail -12`, so it showed the last few warning lines, not a total — there was never a reliable baseline. The current count is **14 (7 × `react(set-state-in-effect)`, 7 × `react(only-export-components)`)**. Frontend did gain seven commits of new pages in between (stages 16b–16g), so growth is plausible, but the delta is not evidence. Recorded so the PR description does not assert a trend that was not measured.
+3. **order-service's e2e suite is not covered by CI**, recorded in a comment on the job. Adding it needs a Postgres + Redis service pair and a `prisma migrate deploy` step, which is order-service's owner's call.
+4. **Three jobs were verified only on Windows / Node 25**, not Linux / Node 24: credit-service, order-service and supplier-service. user-service was additionally run on Linux Node 24 because that is where the disputed failures were, and frontend only on Linux because the Windows host EPERMs on a rolldown binding held open by a running Vite dev server. The first Actions run is the real check, per the user's instruction not to re-run containerised locally.
+5. **`npm run lint` on the frontend stays informational** — no `--max-warnings 0` — by the user's decision, so warnings will not fail the build.
+
+**What I kept/changed/rejected:**
