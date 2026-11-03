@@ -190,21 +190,7 @@ jobs:
           cache: npm
           cache-dependency-path: supplier-service/package-lock.json
       - run: npm ci
-      # TEMPORARY EXCLUSION — test/app.integration.test.ts (5 tests).
-      #
-      # Those five assert 404/403/400/422 and all get 401. They stub global fetch and
-      # authenticate with the literal string `Bearer good-token`, which was sufficient
-      # under the old `GET /auth/verify` scheme where the mocked fetch response *was* the
-      # verification result. Since the JWKS migration, src/middleware/authenticate.ts
-      # verifies RS256 locally, and that literal is not a signed JWT, so it can never
-      # pass. Confirmed not environmental: identical failures on and off the compose
-      # network, and the JWKS endpoint is reachable from the container.
-      #
-      # This is supplier-service's owner's fix — the tests need rewriting against the
-      # JWKS scheme, the way test/middleware/authenticate.test.ts already does (it
-      # generates a real keypair and passes). Remove this exclusion once they do.
-      # The remaining 37 files / 340 tests run.
-      - run: npm test -- --exclude test/app.integration.test.ts
+      - run: npm test
 
   # ---------------------------------------------------------------------------------
   # frontend

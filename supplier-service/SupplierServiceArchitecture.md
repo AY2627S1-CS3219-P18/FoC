@@ -86,6 +86,8 @@ Scope: 2026-09-30 update — recorded the team's decision that supplier response
        Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-02, Codex, model: GPT-6): Documented the existing JWKS cache and verification flow.
+Author review: Congchen
 -->
 
 # Supplier Service Architecture
@@ -573,7 +575,9 @@ Service consumes the existing User Service authentication contract:
 
 - access tokens are RS256 JWTs containing the user subject and role;
 - the User Service exposes `GET /auth/.well-known/jwks.json`, which publishes the public signing
-  keys used to verify bearer tokens locally; valid token claims provide the user subject and role; and
+  keys, cached by the Supplier Service, to verify bearer tokens locally; the token `kid` selects a
+  key, and an unknown `kid` triggers one refresh before rejection; valid token claims provide the
+  user subject and role; and
 - the accepted application roles are `user`, `admin`, and `super admin`.
 
 Any OAuth or other upstream login mechanism is an authentication concern outside the Supplier
