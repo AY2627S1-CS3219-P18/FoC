@@ -375,3 +375,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 144 | 2026-11-02 | repo-wide              | CI: GitHub Actions for all five services                                                                         | One job per service on Node 24, plus the prisma postinstall and @types/node fixes CI needed |
 | 145 | 2026-11-02 | supplier-service | Supplier Service: Authentication integration test fixtures | Updated JWT and JWKS test fixtures. |
 | 146 | 2026-11-02 | supplier-service | Supplier Service: Authentication documentation | Updated JWKS authentication documentation. |
+| 147 | 2026-11-03 | repo-wide | CI: restore supplier-service full suite after JWKS test fixes | Verified both root causes in the diff, removed the exclusion, 20/20 clean runs |

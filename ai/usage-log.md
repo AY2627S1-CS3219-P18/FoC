@@ -6547,3 +6547,75 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-03 — CI: restore supplier-service's full suite after the JWKS test fixes
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** debug | generate
+**Scope:** Implementation code | Debugging
+**Governing decision:** The user's instruction of 2026-11-03, quoted below. The supplier-service fixes being verified are `upstream/update-supplier-auth-integration` (commits `00ee616`, `a59cd0c`, `3dd0d58`), authored by that service's owner.
+
+**Prompts (exact):**
+
+> Git work, then verify, then one small CI change.
+>
+> ## 1. Sync
+>
+> Report `git status` first — if there's uncommitted work, stop and tell me rather than stashing or committing it.
+>
+> Then:
+>   - fetch upstream
+>   - merge upstream/update-supplier-auth-integration into my main
+>   - report what came with it besides the supplier fixes, since a feature branch may carry unrelated commits
+>   - create d4-iteration-2 from main and check it out
+>
+> ## 2. Verify the fixes before trusting them
+>
+> That branch is meant to fix two things in supplier-service. Confirm both, by reading the diff rather than by a green run:
+>
+>   a. The 5 stale tests in test/app.integration.test.ts. They authenticated with the literal string `Bearer good-token`, which cannot survive RS256 verification since the JWKS migration. Does the fix generate a keypair and sign a real token, the way test/middleware/authenticate.test.ts already does?
+>
+>   b. The flake in test/middleware/authenticate.test.ts > "rejects expired and incorrectly signed tokens". It tampered the token with `.replace(/.$/, "x")` — the last base64url character of a 2048-bit RSA signature carries only two significant bits, so w/x/y/z decode identically and the forged token still verified about one run in four. Does the fix corrupt a byte in the middle of the signature instead? If it still touches the final character, the flake is not fixed regardless of what the suite does today.
+>
+> Say plainly whether each root cause is addressed. If either isn't, stop before step 3.
+>
+> ## 3. Restore the test in CI
+>
+> Only if both check out: remove the TEMPORARY EXCLUSION block and the --exclude flag from the supplier-service job in .github/workflows/ci.yml, so the full suite runs again. Leave the order-service e2e comment where it is.
+>
+> ## 4. Prove it
+>
+> Run supplier-service's full suite — no exclusions — at least 15 times in a row and report the pass rate. One green run proves nothing against a 25% flake; I want the count.
+>
+> Also run the other four jobs' sequences once to confirm the merge didn't break anything else.
+>
+> Report actual numbers. Commit nothing until I've seen them.
+
+**Key responses:**
+
+_Merge._ The branch carried three commits and nine files; the only ones outside `supplier-service/` were its own `README.md` row and `ai/usage-log.md` entry, so no unrelated feature work rode along. Four conflicts, all resolved deliberately: `supplier-service/package.json` and `package-lock.json` took the branch's `@types/node@^24.19.2` over the `^24.0.0` committed here on 2026-11-02 (same fix, theirs more precise, and it is their service); `README.md` kept both sides' Log index rows with theirs renumbered to 145 and 146; `ai/usage-log.md` kept both entries, since the log is append-only.
+
+_Verification, by reading the diff._ Both root causes are addressed. (a) `app.integration.test.ts` now generates a 2048-bit keypair, serves the matching JWK from the mocked JWKS fetch, and signs real tokens with `createSign('RSA-SHA256')`, matching the pattern `test/middleware/authenticate.test.ts` already used; no `good-token` literal remains anywhere in the test tree. (b) the forged-signature test now decodes the signature to bytes and flips a bit in byte 0 rather than substituting the last base64url character. Worth recording precisely: the fix touches the *first* byte, not the middle as the brief anticipated, which is immaterial — the defect was never position but that a base64 character's low bits are padding, whereas every bit of a decoded RSA signature is significant.
+
+_CI change._ Removed the `TEMPORARY EXCLUSION` comment block and the `--exclude test/app.integration.test.ts` flag; the supplier-service job is plain `npm test` again. The order-service e2e scope comment was asserted to still be present after the edit.
+
+**Verification actually run:**
+
+- supplier-service full suite, no exclusions, **20 consecutive runs: 20 passed, 0 failed, 345 tests each**. Against the previously measured ~25% failure rate (2 in 8), twenty clean runs has a probability of roughly 0.3%.
+- user-service **682/682** (25 files), run on Linux Node 24 with the database over the compose network.
+- credit-service **123/123** (13 files).
+- order-service **613/613** (14 files) — `npm ci` generated the Prisma client unaided, then `db:generate`, then the suite.
+- frontend: `npm ci` clean, lint exit 0 (14 warnings), `vite build` exit 0.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (modified: exclusion removed)
+- `README.md`, `ai/usage-log.md` (modified: merge conflict resolution keeping both sides, then this entry and its row)
+
+**Deviations / questions raised for the team:**
+
+1. **The merge commit was made before reporting**, although the brief said to commit nothing until the numbers were seen. Completing it was step 1's own instruction, and leaving a half-merged tree with resolved conflicts staged would have been a worse state to hand back. Only the step 3 change was held.
+2. **Three of the five jobs were verified on Windows / Node 25**, not Linux / Node 24: credit-service, order-service and supplier-service, including the 20-run loop. The flake was cryptographic rather than platform-dependent, so the result should carry, but it is not a CI-equivalent run. user-service and frontend were run containerised.
+3. **`@types/node` is now pinned twice in the repo at different floors** — `^24.19.2` in supplier-service after this merge, `^24.0.0` nowhere else since credit-service does not declare it. Not a problem, noted only because the two were briefly in conflict.
+
+**What I kept/changed/rejected:**
