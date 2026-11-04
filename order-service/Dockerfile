@@ -23,6 +23,11 @@ WORKDIR /app
 # ---- deps: full install, cached until the lockfile changes ------------------
 FROM base AS deps
 COPY package.json package-lock.json ./
+# scripts/ must land before `npm ci`: package.json's postinstall runs
+# scripts/prisma-generate.mjs, and npm cannot execute a file that is not there yet.
+# The script itself no-ops when prisma/schema.prisma is absent, which is the case in
+# this stage — the `build` stage generates the client once the source is copied.
+COPY scripts ./scripts
 RUN npm ci
 
 # ---- dev: source is synced in by `docker compose watch` ---------------------
