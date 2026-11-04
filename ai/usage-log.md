@@ -5461,8 +5461,8 @@ Accepted all changes.
 
 > Status-code bugs.
 >
-> * `ORDER_NOT_FOUND` isn’t mapped in `statusFor`, so it falls through to 400 instead of 404.
-> * A non-UUID `:id` isn’t validated. With the `@db.Uuid` column, Prisma throws, and Express 5 turns that into a 500. Both will show up during a Postman demo.
+> - `ORDER_NOT_FOUND` isn’t mapped in `statusFor`, so it falls through to 400 instead of 404.
+> - A non-UUID `:id` isn’t validated. With the `@db.Uuid` column, Prisma throws, and Express 5 turns that into a 500. Both will show up during a Postman demo.
 >
 > make a new branch from main and fix
 
@@ -5487,6 +5487,7 @@ Accepted all changes.
 
 **Deviations / questions raised for the team:**
 Asked George which status a non-UUID `:id` returns and where the check lives; implemented his answers.
+
 ## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -5674,7 +5675,7 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 
 **Prompts (exact):**
 
-> also update the order creation frontend page, for required fields add the *
+> also update the order creation frontend page, for required fields add the \*
 > does the API for post order currently return which fields are invalid/empty?
 
 **Key responses:**
@@ -5688,6 +5689,7 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified, log index row)
+
 ## 2026-10-22 — User Service: local dev setup guide for CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -6400,8 +6402,9 @@ Accepted all changes, KIV the issue first.
 > Set up CI for this repo. GitHub Actions, Node 24, all four backend services plus the frontend.
 >
 > Read first, then implement:
->   - each service's test setup, especially user-service's and credit-service's globalSetup, so the Postgres service containers match what they actually expect (ports, database names, roles, passwords, and credit-service's grants.sql step). Derive these, do not guess.
->   - order-service's package.json and prisma config.
+>
+> - each service's test setup, especially user-service's and credit-service's globalSetup, so the Postgres service containers match what they actually expect (ports, database names, roles, passwords, and credit-service's grants.sql step). Derive these, do not guess.
+> - order-service's package.json and prisma config.
 >
 > ## Code fixes
 >
@@ -6413,11 +6416,11 @@ Accepted all changes, KIV the issue first.
 >
 > One job per service, not a matrix — they need different setups. Trigger on pull request and on push to main. Pin Node 24 everywhere and cache npm per service.
 >
->   user-service    → Postgres service container, npm ci, npm test
->   credit-service  → Postgres service container, npm ci, npm test
->   order-service   → npm ci, db:generate with a dummy URL, npm test (unit suite only — the e2e config is separate and needs Postgres, Redis and migrations)
->   supplier-service→ npm ci, npm test
->   frontend        → npm ci, npm run lint, npm run build
+> user-service → Postgres service container, npm ci, npm test
+> credit-service → Postgres service container, npm ci, npm test
+> order-service → npm ci, db:generate with a dummy URL, npm test (unit suite only — the e2e config is separate and needs Postgres, Redis and migrations)
+> supplier-service→ npm ci, npm test
+> frontend → npm ci, npm run lint, npm run build
 >
 > Give every service container a health check and wait for it.
 >
@@ -6432,12 +6435,14 @@ Accepted all changes, KIV the issue first.
 > Approved — apply all five and run each job's sequence locally.
 >
 > On your two questions:
->   - Keep both db:generate steps. The redundancy is cheap and it keeps the job working if install scripts are ever disabled.
->   - Don't add --max-warnings 0 to the frontend lint. Eight existing warnings would make CI red on day one and someone would have to clear them. The valuable part of that job is npm run build, which catches broken imports — the socket.io-client class of bug. Leave lint informational for now.
+>
+> - Keep both db:generate steps. The redundancy is cheap and it keeps the job working if install scripts are ever disabled.
+> - Don't add --max-warnings 0 to the frontend lint. Eight existing warnings would make CI red on day one and someone would have to clear them. The valuable part of that job is npm run build, which catches broken imports — the socket.io-client class of bug. Leave lint informational for now.
 >
 > Two things to confirm while you're applying:
->   - Each job has the right working directory set, either via defaults.run.working-directory or per step. The trimmed snippet didn't show it.
->   - Add a comment on the order-service job saying the e2e suite (vitest.config.e2e.ts) is deliberately out of scope for now because it needs Postgres, Redis and migrations — same style as the supplier exclusion, so the gap is recorded rather than invisible.
+>
+> - Each job has the right working directory set, either via defaults.run.working-directory or per step. The trimmed snippet didn't show it.
+> - Add a comment on the order-service job saying the e2e suite (vitest.config.e2e.ts) is deliberately out of scope for now because it needs Postgres, Redis and migrations — same style as the supplier exclusion, so the gap is recorded rather than invisible.
 >
 > Report actual pass counts per job from the real runs, not expected ones.
 
@@ -6459,13 +6464,13 @@ _Fix 2 was a real latent break, not just a host artefact._ `@types/node@^20` aga
 
 **Verification actually run** — each job's sequence, with `node_modules` deleted first:
 
-| Job | Result |
-|---|---|
-| user-service | **682/682** on Linux Node 24; 667/682 on the Windows host |
-| credit-service | **123/123**, 13 files |
-| order-service | **613/613**, 14 files |
-| supplier-service | **336/336** with the excluded file, but see below |
-| frontend | lint exit 0 (14 warnings), **build exit 0**, 385.62 kB bundle |
+| Job              | Result                                                        |
+| ---------------- | ------------------------------------------------------------- |
+| user-service     | **682/682** on Linux Node 24; 667/682 on the Windows host     |
+| credit-service   | **123/123**, 13 files                                         |
+| order-service    | **613/613**, 14 files                                         |
+| supplier-service | **336/336** with the excluded file, but see below             |
+| frontend         | lint exit 0 (14 warnings), **build exit 0**, 385.62 kB bundle |
 
 The 15 `user-service` failures on the Windows host are all `tests/config.test.ts`, which `spawnSync`s the extensionless `node_modules/.bin/tsx` shim. Previously asserted to be host-specific; now proven, by running the suite inside `node:24-slim` against the compose-network Postgres: 25 files, 682 tests, zero failures.
 
@@ -6493,7 +6498,6 @@ Also verified rather than assumed: `user-service` and `supplier-service` both us
 
 **What I kept/changed/rejected:**
 
-
 ## 2026-11-02 — Supplier Service: Authentication integration test fixtures
 
 **Tool:** Codex (model: GPT-6)
@@ -6502,12 +6506,14 @@ Also verified rather than assumed: `user-service` and `supplier-service` both us
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2: RS256 bearer tokens verified against cached User Service JWKS.
 
 **Prompts (exact):**
+
 > I ran `npm test -- --run` in `supplier-service`: **339 passed, 6 failed**. Five [application integration tests](S:/CS3219-FoC/FoC/supplier-service/test/app.integration.test.ts) received `401` where they expected later route or role responses. One [authentication test (line 161)](S:/CS3219-FoC/FoC/supplier-service/test/middleware/authenticate.test.ts:161) expected an incorrectly signed token to be rejected but received `200`. The cause is not yet established, but I suspect it is due to stale authentication logic in my service, as it had not been updated since the shift to use RS256 bearer tokens from the User Service’s JWKS. Let's fix that first in a dedicated branch update-supplier-auth-integration
 
 **Key responses:**
 The middleware already performs local RS256 verification with JWKS. The integration tests used obsolete verification-endpoint fixtures, and changing the final Base64URL character in the signature test could leave its decoded bytes unchanged. Updated integration fixtures to generate signed tokens and a JWKS response, and modified a signature byte deterministically. No production authentication code changed. Before changes, the suite reproduced 339 passing and 6 failing tests; afterward `npm test -- --run` passed 345 tests and `npm run build` and `npm run lint` passed.
 
 **Files:**
+
 - `supplier-service/test/app.integration.test.ts` (modified)
 - `supplier-service/test/middleware/authenticate.test.ts` (modified)
 - `README.md` (modified: disclosure and log index)
@@ -6520,7 +6526,6 @@ None.
 
 **Author review: Congchen**
 
-
 ## 2026-11-02 — Supplier Service: Authentication documentation
 
 **Tool:** Codex (model: GPT-6)
@@ -6529,12 +6534,14 @@ None.
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2; existing `supplier-service/src/middleware/authenticate.ts`.
 
 **Prompts (exact):**
+
 > Ensure the relevant architecture and documentation within the service reflects the change
 
 **Key responses:**
 Updated the service README and architecture to describe existing local RS256 verification and JWKS caching, and corrected current authentication references in the project-state document while retaining historical notes. No requirements, architecture, schema, or API decisions were made. Checked the changed documentation against the implementation and ran `git diff --check`.
 
 **Files:**
+
 - `supplier-service/README.md` (modified)
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -6564,18 +6571,19 @@ None.
 > Report `git status` first — if there's uncommitted work, stop and tell me rather than stashing or committing it.
 >
 > Then:
->   - fetch upstream
->   - merge upstream/update-supplier-auth-integration into my main
->   - report what came with it besides the supplier fixes, since a feature branch may carry unrelated commits
->   - create d4-iteration-2 from main and check it out
+>
+> - fetch upstream
+> - merge upstream/update-supplier-auth-integration into my main
+> - report what came with it besides the supplier fixes, since a feature branch may carry unrelated commits
+> - create d4-iteration-2 from main and check it out
 >
 > ## 2. Verify the fixes before trusting them
 >
 > That branch is meant to fix two things in supplier-service. Confirm both, by reading the diff rather than by a green run:
 >
->   a. The 5 stale tests in test/app.integration.test.ts. They authenticated with the literal string `Bearer good-token`, which cannot survive RS256 verification since the JWKS migration. Does the fix generate a keypair and sign a real token, the way test/middleware/authenticate.test.ts already does?
+> a. The 5 stale tests in test/app.integration.test.ts. They authenticated with the literal string `Bearer good-token`, which cannot survive RS256 verification since the JWKS migration. Does the fix generate a keypair and sign a real token, the way test/middleware/authenticate.test.ts already does?
 >
->   b. The flake in test/middleware/authenticate.test.ts > "rejects expired and incorrectly signed tokens". It tampered the token with `.replace(/.$/, "x")` — the last base64url character of a 2048-bit RSA signature carries only two significant bits, so w/x/y/z decode identically and the forged token still verified about one run in four. Does the fix corrupt a byte in the middle of the signature instead? If it still touches the final character, the flake is not fixed regardless of what the suite does today.
+> b. The flake in test/middleware/authenticate.test.ts > "rejects expired and incorrectly signed tokens". It tampered the token with `.replace(/.$/, "x")` — the last base64url character of a 2048-bit RSA signature carries only two significant bits, so w/x/y/z decode identically and the forged token still verified about one run in four. Does the fix corrupt a byte in the middle of the signature instead? If it still touches the final character, the flake is not fixed regardless of what the suite does today.
 >
 > Say plainly whether each root cause is addressed. If either isn't, stop before step 3.
 >
@@ -6595,7 +6603,7 @@ None.
 
 _Merge._ The branch carried three commits and nine files; the only ones outside `supplier-service/` were its own `README.md` row and `ai/usage-log.md` entry, so no unrelated feature work rode along. Four conflicts, all resolved deliberately: `supplier-service/package.json` and `package-lock.json` took the branch's `@types/node@^24.19.2` over the `^24.0.0` committed here on 2026-11-02 (same fix, theirs more precise, and it is their service); `README.md` kept both sides' Log index rows with theirs renumbered to 145 and 146; `ai/usage-log.md` kept both entries, since the log is append-only.
 
-_Verification, by reading the diff._ Both root causes are addressed. (a) `app.integration.test.ts` now generates a 2048-bit keypair, serves the matching JWK from the mocked JWKS fetch, and signs real tokens with `createSign('RSA-SHA256')`, matching the pattern `test/middleware/authenticate.test.ts` already used; no `good-token` literal remains anywhere in the test tree. (b) the forged-signature test now decodes the signature to bytes and flips a bit in byte 0 rather than substituting the last base64url character. Worth recording precisely: the fix touches the *first* byte, not the middle as the brief anticipated, which is immaterial — the defect was never position but that a base64 character's low bits are padding, whereas every bit of a decoded RSA signature is significant.
+_Verification, by reading the diff._ Both root causes are addressed. (a) `app.integration.test.ts` now generates a 2048-bit keypair, serves the matching JWK from the mocked JWKS fetch, and signs real tokens with `createSign('RSA-SHA256')`, matching the pattern `test/middleware/authenticate.test.ts` already used; no `good-token` literal remains anywhere in the test tree. (b) the forged-signature test now decodes the signature to bytes and flips a bit in byte 0 rather than substituting the last base64url character. Worth recording precisely: the fix touches the _first_ byte, not the middle as the brief anticipated, which is immaterial — the defect was never position but that a base64 character's low bits are padding, whereas every bit of a decoded RSA signature is significant.
 
 _CI change._ Removed the `TEMPORARY EXCLUSION` comment block and the `--exclude test/app.integration.test.ts` flag; the supplier-service job is plain `npm test` again. The order-service e2e scope comment was asserted to still be present after the edit.
 
@@ -6619,3 +6627,145 @@ _CI change._ Removed the `TEMPORARY EXCLUSION` comment block and the `--exclude 
 3. **`@types/node` is now pinned twice in the repo at different floors** — `^24.19.2` in supplier-service after this merge, `^24.0.0` nowhere else since credit-service does not declare it. Not a problem, noted only because the two were briefly in conflict.
 
 **What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** instructions.md Stage 17, "Usage log: the doc rename" subsection.
+
+**Prompts (exact):**
+
+> are you familiar with the git workflow? if you are, let's proceed with stage 17
+
+**Key responses:**
+Stage 17 flagged that `user-service/docs/local-dev-setup.md` was renamed to
+`user-service/docs/user-service-instructions.md` before it was committed (commit `862f88b`),
+but the log entries describing that work still say `local-dev-setup.md`. Searched
+`ai/usage-log.md` for `user-service-instructions` and confirmed no existing entry records the
+rename. This entry records it: entry #129 ("User Service: local dev setup guide for
+CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair") and entry #130 ("User Service: merge
+jwks-verification-guide.md into local-dev-setup.md") both describe work on the file that is now
+at `user-service/docs/user-service-instructions.md`. Those earlier entries are left unedited,
+per the log's append-only rule; this entry exists so a reader isn't misled by the old filename.
+
+**Files:**
+
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Stage 17: Local Setup Script
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 17 (design-decision table, "Watch for", "Script
+output", "Verification", and "Tests" sections), plus two decisions the user gave directly in
+chat for the stage's two explicit stop-and-ask points (quoted below).
+
+**Prompts (exact):**
+
+> are you familiar with the git workflow? if you are, let's proceed with stage 17
+
+Before writing code, two points from Stage 17's own text required stopping: its `[DECIDE]`
+placeholder for the password's special-character set, and its "Watch for" note that
+`PASSWORD_REGEX` must not be reachable only through a module that imports `config.ts` (which
+exits the process when `.env` is missing — exactly the state this script runs in). Reading
+`src/services/auth.service.ts` confirmed `PASSWORD_REGEX` lived there, and that file imports
+`config.ts` at line 40, so the risk was real. Asked the user both questions; exact answers:
+
+> What special-character set should the generated SUPER*ADMIN_PASSWORD draw from? (Must
+> exclude #, $, quotes, backslash, whitespace.)
+> "!@%^\*-*+.~"
+
+> PASSWORD_REGEX is only exported from auth.service.ts, which imports config.ts (crashes on
+> missing .env) at module load. How should setupLocalDev.ts validate generated passwords
+> against it without triggering that crash?
+> "Move PASSWORD_REGEX to its own module"
+
+**Key responses:**
+Created `src/utils/passwordPolicy.ts` holding `PASSWORD_REGEX`/`PASSWORD_MESSAGE` (moved out of
+`auth.service.ts`, which now re-exports both so `me.service.ts` and existing tests that import
+them from `auth.service.ts` are unaffected). Wrote `src/scripts/setupLocalDev.ts` per the
+design-decision table: copies `.env.example` to `.env` if missing; generates a 24-char
+`SUPER_ADMIN_PASSWORD` via `crypto.randomInt` only (one char from each of
+lowercase/uppercase/digit/the decided special-char set, the remaining 20 from the combined
+set, Fisher–Yates shuffled, validated against the real `PASSWORD_REGEX` before use) and prints
+it once, only when generated; generates an RSA-2048 keypair into `keys/` (PKCS8 private /
+SPKI public, private key mode `0600`) whenever either key file is missing, or unconditionally
+under `--force`; sets `JWT_KEY_ID` to the current UTC second (`YYYY-MM-DDTHH:MM:SSZ`) whenever
+keys are (re)generated; replaces only the matching `KEY=...` line in `.env` (appending it if
+absent), leaving every other line and comment untouched; rejects any argument other than no
+args or exactly `--force` with a usage message and exit code 1; never imports `config.ts`,
+`pool.ts`, or any module that does. Added the `"setup"` npm script. Updated
+`docs/user-service-instructions.md` Part 1 (replaced manual steps 1–3 with `npm run setup`,
+renumbered the rest, added a dated disclosure header entry). Added the usage-log entry above
+recording the `local-dev-setup.md` rename, which Stage 17 flagged as missing.
+
+Wrote `tests/scripts/setupLocalDev.test.ts` covering every non-Docker Verification bullet, by
+calling the exported `runSetup(targetDir, options)` against a fresh `mkdtempSync` directory per
+test (no changes to any real `.env`/`keys/`): fresh-directory creation of `.env`/password/keys
+(and that the private key's mode is exactly `0600`); a second no-flag run changing nothing
+(same password, same key bytes); deleting only `public.pem` regenerating both keys and
+`JWT_KEY_ID`; `--force` regenerating keys/`JWT_KEY_ID` while leaving the password untouched
+(both of these use `vi.useFakeTimers()` across the two calls, since two real calls a second
+apart can otherwise land on the same UTC-second `JWT_KEY_ID` and make the "changed" assertion
+flaky — a test-only fix, not a script change); a blank `SUPER_ADMIN_PASSWORD` in an existing
+`.env` (with keys pre-seeded so this case doesn't also trigger key generation) changing only
+that one line; a `.env` missing `JWT_KEY_ID` entirely getting the line appended; and
+`generatePassword()` run 10,000 times asserting 24 characters, a match against the real
+`PASSWORD_REGEX`, and only the decided character set. `parseArgs()` is unit-tested directly
+(no args, `--force`, an unknown flag, extra args) rather than spawning the real CLI with a bad
+flag, since the real `main()` sets `process.exitCode` on whatever process calls it — calling it
+in-process would have set that on the Vitest runner itself. Did not add a Docker-dependent test
+for `docker compose up --build` / JWKS `kid` / old-token-rejected-after-`--force` — those are
+manual per the stage's own scope note (local-dev tooling only; Docker verification left to the
+human).
+
+**Verification actually run:**
+
+- `npx eslint` on all five touched/created `src`/`tests` files: clean.
+- `npx prettier --check`: clean (one `--write` pass needed first, applied).
+- `npx tsc --noEmit`: clean.
+- `npx vitest run` (full suite, against the real `user-db` container brought up for this):
+  **693/693 passed** on the first full run after the fixes above; a second full run showed
+  **692/693**, with the one failure (`tests/concurrency/me.concurrency.test.ts`, a
+  `socket hang up`) unrelated to this stage's files — it then passed cleanly on its own in
+  isolation, consistent with being a pre-existing flake under full-suite load rather than
+  something this change introduced.
+- The three "required" Verification bullets needing Docker (`docker compose up --build` /
+  super-admin login / JWKS `kid`; the full `npm run setup` happy path on an actual fresh
+  checkout; `--force` plus confirming an old access token is rejected after restarting other
+  services) were **not run** — left for the human, consistent with the stage's own framing of
+  this as local-dev tooling to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/utils/passwordPolicy.ts` (created)
+- `user-service/src/services/auth.service.ts` (modified: `PASSWORD_REGEX`/`PASSWORD_MESSAGE`
+  moved to `passwordPolicy.ts`, re-exported)
+- `user-service/src/scripts/setupLocalDev.ts` (created)
+- `user-service/tests/scripts/setupLocalDev.test.ts` (created)
+- `user-service/package.json` (modified: added `"setup"` script — cannot carry a header)
+- `user-service/docs/user-service-instructions.md` (modified: Part 1 steps replaced/renumbered,
+  disclosure header updated)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+The two stop-and-ask points above (special-character set; where `PASSWORD_REGEX` should live)
+were raised and answered in chat before any code was written; see "Prompts" above. No other
+ambiguity was found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

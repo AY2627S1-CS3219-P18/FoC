@@ -34,6 +34,11 @@
 //   transaction/client. No requirements, architecture, schema, or API decisions were made by
 //   the AI tool — see instructions.md Stage 14 for the governing decision.
 // Author review:
+// 2026-11-04: Stage 17 - moved PASSWORD_REGEX/PASSWORD_MESSAGE into utils/passwordPolicy.ts
+//   (re-exported here) so src/scripts/setupLocalDev.ts can import the policy without
+//   transitively importing config.ts. No requirements, architecture, schema, or API decisions
+//   were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -45,17 +50,17 @@ import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
 import { signAccessToken } from '../utils/jwt.js';
+import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
 
+export { PASSWORD_MESSAGE, PASSWORD_REGEX };
+
 export const USERNAME_REGEX = /^[A-Za-z0-9_]{3,255}$/;
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 export const USERNAME_MESSAGE =
   'Username must contain between 3 and 255 chars and have no spaces or special characters.';
-export const PASSWORD_MESSAGE =
-  'Password must contain at least 8 characters, with at least one uppercase, one lowercase, one digit and one special character. ';
 
 export const OTP_REGEX = /^\d{6}$/;
 
@@ -88,11 +93,7 @@ export async function register({
   }
 
   if (!PASSWORD_REGEX.test(password)) {
-    throw new AppError(
-      400,
-      PASSWORD_MESSAGE,
-      'VALIDATION_ERROR',
-    );
+    throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
   }
 
   await withTransaction(async (client) => {
@@ -216,7 +217,11 @@ export async function refresh(refreshToken: string): Promise<{ accessToken: stri
   const tokenHash = sha256(refreshToken);
   const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
-if (!tokenRow || tokenRow.is_revoked || tokenRow.expires_at.getTime() < tokenRow.db_now.getTime()) {
+  if (
+    !tokenRow ||
+    tokenRow.is_revoked ||
+    tokenRow.expires_at.getTime() < tokenRow.db_now.getTime()
+  ) {
     throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
   }
 

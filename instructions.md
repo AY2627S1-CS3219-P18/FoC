@@ -3244,3 +3244,91 @@ Also check every other stage for gaps against its Verification list. Write these
 - **F5.3.2**: an admin user-detail page with a user's credit transactions and their orders. Needs a credit-service endpoint, and order data.
 - **NFR3** masking: emails are shown unmasked in the admin list for now.
 - **`orderSocket.js`**: may need to disconnect on logout and use refreshed tokens. Flag it to the order-service owner if so.
+
+# Stage 17: Local Setup Script
+
+> **Scope**: One script that prepares a fresh checkout of `user-service` to run: creates `.env`,
+> fills in a generated `SUPER_ADMIN_PASSWORD`, and generates the RS256 keypair. Run on the host
+> with `npm run setup`. Part 1 of `user-service/docs/user-service-instructions.md` is updated to
+> point at it, and the missing usage-log record of the doc rename is added.
+>
+> This is local-dev tooling only. It is never run in AWS or CI deployments: there, the private key
+> and `SUPER_ADMIN_PASSWORD` come from Secrets Manager.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                    | Value                                                                                                                                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language / runner       | TypeScript, run with `tsx`, on the host (not inside a container)                                                                                                                                                                              |
+| File                    | `user-service/src/scripts/setupLocalDev.ts` (same folder as `replayCreditOutbox.ts`)                                                                                                                                                          |
+| npm script              | `"setup": "tsx src/scripts/setupLocalDev.ts"`, so it runs as `npm run setup` (and `npm run setup -- --force`)                                                                                                                                 |
+| `.env`                  | If `user-service/.env` does not exist, copy `.env.example` to `.env`. An existing `.env` is never replaced; only the specific lines below are changed.                                                                                        |
+| `SUPER_ADMIN_PASSWORD`  | If blank or missing in `.env`, generate one, write it into `.env`, and print it to the terminal once. If already set, leave it unchanged and do not print it.                                                                                 |
+| Password generation     | 24 characters, CSPRNG only (`crypto.randomInt`; never `Math.random`). One character from each class (lowercase, uppercase, digit, special), the remaining 20 from the combined set, then a Fisher–Yates shuffle driven by `crypto.randomInt`. |
+| Special characters      | `[DECIDE]` — the allowed set, e.g. `!@%^*-_+.~`. Must contain no `#`, `$`, quotes, backslash or whitespace (they break `.env` parsing or Compose interpolation).                                                                              |
+| Password rule           | Imported, not copied: the script checks every generated password against the existing `PASSWORD_REGEX` and throws if it does not match                                                                                                        |
+| Keys                    | RSA-2048 via `crypto.generateKeyPairSync`. Private key PEM (PKCS#8) → `keys/private.pem` with file mode `0600`; public key PEM (SPKI) → `keys/public.pem`. Create `keys/` if missing.                                                         |
+| When keys are generated | If either `private.pem` or `public.pem` is missing, regenerate **both**. If both exist, skip unless `--force` is passed.                                                                                                                      |
+| `--force`               | Applies to the keys and `JWT_KEY_ID` only. It never touches `SUPER_ADMIN_PASSWORD` or any other `.env` value.                                                                                                                                 |
+| `JWT_KEY_ID`            | Whenever keys are generated (first run or `--force`), set `JWT_KEY_ID` in `.env` to the current UTC time to the second, ISO 8601 without milliseconds: `YYYY-MM-DDTHH:MM:SSZ` (e.g. `2026-11-04T01:48:30Z`). Unchanged when keys are skipped. |
+| Editing `.env`          | Replace only the matching `KEY=...` line, preserving every other line and comment. If the key's line is absent (stale `.env`), append it.                                                                                                     |
+| Never printed or logged | The private key. The password is printed exactly once, only when it was just generated.                                                                                                                                                       |
+| Arguments               | No arguments, or exactly `--force`. Anything else → print usage, exit `1`.                                                                                                                                                                    |
+
+### Watch for
+
+- **`config.ts` exits at import time** when `.env` is missing or incomplete, which is exactly the state this script runs in. The script must not import `config.ts`, `pool.ts`, or any module that imports them, directly or transitively. If `PASSWORD_REGEX` is only exported from a module that pulls in `config.ts`, **stop and tell me** — moving it is a code change I need to approve.
+- The script runs from the host, so all paths must resolve relative to the `user-service/` directory (e.g. via `import.meta.url`), not the shell's working directory.
+- Write the key files before updating `JWT_KEY_ID` in `.env`.
+
+### Script output
+
+Print a short summary of what was done:
+
+- `.env`: created from `.env.example` / already existed
+- `SUPER_ADMIN_PASSWORD`: generated (followed by the password, once) / already set
+- Keys: generated (with the new `JWT_KEY_ID`) / already exist, skipped (with a hint that `--force` regenerates them)
+
+After `--force`, also print that tokens signed with the old key are no longer valid, and that other running services (credit, supplier) should be restarted so they pick up the new key.
+
+### Update `package.json`
+
+Add the `setup` script above.
+
+### Update `user-service/docs/user-service-instructions.md`
+
+- Replace Part 1's manual steps 1–3 (copy `.env`, set `SUPER_ADMIN_PASSWORD`, openssl keypair) with: `cd user-service && npm install && npm run setup`, then a short description of what the script does, that it is safe to re-run, and what `--force` does.
+- Keep steps 4 (SMTP / `TEST_USER_*`) and 5 (start the stack). Renumber as needed.
+- Part 2 is unchanged.
+- Add a dated entry to the file's AI disclosure header.
+
+### Usage log: the doc rename
+
+On 2026-10-22 the guide was created and merged as `user-service/docs/local-dev-setup.md`, but was committed as `user-service/docs/user-service-instructions.md` (commit `862f88b`). The log entries say `local-dev-setup.md`.
+
+- First check whether `ai/usage-log.md` already records the rename (search for `user-service-instructions`). If it does, tell me and skip the next step.
+- Otherwise append a new entry recording that `local-dev-setup.md` was renamed to `user-service-instructions.md` before it was committed, so the two 2026-10-22 entries refer to the file now at the new path. Do **not** edit earlier entries; the log is append-only.
+- Add the matching README Log index row, as with every log entry.
+
+### Verification
+
+- Fresh state (no `.env`, no `keys/`): `npm run setup` → `.env` created, `SUPER_ADMIN_PASSWORD` filled and printed, both keys created, `private.pem` mode is `600`, `JWT_KEY_ID` is a UTC timestamp in the required format
+- `docker compose up --build` then starts `user-service` cleanly, the super admin can log in with the printed password, and `GET /auth/.well-known/jwks.json` shows the new `kid`
+- Run `npm run setup` again → nothing changes: same password (not printed), same keys, same `JWT_KEY_ID`
+- Delete only `public.pem` → both keys regenerated, `JWT_KEY_ID` updated
+- `npm run setup -- --force` → new keys, new `JWT_KEY_ID`, `SUPER_ADMIN_PASSWORD` unchanged; the old access token is rejected after restart
+- Existing `.env` with a blank `SUPER_ADMIN_PASSWORD` → only that line changes; every other line and comment is identical
+- Existing `.env` missing the `JWT_KEY_ID` line entirely → line appended when keys are generated
+- `npm run setup -- --foo` → usage, exit `1`
+- Runs on a fresh clone where `.env` is absent without hitting the `config.ts` validation exit
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout. Every bullet under Verification above that does not need Docker is a required test case. To make the script testable, structure it so the logic takes the target directory as a parameter and the CLI entry point passes `user-service/`; tests run against a temp directory. Also cover the password generator directly: over 10,000 runs every password is 24 characters, matches `PASSWORD_REGEX`, and uses only allowed characters. Do not modify other application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
