@@ -34,19 +34,29 @@
  *        instructions.md Stage 16d (POST /auth/forgot-password, /auth/reset-password).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 23c of instructions.md - login() now reads sessionTimeLeftSeconds (added to
+ *        POST /auth/login in stage 23b) and hands it to http.js's recordSessionTimeLeft, so
+ *        AuthContext learns the session deadline on login the same way it learns it from any
+ *        refresh.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { decodeAccessTokenClaims, refreshAccessToken, request, setAccessToken } from './http'
+import { decodeAccessTokenClaims, recordSessionTimeLeft, refreshAccessToken, request, setAccessToken } from './http'
 import { getProfile } from './profile'
 
-// 200 { accessToken, user: { id, username, email, role, activeView } }; the refresh cookie is set by the
-// service. 401 INVALID_CREDENTIALS, 403 ACCOUNT_SUSPENDED / ACCOUNT_NOT_VERIFIED.
+// 200 { accessToken, user: { id, username, email, role, activeView }, sessionTimeLeftSeconds };
+// the refresh cookie is set by the service. 401 INVALID_CREDENTIALS, 403 ACCOUNT_SUSPENDED /
+// ACCOUNT_NOT_VERIFIED.
 export async function login(identifier, password) {
-  const { accessToken, user } = await request('/auth/login', {
+  const { accessToken, user, sessionTimeLeftSeconds } = await request('/auth/login', {
     method: 'POST',
     json: { identifier, password },
   })
   setAccessToken(accessToken)
+  recordSessionTimeLeft(sessionTimeLeftSeconds)
   return user
 }
 
