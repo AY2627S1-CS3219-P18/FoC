@@ -9,6 +9,17 @@
 //   PURPOSE_COPY has no entry for it - a separate pre-existing gap, flagged, not fixed
 //   here). Fixture update, not a new test case.
 // Author review:
+// 2026-11-04: Stage 19 - sendOtpEmail now requires username, so every call in this file was
+//   updated to pass one. Two dev-fallback assertions ("is not used in development when
+//   SMTP_HOST is set" and the production/test it.each) used to check that console.log was
+//   never called at all, as a proxy for "the dev fallback didn't run"; the real SMTP path now
+//   also logs an [OTP EMAIL] success line, so that proxy no longer holds and the assertions
+//   were narrowed to what they actually meant: no [DEV EMAIL] line was logged. Added a new
+//   describe block covering the retry loop, backoff, per-attempt cap, overall deadline and
+//   logging/masking, per instructions.md Stage 19's Verification list. Governing decision:
+//   instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sendMail, createTransport } = vi.hoisted(() => {
@@ -43,21 +54,34 @@ async function loadEmailService(overrides: {
   return vi.importActual<EmailModule>('../../src/services/email.service.js');
 }
 
+// A synthetic error shaped like a Nodemailer send failure (code, optional responseCode).
+function makeError(code?: string, responseCode?: number): Error {
+  const err = new Error(code ?? 'unknown failure') as Error & {
+    code?: string;
+    responseCode?: number;
+  };
+  if (code !== undefined) err.code = code;
+  if (responseCode !== undefined) err.responseCode = responseCode;
+  return err;
+}
+
 beforeEach(() => {
   sendMail.mockClear();
+  sendMail.mockReset();
   sendMail.mockImplementation(async () => ({}));
   createTransport.mockClear();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
   vi.doUnmock('../../src/config.js');
 });
 
 describe('sendOtpEmail (SMTP path)', () => {
-  it('creates one transport from config.email and sends to the recipient', async () => {
+  it('creates one transport from config.email, with the 5s phase timeouts, and sends to the recipient', async () => {
     const { sendOtpEmail } = await loadEmailService({});
-    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
 
     expect(createTransport).toHaveBeenCalledTimes(1);
     expect(createTransport).toHaveBeenCalledWith(
@@ -66,6 +90,10 @@ describe('sendOtpEmail (SMTP path)', () => {
         port: 587,
         secure: false,
         auth: { user: 'test-user', pass: 'test-pass' },
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 5000,
+        dnsTimeout: 5000,
       }),
     );
     expect(sendMail).toHaveBeenCalledTimes(1);
@@ -77,7 +105,7 @@ describe('sendOtpEmail (SMTP path)', () => {
 
   it('Registration: subject "Your FoC verification code"; text and html carry the OTP and expiry', async () => {
     const { sendOtpEmail } = await loadEmailService({});
-    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
 
     const mail = sendMail.mock.calls[0]![0] as { subject: string; text: string; html: string };
     expect(mail.subject).toBe('Your FoC verification code');
@@ -89,7 +117,7 @@ describe('sendOtpEmail (SMTP path)', () => {
 
   it('Forgot Password: subject "Your FoC password reset code"; text and html carry the OTP and expiry', async () => {
     const { sendOtpEmail } = await loadEmailService({});
-    await sendOtpEmail({ to: 'a@example.com', otp: '654321', purpose: 'Forgot Password' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '654321', purpose: 'Forgot Password', username: 'alice' });
 
     const mail = sendMail.mock.calls[0]![0] as { subject: string; text: string; html: string };
     expect(mail.subject).toBe('Your FoC password reset code');
@@ -103,25 +131,26 @@ describe('sendOtpEmail (SMTP path)', () => {
     const { sendOtpEmail } = await loadEmailService({});
     for (const purpose of ['Registration', 'Forgot Password']) {
       sendMail.mockClear();
-      await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose });
+      await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose, username: 'alice' });
       const mail = sendMail.mock.calls[0]![0] as { text: string; html: string };
       expect(mail.text).not.toMatch(/https?:|www\./i);
       expect(mail.html).not.toMatch(/<a\s|https?:|www\./i);
     }
   });
 
-  it('throws when the transport fails', async () => {
+  it('throws immediately when the transport fails with an unrecognised (no-code) error', async () => {
     const { sendOtpEmail } = await loadEmailService({});
     sendMail.mockRejectedValueOnce(new Error('SMTP down'));
     await expect(
-      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' }),
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' }),
     ).rejects.toThrow('SMTP down');
+    expect(sendMail).toHaveBeenCalledTimes(1);
   });
 
   it('throws for a purpose that has no template, without sending', async () => {
     const { sendOtpEmail } = await loadEmailService({});
     await expect(
-      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Admin Action' }),
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Admin Action', username: 'alice' }),
     ).rejects.toThrow();
     expect(sendMail).not.toHaveBeenCalled();
   });
@@ -130,7 +159,7 @@ describe('sendOtpEmail (SMTP path)', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { sendOtpEmail } = await loadEmailService({});
-    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
     expect(JSON.stringify([log.mock.calls, error.mock.calls])).not.toContain('123456');
   });
 });
@@ -140,7 +169,7 @@ describe('sendOtpEmail (development fallback)', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { sendOtpEmail } = await loadEmailService({ env: 'development', smtpHost: '' });
 
-    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
 
     expect(log).toHaveBeenCalledWith(
       '[DEV EMAIL] to=a@example.com purpose=Registration otp=123456',
@@ -149,22 +178,282 @@ describe('sendOtpEmail (development fallback)', () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
-  it('is not used in development when SMTP_HOST is set', async () => {
+  it('is not used in development when SMTP_HOST is set, and logs no [DEV EMAIL] line', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const { sendOtpEmail } = await loadEmailService({ env: 'development', smtpHost: 'smtp.real' });
-    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
     expect(sendMail).toHaveBeenCalledTimes(1);
-    expect(log).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining('[DEV EMAIL]'));
   });
 
   it.each(['production', 'test'])(
-    'is unreachable when NODE_ENV=%s, even with an empty SMTP_HOST',
+    'is unreachable when NODE_ENV=%s, even with an empty SMTP_HOST, and logs no [DEV EMAIL] line',
     async (env) => {
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       const { sendOtpEmail } = await loadEmailService({ env, smtpHost: '' });
-      await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration' });
+      await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
       expect(sendMail).toHaveBeenCalledTimes(1);
-      expect(log).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalledWith(expect.stringContaining('[DEV EMAIL]'));
     },
   );
+});
+
+describe('sendOtpEmail (Stage 19: retry, backoff, deadline, logging)', () => {
+  it('succeeds on the first attempt: exactly one outcome=sent line, attempt 1/4', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { sendOtpEmail } = await loadEmailService({});
+    await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      '[OTP EMAIL] outcome=sent user=alice to=a***@example.com purpose=Registration attempt=1/4',
+    );
+  });
+
+  it('retries a transient failure twice, succeeds on attempt 3, with the same OTP every attempt', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendMail
+      .mockRejectedValueOnce(makeError('ETIMEDOUT'))
+      .mockRejectedValueOnce(makeError('ETIMEDOUT'))
+      .mockResolvedValueOnce({});
+
+    const { sendOtpEmail } = await loadEmailService({});
+    const promise = sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await promise;
+
+    expect(sendMail).toHaveBeenCalledTimes(3);
+    for (const call of sendMail.mock.calls) {
+      expect(call[0]).toMatchObject({ to: 'a@example.com', subject: 'Your FoC verification code' });
+      expect((call[0] as { text: string }).text).toContain('123456');
+    }
+    expect(error).toHaveBeenCalledTimes(2);
+    expect(error.mock.calls[0]![0]).toBe(
+      '[OTP EMAIL] outcome=failed user=alice to=a***@example.com purpose=Registration attempt=1/4 error=ETIMEDOUT',
+    );
+    expect(error.mock.calls[1]![0]).toBe(
+      '[OTP EMAIL] outcome=failed user=alice to=a***@example.com purpose=Registration attempt=2/4 error=ETIMEDOUT',
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('attempt=3/4'));
+  });
+
+  it('exhausts all 4 attempts on persistent transient failures and rethrows the last error', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendMail.mockRejectedValue(makeError('ETIMEDOUT'));
+
+    const { sendOtpEmail } = await loadEmailService({});
+    const result = sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' }).catch(
+      (e: unknown) => e,
+    );
+    await vi.advanceTimersByTimeAsync(30_000);
+    const err = (await result) as { code?: string };
+
+    expect(err.code).toBe('ETIMEDOUT');
+    expect(sendMail).toHaveBeenCalledTimes(4);
+    expect(error).toHaveBeenCalledTimes(4);
+    for (let i = 0; i < 4; i++) {
+      expect(error.mock.calls[i]![0]).toContain(`attempt=${i + 1}/4 error=ETIMEDOUT`);
+    }
+  });
+
+  it.each(['ETIMEDOUT', 'ESOCKET', 'ECONNECTION', 'EDNS'])(
+    '%s is always retried',
+    async (code) => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      sendMail.mockRejectedValueOnce(makeError(code)).mockResolvedValueOnce({});
+      const { sendOtpEmail } = await loadEmailService({});
+      const promise = sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await promise;
+      expect(sendMail).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(['EENVELOPE', 'EMESSAGE', 'EAUTH'])(
+    '%s is retried when responseCode is 400 or 499',
+    async (code) => {
+      for (const responseCode of [400, 499]) {
+        vi.useFakeTimers();
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+        sendMail.mockReset();
+        sendMail.mockRejectedValueOnce(makeError(code, responseCode)).mockResolvedValueOnce({});
+        const { sendOtpEmail } = await loadEmailService({});
+        const promise = sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await promise;
+        expect(sendMail).toHaveBeenCalledTimes(2);
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(['EENVELOPE', 'EMESSAGE', 'EAUTH'])(
+    '%s fails immediately when responseCode is 399, 500 or 550',
+    async (code) => {
+      for (const responseCode of [399, 500, 550]) {
+        sendMail.mockReset();
+        sendMail.mockRejectedValueOnce(makeError(code, responseCode));
+        const { sendOtpEmail } = await loadEmailService({});
+        await expect(
+          sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' }),
+        ).rejects.toMatchObject({ code, responseCode });
+        expect(sendMail).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
+  it.each([
+    ['EAUTH with no responseCode (missing credentials)', makeError('EAUTH')],
+    ['EPROTOCOL', makeError('EPROTOCOL')],
+    ['an error with no recognised code', new Error('mystery failure')],
+  ])('%s fails immediately: one failed line, no retry, no wait', async (_label, err) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendMail.mockRejectedValueOnce(err);
+    const { sendOtpEmail } = await loadEmailService({});
+    await expect(
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' }),
+    ).rejects.toBe(err);
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0]![0]).toContain('attempt=1/4');
+  });
+
+  it('each wait between attempts falls within its cap (0-1s, 0-2s, 0-4s)', async () => {
+    vi.useFakeTimers();
+    const timestamps: number[] = [];
+    sendMail.mockImplementation(async () => {
+      timestamps.push(Date.now());
+      throw makeError('ETIMEDOUT');
+    });
+    const { sendOtpEmail } = await loadEmailService({});
+    const promise = sendOtpEmail({
+      to: 'a@example.com',
+      otp: '123456',
+      purpose: 'Registration',
+      username: 'alice',
+    }).catch(() => {});
+    await vi.advanceTimersByTimeAsync(30_000);
+    await promise;
+
+    expect(timestamps).toHaveLength(4);
+    const gaps = [
+      timestamps[1]! - timestamps[0]!,
+      timestamps[2]! - timestamps[1]!,
+      timestamps[3]! - timestamps[2]!,
+    ];
+    const caps = [1000, 2000, 4000];
+    for (let i = 0; i < 3; i++) {
+      expect(gaps[i]).toBeGreaterThanOrEqual(0);
+      expect(gaps[i]).toBeLessThanOrEqual(caps[i]!);
+    }
+  });
+
+  it('cuts an unsettled attempt off after 5s, logs ATTEMPT_TIMEOUT, retries, and ignores the abandoned send once it later settles', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let settleAbandoned!: (err: unknown) => void;
+
+    sendMail
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            settleAbandoned = reject;
+          }),
+      )
+      .mockResolvedValueOnce({});
+
+    const { sendOtpEmail } = await loadEmailService({});
+    const promise = sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await promise;
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0]![0]).toBe(
+      '[OTP EMAIL] outcome=failed user=alice to=a***@example.com purpose=Registration attempt=1/4 error=ATTEMPT_TIMEOUT',
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('attempt=2/4'));
+
+    // The abandoned first send finally rejects; it must not surface as an unhandled rejection
+    // or produce another log line.
+    settleAbandoned(makeError('ETIMEDOUT'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a wait that would end after the 30s deadline, and fails without exhausting all 4 attempts', async () => {
+    let now = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.spyOn(Math, 'random').mockReturnValue(1); // maximum jitter
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    sendMail.mockImplementationOnce(async () => {
+      // Simulate the first attempt alone having consumed nearly the whole 30s budget.
+      now = 29_999;
+      throw makeError('ETIMEDOUT');
+    });
+
+    const { sendOtpEmail } = await loadEmailService({});
+    await expect(
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Registration', username: 'alice' }),
+    ).rejects.toMatchObject({ code: 'ETIMEDOUT' });
+
+    // The 1s-cap wait after attempt 1 (random=1 => full 1000ms) would end at 30999ms, past the
+    // 30s deadline, so no wait starts and no attempt 2 runs.
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it('never logs the OTP, the full email address, or SMTP response text', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const smtpErr = makeError('EENVELOPE', 452) as Error & { response?: string };
+    smtpErr.response = '452 4.2.2 Mailbox full of secrets';
+    sendMail.mockRejectedValueOnce(smtpErr).mockResolvedValueOnce({});
+
+    const { sendOtpEmail } = await loadEmailService({});
+    const promise = sendOtpEmail({
+      to: 'gabriel@example.com',
+      otp: '123456',
+      purpose: 'Registration',
+      username: 'alice',
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await promise;
+
+    const allLines = JSON.stringify([...log.mock.calls, ...error.mock.calls]);
+    expect(allLines).not.toContain('123456');
+    expect(allLines).not.toContain('gabriel@example.com');
+    expect(allLines).not.toContain('Mailbox full of secrets');
+    expect(allLines).toContain('g***@example.com');
+  });
+
+  it.each(['Registration', 'Forgot Password', 'Change Email', 'Change Password'])(
+    'logs the given username and purpose for %s',
+    async (purpose) => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { sendOtpEmail } = await loadEmailService({});
+      await sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose, username: 'bob' });
+      expect(log).toHaveBeenCalledWith(
+        `[OTP EMAIL] outcome=sent user=bob to=a***@example.com purpose=${purpose} attempt=1/4`,
+      );
+    },
+  );
+
+  it('Change Email: logs the masked new email it was told to send to, not some other address', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { sendOtpEmail } = await loadEmailService({});
+    await sendOtpEmail({ to: 'newaddr@example.com', otp: '123456', purpose: 'Change Email', username: 'bob' });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('to=n***@example.com'));
+  });
 });

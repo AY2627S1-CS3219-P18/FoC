@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/prisma-generate.mjs",
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --clear-screen=false src/server.ts",
     "worker:dev": "tsx watch --clear-screen=false src/worker.ts",

@@ -37,6 +37,8 @@ Scope: 2026-10-20 update — documented local JWKS retrieval and RS256 bearer-to
        for the authentication middleware. No requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-02, Codex, model: GPT-6): Clarified the implemented JWKS authentication setup.
+Author review: Congchen
 -->
 
 # Supplier Service
@@ -56,8 +58,12 @@ npm run dev
 ## Environment variables
 
 See `.env.example` for the full list: server port, MySQL connection, Redis connection, and
-`USER_SERVICE_URL` (used by the auth middleware to fetch the User Service's cached JWKS from
-`/auth/.well-known/jwks.json`).
+`USER_SERVICE_URL` (the User Service base URL, used to fetch its JWKS from
+`/auth/.well-known/jwks.json`). The middleware caches those public keys, selects a key by the
+token's `kid`, and verifies the RS256 signature and expiry locally. An unknown `kid` triggers one
+JWKS refresh before rejection. Missing or invalid tokens receive `401`. A previously cached matching
+key can still be used when the User Service is unavailable. The User Service must be configured with
+its signing key pair and key ID; see [its setup guide](../user-service/docs/user-service-instructions.md).
 The optional `PHOTO_STORE_ENDPOINT`, `PHOTO_STORE_BUCKET`, `PHOTO_STORE_ACCESS_KEY` and
 `PHOTO_STORE_SECRET_KEY` point the photo storage interface at an S3-compatible store (the local
 MinIO below); without them, photo operations fail with `500`.

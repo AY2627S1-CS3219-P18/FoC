@@ -8,6 +8,9 @@ Scope: Bootstrapped this project-state document (Orientation, Workstreams, Archi
        the team stated in those sources; where no reason was found the cell says "unknown — no
        record". No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-02, Codex, model: GPT-6): Updated current authentication descriptions to match
+       the implemented JWKS verification; preserved dated historical records.
+Author review: Congchen
 -->
 
 # Project State — Supplier Service (FoC)
@@ -84,8 +87,10 @@ npm run test:minio           # needs MinIO running
 npm run seed                 # seed-as-test: creates the 14 mock suppliers through the real creation service
 ```
 
-The API needs the User Service for `GET /auth/verify`; without it every request is `401`.
-Earlier manual checks used a local stub of that endpoint (D9).
+The API fetches the User Service public keys from `GET /auth/.well-known/jwks.json` using
+`USER_SERVICE_URL` and caches them for local RS256 verification. If no matching cached key is
+available and the JWKS cannot be fetched, authentication fails with `401`. Earlier manual checks
+used a local stub of the former `/auth/verify` endpoint (D9).
 
 **Sessions in flight** — only sessions whose work has not fully landed are listed; sessions S1–S6
 (the Phase 0–4 build sessions) landed entirely in git and the ledger, so their rows were pruned
@@ -135,7 +140,7 @@ entry dates).
 ```text
 SPA / frontend ──HTTPS──► API gateway (single origin) ──► Supplier Service  /api/v1
                                                             │  Presentation: routes, controllers, multer, middleware
-User Service  ◄── GET /auth/verify ── auth middleware ◄─────┤  Business: services, photo plan, hours/is_open rules
+User Service  ◄── GET JWKS ───────── auth middleware ◄─────┤  Business: services, photo plan, hours/is_open rules
                                                             │  Persistence: repositories (only layer that speaks SQL)
                        MySQL 8 ◄────────────────────────────┤
                        Redis  ◄── idempotency cache ────────┤
@@ -192,15 +197,16 @@ lookups.
 
 ### 4.3 Identity and access control
 
-**Now:** Every request passes `authenticate` (bearer token checked against the User Service
-`GET /auth/verify` → `{user_id, role}`; missing/invalid ⇒ `401`) and then `requireRole`. Roles are
+**Now:** API requests pass `authenticate`, which verifies an RS256 bearer token locally using
+the cached User Service JWKS and attaches `{user_id, role}`; missing or invalid tokens receive
+`401`. Protected routes then apply `requireRole` as appropriate. Roles are
 `user`, `admin`, `super admin` (with a space). `user` may call only the read and reference GETs;
 `admin` and `super admin` have identical supplier capabilities; anything else ⇒ `403`. Enforcement
 is in the backend, not the UI. Rate limit 30 requests/min/IP ⇒ `429`.
 
 | ID | Date | Decision | Why / who asked | Source |
 |---|---|---|---|---|
-| C22 | 2026-09-27 | Authentication via the existing User Service contract (RS256 JWT, `GET /auth/verify`); `admin`/`super admin` identical here; `super admin`'s extras belong to the User Service | unknown — no record | Arch §7, §9 items 3, 12 |
+| C22 | 2026-09-27 | Historical contract (RS256 JWT, `GET /auth/verify`; superseded by cached JWKS verification in Arch §7); `admin`/`super admin` identical here; `super admin`'s extras belong to the User Service | unknown — no record | Arch §7, §9 items 3, 12 |
 | C23 | 2026-09-28 | The role literal is `super admin` (space), matching the User Service's `role_enum`; the Supplier docs and Phase 0 plan were changed to match | "follow super admin with space" — the team chose to adopt the User Service's existing string rather than change that service | Chat (architecture review); Arch §9 item 19 |
 | C24 | 2026-09-27 | Rate limit fixed at 30 requests/minute/IP for all endpoints | unknown — no record. Reviewed and left unchanged 2026-09-30 when the frontend hit it (D15) | Arch §7.5 |
 
@@ -395,7 +401,8 @@ not assume expiry semantics until the provider is chosen (C33).
 ### D15 — Frontend integration exposed a request flood and a lost role (2026-09-30)
 A dependency-list bug re-ran the landing list request in a loop (216 requests in 3 s), tripping the
 30/min limit ("unable to load", then "rate limit exceeded"); a reload lost the admin role because
-`GET /users/me` returns only `{username, email}` — session restore now also calls `GET /auth/verify`.
+`GET /users/me` returned only `{username, email}` — at the time session restore also called
+`GET /auth/verify` (that endpoint has since been removed).
 The rate limit was **not** changed (C24). Other frontend notes: location and category filters are
 single-choice (the API accepts one of each); the request screens still use mock supplier ids 1–14
 that do not match database ids; the real successful login, supplier list/detail and admin flows were

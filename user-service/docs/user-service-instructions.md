@@ -12,6 +12,11 @@ Scope (2026-10-22): Merged in the former jwks-verification-guide.md (originally 
        user-service docs live in one file. Content unchanged beyond heading levels and
        cross-references; no requirements, architecture, schema, or API decisions were made.
 Author review:
+Scope (2026-11-04): Stage 17 - replaced Part 1's manual steps 1-3 (copy .env, set
+       SUPER_ADMIN_PASSWORD, openssl keypair) with `npm run setup`, which now does all three.
+       Renumbered the remaining steps. No requirements, architecture, schema, or API decisions
+       were made by the AI tool — see instructions.md Stage 17 for the governing decision.
+Author review:
 -->
 
 # `user-service` Developer Guide
@@ -29,52 +34,34 @@ This is what a fresh checkout needs before `user-service` will start, whether yo
 (`env_file: ./user-service/.env`, per instructions.md Stage 3b), and that file is gitignored,
 so every developer sets up their own copy.
 
-### 1. Copy the example env file
+### 1. Run the setup script
 
 ```bash
-cp user-service/.env.example user-service/.env
+cd user-service && npm install && npm run setup
 ```
 
-`.env.example` already has working values for most vars (DB credentials matching
-`user-db`'s compose defaults, `CREDIT_SERVICE_URL=http://credit-service:3003`, OTP/token
-settings, etc.). A few are intentionally left blank and need to be filled in locally — see
-below.
+This does everything the old manual steps did, in one pass: copies `.env.example` to `.env`
+if you don't have one yet, generates a `SUPER_ADMIN_PASSWORD` meeting the complexity check in
+[`bootstrap.service.ts`](../src/services/bootstrap.service.ts) and prints it once, and
+generates the RS256 keypair into `user-service/keys/` (`JWT_PRIVATE_KEY_PATH`/
+`JWT_PUBLIC_KEY_PATH` in `.env.example` already point there). None of this is shared with
+teammates — your `.env` and `keys/` are gitignored, and your `user-db` is your own
+container/volume, so there's nothing to keep in sync.
 
-### 2. Set `SUPER_ADMIN_PASSWORD`
+It's safe to re-run: an existing `.env`, password, or keypair is left untouched. Pass
+`npm run setup -- --force` to regenerate the RS256 keypair and `JWT_KEY_ID` (for example,
+after a suspected key leak) — this does not touch `SUPER_ADMIN_PASSWORD` or any other `.env`
+value. After `--force`, tokens signed with the old key stop verifying, so restart any other
+locally running services (credit, supplier) that cache this service's JWKS.
 
-Required, non-blank, and must pass the complexity check in
-[`bootstrap.service.ts`](../src/services/bootstrap.service.ts): at least 8 characters, with an
-uppercase letter, a lowercase letter, a digit, and a special character.
-
-This isn't a shared team secret — on startup, `user-service` checks if a super admin already
-exists in *your* `user-db`, and if not, creates one using whatever
-`SUPER_ADMIN_USERNAME`/`EMAIL`/`PASSWORD` is in your local `.env`. Since every developer's
-`user-db` is a separate container/volume, there's nothing to keep in sync across teammates —
-pick any value locally that meets the complexity rule.
-
-### 3. Generate an RS256 keypair
-
-`user-service/keys/` is empty and gitignored. `JWT_PRIVATE_KEY_PATH`/`JWT_PUBLIC_KEY_PATH` in
-`.env.example` point to `./keys/private.pem` / `./keys/public.pem`, so you need to generate
-both locally:
-
-```bash
-openssl genrsa -out user-service/keys/private.pem 2048
-openssl rsa -in user-service/keys/private.pem -pubout -out user-service/keys/public.pem
-```
-
-(2048-bit RSA matches the existing keypair's size.) This is the key `user-service` signs
-access tokens with and publishes the public half of via the JWKS endpoint — see Part 2 below
-if you're implementing token verification in another service.
-
-### 4. Everything else
+### 2. Everything else
 
 - **SMTP vars** (`SMTP_HOST`/`USER`/`PASS`/`FROM`): can stay blank — `src/config.ts` only
   requires them when `NODE_ENV` isn't `development`. Emails are logged instead of sent.
 - **`TEST_USER_*`**: optional; only seeds a test user if all three (`USERNAME`/`EMAIL`/`PASSWORD`)
   are set.
 
-### 5. Start the stack
+### 3. Start the stack
 
 ```bash
 docker compose up --build

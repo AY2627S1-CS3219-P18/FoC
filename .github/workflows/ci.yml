@@ -1,0 +1,221 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: claude-opus-5), date: 2026-11-02
+#   2026-11-02: CI pipeline - one job per service. Service-container settings are derived
+#     from each suite's own test setup (user-service/tests/setup/globalSetup.ts,
+#     credit-service/tests/setup/globalSetup.ts) and the committed .env.test files, not
+#     chosen here. Node 24 matches every service Dockerfile.
+#     No requirements, architecture, schema, or API decisions were made by the AI tool.
+#   Author review:
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same branch supersedes the run in progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Node 24: every service Dockerfile is node:24-alpine or node:24-slim, and
+# order-service's engines field is >=22. Keeping CI on 24 matches production.
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  # ---------------------------------------------------------------------------------
+  # user-service
+  #
+  # tests/setup/globalSetup.ts connects to the `postgres` maintenance database as
+  # DB_USER/DB_PASSWORD, drops and recreates DB_NAME, then applies src/db/init.sql. The
+  # committed .env.test fixes those values: localhost:5434, user_service_test,
+  # postgres/postgres. The suite therefore needs a bare Postgres superuser on 5434 and
+  # builds its own schema. The RS256 keypair is NOT needed: tests/setup/setupFiles.ts
+  # generates a throwaway pair at run time.
+  # ---------------------------------------------------------------------------------
+  user-service:
+    name: user-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: user-service
+    services:
+      user-db:
+        image: postgres:16-alpine # matches compose.yaml's user-db
+        env:
+          POSTGRES_USER: postgres # = DB_USER in user-service/.env.test
+          POSTGRES_PASSWORD: postgres # = DB_PASSWORD
+          POSTGRES_DB: user_service # globalSetup creates user_service_test itself
+        ports:
+          - 5434:5432 # .env.test hardcodes DB_PORT=5434
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: user-service/package-lock.json
+      # GitHub waits for the health check before the first step, but the port can still
+      # be refusing connections for a moment on a slow runner.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5434 -U postgres && exit 0
+            sleep 2
+          done
+          echo "Postgres on 5434 never became ready"; exit 1
+      - run: npm ci
+      - run: npm test
+
+  # ---------------------------------------------------------------------------------
+  # credit-service
+  #
+  # tests/setup/globalSetup.ts needs more than a database: as DB_OWNER_USER it drops and
+  # recreates DB_NAME, creates the least-privilege role DB_USER, applies src/db/init.sql,
+  # and then applies src/db/grants.sql with `credit_app` rewritten to that test role — so
+  # the suite runs under the same privileges as production (NFR8.2.3). All of that happens
+  # inside globalSetup, so CI needs no separate grants step. .env.test fixes the values:
+  # localhost:5435, owner credit/credit, app role credit_app_test. globalSetup refuses to
+  # run if DB_USER is `credit_app` or DB_NAME does not end in _test.
+  #
+  # No Redis and no user-service: the worker tests mock ioredis and bullmq, and the JWKS
+  # tests start their own stub key server on 127.0.0.1:3999.
+  # ---------------------------------------------------------------------------------
+  credit-service:
+    name: credit-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: credit-service
+    services:
+      credit-db:
+        image: postgres:16-alpine # matches compose.yaml's credit-db
+        env:
+          POSTGRES_USER: credit # = DB_OWNER_USER in credit-service/.env.test
+          POSTGRES_PASSWORD: credit # = DB_OWNER_PASSWORD
+          POSTGRES_DB: credit_db # globalSetup creates credit_db_test itself
+        ports:
+          - 5435:5432 # .env.test hardcodes DB_PORT=5435
+        options: >-
+          --health-cmd "pg_isready -U credit"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: credit-service/package-lock.json
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            pg_isready -h localhost -p 5435 -U credit && exit 0
+            sleep 2
+          done
+          echo "Postgres on 5435 never became ready"; exit 1
+      - run: npm ci
+      - run: npm test
+
+  # ---------------------------------------------------------------------------------
+  # order-service
+  #
+  # No database. The default suite (vitest.config.ts, include **/*.spec.ts) passes with
+  # DATABASE_URL pointing at a dead port — verified. It only needs the generated Prisma
+  # client, and prisma.config.ts calls env('DATABASE_URL') at load time, so the variable
+  # must parse even though nothing connects.
+  #
+  # The e2e suite is deliberately not run here: vitest.config.e2e.ts (**/*.e2e-spec.ts,
+  # `npm run test:e2e`) needs Postgres, Redis and `prisma migrate deploy`.
+  # ---------------------------------------------------------------------------------
+  order-service:
+    name: order-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: order-service
+    env:
+      # Parsed, never connected to. The Dockerfile's build stage uses the same trick.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: order-service/package-lock.json
+      - run: npm ci
+      # postinstall (scripts/prisma-generate.mjs) already generates the client, so this
+      # step is belt and braces — it keeps the job working if install scripts are ever
+      # disabled, and makes the dependency explicit in the log.
+      - run: npm run db:generate
+      # OUT OF SCOPE FOR NOW — the e2e suite.
+      #
+      # `npm test` runs vitest.config.ts only: include **/*.spec.ts, which does not match
+      # the *.e2e-spec.ts files. Those live behind vitest.config.e2e.ts and
+      # `npm run test:e2e`, and they need a real Postgres, a real Redis and
+      # `prisma migrate deploy` to have run — none of which this job provides.
+      #
+      # So order-service's saga coverage (test/credit-saga.e2e-spec.ts and the realtime
+      # and health e2e specs) is NOT exercised by CI today. Recording it here rather than
+      # leaving the gap invisible: adding it means a postgres + redis service pair and a
+      # migrate step, which is a deliberate decision for order-service's owner to make.
+      - run: npm test
+
+  # ---------------------------------------------------------------------------------
+  # supplier-service
+  #
+  # No external services: every database call in the suite is mocked (fakePool / vi.mock),
+  # and vitest.config.ts's env block exists only to satisfy config.ts's schema at import.
+  # ---------------------------------------------------------------------------------
+  supplier-service:
+    name: supplier-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supplier-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: supplier-service/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  # ---------------------------------------------------------------------------------
+  # frontend
+  #
+  # No test tooling exists (no vitest/jest/testing-library/playwright in devDependencies),
+  # so the job lints and builds. `npm run build` is the one that earns its place: it
+  # catches broken imports and bundling failures, which is how a missing socket.io-client
+  # went unnoticed locally.
+  #
+  # `npm run lint` is oxlint, which currently exits 0 with warnings. Add
+  # `--max-warnings 0` to the lint script if the team wants warnings to fail the build.
+  # ---------------------------------------------------------------------------------
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
