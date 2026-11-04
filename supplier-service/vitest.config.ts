@@ -15,13 +15,16 @@
  *        the seed (npm run seed) is not part of npm test. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: Congchen
+  * Scope (2026-11-04, Claude Code, model: claude-sonnet-5-5): excluded *.apidemo.test.ts (live-stack suite) from the default run.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
-    exclude: [...configDefaults.exclude, '**/*.minio.test.ts', '**/*.seed.test.ts'],
+    exclude: [...configDefaults.exclude, '**/*.minio.test.ts', '**/*.seed.test.ts', '**/*.apidemo.test.ts'],
     env: {
       PORT: '3002',
       NODE_ENV: 'test',

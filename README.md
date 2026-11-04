@@ -49,6 +49,35 @@ Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #15
        (frontend email eye icon). No requirements, architecture, schema, or API decisions were
        made by the AI tool.
 Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-03, Codex, model: GPT-6): Added the Phase 5 documentation log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the clarified Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the configurable rate-limit log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the pagination load-test log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the staging-limit correction log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrangements index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -399,3 +428,15 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 152 | 2026-11-04 | frontend | Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1) | Per-row eye icon reveals the real email, re-masks on click or after 60s |
 | 153 | 2026-11-04 | frontend | Stage 21a: Fix Clipped Row-Actions Menu (frontend) | Row-actions menu now portals out of the table wrapper, flips to fit the viewport |
 | 154 | 2026-11-04 | frontend | Stage 21b: Show/hide password toggle | New PasswordInput component with eye-icon toggle, wired into every password field |
+| 155 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
+| 156 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
+| 157 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
+| 158 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
+| 159 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
+| 160 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
+| 161 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
+| 162 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
+| 163 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
+| 164 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
+| 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
+| 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |

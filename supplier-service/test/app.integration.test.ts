@@ -16,14 +16,18 @@
  * Author review: Congchen
  * Scope (2026-11-02, Codex, model: GPT-6): updated integration fixtures for RS256 and JWKS.
  * Author review: Congchen
+ * Scope (2026-11-02, Codex, model: GPT-6): updated integration test credentials for JWKS authentication.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
+ * Scope (2026-11-04, Codex, model: GPT-6): Resolved merge conflict using the existing JWKS test fixture.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../src/app.js';
 
-
-// AI-generated (edited by <name>).
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const kid = 'integration-test-key';
 const jwk = { ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256', use: 'sig' };
