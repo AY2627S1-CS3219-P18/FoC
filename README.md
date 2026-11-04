@@ -3,56 +3,56 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-22, Claude Code, model: claude-sonnet-5): Added Log index rows #129-130 for
        the user-service docs work (local dev setup guide; merge of jwks-verification-guide.md
        into it). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #138 for
        frontend Stage 16c (registration page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #139 for
        frontend Stage 16d (forgot-password page). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #140 for
        frontend Stage 16e (account page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #141 for
        frontend Stage 16f (requester/courier toggle). No requirements, architecture, schema,
        or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #142 for
        frontend Stage 16g (admin user management). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-03, Codex, model: GPT-6): Added the Phase 5 documentation log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 decisions log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the clarified Phase 5 decisions log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the configurable rate-limit log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the pagination load-test log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the staging-limit correction log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
