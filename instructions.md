@@ -3836,3 +3836,113 @@ Do not modify application code to make a test pass.
 ### AI logging
 
 Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+# Stage 22: Active View Controls Navigation (frontend)
+
+> **Scope**: `frontend/` only. The requester/courier toggle (Stages 11 and 16f) decides which
+> pages the user sees. In requester view the main page is the Suppliers page; in courier view it
+> is the Find errands page.
+>
+> No backend changes. This stage reuses the existing `active_view` column,
+> `PUT /users/me/active-view`, and `activeView` on `POST /auth/login` and `GET /users/me`.
+>
+> Backlog refs: F5.2.2.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me.
+>
+> **Ground rules:** the Stage 16 ground rules apply:
+>
+> - Work in `frontend/` only; never touch `foc-mockup/`.
+> - Do not modify `src/realtime/orderSocket.js`, `src/data/users.js`,
+>   `src/components/DemoControls.jsx` or `AI-NOTES.md`.
+> - List every file outside user-service screens that you touched.
+>
+> This stage changes the My activity and Find errands pages. Confirm the owners of those pages
+> have agreed before starting.
+
+### Design decisions
+
+#### Which pages each view shows
+
+| View           | Pages                                                                        |
+| -------------- | ---------------------------------------------------------------------------- |
+| Requester only | Suppliers (main page), supplier detail, request form, My errands             |
+| Courier only   | Find errands (main page), My deliveries                                      |
+| Both views     | Chat, Credits, Account, and the admin pages (Manage suppliers, Manage users) |
+
+Any page found in Stage 22a that is not in this table → stop and ask me which view it belongs to.
+
+#### Behaviour
+
+| Rule                        | Value                                                                                                                                                                                                                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend                     | No changes                                                                                                                                                                                                                                                                                                      |
+| Source of the current view  | `AuthContext.user.activeView` (unchanged from 16f)                                                                                                                                                                                                                                                              |
+| Page-to-view list           | One shared list in code. Every route, the nav bar and the blocked-page check all read from it.                                                                                                                                                                                                                  |
+| My activity                 | Split into two pages: My errands at `/my-errands` (requester only) and My deliveries at `/my-deliveries` (courier only). The old My activity route is removed. If existing frontend paths use underscores rather than hyphens, report it in 22a before choosing.                                                |
+| Nav bar                     | Shows only the pages of the current view, plus the pages shown in both views. The other view's links are hidden. In requester view the nav shows "My errands"; in courier view it shows "My deliveries".                                                                                                        |
+| Opening another view's page | Shown in place; the URL is unchanged. Message: "This is only available in `<view>` mode", where `<view>` is the view that page belongs to. Two buttons: one switches to that view (staying on the page, which then renders normally), and one goes to the current view's main page (Suppliers or Find errands). |
+| Toggling the view           | Optimistic, revert and toast on failure (unchanged from 16f). The user stays on the current page. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                         |
+| What `/` (home) shows       | The main page of the current view                                                                                                                                                                                                                                                                               |
+| New users                   | Start in requester view (the existing schema default, unchanged). The saved view persists across sessions as before (F5.2.2).                                                                                                                                                                                   |
+| Landing after login         | Unchanged from Stage 16: the page the user was sent away from, else home. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                                                 |
+| Find errands empty state    | Remove the "Post an errand" button. Heading: "No errands available". Text: "Check back in a bit."                                                                                                                                                                                                               |
+| Notifications               | Not implemented yet; out of scope for this stage. See "Notes for later".                                                                                                                                                                                                                                        |
+
+---
+
+## Stage 22a: Read and Report (no code changes)
+
+Read `frontend/` and report the following. Then **stop and wait for my answers**.
+
+1. **Routes**: every route in `App.jsx`, with its path, page component and existing guards (`RequireAuth`, `RequireRole`). Mark any page not in the table above.
+2. **Path convention**: whether existing multi-word paths use hyphens or underscores.
+3. **Nav**: every nav link and where it is defined (`TopNav.jsx` and any mobile menu).
+4. **Cross-page navigation**: every in-page link, button or `navigate()` call that leads from a page in one view to a page that belongs only to the other view.
+5. **Home**: what `/` currently renders or redirects to.
+6. **Login redirect**: how `RequireAuth`'s `from` state and the post-login redirect currently work.
+7. **`activeView` consumers**: every file that currently reads `activeView` or calls `setActiveView`.
+8. **My activity**: how it currently splits My errands and My deliveries (tabs, components, data fetching), and every link to its path.
+
+---
+
+## Stage 22b: Implementation
+
+Implement the design decisions above exactly as written. Do not choose behaviour for any case they do not cover. Ask instead.
+
+### Verification
+
+- Requester view: the nav shows Suppliers and My errands (plus the shared pages), not Find errands or My deliveries
+- Courier view: the nav shows Find errands and My deliveries (plus the shared pages), not Suppliers or My errands
+- `/` shows Suppliers in requester view and Find errands in courier view
+- Chat, Credits, Account and the admin pages open normally in both views
+- Admin pages stay visible in both views (for admins)
+- Opening a courier-only page in requester view (typed URL, back button) → blocked-page message, URL unchanged, saying "courier mode"; and the reverse for requester-only pages
+- Blocked page, switch button → the view switches, the user stays on the page, and the page renders
+- Blocked page, main-page button → goes to the current view's main page without changing the view
+- Toggle on a page in both views → the user stays on that page
+- Toggle on a page belonging only to the old view → the user stays on it and sees the blocked-page message
+- Toggle failure (user-service stopped) → the view reverts, a toast is shown, and the nav matches the reverted view
+- `/my-errands` and `/my-deliveries` each show their half of the old My activity page; the old My activity path no longer exists
+- Find errands' empty state has no "Post an errand" button and reads "No errands available" / "Check back in a bit."
+- Logged out on a courier-only page, logged in with a saved requester view → after login, back on that page with the blocked-page message saying "courier mode"
+- New user → starts in requester view and sees Suppliers
+- Reload, or log in on another browser → same view and same set of pages as before
+- No files under `user-service/` changed
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout. Every Verification bullet above that does not need a real browser is a required test case. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it. Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+### Notes for later (do not implement now)
+
+- **Notifications**: when they are implemented, decide what a notification linking to a page in the other view does (e.g. a "your errand was accepted" notification received while in courier view). Add its page to the page-to-view list.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **F5.2.2**: TODO (team): wording describing what the active view now controls. Not needed to implement this stage.

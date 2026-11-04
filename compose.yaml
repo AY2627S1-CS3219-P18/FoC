@@ -366,6 +366,7 @@ services:
     # health-check endpoints are explicitly deferred).
     environment:
       NODE_ENV: development
+      PER_IP_RATE_LIMIT: 20000
       PORT: 3002
       DB_HOST: supplier-db
       DB_PORT: 3306

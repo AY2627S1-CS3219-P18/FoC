@@ -6,11 +6,14 @@
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added optional PHOTO_STORE_* settings and
  *        the `photoStore` config group per Phase 2 plan Task 1. No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the optional MOCK_DOWNSTREAM_FAILURE
  *        setting and the `mockDownstreamFailure` config flag per Phase 4 plan Task 13. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-04, Codex, model: GPT-6): Added validation and default for the team-specified rate limit.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { z } from "zod";
@@ -19,6 +22,7 @@ const positiveInteger = z.coerce.number().int().positive();
 
 const envSchema = z.object({
   PORT: positiveInteger,
+  PER_IP_RATE_LIMIT: positiveInteger.default(30),
   NODE_ENV: z.enum(["development", "production", "test"]),
   DB_HOST: z.string().min(1),
   DB_PORT: positiveInteger,
@@ -49,6 +53,7 @@ const values = parsed.data;
 
 export const config = Object.freeze({
   env: values.NODE_ENV,
+  perIpRateLimit: values.PER_IP_RATE_LIMIT,
   server: Object.freeze({ port: values.PORT }),
   db: Object.freeze({
     host: values.DB_HOST,

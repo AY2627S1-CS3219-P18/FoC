@@ -6,12 +6,15 @@
  *        §7.5 as an in-memory counter (no new library dependency introduced for this). No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-04, Codex, model: GPT-6): Applied the team-specified configurable per-IP limit.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
+import { config } from '../config.js';
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/AppError.js';
 
 const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 30;
 
 interface WindowState {
   count: number;
@@ -32,7 +35,7 @@ export function createRateLimiter() {
       return;
     }
 
-    if (state.count >= MAX_REQUESTS_PER_WINDOW) {
+    if (state.count >= config.perIpRateLimit) {
       const retryAfterSeconds = Math.ceil((state.windowStart + WINDOW_MS - now) / 1000);
       next(
         new AppError(429, 'Too Many Requests', 'Rate limit exceeded. Try again later.', {

@@ -61,17 +61,20 @@ Author review: Congchen
 Scope: 2026-09-30 update — added a Phase 3 implementation status note (Tool: Claude Code, model:
        claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
        AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-09-30 update — recorded the Phase 4 status note and the team's Phase 4 decisions of
        2026-09-30 in the Phase 4 scope; replaced the reactivation photo wording and the deferred
        photo-cleanup bullet in the Phase 2 scope and the enqueue status note in the Phase 3 scope.
        Tool: Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API
        decisions were made by the AI tool; the change records the team's decisions of 2026-09-30.
-Author review:
+Author review: Congchen
 Scope: 2026-10-20 update — aligned the Phase 0 authentication task with cached JWKS retrieval and
        local RS256 verification. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-02, Codex, model: GPT-6): Recorded Phase 5 verification status.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Implementation Spec
@@ -130,11 +133,17 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
   column).
 - Global error handler emitting the fixed error envelope (§7.1: `status_code`, `error`, `message`,
   `timestamp`, `details`) for `400`/`401`/`403`/`404`/`409`/`422`/`429`/`500`.
-- Rate-limit middleware: 30 requests/minute/IP → `429 Too Many Requests` (§7.5).
+- Rate-limit middleware: `PER_IP_RATE_LIMIT` requests/minute/IP (default 30) → `429 Too Many Requests` (§7.5).
 - Confirm same-origin deployment via the shared API gateway that fronts all FoC services (no CORS
   middleware needed) (§3).
 - Persistence-layer scaffolding (repository/DAO pattern) so Phase 1+ business logic depends on
   persistence interfaces, not raw SQL (§5).
+
+**Status (2026-11-02):** The 36 authorization cases for mutating endpoints pass, including
+checks that rejected requests do not call the mocked MySQL or Redis interfaces. Removing the
+lookup role guard caused nine cases to fail; the guard was restored. Endpoint-specific wording,
+performance verification, the API-only transcript and cross-role demonstration remain pending
+the team decisions listed in the Phase 5 plan.
 
 ### Acceptance criteria
 

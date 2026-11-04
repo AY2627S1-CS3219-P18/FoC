@@ -23,7 +23,7 @@ info:
     Source of truth for the contract is `SupplierServiceArchitecture.md` (§6.2, §7, §8). Every route
     requires a User Service bearer token. The service fetches the User Service JWKS from
     `/auth/.well-known/jwks.json` and verifies the RS256 signature locally.
-    All endpoints are rate-limited to 30 requests per minute per client IP.
+    All endpoints are rate-limited per client IP per minute using PER_IP_RATE_LIMIT (default 30).
 
     `isOpen` is computed, not stored, in Singapore time (UTC+8).
 servers:
