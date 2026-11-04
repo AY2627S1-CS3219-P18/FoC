@@ -61,20 +61,20 @@ Author review: Congchen
 Scope: 2026-09-30 update — added a Phase 3 implementation status note (Tool: Claude Code, model:
        claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
        AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-09-30 update — recorded the Phase 4 status note and the team's Phase 4 decisions of
        2026-09-30 in the Phase 4 scope; replaced the reactivation photo wording and the deferred
        photo-cleanup bullet in the Phase 2 scope and the enqueue status note in the Phase 3 scope.
        Tool: Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API
        decisions were made by the AI tool; the change records the team's decisions of 2026-09-30.
-Author review:
+Author review: Congchen
 Scope: 2026-10-20 update — aligned the Phase 0 authentication task with cached JWKS retrieval and
        local RS256 verification. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
 Author review: tng wen xi
 Scope (2026-11-02, Codex, model: GPT-6): Recorded Phase 5 verification status.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 -->
 
 # Supplier Service Implementation Spec

@@ -17,7 +17,7 @@
  * Scope (2026-11-04, Claude Code, model: claude-sonnet-5-5): added a non-null assertion on one indexed access to fix a
  *        strict-typing error; no test logic changed. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-11-02, Codex, model: GPT-6): made signature corruption deterministic.
  * Author review: Congchen
  */

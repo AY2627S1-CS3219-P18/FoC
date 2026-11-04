@@ -3,7 +3,7 @@
  * Tool: Codex (model: GPT-6), date: 2026-11-02
  * Scope: Added Phase 5 authorization tests for mutating endpoints using the existing JWKS authentication.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';

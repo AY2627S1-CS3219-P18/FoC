@@ -18,10 +18,10 @@
  * Author review: Congchen
  * Scope (2026-11-02, Codex, model: GPT-6): updated integration test credentials for JWKS authentication.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-11-04, Codex, model: GPT-6): Resolved merge conflict using the existing JWKS test fixture.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import request from 'supertest';
