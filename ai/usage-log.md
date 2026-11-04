@@ -6412,4 +6412,275 @@ Fetched and merged origin/main; resolved README and usage-log conflicts, retaini
 
 **What I kept/changed/rejected:**
 
+**Author review: Congchen**
+
+## 2026-11-03 — Phase 5: Response inventory and API test plan
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** explain, docs
+**Scope:** Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7.4, `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 2–5 and the team's chat instruction below.
+
+**Prompts (exact):**
+> 1. In that case, just give me all the messages the code returns and I will decide on the exact phrasing myself, mapping to each.
+> 2. The testing is mainly for latency of pagination when the load increases. Let's run at p50 - representative of typical load and p95 - representative of the general experience during load, as defined by microsoft. according to the NFR, we are aiming for near instant loads. Concretizing that, the time to load should ideally not exceed 1s. The plan already lists some test conditions
+> 3. A test plan should also be created that lists the exact API calls to make for the tests
+
+**Key responses:**
+Inventoried current response messages and locations, including generated Zod details, for team review. Documented the existing Phase 5 pagination and API lifecycle calls. Recorded the team's p50/p95 and ideal one-second objective, and its preceding instruction to demonstrate on the live app. Flagged the existing per-IP rate limit and outstanding test parameters; no load test or live demonstration was run. Verified documentation against source and checked the diff for whitespace errors.
+
+**Files:**
+- `supplier-service/docs/phase-5-response-inventory.md` (created)
+- `supplier-service/docs/phase-5-api-test-plan.md` (created)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Confirm whether one second is a strict pass criterion and specify load rate, supplier counts, duration, load tool, database and permitted action if the target is missed. Confirm whether the API-only transcript remains required, its format and location, and token source. The team will decide the response wording.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Congchen
+
+## 2026-11-04 — Phase 5: Performance and no-UI test decisions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 3–5.
+
+**Prompts (exact):**
+> Task 3: Let's break the NFR even further - during typical load, the target is to keep to within 300ms. This is the p50 target. Under heavy load, the target is within 600ms, for p95. These criteria will be evaluated with an aggregated percentile compliance over 1 minute. Since a single user probably only toggles a page every 5-10s after reading the contents, the baseline rate for normal usage will be 50 requests per second (emulating a few hundred ~400 concurrent users), while the peak load will be 200 requests per second  (emulating ~1600 concurrent users). These numbers are estimates for the number of users of this application in the early phases. For the database, we can use a mock db populated with 4000 records (actual suppliers is expected to be 100+, but to prevent artificial caching as the tests will not be repeatedly calling the same 20-record chunks). Writes are extremely rare and concurrent read writes will be negligible, so we can ignore that in the tests. For the tool, lets use k6 by Grafana, an industry standard for concurrent API load tests, which can also be easily integrated into existing CI/CD pipelines with its JS tests
+> Task 4-5: Yes, the no UI test is still required. I plan to use this as part of CI/CD test to ensure nothing on the logic side broke
+
+**Key responses:**
+Recorded the team's percentile targets, request rates, duration, record count, load tool and no-UI CI intent in the decision record and API test plan. The current limiter allows 30 requests per minute per IP. Asked for clarification about the meaning of mock database, handling that limiter and the association between targets and load levels. No performance or live API tests were run.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Database implementation, rate-limit handling, threshold/load association, no-UI test format and token source remain open. Any query or index change requires a team decision.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Congchen
+
+## 2026-11-04 — Phase 5: Clarified load-test decisions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs | Debugging
+**Governing decision:** Team answers below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
+
+**Prompts (exact):**
+> separate mysql test database for now. eventually i will also add in cloud mysql db so the target env can just be swapped over
+
+> the rate limit is controlled by an env vir. in staging and local, that limit is disabled (some very high number)
+> Both p50 and p95 metrics should be applied. p50 Measures what the typical user experiences (the 50th percentile mark). p95 Measures worst-case behavior under that specific traffic pattern. a framework could be under typical load, p50 target is <=300ms,  p95 target is <=500ms. For peak load, p50 target is <=400ms, p95 target is <=600ms
+
+**Key responses:**
+Recorded separate MySQL test database and the four supplied percentile targets. Inspected the existing limiter and config: the limiter is hard-coded at 30 requests/minute/IP and there is no rate-limit environment variable in Supplier Service. Asked the team for the variable name and exact local/staging and production/unset behavior, and for the distribution of request variants across each load level. No load tests were run.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Rate-limit configuration and request-variant workload distribution are unresolved; changing a security setting requires the team decision. No-UI test format and token source remain open.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Configurable rate limit and workload
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
+
+**Prompts (exact):**
+> **Supplier Service currently hard-codes 30 requests/minute/IP; it has no rate-limit environment variable. What variable name and exact local/staging limit should be used, and should production retain 30 when it is unset?**
+>
+> PER_IP_RATE_LIMIT. Local and staging can be 10000. production is 30
+>
+> **Should each listed pagination request be tested separately at the full 50 and 200 requests/s, or should the requests share those rates in a mixed workload? If mixed, what proportions should each receive?**
+>
+> Testing each paginated route separately at 200 RPS would simulate an unrealistic scenario where the entire user base simultaneously spams a single endpoint. A mixed workload represents true production traffic, testing how the backend handles concurrent execution of different offset depths, filters, and cache hits.  We should use a combined workflow with
+> [ Total Target: 50 / 200 RPS ]:
+> 70% ── Page 1 (Shallow Offset / Default View)
+> 20% ── Pages 2–5 (Next / Previous Toggles)
+> 10% ── Page 6+ / Deep Offsets / Filtered Queries
+>
+> Also update the local rate limit to 20000 instead of 10000
+
+> 95% for public, 5% for admin.
+> [ 10% Complex Group Share ]
+> 40% ── Deep Pagination (Pages 6+, high OFFSET)
+> 15% ── Text Search (`?search=errand`)
+> 15% ── Status Filter (`?isOpen=true`)
+> 15% ── Category Filter (`?category=cleaning`)
+> 15% ── Location Filter (`?location=central`)
+
+**Key responses:**
+Added positive-integer `PER_IP_RATE_LIMIT` configuration with default 30, used it in the per-IP limiter, set local Compose and the service environment example to 20,000, and documented the team's staging value of 10,000. Staging must supply that setting; there is no staging configuration in this checkout. Recorded the mixed workload and asked how category and location names should map to the existing numeric ID filters. A 200 requests/s test for one minute from one IP exceeds the staging limit. TDD: the two new tests initially failed before implementation and then passed. The first full run had 382 passes and one failure in the existing incorrect-signature authentication test; it changes a Base64 final character, which can decode to the same bytes. A subsequent full run passed 39 files and 383 tests. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. No k6 load test was run.
+
+**Files:**
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/middleware/rateLimit.ts` (modified)
+- `supplier-service/test/middleware/rateLimit.test.ts` (modified)
+- `supplier-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `supplier-service/openapi.yaml` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** The supplied category and location filter names do not match the API's numeric `category_id` and `location_id` parameters; asked whether to look up IDs. Staging's 10,000/min/IP rate limit is below the 12,000 requests in the one-minute peak test from one IP. No staging configuration was found. The existing authentication test can be flaky when its signature mutation leaves decoded bytes unchanged.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Pagination k6 workload
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team's mixed-workload decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md`, Task 3.
+
+**Prompts (exact):**
+> The test should emulate how the real requests are sent. On the fe the dropdown is loaded with the categories that maps to ids, so the test can just use ids instead
+
+**Key responses:**
+Recorded the team's numeric ID clarification and added a k6 script with the specified mixed load, separate one-minute typical and peak scenarios and latency thresholds. Used Grafana's [constant-arrival-rate executor documentation](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/) and [metric documentation](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/); `http_req_duration` excludes initial connection setup. The script validates its required environment inputs, checks HTTP responses, and fails on dropped iterations or HTTP failures. The 100,000-iteration local mocked-request simulation gave 4,985 admin, 69,830 page-one, 19,945 pages 2–5, 4,096 deep, and 1,564/1,510/1,512/1,543 search/open/category/location requests; `node --check` and lint passed. This was not a k6 or live-database run. The 4,000-record seeding script and no-UI CI test remain to be implemented; Docker access was denied and k6 was not installed in the environment.
+
+**Files:**
+- `supplier-service/test/load/pagination.k6.js` (created)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Staging's 10,000 requests/minute/IP is below the 12,000 requests in a one-minute peak run from one IP. The no-UI test format and token source remain open. No live k6 verification was possible.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Staging limit correction
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction below and Phase 5 implementation plan.
+
+**Prompts (exact):**
+> staging env limit is also updated to local's 20000. Where did the 100,000 request simulation come from?
+> what other blockers are there for this phase
+
+**Key responses:**
+Recorded the staging limit correction and updated the current Phase 5 status. The 100,000 iterations were an agent-chosen local Node simulation of the k6 script's randomized selection logic with HTTP calls mocked; they did not make real requests or measure latency. Identified the outstanding implementation, environment and team-decision items. No staging deployment configuration is present in the checkout; no live load test was run.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** Staging configuration must be updated in its deployment environment. Other remaining items are reported to the team; no decisions were inferred.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Accepted existing response messages
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction below; Phase 5 plan Task 2 and existing response inventory.
+
+**Prompts (exact):**
+> accept current messages and optional details. Does this unblock the rest of the implementation
+
+**Key responses:**
+Recorded the team's acceptance of the current response messages and optional details. The wording decision is unblocked; verification remains. Pagination data setup and live k6 verification, plus the no-UI and cross-role tests, still remain. The earlier Docker access and k6 availability limitations still apply; demonstration format, token source and transcript location were not selected. This decision does not specify changes to malformed-JSON or unknown-route handling.
+
+**Files:**
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** No-UI test format, token source and transcript location remain open; a team decision is needed before changing query/index behavior if performance targets are missed.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Response-message tests and local pagination load run
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** Phase 5 plan Task 2 (team accepted current messages, response inventory) and Task 3 (team load targets, 4,000-record separate MySQL database, k6, `PER_IP_RATE_LIMIT`), both recorded in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Decision record.
+
+**Prompts (exact):**
+> you should be in the supplier-phase-5 branch. Continue with implementing the plans so we can move on
+
+**Key responses:**
+Task 2: added `test/routes/responseMessages.test.ts` (6 tests for the shared 401, 403, idempotency-key 400, and 422 validation messages and details from the inventory); all passed against current code, so no message strings were changed. The inventory rows that need database state (404, duplicate/referenced 422, stale-version 409, 500 save/upload failures) were not covered by new tests. Task 3: added `scripts/seedLoadTestData.ts` (schema from `src/db/init.sql`, 4,000 synthetic suppliers) and `scripts/loadTestAuth.ts` (local JWKS stub and test tokens), then ran `test/load/pagination.k6.js` once against a throwaway MySQL 8 container, with k6 in Docker, all on one laptop. The targets were not met: typical p50 8.7 s, p95 11.03 s; peak p50 15.21 s, p95 17.09 s; 11,672 dropped iterations; no 429s. Per plan Task 3 step 4, no index or query was changed. Raw output and caveats are in `supplier-service/docs/phase-5-load-test-results.md`. Tasks 4 and 5 were not started (format, token source and location undecided).
+
+**Files:**
+- `supplier-service/test/routes/responseMessages.test.ts` (created)
+- `supplier-service/scripts/seedLoadTestData.ts` (created)
+- `supplier-service/scripts/loadTestAuth.ts` (created)
+- `supplier-service/docs/phase-5-load-test-results.md` (created)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** NFR7.1 targets were missed in this run (single-machine, dev-mode service); the team must decide whether to re-run in a closer-to-production setup and whether index/query changes are allowed. A single `isOpen=true` request took 3.46 s on its own. Tasks 4 and 5 still need the demonstration format, token source and evidence location. A local service process and JWKS stub started for the run could not be stopped by the agent (the stop command was denied) and may still be running.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Phase 5: No-UI API suite and cross-role suite
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Phase 5 plan Tasks 4 and 5, with the team's chat answers below (Vitest suite, local JWKS stub for tokens, evidence under `test/`); Arch §7.4 for the calls.
+
+**Prompts (exact):**
+> use a vitest suite. For the token source, use the local stub as the whole test deals with supplier side logic. whether login path works will be a separate test
+
+**Key responses:**
+Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-demo/*.apidemo.test.ts` against an already-running service (`API_BASE_URL`, default `http://localhost:3002`). `globalSetup.ts` serves a JWKS stub and provides user, admin and super admin tokens; the service must be started with `USER_SERVICE_URL` pointing at it and a high `PER_IP_RATE_LIMIT`. `lifecycle` covers reference lookups, create with Idempotency-Key, replay, list/detail, update, stale-version 409, delete, repeated-delete 404. `roles` runs the same operations as each role and asserts 200/201 versus 403. Each file saves a generated transcript to `test/api-demo/transcripts/`. Ran live against a throwaway MySQL/Redis and a local service: 17 of 17 passed. Two corrections along the way: the replayed Idempotency-Key returns the stored 201, not 200 as I first assumed; and a reused JWKS key id was cached by a long-running service, so the stub now uses a per-run key id. One default-suite run showed 1 failed test (not identified) and the rerun passed 389/389. The default `vitest run` excludes these suites.
+
+**Files:**
+- `supplier-service/test/api-demo/globalSetup.ts` (created)
+- `supplier-service/test/api-demo/client.ts` (created)
+- `supplier-service/test/api-demo/lifecycle.apidemo.test.ts` (created)
+- `supplier-service/test/api-demo/roles.apidemo.test.ts` (created)
+- `supplier-service/.gitignore` (modified; transcripts are generated in CI and not committed)
+- `supplier-service/vitest.apidemo.config.ts` (created)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/package.json` (modified; no header possible)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:** Team decision (chat, 2026-11-04): transcripts are generated in CI and need not persist, so they are git-ignored. CI needs a stack with a seeded location row and the stub reachable by the service. The unidentified default-suite failure was not investigated.
+
+**What I kept/changed/rejected:**
+
 **Author review:**

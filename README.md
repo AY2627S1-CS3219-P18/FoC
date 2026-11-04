@@ -32,6 +32,27 @@ Author review:
 Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-03, Codex, model: GPT-6): Added the Phase 5 documentation log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the clarified Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the configurable rate-limit log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the pagination load-test log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the staging-limit correction log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -372,3 +393,12 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 142 | 2026-10-23 | frontend               | Stage 16g: Admin User Management (`/admin/users`)                                                   | New admin user table (search/filter/sort/paginate) with gated suspend/promote row actions            |
 | 143 | 2026-10-23 | user-service           | Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox) | Filled Stage 12's zero coverage, a small Stage 13a gap, and Stage 14 outbox/relay test gaps; flagged relay HTTP-mocking question |
 | 144 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
+| 145 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
+| 146 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
+| 147 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
+| 148 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
+| 149 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
+| 150 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
+| 151 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
+| 152 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
+| 153 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |

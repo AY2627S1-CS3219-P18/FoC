@@ -8,6 +8,27 @@ Scope: Implementation plan for SupplierServiceSpec.md "Phase 5 — Cross-Cutting
        are NOT filled in. No requirements, architecture, schema, or API decisions were made by the AI
        tool. The code in this plan has not been compiled or run.
 Author review: Congchen
+Scope (2026-11-03, Codex, model: GPT-6): Recorded the team-supplied latency objective and linked the API call inventory.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied performance and no-UI test decisions.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded clarified load targets and database choice.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied rate-limit and workload decisions.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded the revised staging rate limit and current task status.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded the team's acceptance of current response wording and optional details.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5-5): Recorded task status after Task 2 tests and the first local k6 run.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Supplier Service Phase 5 Implementation Plan
@@ -29,16 +50,16 @@ Author review: Congchen
 | Spec item | Status here |
 | --- | --- |
 | End-to-end tests proving NFR6.1 | **Ready** — Task 1 |
-| §7.1.1 per-endpoint `message`/`details` content | **BLOCKED** — the team has not written it (Arch §7.1.1 "does not select a mapping for the team"; §9 item 1) — Task 2 |
-| Load/pagination tests proving NFR7.1 | **BLOCKED** — no latency target, data volume or tool recorded — Task 3 |
+| §7.1.1 per-endpoint `message`/`details` content | **Verified in part** — `test/routes/responseMessages.test.ts` covers the shared-middleware/validation rows; DB-dependent rows not covered — Task 2 |
+| Load/pagination tests proving NFR7.1 | **Run, targets missed** — local k6 run recorded in `supplier-service/docs/phase-5-load-test-results.md`; awaiting team decision — Task 3 |
 | Live API-call transcript + independent no-UI demonstration (§9 item 10) | **BLOCKED** on format — Task 4 |
 | Cross-role end-to-end demonstration | **BLOCKED** on format (same answer as Task 4) — Task 5 |
 
 Already true and only *cited*, not rebuilt: 401/403 handling (`authenticate`, `requireRole`), the 30/min/IP limiter, and the fixed `limit` of 50 (`422` otherwise). `test/app.integration.test.ts` already covers a subset of 401/403; Task 1 makes the coverage systematic and adds the "no state change" assertion it lacks.
 
-## Blocked on team decisions
+## Original decision questions
 
-Ask these before the matching task. Each is a stop-and-ask trigger; the agent must not pick a default.
+The decision record below contains subsequent answers. Remaining unanswered questions must not be filled in by the agent.
 
 1. **Task 2 — endpoint wording.** For each row of the §7.1.1 table (`400`, `401`, `403`, `404`, `422`, and the mapped `409`/`429`/`500` if wording changes), per endpoint: the exact `message` and what `details` carries (field, location, resource identifier, downstream service, or job id). Today's messages are whatever the code emits; changing them alters the API's response contract.
 2. **Task 3 — NFR7.1.** (a) What is "acceptable latency" as a number (p95 or p99, in ms, at what request rate)? (b) How many suppliers is "at scale"? (c) Which tool, e.g. a Node script versus a library such as autocannon or k6? (d) Which database serves it, the compose MySQL or a throwaway one? (e) If the target is missed, is adding an index or changing a query allowed? That is a schema/performance trade-off the team owns.
@@ -177,11 +198,11 @@ git commit -m "test(supplier-service): prove mutating endpoints reject unauthori
 
 ---
 
-### Task 2: Per-endpoint `message`/`details` wording (BLOCKED on team decision 1)
+### Task 2: Per-endpoint `message`/`details` wording (team decision recorded)
 
-Governing decision: **not yet written down.** Arch §7.1.1 leaves this to the team.
+Governing decision: the team accepted the existing messages and optional details in the decision record below.
 
-Do not draft wording. When the team supplies the table:
+The original steps were written for a new table; use the accepted inventory as the existing behavior to verify:
 
 - [ ] **Step 1:** Copy the team's table verbatim into the Decision record below and cite its source (doc/commit).
 - [ ] **Step 2:** For each row, write a Supertest test that asserts the exact `message` and the `details` shape the team specified (add to the matching `test/routes/*.test.ts` file). Run them; the differences from today's output are the work list.
@@ -191,7 +212,7 @@ Do not draft wording. When the team supplies the table:
 
 ---
 
-### Task 3: NFR7.1 pagination/latency verification (BLOCKED on team decision 2)
+### Task 3: NFR7.1 pagination/latency verification (in progress)
 
 Governing decision: Spec Phase 5 scope bullet 3, NFR7.1.1 (#61); Arch §7.2. The 50-entry limit is already enforced; this task measures latency only. Seed data exists in `../data/csv/supplier-seed-data.csv`.
 
@@ -244,4 +265,31 @@ Governing decision: Spec Phase 5 scope bullet 5 (course requirement point 4).
 
 ## Decision record
 
-_Empty. The team fills in the answers to the three blocked items here (with a source), and the agent then unblocks the matching task._
+**Task 3, partial — team instruction in chat (2026-11-03):** Measure p50 and p95 pagination latency as load increases; load time should ideally not exceed 1 second. The team has not specified whether this ideal is a strict pass/fail threshold, the request rate, data volume, tool, database, or authorization for query/index changes. Task 3 remains blocked on those details.
+
+**Tasks 4–5, partial — team instruction in chat (2026-11-03):** The demonstration can be conducted on the live app. The team also requested a test plan listing exact API calls; see [Phase 5 API test plan](../../../supplier-service/docs/phase-5-api-test-plan.md). Whether the separate no-UI transcript remains required and the evidence location, format and token source are still open.
+
+**Task 2:** The team will decide the wording after reviewing the [current response inventory](../../../supplier-service/docs/phase-5-response-inventory.md).
+
+
+**Task 3 — team instruction in chat (2026-11-04):** Target p50 within 300 ms during typical load and p95 within 600 ms during heavy load, evaluated over one minute. Baseline is 50 requests/s and peak is 200 requests/s. Use Grafana k6 and a mock database populated with 4,000 supplier records; ignore concurrent writes. Clarification is pending on whether “mock database” means a separate MySQL database with synthetic records or a mocked database implementation, how the existing 30 requests/minute/IP limit should be handled, and the precise association between each percentile and load level. If a target is missed, index/query changes still need a team decision.
+
+**Tasks 4–5 — team instruction in chat (2026-11-04):** The no-UI test remains required and is intended for CI/CD regression testing. The test format, token source and evidence location remain unrecorded.
+
+
+**Task 3 — clarified team instruction (2026-11-04):** Use a separate MySQL test database populated with 4,000 synthetic supplier records; the team expects to swap to cloud MySQL later. Measure both percentiles over one minute: at typical load (50 requests/s), p50 ≤300 ms and p95 ≤500 ms; at peak load (200 requests/s), p50 ≤400 ms and p95 ≤600 ms. The team stated the rate limit should be controlled by an environment variable with a very high local/staging limit. Current Supplier Service code hard-codes 30 requests/minute/IP and does not have that variable; its name, exact local/staging setting and unset/production behavior await the team's decision. The workload distribution across listed requests also remains to be specified.
+
+
+**Task 3 — team instruction (2026-11-04):** `PER_IP_RATE_LIMIT` is 20,000 locally, 10,000 in staging and 30 in production, requests/minute/IP. The mixed request workload is 70% page 1, 20% pages 2–5, and 10% page 6+ or filtered queries. The public/admin route split and distribution within the last group remain open. A 200 requests/s test over one minute from one IP exceeds the staging limit of 10,000 requests/minute/IP.
+
+
+**Task 3 — team clarification (2026-11-04):** Split the mixed workload 95% public and 5% admin. Within the 10% complex group, use 40% deep pagination (page 6+), 15% text search (`search=errand`), 15% `isOpen=true`, 15% category (`category=cleaning`), and 15% location (`location=central`). Current supplier list validation accepts numeric `category_id` and `location_id`, rather than the supplied category and location names; their mapping awaits the team's clarification.
+
+
+**Task 3 — team clarification (2026-11-04):** The load test should emulate frontend requests and use category and location IDs in the existing numeric filter parameters.
+
+
+**Task 3 — team correction (2026-11-04):** Staging `PER_IP_RATE_LIMIT` is 20,000 requests/minute/IP, matching local; this supersedes the earlier 10,000 staging setting. Staging deployment configuration is not present in this checkout and must be updated separately. The existing decision-record entries above are chronological; later clarifications supersede earlier unanswered questions.
+
+
+**Task 2 — team decision (2026-11-04):** Accept the current messages and optional details documented in [the response inventory](../../../supplier-service/docs/phase-5-response-inventory.md). No new message or details mapping is required. Existing verification work remains; this decision does not specify changes to malformed-JSON or unknown-route handling.

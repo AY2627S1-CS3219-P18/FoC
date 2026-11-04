@@ -133,7 +133,7 @@ versioning), §7.1 (status codes/error envelope), §7.5 (rate limiting), §3 (sa
   column).
 - Global error handler emitting the fixed error envelope (§7.1: `status_code`, `error`, `message`,
   `timestamp`, `details`) for `400`/`401`/`403`/`404`/`409`/`422`/`429`/`500`.
-- Rate-limit middleware: 30 requests/minute/IP → `429 Too Many Requests` (§7.5).
+- Rate-limit middleware: `PER_IP_RATE_LIMIT` requests/minute/IP (default 30) → `429 Too Many Requests` (§7.5).
 - Confirm same-origin deployment via the shared API gateway that fronts all FoC services (no CORS
   middleware needed) (§3).
 - Persistence-layer scaffolding (repository/DAO pattern) so Phase 1+ business logic depends on
