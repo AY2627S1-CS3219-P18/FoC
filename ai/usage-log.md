@@ -7218,3 +7218,115 @@ ambiguity — `errorMessages.js`'s existing wording was checked and found adequa
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 21a: Fix Clipped Row-Actions Menu (frontend)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor | debug
+**Scope:** Implementation code | Requirements formatting
+**Governing decision:** `instructions.md`, "Stage 21a: Fix clipped row-actions menu (frontend)" and its "Tests" section.
+
+**Prompts (exact):**
+
+> let's do 21 stage by stage. any questions before you start?
+
+> Should I move the Stage 21a/21b spec text out of ai/usage-log.md into instructions.md (as a new "## Stage 21" section with 21a/21b subsections, matching Stages 1-20's format) before I start implementing? → Move it to instructions.md first (Recommended)
+
+> Should 21a and 21b each get their own branch/PR (like the 12a-12e sub-stages did), pausing for you to merge each before the next starts — or do both in one combined branch/PR? → separate branch and PR, and don't forget to pause after each sub stage to let me verify first (as per normal git workflow)
+
+**Key responses:**
+Before writing any code, found that the Stage 21a/21b spec existed only as an uncommitted draft
+sitting in `ai/usage-log.md`, with nothing past Stage 20b in `instructions.md` (where every
+prior stage's governing spec lives). Asked the user; they chose to relocate it. Moved the draft
+text verbatim into a new `# Stage 21: Row-Actions Menu Fix & Password Visibility Toggle
+(frontend)` section in `instructions.md` (with `## Stage 21a` / `## Stage 21b` subsections,
+matching the Stage 20 structure), then reverted the now-redundant draft out of `ai/usage-log.md`
+via `git checkout`. The only wording added was the top-level title; everything else is the
+user's own spec text, unchanged.
+
+Created `frontend/src/components/ActionMenu.jsx`: a trigger `<button>` (`aria-haspopup="menu"`,
+`aria-expanded`, caller-supplied `aria-label` and trigger content) plus a `role="menu"` panel
+rendered via `createPortal` into `document.body`. A `useLayoutEffect` (run once per open, after
+the portal content commits) measures the trigger and menu with `getBoundingClientRect()` and
+sets `position: fixed` coordinates: below the trigger and right-aligned to it with a 4px gap by
+default, flipped above the trigger if it would overflow `window.innerHeight - 8px`, with `left`
+clamped to a minimum of 8px. The menu stays `visibility: hidden` until a position is computed,
+avoiding a flash at `(0, 0)`. A second effect (also keyed on `open`) attaches `mousedown`
+(outside-close), `keydown` (Escape — closes and returns focus to the trigger), `resize`, and
+`scroll` (capture phase, so a scroll starting on an ancestor like the table wrapper still
+closes it) listeners, all removed on close/unmount. Items are `{ label, onSelect, danger? }`;
+`danger` reuses the existing `text-alert` destructive colour. Returns `null` when `items` is
+empty, matching the old `RowMenu`'s behaviour.
+
+In `frontend/src/pages/AdminUsers.jsx`, replaced `RowMenu`'s inline absolutely-positioned
+dropdown (the thing `overflow-x: auto` on the table wrapper was clipping) with `ActionMenu`,
+passing through the same `getRowActions`-derived item set, the same per-item handlers via
+`onPick`, and the same trigger styling (`sm:opacity-0 sm:group-hover:opacity-100
+sm:group-focus-within:opacity-100`, so it's hover-revealed on desktop and always visible below
+the `sm` breakpoint, unchanged). `getRowActions`, `ACTION_SUCCESS`, `ACTION_DIALOG` and the
+confirm-dialog flow were untouched. The table wrapper's `overflow-x: auto` was left exactly as
+it was, per the stage's instruction.
+
+Searched `src/` for other dropdowns/popovers rendered inside an overflow container, per the
+stage's "Other usages" instruction. Found none: `Chat.jsx` and `SupplierDetail.jsx` only use
+`overflow-y-auto`/`overflow-hidden` for scrollable lists or rounded card clipping, with no
+absolutely-positioned menu inside them; `AdminSuppliers.jsx` (the stage's own "e.g." example)
+has no dropdown/popover at all — its only `absolute` elements are a modal backdrop and a search
+icon. Nothing to migrate, so nothing to ask about.
+
+Wrote `frontend/tests/components/ActionMenu.test.jsx` (11 tests, mocking
+`HTMLElement.prototype.getBoundingClientRect` and `window.innerHeight`): portal rendering (menu
+is in `document.body`, not under the trigger's own container), opens-below vs. flips-above
+positioning math, the 8px left clamp, and every close path (outside mousedown, Escape with
+focus return, item selection calling the handler exactly once, `resize`, a `scroll` event
+dispatched on a nested element to exercise the capture-phase listener, and only one menu open at
+a time across two sibling `ActionMenu` instances — the last one needed an explicit
+`fireEvent.mouseDown` before the second trigger's click, since `fireEvent.click` alone doesn't
+synthesize the `mousedown` a real click produces, which is what closes the first menu). Also a
+renders-nothing-with-no-items case.
+
+**Verification run (this session):**
+
+- `npx vitest run` (frontend): **18/18 passed** across 3 files (11 new in
+  `ActionMenu.test.jsx`, 7 pre-existing).
+- `npx oxlint` (frontend): same pre-existing `react(set-state-in-effect)` /
+  `react(only-export-components)` warning classes as before this stage (one new instance in
+  `ActionMenu.jsx`, same shape as ones already on `AdminUsers.jsx`, `TopNav.jsx`,
+  `AuthContext.jsx`, etc.); no new warning categories; exit code 0.
+- `npx vite build` (frontend): clean.
+- Live browser check: brought up `user-db` + `user-service` + `frontend` via
+  `docker compose -f compose.yaml -f compose.dev.yaml up -d --build`, installed Playwright and
+  Chromium into the scratchpad directory (no browser-automation tool was available otherwise),
+  logged in as the seeded `superadmin` account, and drove `/admin/users` directly. Confirmed:
+  the last actionable row's menu flips upward with the table wrapper's `scrollHeight` still
+  equal to its `clientHeight` (no scrollbar added) when the viewport is short enough to force
+  it; the first row's menu opens below; a click outside the menu closes it; at a 390×844
+  viewport the trigger is visible without hovering, and after scrolling the table wrapper
+  horizontally the menu opens fully within the viewport, unclipped and aligned to its trigger.
+  Screenshots saved under the session scratchpad. Two unrelated console errors appeared (a 401
+  on `/auth/refresh` before login, a 404 on `/credits/balance/...` since `credit-service` wasn't
+  part of this verification's running stack) — pre-existing app-chrome behaviour, not touched by
+  this stage. Stopped the three containers afterward, leaving the rest of the already-running
+  stack as found.
+- Not automated: Tab/Enter/Space keyboard reachability (native `<button>` semantics, not
+  application logic) and the general visual appearance — left for manual/human verification
+  alongside the browser check above.
+
+**Files:**
+
+- `instructions.md` (modified — relocated the Stage 21a/21b spec from the `ai/usage-log.md`
+  draft into a new `# Stage 21` section)
+- `ai/usage-log.md` (modified — reverted the now-relocated draft text; this entry)
+- `frontend/src/components/ActionMenu.jsx` (created)
+- `frontend/src/pages/AdminUsers.jsx` (modified — `RowMenu` now renders via `ActionMenu`)
+- `frontend/tests/components/ActionMenu.test.jsx` (created)
+
+**Deviations / questions raised for the team:**
+Asked, before starting, where the Stage 21 spec should live and whether 21a/21b should each get
+their own branch/PR — both answered above. No other ambiguity; the "Other usages" search (the
+stage's own instruction) found nothing to migrate, so there was nothing further to ask.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
