@@ -3332,3 +3332,126 @@ Write the tests in this stage, following the Stage 7 ground rules and layout. Ev
 ### AI logging
 
 Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+## Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
+
+**Scope:** `user-service` (backend) and `frontend` (the Stage 16 pages that show these errors). NFR1.1.1 (unlock email) is **deferred** and not part of this stage.
+
+Every decision in the table below was made by the team.
+
+### Design decisions (already made, do not change)
+
+#### Login lockout
+
+| Topic                    | Decision                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What counts as a failure | Every password attempt goes to the **same** counter: a wrong password on `POST /auth/login`, and a wrong current password (`INVALID_PASSWORD`) on `PUT /users/me/email` and `PUT /users/me/password`.                                                                                                                           |
+| What does not count      | An identifier that matches no account (there is nothing to lock). Any attempt on a `pending` or `suspended` account, whether the password is right or wrong.                                                                                                                                                                    |
+| Threshold                | 5 failures within 15 minutes, measured from the **first** failure in the window.                                                                                                                                                                                                                                                |
+| Lock length              | Escalates each time the threshold is hit: **1 h**, then **4 h**, then **24 h** (capped at 24 h).                                                                                                                                                                                                                                |
+| Check order              | The lock check runs **before** the password check. A locked account gets the lock error whatever password is sent.                                                                                                                                                                                                              |
+| Requests during a lock   | Rejected with the lock error. They are not counted and do not extend the lock.                                                                                                                                                                                                                                                  |
+| What a lock blocks       | Login, and the current-password check on `PUT /users/me/email` and `PUT /users/me/password` (both rejected with `ACCOUNT_LOCKED`). Existing refresh tokens are **not** revoked.                                                                                                                                                 |
+| What resets everything   | A successful login, a correct current password on `PUT /users/me/email` or `PUT /users/me/password`, or an admin unlock. Each clears the failure count, the window and the escalation level.                                                                                                                                    |
+| Escalation reset         | The login lock has its own quiet window, separate from the OTP side. The level drops back to the start if 24 h pass after the last time the threshold was hit without it being hit again.                                                                                                                                       |
+| Response                 | `429`, code `ACCOUNT_LOCKED`, message following the existing style, e.g. "Too many failed login attempts. Please try again in about an hour." / "…about 4 hours." / "…about a day.", with a `Retry-After` header carrying the exact seconds remaining.                                                                          |
+| Who can be locked        | Any account, including super admin.                                                                                                                                                                                                                                                                                             |
+| Suspend interaction      | A locked account can be suspended. Unsuspending does **not** clear a lock.                                                                                                                                                                                                                                                      |
+| Storage                  | Columns on `users`: `login_failed_attempts`, `login_failure_window_start`, `login_locked_until`, `login_lock_level`. No separate "last locked at" column: the time the threshold was last hit is derived as `login_locked_until` minus the lock length for the current `login_lock_level`, and used for the quiet-window reset. |
+
+#### OTP send escalation (forgot password, change email, change password)
+
+| Topic                  | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-OTP guess limit    | Unchanged: 5 wrong guesses per OTP, then `OTP_ATTEMPTS_EXCEEDED`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Send cap               | Unchanged: 5 resends, counted per user **per purpose** over the existing rolling 60-minute window. The 60 s cooldown is unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Block length           | Escalates each time the cap is hit: **1 h**, then **4 h**, then **24 h** (capped at 24 h). The counting window does **not** grow.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| What a block covers    | Sending only. Verifying an OTP that was already sent still works.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Escalation reset       | Two events reset the level: (a) a successful consuming verify for that purpose (`reset-password` for forgot password, `verify-otp` with `change_email`, `confirm-password-change`); `verify-otp` with `forgot_password` does **not** reset it. (b) 24 h passing after the last time the cap was hit without it being hit again.                                                                                                                                                                                                                                                                                                     |
+| Response               | Unchanged code `OTP_RESEND_LIMIT`, existing message format, with the duration wording matching the level ("about an hour" / "about 4 hours" / "about a day"). Adds a `Retry-After` header with the exact seconds remaining.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Per-target-address cap | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Storage                | New columns on `users_otps`: `send_escalation_level` and `send_blocked_until`. When the cap is hit, the new level and block-end time are written onto the **latest existing row** for that user and purpose (no new row is created). The current level and block are read from that latest row. When a later send creates a new row, `send_escalation_level` and `send_blocked_until` are **copied forward** from the previous latest row. No separate "last capped at" column: the time the cap was last hit is derived as `send_blocked_until` minus the block length for the current level, and used for the quiet-window reset. |
+| Registration           | **Unchanged** in this stage. It keeps its existing all-rows cap. Marked TODO.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+#### Admin
+
+| Topic               | Decision                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Unlock endpoint     | New endpoint `POST /users/:id/unlock`, behind `authenticate` + `authorize('admin')`.                                                     |
+| Permission rules    | Same as `PUT /users/:id/status`: `SUPER_ADMIN_IMMUTABLE` on a super-admin target, and `FORBIDDEN` when an admin targets another admin.   |
+| Effect              | Clears the login lock **and** resets the login escalation, and clears OTP send blocks and their escalation for all three purposes.       |
+| `GET /users` fields | Each user object gains `isLocked`, `lockedUntil`, `lockLevel` (camelCase, per Stage 15c).                                                |
+| `GET /users` filter | New query parameter `locked=true\|false`. It is a closed enum and uses the same one-fixed-error-message pattern as the existing filters. |
+
+#### Config
+
+New env vars, added to `config.ts`'s Zod schema and to `.env.example`, `.env` and `.env.test`:
+
+- `LOGIN_MAX_FAILURES=5`
+- `LOGIN_FAILURE_WINDOW_MINUTES=15`
+- `LOCK_ESCALATION_HOURS=1,4,24`, shared by the login lock and the OTP send blocks
+- `LOCK_ESCALATION_RESET_HOURS=24`
+
+#### Cross-cutting
+
+| Topic       | Decision                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Concurrency | Counting must be exact under concurrent requests. For example, N concurrent 5th failures produce exactly one lock. Follow the existing user-row locking pattern and the Stage 4d lock-order rule. |
+| Frontend    | Matches existing patterns: `errorMessages.js` mapping, `FormBanner` / `FieldError` / toast display, and `getRowActions` for the admin row menu.                                                   |
+| Tests       | Stage 7's "do not test NFR1" exclusion is **lifted** for NFR1.1. Simulate time by backdating rows, as in earlier stages.                                                                          |
+
+### Changes to already-implemented code
+
+| #   | File                                                                                                                                                         | Change                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/db/init.sql`                                                                                                                                            | Add the four `users` columns and the two `users_otps` columns. Existing dev volumes need `docker compose down -v`.                                                                |
+| 2   | `src/config.ts`, `.env*`                                                                                                                                     | Add the new env vars.                                                                                                                                                             |
+| 3   | `src/services/auth.service.ts` (`login`)                                                                                                                     | Add the lock check before the credential check. Count failures, lock on threshold, and reset on success. Skip `pending` and `suspended` accounts.                                 |
+| 4   | `src/services/me.service.ts` (`initiateEmailChange`, `initiatePasswordChange`)                                                                               | Reject with `ACCOUNT_LOCKED` before the password check when locked. Count `INVALID_PASSWORD` on the login counter; a correct password resets it.                                  |
+| 5   | `src/services/otp.service.ts` (`requestOtp`)                                                                                                                 | Apply the escalating block for the three purposes, writing level and block-end onto the latest row on a cap hit and copying them onto each new row. Leave registration unchanged. |
+| 6   | `src/services/auth.service.ts` (`forgotPassword`, `resetPassword`) and `me.service.ts` (`throwOnUnsentOtp`, `verifyEmailChangeOtp`, `confirmPasswordChange`) | Level-matched message and `Retry-After` on `OTP_RESEND_LIMIT`. Reset the level on a successful consuming verify.                                                                  |
+| 7   | `src/services/userResponse.ts` (`toUserResponse`)                                                                                                            | Add `isLocked`, `lockedUntil`, `lockLevel`.                                                                                                                                       |
+| 8   | `src/db/queries/users.queries.ts` (`listUsersPage`), `users.controller.ts` (`list`)                                                                          | Add the `locked` filter.                                                                                                                                                          |
+| 9   | `users.routes.ts`, `users.controller.ts`, `users.service.ts`                                                                                                 | Add `POST /users/:id/unlock`.                                                                                                                                                     |
+
+### Sub-stages
+
+- **18a: Schema and config.** Rows 1–2.
+- **18b: Login lockout.** Rows 3–4.
+- **18c: OTP send escalation.** Rows 5–6.
+- **18d: Admin unlock, `GET /users` fields and filter.** Rows 7–9.
+- **18e: Frontend.**
+  - `errorMessages.js`: add `ACCOUNT_LOCKED` (banner).
+  - `Login.jsx`: show it as a banner.
+  - `AdminUsers.jsx`: add the three lock fields as columns, a `locked` filter, and an Unlock row action that follows the same visibility rules as Suspend in `getRowActions`.
+  - `api/users.js`: add `unlockUser`.
+- **18f: Tests**, as below.
+
+### Verification
+
+- 4 wrong logins, then the correct password: login succeeds and the counter resets.
+- 5 wrong logins within 15 min: `429 ACCOUNT_LOCKED` with `Retry-After`. The correct password is still rejected during the lock.
+- 5 wrong logins spread over more than 15 min from the first failure: no lock.
+- Login attempts during a lock do not extend it.
+- Second lock lasts 4 h, third and later 24 h. With the threshold not hit for 24 h after the last lock, the next lock is 1 h again.
+- Wrong passwords on a `pending` or `suspended` account do not count. An unknown identifier does not count.
+- `INVALID_PASSWORD` on `/users/me/email` and `/users/me/password` counts toward the same counter. A correct current password there resets it. While locked, both endpoints return `429 ACCOUNT_LOCKED`.
+- A lock does not revoke refresh tokens. `POST /auth/refresh` still works while locked.
+- A super admin can be locked. Suspending a locked account works. Unsuspending leaves the lock in place.
+- OTP: hitting the send cap blocks sends for 1 h, then 4 h, then 24 h. Verifying an already-sent OTP still works during a block.
+- OTP: `reset-password`, `verify-otp` (`change_email`) and `confirm-password-change` each reset that purpose's level. `verify-otp` (`forgot_password`) does not. 24 h after the last cap hit with no new cap hit, the level resets.
+- OTP: after a block ends and a send succeeds, the new row carries the previous level, so the next cap hit escalates rather than restarting at 1 h.
+- OTP: caps and levels are per purpose. Registration behaviour is unchanged.
+- `POST /users/:id/unlock`: clears the login lock and the OTP blocks and resets escalation. It follows the suspend permission rules (`SUPER_ADMIN_IMMUTABLE` and `FORBIDDEN` cases).
+- `GET /users` shows `isLocked`, `lockedUntil` and `lockLevel`, and `locked=true|false` filters. An invalid value returns `400` with the fixed message.
+- Concurrency: N concurrent wrong logins at the threshold produce exactly one lock and the correct level. Concurrent sends at the cap produce exactly one escalation.
+- Frontend: the login banner shows the lock message. The admin page shows the lock columns, the filter and the Unlock action, and the row updates in place with a toast.
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules: real Postgres, the existing mocking policy, and tests under `tests/` mirroring `src/` with concurrency tests in `tests/concurrency/`. Cover every Verification bullet above that does not need Docker. Simulate elapsed time by backdating the relevant timestamp columns.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR1.1:** the current wording ("lock … after 5 consecutive failed login or OTP attempts within a 15-minute window") no longer matches this stage. Login failures lock with escalation; OTP protection is the existing per-OTP guess limit plus an escalating send block.
+- **NFR1.1.1:** mark as deferred.
