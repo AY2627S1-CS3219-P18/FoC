@@ -3556,3 +3556,177 @@ Same as earlier stages: header comment on every file created or modified, and a 
 ### Backlog note (for the team)
 
 - NFR2.1.2 says "for monitoring". This stage logs to the console only; there is no dashboard or alerting.
+
+# Stage 20: Email Masking in Admin Views (NFR3.1.1)
+
+> **Scope**: `user-service` and `frontend`. Emails are masked by the backend in every admin
+> response. An admin unmasks one row's email at a time with an eye icon on `/admin/users`. Every
+> unmask attempt, granted or denied, is logged to the console.
+>
+> Backlog refs: NFR3.1.1. Replaces NFR3.1.2 and NFR3.1.3 (no OTP before unmasking, no
+> 15-minute window). The same log is used for NFR3.2.2.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                          | Value                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Masked field                  | `email` only                                                                                                                                                                                               |
+| Where masking happens         | In the backend. The response's `email` key holds the masked value; there is no separate field and no flag saying whether it is masked.                                                                     |
+| Mask format                   | Same as Stage 19: first character of the local part, then `***`, then `@` and the full domain, e.g. `g***@u.nus.edu`. A one-character local part follows the same rule: `a@x.com` → `a***@x.com`.          |
+| Responses that are masked     | Every admin response containing a user object: `GET /users`, `GET /users/:id`, `PUT /users/:id/status`, `PUT /users/:id/role`, `POST /users/:id/unlock`, including no-op return paths                      |
+| The caller's own row          | Not masked                                                                                                                                                                                                 |
+| Self views                    | Not masked: `GET /users/me`, `PUT /users/me/*` responses, and the `user` object from `POST /auth/login`                                                                                                    |
+| Email search on `GET /users`  | Unchanged (exact match on the real email). Results show the masked email.                                                                                                                                  |
+| Sort by email                 | Unchanged (sorts on the real email)                                                                                                                                                                        |
+| Unmask endpoint               | `GET /users/:id/full-email`, behind `authenticate` + `authorize('admin')`. Returns `200` with `{ email }` (the full email only).                                                                           |
+| Who can unmask                | Admin and super admin                                                                                                                                                                                      |
+| Super admin target            | No one can unmask a super admin's email → `403`, code `FORBIDDEN`, message `'Cannot unmask a super administrator\'s email'`                                                                                |
+| Pending and suspended targets | Can be unmasked                                                                                                                                                                                            |
+| `:id` validation              | Same as Stage 9: Zod `.uuid()` at the controller → `400 VALIDATION_ERROR`, `"Invalid user ID"`. Well-formed but unknown → `404 USER_NOT_FOUND`.                                                            |
+| Unmask granularity            | One row's email per click                                                                                                                                                                                  |
+| Re-masking                    | Frontend only, no server call, no log line. Happens when the eye is clicked again, or 60 seconds after unmasking, whichever comes first.                                                                   |
+| Rate limit                    | None                                                                                                                                                                                                       |
+| Log destination               | Console only (append-only by nature). No DB table. Only developers with console access can read it.                                                                                                        |
+| What is logged                | Every unmask attempt that reaches the unmask controller, granted or denied                                                                                                                                 |
+| Log fields                    | Actor (ID and username), target (ID and username), timestamp, user agent, outcome, and the rejection reason for denied attempts. No IP address.                                                            |
+| Log failure                   | If writing the log line fails, the unmask fails. The granted line is written before the response is sent; if writing it throws, the request fails with `500 INTERNAL_ERROR` and the email is not returned. |
+| NFR3.2.2                      | Shares this log                                                                                                                                                                                            |
+
+### Log line format
+
+```
+[UNMASK EMAIL] actorId=<id> actorUsername=<username> targetId=<id> targetUsername=<username> timestamp=<ISO 8601 UTC> userAgent=<quoted> outcome=granted
+[UNMASK EMAIL] actorId=<id> actorUsername=<username> targetId=<id> targetUsername=<username> timestamp=<ISO 8601 UTC> userAgent=<quoted> outcome=denied reason=<code>
+```
+
+- Granted lines use `console.log`, denied lines `console.error`.
+- `reason` is the error code returned to the caller (e.g. `FORBIDDEN`, `USER_NOT_FOUND`, `VALIDATION_ERROR`).
+- `userAgent` is the `User-Agent` request header written with `JSON.stringify`, since it contains spaces. A missing header is written as `-`.
+- When the target does not exist or `:id` is not a valid UUID, `targetUsername` is `-`, and `targetId` is the raw `:id` value, also written with `JSON.stringify`.
+- The actor's username is not in the access token (only `sub` and `role`), so it is read from the `users` table by `req.user.user_id`.
+- `timestamp` comes from the database clock (`clock_timestamp()`, per convention 5), never `Date.now()`. Read it with a query for each log line (it can be selected alongside the actor or target lookup).
+- Never logged: the email (masked or full).
+- Requests rejected before the unmask controller runs (`authenticate` → `401`, `authorize('admin')` → `403`) are **not** logged.
+- A caller targeting their own ID gets no special handling: the normal rules apply (an admin gets their email, logged as `granted`; a super admin is a super admin target, so `403 FORBIDDEN`).
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                             | Change                                                                                                                                                                  |
+| --- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Stage 19 masking helper (wherever it lives now)                                  | Reuse it. If it lives in `email.service.ts`, move it to `src/utils/maskEmail.ts` and import it from both places. Its output must be unchanged for Stage 19's log lines. |
+| 2   | `src/services/userResponse.ts` (`toUserResponse`)                                | Take the requester's ID. Mask `email` unless the row's `id` equals the requester's ID. Every admin caller passes `req.user.user_id` through to the service.             |
+| 3   | `src/services/me.service.ts` (`changeActiveView`) and any other self-view caller | Must return the email unmasked (the row is always the caller's own, so passing the caller's ID is enough)                                                               |
+| 4   | `src/services/users.service.ts`, `src/controllers/users.controller.ts`           | `listUsers`, `getUserById`, `changeUserStatus`, `changeUserRole`, unlock: pass the requester's ID to the mapper                                                         |
+| 5   | `src/services/users.service.ts`, `users.controller.ts`, `users.routes.ts`        | Add `getFullEmail(actorId, targetId, userAgent)` and the `GET /users/:id/full-email` route                                                                              |
+| 6   | Existing tests                                                                   | Update assertions that expect real emails in admin responses. Do not change what they assert otherwise. If a test fails for another reason, stop and report it.         |
+| 7   | `frontend/src/api/users.js`                                                      | Add `getFullEmail(id)`                                                                                                                                                  |
+| 8   | `frontend/src/pages/AdminUsers.jsx`                                              | Eye icon in the email cell (see Stage 20b)                                                                                                                              |
+| 9   | `frontend/src/api/errorMessages.js`                                              | Check `FORBIDDEN`, `USER_NOT_FOUND` and `VALIDATION_ERROR` have toast text suitable for an unmask failure                                                               |
+
+Route order: register `GET /:id/full-email` so it is reached (it must not be shadowed by `GET /:id`).
+
+---
+
+## Stage 20a: Backend
+
+### `getFullEmail(actorId, targetId, userAgent)` in `src/services/users.service.ts`
+
+1. Look up the actor by `actorId` for their username.
+2. `findById(targetId)`. If none → log `denied reason=USER_NOT_FOUND`, then `AppError(404, 'User not found', 'USER_NOT_FOUND')`.
+3. If the target's `role === 'super admin'` → log `denied reason=FORBIDDEN`, then `AppError(403, 'Cannot unmask a super administrator\'s email', 'FORBIDDEN')`.
+4. Write the `granted` line, then return `{ email: target.email }`. If writing the line throws, let it propagate (global handler → `500`).
+
+No transaction or lock: this is a single read with no state change.
+
+### Controller `fullEmail` in `src/controllers/users.controller.ts`
+
+- `asyncHandler`-wrapped
+- Validate `req.params.id` with the Stage 9 `.uuid()` schema. On failure, log `denied reason=VALIDATION_ERROR`, then return the usual `400`. (The log needs the actor's username, so look it up first.)
+- Calls `usersService.getFullEmail(req.user.user_id, req.params.id, req.get('user-agent'))`, returns `200` with `{ email }`
+
+### Route in `src/routes/users.routes.ts`
+
+```ts
+router.get(
+  "/:id/full-email",
+  authenticate,
+  authorize("admin"),
+  usersController.fullEmail,
+);
+```
+
+### Verification
+
+- `GET /users` as an admin → every `email` masked except the caller's own row; the super admin's row masked
+- `GET /users/:id`, `PUT /users/:id/status`, `PUT /users/:id/role`, `POST /users/:id/unlock` (including no-op paths) → `email` masked unless the target is the caller
+- `GET /users/me`, `PUT /users/me/active-view`, and the `POST /auth/login` `user` object → email unmasked
+- Mask format: `gabriel@u.nus.edu` → `g***@u.nus.edu`; `a@x.com` → `a***@x.com`
+- `GET /users?email=<real email>` still finds the user; the result's email is masked
+- Sort by email still orders by the real email
+- `GET /users/:id/full-email` as admin on a user, a pending user, a suspended user and another admin → `200 { email }` with the real email, and one `outcome=granted` line each
+- Same as super admin on a user and an admin → `200`
+- Any caller targeting the super admin → `403 FORBIDDEN`, one `outcome=denied reason=FORBIDDEN` line
+- Unknown UUID → `404 USER_NOT_FOUND`, one denied line with `targetUsername=-`
+- Non-UUID `:id` → `400 VALIDATION_ERROR`, `"Invalid user ID"`, one denied line
+- Regular user → `403 FORBIDDEN`; no token → `401 UNAUTHORIZED`; neither writes a log line
+- Admin targeting their own ID → `200 { email }`, one `granted` line; super admin targeting their own ID → `403 FORBIDDEN`, one denied line
+- The logged `timestamp` matches the database clock (e.g. compare against `clock_timestamp()` read in the test), not the service clock
+- Log lines contain actor ID and username, target ID and username, timestamp, quoted user agent, outcome; no email of any kind; no IP
+- Missing `User-Agent` header → `userAgent=-`
+- Logging forced to throw → `500 INTERNAL_ERROR`, email not returned
+
+---
+
+## Stage 20b: Frontend
+
+### `src/api/users.js`
+
+Add `getFullEmail(id)` → `GET /users/:id/full-email`, returns `{ email }`.
+
+### `src/pages/AdminUsers.jsx`
+
+- Email cell shows the masked value from the list response, with an eye icon (lucide-react) beside it
+- No eye icon on the caller's own row (compare `id` with `AuthContext.user.id`) or on any row with `role === 'super admin'`
+- Click → `getFullEmail(id)` → show the full email in that cell and switch the icon to "hide"
+- Click again → re-mask (show the masked value from the list response), no request
+- 60 seconds after unmasking → re-mask automatically. Clear the timer on re-mask and on unmount.
+- Each row unmasks independently; unmasking one row does not affect others
+- Failure → toast via the `errorMessages.js` map, row stays masked
+- Any refetch of the table (after a row action, a search, filter or sort change, or a page change) re-masks every row and clears their timers
+- Works with the row-hover three-dot menu and on touch / small screens (the icon is always visible, not hover-only)
+
+### Verification
+
+- Eye icon present on other users' rows, absent on own row and super admin rows
+- Click → full email shown; click again → masked; wait 60 s → masked
+- Two rows unmasked at once each re-mask on their own timers
+- Stop user-service, click the eye → toast, still masked
+- Network tab: re-masking makes no request
+- Unmask a row, then change a filter (or suspend another user) → every row is masked after the refetch
+- Phone-width viewport: the icon is visible and tappable
+
+---
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout (real Postgres, query/service/controller tests mirroring `src/`). Every Verification bullet in 20a and 20b is a required test case. Spy on `console.log` / `console.error` for the log lines.
+
+Frontend tests cover the 20b bullets that don't need a real browser (icon visibility, unmask/re-mask on click, the 60 s timer with Vitest fake timers, failure toast, re-mask on refetch), with `getFullEmail` mocked. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it.
+
+Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR3.1.1:** unchanged in intent; masking is enforced in the backend.
+- **NFR3.1.2:** replace the OTP requirement with: unmasking is per row, via an eye icon, and every attempt is logged.
+- **NFR3.1.3:** replace the 15-minute window with: an unmasked email re-masks when clicked again or after 60 seconds.
+- **NFR3.2.2:** notes that unmask attempts are logged to the same (console) log.

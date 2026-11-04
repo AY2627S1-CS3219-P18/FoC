@@ -17,9 +17,14 @@
 //   format are per instructions.md Stage 19. No requirements, architecture, schema, or API
 //   decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 20 - moved maskEmail to src/utils/maskEmail.ts so userResponse.ts can
+//   reuse it; this file now imports it. Output unchanged. No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
+import { maskEmail } from "../utils/maskEmail.js";
 
 const MAX_SEND_ATTEMPTS = 4;
 const BASE_BACKOFF_SECONDS = 1;
@@ -108,13 +113,6 @@ function describeAttemptError(err: unknown): string {
   const code = getErrorCode(err) ?? "UNKNOWN";
   const responseCode = getResponseCode(err);
   return responseCode !== undefined ? `${code} ${responseCode}` : code;
-}
-
-// First character of the local part, then `***`, then `@` and the full domain.
-function maskEmail(email: string): string {
-  const atIndex = email.indexOf("@");
-  if (atIndex <= 0) return email;
-  return `${email[0]}***${email.slice(atIndex)}`;
 }
 
 function logOtpEmailAttempt(

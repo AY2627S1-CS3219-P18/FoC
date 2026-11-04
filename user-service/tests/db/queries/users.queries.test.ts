@@ -9,6 +9,10 @@
 // 2026-10-22: Stage 15c - adapted the listAllUsers tests to listUsersPage, which replaced
 //   it in Stage 15b. Fixture/signature update, not new test cases.
 // Author review:
+// 2026-11-04: Stage 20 - added tests for findByIdWithNow (Stage 20's unmask-email actor
+//   lookup). Governing decision: instructions.md Stage 20.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -78,6 +82,21 @@ describe('findByUsername / findByEmail / findById', () => {
     expect(await users.findByUsername('nobody')).toBeNull();
     expect(await users.findByEmail('nobody@example.com')).toBeNull();
     expect(await users.findById('00000000-0000-0000-0000-000000000000')).toBeNull();
+  });
+});
+
+describe('findByIdWithNow', () => {
+  it('returns the full row plus the database clock, or null for an unknown id', async () => {
+    const created = await users.createUser({ ...base, status: 'active' });
+    const before = Date.now();
+    const row = await users.findByIdWithNow(created.id);
+    const after = Date.now();
+
+    expect(row?.username).toBe('alice');
+    expect(row?.db_now.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(row?.db_now.getTime()).toBeLessThanOrEqual(after + 1000);
+
+    expect(await users.findByIdWithNow('00000000-0000-0000-0000-000000000000')).toBeNull();
   });
 });
 

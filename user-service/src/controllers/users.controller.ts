@@ -28,6 +28,14 @@
  *        instructions.md Stage 18d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: `list`, `getById`, `updateStatus` and `unlock` now pass req.user.user_id through as
+ *        the requester's ID, for toUserResponse's email masking. Added the `fullEmail`
+ *        controller for GET /users/:id/full-email, which logs the VALIDATION_ERROR case itself
+ *        since that id never reaches the service. Per instructions.md Stage 20 (NFR3.1.1).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -163,13 +171,16 @@ export const list = asyncHandler(async (req, res) => {
     locked: parsed.locked === undefined ? undefined : parsed.locked === 'true',
     sortBy,
     sortDir,
+    // authenticate has run, so req.user is set.
+    requesterId: req.user!.user_id,
   });
   res.status(200).json(result);
 });
 
 export const getById = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
-  const user = await usersService.getUserById(id);
+  // authenticate has run, so req.user is set.
+  const user = await usersService.getUserById(id, req.user!.user_id);
   res.status(200).json(user);
 });
 
@@ -177,7 +188,7 @@ export const updateStatus = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
   const { status } = updateStatusSchema.parse(req.body);
   // authenticate has run, so req.user is set.
-  const user = await usersService.changeUserStatus(req.user!.role, id, status);
+  const user = await usersService.changeUserStatus(req.user!.user_id, req.user!.role, id, status);
   res.status(200).json(user);
 });
 
@@ -206,6 +217,26 @@ export const changeRole = asyncHandler(async (req, res) => {
 export const unlock = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
   // authenticate has run, so req.user is set.
-  const user = await usersService.unlockUser(req.user!.role, id);
+  const user = await usersService.unlockUser(req.user!.user_id, req.user!.role, id);
   res.status(200).json(user);
+});
+
+// GET /users/:id/full-email. The id's VALIDATION_ERROR case never reaches usersService.getFullEmail,
+// so it is logged here, before the ZodError is rethrown for the global handler's usual 400.
+export const fullEmail = asyncHandler(async (req, res) => {
+  let id: string;
+  try {
+    ({ id } = idParamsSchema.parse(req.params));
+  } catch (err) {
+    // authenticate has run, so req.user is set.
+    await usersService.logUnmaskValidationFailure(
+      req.user!.user_id,
+      req.params.id!,
+      req.get('user-agent'),
+    );
+    throw err;
+  }
+  // authenticate has run, so req.user is set.
+  const { email } = await usersService.getFullEmail(req.user!.user_id, id, req.get('user-agent'));
+  res.status(200).json({ email });
 });

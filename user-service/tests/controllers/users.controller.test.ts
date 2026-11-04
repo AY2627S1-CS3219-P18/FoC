@@ -23,11 +23,19 @@
  *        Verification bullets in instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: GET /users/:id now asserts the email is masked for a different caller and unmasked
+ *        for the caller's own row; added GET /users/:id/full-email HTTP tests covering
+ *        instructions.md Stage 20a's Verification bullets (NFR3.1.1).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../src/app.js';
 import {
+  dbNow,
   getRefreshTokens,
   getUserByEmail,
   setLoginLockState,
@@ -94,18 +102,21 @@ describe('GET /users', () => {
     expect(res.body).toEqual(FORBIDDEN);
   });
 
-  it.each(['admin', 'super admin'] as const)('allows a %s and returns the paginated shape', async (role) => {
-    const { token } = await callerToken(role);
-    const res = await get('/users', token);
-    expect(res.status).toBe(200);
-    expect(Object.keys(res.body).sort()).toEqual(
-      ['page', 'pageSize', 'total', 'totalPages', 'users'].sort(),
-    );
-    expect(res.body.page).toBe(1);
-    expect(res.body.pageSize).toBe(50);
-    expect(Array.isArray(res.body.users)).toBe(true);
-    expect(res.body.users).toHaveLength(1);
-  });
+  it.each(['admin', 'super admin'] as const)(
+    'allows a %s and returns the paginated shape',
+    async (role) => {
+      const { token } = await callerToken(role);
+      const res = await get('/users', token);
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body).sort()).toEqual(
+        ['page', 'pageSize', 'total', 'totalPages', 'users'].sort(),
+      );
+      expect(res.body.page).toBe(1);
+      expect(res.body.pageSize).toBe(50);
+      expect(Array.isArray(res.body.users)).toBe(true);
+      expect(res.body.users).toHaveLength(1);
+    },
+  );
 
   it('returns pending, active and suspended users, each with a status and no password_hash', async () => {
     const { token } = await callerToken('admin');
@@ -261,7 +272,7 @@ describe('GET /users/:id', () => {
     expect(res.body).toEqual(FORBIDDEN);
   });
 
-  it('returns an existing user minus password_hash', async () => {
+  it('returns an existing user minus password_hash, with the email masked (Stage 20, NFR3.1.1)', async () => {
     const { token } = await callerToken('admin');
     const target = await createActiveUser(1);
     const res = await get(`/users/${target.id}`, token);
@@ -269,11 +280,19 @@ describe('GET /users/:id', () => {
     expect(res.body).toMatchObject({
       id: target.id,
       username: target.username,
-      email: target.email,
       status: 'active',
       role: 'user',
     });
+    expect(res.body.email).not.toBe(target.email);
+    expect(res.body.email).toMatch(/^.\*\*\*@example\.com$/);
     expect(res.body).not.toHaveProperty('password_hash');
+  });
+
+  it("does not mask the caller's own row (Stage 20, NFR3.1.1)", async () => {
+    const { user, token } = await callerToken('admin');
+    const res = await get(`/users/${user.id}`, token);
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe(user.email);
   });
 
   it("returns a pending user's record with status 'pending'", async () => {
@@ -306,6 +325,171 @@ describe('GET /users/:id', () => {
     const res = await get('/users/abc123', token);
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
+  });
+});
+
+describe('GET /users/:id/full-email (Stage 20a, NFR3.1.1)', () => {
+  const getWithUa = (path: string, token: string | undefined, ua?: string) => {
+    const r = request(app).get(path);
+    const withToken = token ? r.set('Authorization', bearer(token)) : r;
+    return ua === undefined ? withToken : withToken.set('User-Agent', ua);
+  };
+
+  it('rejects a request with no token with 401, a regular user with 403; neither logs', async () => {
+    const target = await createActiveUser(1);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const noToken = await get(`/users/${target.id}/full-email`);
+    expect(noToken.status).toBe(401);
+    expect(noToken.body).toEqual(UNAUTHORIZED);
+
+    const { token } = await callerToken('user');
+    const res = await get(`/users/${target.id}/full-email`, token);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(FORBIDDEN);
+
+    expect(log).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    log.mockRestore();
+    error.mockRestore();
+  });
+
+  it.each(['admin', 'super admin'] as const)(
+    '%s unmasks a user, a pending user, a suspended user and an admin',
+    async (role) => {
+      const { token } = await callerToken(role);
+      const user = await createActiveUser(1);
+      const pending = await registerPending(2);
+      const suspended = await createActiveUser(3);
+      await setUserStatus(suspended.id, 'suspended');
+      const admin2 = await createUserWithRole('admin2', 'admin');
+
+      for (const target of [user, pending, suspended, admin2]) {
+        const res = await get(`/users/${target.id}/full-email`, token);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ email: target.email });
+      }
+    },
+  );
+
+  it('any caller targeting a super admin gets 403 FORBIDDEN', async () => {
+    const { token } = await callerToken('admin');
+    const sa = await createUserWithRole('sa', 'super admin');
+    const res = await get(`/users/${sa.id}/full-email`, token);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({
+      message: "Cannot unmask a super administrator's email",
+      code: 'FORBIDDEN',
+    });
+  });
+
+  it('returns 404 USER_NOT_FOUND for an unknown UUID', async () => {
+    const { token } = await callerToken('admin');
+    const res = await get(`/users/${UNKNOWN_ID}/full-email`, token);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ message: 'User not found', code: 'USER_NOT_FOUND' });
+  });
+
+  it('returns 400 VALIDATION_ERROR "Invalid user ID" for a non-UUID id', async () => {
+    const { token } = await callerToken('admin');
+    const res = await get('/users/not-a-uuid/full-email', token);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
+  });
+
+  it('admin targeting their own id is granted; super admin targeting their own id is denied', async () => {
+    const { user: admin, token: adminToken } = await callerToken('admin', 'ownadmin');
+    const own = await get(`/users/${admin.id}/full-email`, adminToken);
+    expect(own.status).toBe(200);
+    expect(own.body).toEqual({ email: admin.email });
+
+    const { user: sa, token: saToken } = await callerToken('super admin', 'ownsa');
+    const ownSa = await get(`/users/${sa.id}/full-email`, saToken);
+    expect(ownSa.status).toBe(403);
+    expect(ownSa.body.code).toBe('FORBIDDEN');
+  });
+
+  it('logs exactly one granted line with actor/target ids and usernames, a quoted user agent, and no email', async () => {
+    const { user: admin, token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const res = await getWithUa(`/users/${target.id}/full-email`, token, 'Mozilla/5.0 Test');
+    expect(res.status).toBe(200);
+
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = log.mock.calls[0]![0] as string;
+    expect(line).toContain('[UNMASK EMAIL]');
+    expect(line).toContain(`actorId=${admin.id}`);
+    expect(line).toContain(`actorUsername=${admin.username}`);
+    expect(line).toContain(`targetId=${target.id}`);
+    expect(line).toContain(`targetUsername=${target.username}`);
+    expect(line).toContain('userAgent="Mozilla/5.0 Test"');
+    expect(line).toContain('outcome=granted');
+    expect(line).not.toContain(target.email);
+    expect(line).not.toContain('@');
+    log.mockRestore();
+  });
+
+  it('a missing User-Agent header is logged as userAgent=-', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await getWithUa(`/users/${target.id}/full-email`, token);
+
+    expect(log.mock.calls[0]![0]).toContain('userAgent=-');
+    log.mockRestore();
+  });
+
+  it('a denied attempt (unknown target) logs targetUsername=- and the raw, quoted id for an invalid one', async () => {
+    const { token } = await callerToken('admin');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await get(`/users/${UNKNOWN_ID}/full-email`, token);
+    expect(error.mock.calls[0]![0]).toContain(`targetId=${JSON.stringify(UNKNOWN_ID)}`);
+    expect(error.mock.calls[0]![0]).toContain('targetUsername=-');
+    error.mockClear();
+
+    await get('/users/not-a-uuid/full-email', token);
+    expect(error.mock.calls[0]![0]).toContain(`targetId=${JSON.stringify('not-a-uuid')}`);
+    expect(error.mock.calls[0]![0]).toContain('targetUsername=-');
+    expect(error.mock.calls[0]![0]).toContain('reason=VALIDATION_ERROR');
+    error.mockRestore();
+  });
+
+  it("the logged timestamp comes from the database clock, not the service's own clock", async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const before = await dbNow();
+
+    await get(`/users/${target.id}/full-email`, token);
+
+    const after = await dbNow();
+    const match = /timestamp=([^\s]+)/.exec(log.mock.calls[0]![0] as string);
+    expect(match).not.toBeNull();
+    const logged = new Date(match![1]!);
+    expect(logged.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(logged.getTime()).toBeLessThanOrEqual(after.getTime());
+    log.mockRestore();
+  });
+
+  it('returns 500 INTERNAL_ERROR and no email when writing the log line throws', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {
+      throw new Error('log sink down');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await get(`/users/${target.id}/full-email`, token);
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('INTERNAL_ERROR');
+    expect(res.body).not.toHaveProperty('email');
+    log.mockRestore();
+    errorSpy.mockRestore();
   });
 });
 
@@ -365,7 +549,9 @@ describe('PUT /users/:id/status', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putStatus(token, target, 'suspended');
-      const res = await request(app).post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+      const res = await request(app)
+        .post('/auth/refresh')
+        .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);
       expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
     });
@@ -606,7 +792,10 @@ describe('PUT /users/:id/role', () => {
       const { user, token } = await callerToken('super admin');
       const res = await putRole(token, user, 'user');
       expect(res.status).toBe(403);
-      expect(res.body).toEqual({ message: 'Cannot modify your own role', code: 'SELF_ROLE_CHANGE' });
+      expect(res.body).toEqual({
+        message: 'Cannot modify your own role',
+        code: 'SELF_ROLE_CHANGE',
+      });
       expect((await getUserByEmail(user.email))!.role).toBe('super admin');
     });
 
@@ -726,7 +915,9 @@ describe('PUT /users/:id/role', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putRole(token, target, 'admin');
-      const res = await request(app).post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+      const res = await request(app)
+        .post('/auth/refresh')
+        .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);
       expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
     });
@@ -747,7 +938,9 @@ describe('PUT /users/:id/role', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putRole(token, target, 'user');
-      const res = await request(app).post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+      const res = await request(app)
+        .post('/auth/refresh')
+        .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);
       expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
     });

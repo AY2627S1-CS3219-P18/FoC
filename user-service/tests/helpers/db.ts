@@ -17,6 +17,11 @@
 //   decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 20 - added dbNow, so tests can assert that a logged timestamp came from
+//   the database clock rather than the service's own clock. Governing decision:
+//   instructions.md Stage 20.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -27,6 +32,11 @@ import type { UserRow } from '../../src/db/queries/users.queries.js';
 
 export async function truncateAll(): Promise<void> {
   await pool.query('TRUNCATE users CASCADE');
+}
+
+export async function dbNow(): Promise<Date> {
+  const r = await pool.query<{ now: Date }>('SELECT clock_timestamp() AS now');
+  return r.rows[0]!.now;
 }
 
 export async function getUserByEmail(email: string): Promise<UserRow | undefined> {
