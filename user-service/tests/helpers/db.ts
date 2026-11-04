@@ -22,6 +22,11 @@
 //   instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-05: Stage 23b - added setRefreshTokenExpiresInMinutes, so tests can backdate a
+//   refresh token's expires_at to an arbitrary point for sessionTimeLeftSeconds coverage.
+//   Governing decision: instructions.md Stage 23b.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -225,6 +230,13 @@ export async function expireRefreshToken(plain: string): Promise<void> {
   await pool.query(
     `UPDATE refresh_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE token_hash = $1`,
     [sha256(plain)],
+  );
+}
+
+export async function setRefreshTokenExpiresInMinutes(plain: string, minutes: number): Promise<void> {
+  await pool.query(
+    `UPDATE refresh_tokens SET expires_at = NOW() + make_interval(mins => $2) WHERE token_hash = $1`,
+    [sha256(plain), minutes],
   );
 }
 
