@@ -30,6 +30,12 @@
 //   listUsersPage. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 20 - added findByIdWithNow, an unlocked read (no FOR UPDATE) alongside
+//   clock_timestamp(), for the unmask-email actor lookup (NFR3.1.1), which needs the DB clock
+//   for its log line but takes no lock since it writes no state. Governing decision:
+//   instructions.md Stage 20.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -102,6 +108,19 @@ export async function findById(
   const result = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [
     userId,
   ]);
+  return result.rows[0] ?? null;
+}
+
+// Unlocked read plus the database's own clock, for callers that log a timestamp but take no
+// lock (Stage 20's unmask-email actor lookup: a read with no state change).
+export async function findByIdWithNow(
+  userId: string,
+  db: Queryable = pool,
+): Promise<UserRowWithNow | null> {
+  const result = await db.query<UserRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM users WHERE id = $1`,
+    [userId],
+  );
   return result.rows[0] ?? null;
 }
 

@@ -66,6 +66,12 @@
  *        Stage 19.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: changeActiveView passes its own userId as toUserResponse's new requesterId param
+ *        (self-view, so the email stays unmasked), per instructions.md Stage 20.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -148,7 +154,7 @@ export async function changeActiveView(
   if (!row) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return toUserResponse(row);
+  return toUserResponse(row, userId);
 }
 
 export async function getOwnProfile(

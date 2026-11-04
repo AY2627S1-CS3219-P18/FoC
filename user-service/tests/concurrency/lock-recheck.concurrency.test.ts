@@ -6,6 +6,10 @@
 // Author review:
 // 27/09/2026: Stage 10 - changeUserRole re-checks the locked row
 // Author review:
+// 2026-11-04: Stage 20 - changeUserStatus calls pass the new requesterId param (fixture, not
+//   a new assertion: these tests are about the re-check race, not email masking).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
 import * as usersService from '../../src/services/users.service.js';
@@ -34,6 +38,10 @@ import jwt from 'jsonwebtoken';
 resetEmailMock();
 beforeEach(truncateAll);
 afterEach(truncateAll);
+
+// These tests are about the lock re-check race, not email masking, so any id that is not the
+// target's own works as the requester.
+const ACTOR_ID = '00000000-0000-4000-8000-000000000000';
 
 // Holds the user's row lock, starts `start()` (which must block on that lock), applies `change`
 // inside the held transaction, commits, then returns how `start()` settled. This forces the
@@ -329,7 +337,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended'),
       async (c) => {
         await c.query(`UPDATE users SET role = 'super admin' WHERE id = $1`, [u.id]);
       },
@@ -342,7 +350,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended'),
       async (c) => {
         await c.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [u.id]);
       },
@@ -356,7 +364,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     await seedRefreshToken(u.id, 'tok-a');
     const { value, error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended'),
       async (c) => {
         await c.query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [u.id]);
       },
@@ -370,7 +378,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus('admin', u.id, 'suspended'),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended'),
       async (c) => {
         await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
       },
