@@ -35,6 +35,10 @@
  *        2026-10-22). The default and status=open listing stays public.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Codex (model: GPT-6), date: 2026-11-05
+ * Scope: Implemented the team-specified admin user order listing contract from chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -369,4 +373,35 @@ export function listMyOrders(
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
+}
+
+// AI-generated (edited by <name>).
+export const ADMIN_USER_ORDERS_PAGE_SIZE = 10;
+
+/** Admin history includes every status and both participation roles. */
+export async function listAdminUserOrders(
+  prisma: PrismaClient,
+  userId: string,
+  currentPage: number,
+) {
+  const where = involving(userId);
+  const [totalCount, rows] = await Promise.all([
+    prisma.orderRequest.count({ where }),
+    prisma.orderRequest.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      skip: (currentPage - 1) * ADMIN_USER_ORDERS_PAGE_SIZE,
+      take: ADMIN_USER_ORDERS_PAGE_SIZE,
+    }),
+  ]);
+  return {
+    totalCount,
+    currentPage,
+    pageSize: ADMIN_USER_ORDERS_PAGE_SIZE,
+    totalPages: Math.ceil(totalCount / ADMIN_USER_ORDERS_PAGE_SIZE),
+    orders: rows.map((order) => ({
+      order,
+      role: order.requesterId === userId ? 'requester' : 'courier',
+    })),
+  };
 }
