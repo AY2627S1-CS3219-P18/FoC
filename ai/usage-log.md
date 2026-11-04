@@ -7782,6 +7782,7 @@ None this session.
 **Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23a: 30-Day Lifetime and TTL Bounds".
 
 **Prompts (exact):**
+
 > i completelyt changed stage 23, read thru it and let me know if you have any questions
 
 > go for it. don't forget hte git workfow
@@ -7804,6 +7805,7 @@ On "run the tests again," reran the full suite and found the two previously-fail
 **Verification run (final):** `npx vitest run` (full suite): 801/801 passed (two more flaky `ECONNRESET` failures appeared on separate full-suite runs, in `users.controller.test.ts` and `tests/concurrency/me.concurrency.test.ts`; each passed when its file was rerun alone, confirming parallel-run flakiness unrelated to this change, not a regression). `npx tsc --noEmit`: clean. `npm run lint`: clean.
 
 **Files:**
+
 - `user-service/src/config.ts` (modified)
 - `user-service/tests/config.test.ts` (modified)
 - `user-service/tests/controllers/auth.controller.test.ts` (modified — two test descriptions reworded from "7 day(s)" to "30 day(s)"; values were already changed by the author)
@@ -7828,10 +7830,11 @@ The two hardcoded-7-day tests in `auth.controller.test.ts` needed a team decisio
 **Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23b: `sessionTimeLeftSeconds` on Login and Refresh".
 
 **Prompts (exact):**
+
 > let's start with 23b
 
 **Key responses:**
-Read the Stage 23b table against the current code first: `auth.service.ts`'s `login()` returns `{ accessToken, refreshToken, user }` and `refresh()` returns `{ accessToken }`, matching what the stage expects to extend; `tokens.queries.ts` had `createRefreshToken` (INSERT ... RETURNING *) and `lockRefreshToken` (SELECT ... FOR UPDATE, already returning `db_now`) as the two queries the stage names for adding the seconds-left column. No disagreement with the stage text, so implemented directly.
+Read the Stage 23b table against the current code first: `auth.service.ts`'s `login()` returns `{ accessToken, refreshToken, user }` and `refresh()` returns `{ accessToken }`, matching what the stage expects to extend; `tokens.queries.ts` had `createRefreshToken` (INSERT ... RETURNING \*) and `lockRefreshToken` (SELECT ... FOR UPDATE, already returning `db_now`) as the two queries the stage names for adding the seconds-left column. No disagreement with the stage text, so implemented directly.
 
 Added a shared SQL expression, `GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (expires_at - clock_timestamp()))))::int`, as `seconds_left` to both queries' existing `RETURNING`/`SELECT` lists (no separate query), per the stage's instruction to prefer that and report the choice. `createRefreshToken`'s return type became `RefreshTokenRowWithSecondsLeft`; `lockRefreshToken`'s became `RefreshTokenRowWithNowAndSecondsLeft` (keeps the existing `db_now` field `logout()` and `refresh()`'s early checks already rely on). `findRefreshToken` (used only for `refresh()`'s pre-transaction early-exit check, not for the response) was left unchanged.
 
@@ -7844,6 +7847,7 @@ Updated tests for the new response shapes, per the stage's "update only those re
 **Verification run:** `npx tsc --noEmit`: clean. `npm run lint`: clean. `npx vitest run` on the three touched test files: 259/259 passed. Full suite (`npx vitest run`): 809/809 passed, no flakiness this run.
 
 **Files:**
+
 - `user-service/src/db/queries/tokens.queries.ts` (modified)
 - `user-service/src/services/auth.service.ts` (modified)
 - `user-service/src/controllers/auth.controller.ts` (modified)
@@ -7858,5 +7862,6 @@ Updated tests for the new response shapes, per the stage's "update only those re
 None — the stage text matched the current code with no conflicts.
 
 **What I kept/changed/rejected:**
+Accepted all changes.
 
-**Author review:**
+**Author review:** gabriel yap
