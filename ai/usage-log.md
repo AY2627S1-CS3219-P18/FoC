@@ -7499,3 +7499,111 @@ Every proxy path was additionally confirmed to reach a *distinct* backend by its
 7. **`user-service/.env` needed four Stage 18 variables** (`LOGIN_MAX_FAILURES` and friends) before it would boot. Local and gitignored, not committed — but it is the same recurring problem: user-service is the only service whose configuration lives in a gitignored file, so every new required variable breaks it silently for everyone who already has one.
 
 **What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-04 — CI: Docker build coverage, and de-duplicating the README log index
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** The user's instruction of 2026-11-04, quoted below. Target names are read from the five existing Dockerfiles, not chosen; the four-column log index format is the one AGENTS.md §6 already specifies.
+
+**Prompts (exact):**
+
+> Two fixes on d4-iteration-4, then the PR.
+>
+> ## Fix 1 — CI builds no images
+>
+> The pipeline runs npm ci and npm test but never docker build, which
+> is why the order-service deps-stage break survived a merge and only
+> surfaced days later on a rebuild.
+>
+> Add Docker build coverage to .github/workflows/ci.yml. Build the
+> prod target for all five services — that's what deploys, and the
+> shared base/deps stages mean most breaks surface there anyway.
+>
+> Mind the target naming: user-service, supplier-service,
+> credit-service and frontend use `prod`; order-service uses
+> `production`. Don't paper over it in the workflow — if you think the
+> names should be unified, say so separately rather than renaming
+> someone's Dockerfile inside this change.
+>
+> Use layer caching so the jobs don't take forever, and make them gate
+> the PR the same way the test jobs do.
+>
+> Say explicitly what this does NOT cover — dev targets aren't built,
+> so a dev-only stage break would still get through.
+>
+> ## Fix 2 — README log index numbering
+>
+> Row numbers have collided three times now on parallel branches
+> (155 most recently, against feat/credit-admin-transaction-filters).
+>
+> First check whether AGENTS.md mandates the numbered format. If it
+> does, stop and tell me — changing it means changing AGENTS.md, which
+> is a team decision, not mine to make unilaterally.
+>
+> If it doesn't, drop the numbering so rows append without collision,
+> and preserve every existing entry exactly.
+>
+> ## Then the PR
+>
+> Header and body covering everything on this branch:
+>   - the frontend production image: vite build plus nginx, the
+>     request-time resolver and why literal upstreams would have
+>     stopped nginx starting, the $request_uri detail, the SPA
+>     fallback, /assets/ deliberately 404ing
+>   - the compose service, the !override ports fix and the Compose
+>     v2.24.4 minimum
+>   - the order-service Docker build fix — broken on main since
+>     PR #137, so anyone who hit it knows why
+>   - the IPv4/IPv6 healthcheck fix
+>   - the two documentation additions: the volume-recreation warning
+>     naming all four incidents, and the TLS gap
+>   - these two fixes
+>
+> Note in the body that the allocation flow was verified end to end
+> through nginx for the first time on this stack — fresh user, OTP,
+> outbox sent, 20 credits, visible in the Wallet.
+>
+> Verify both fixes before writing the PR. Report what you ran.
+
+**Key responses:**
+
+_Fix 1._ One `docker-build` matrix job, five legs, `fail-fast: false` so a single broken image does not hide the state of the other four. Only the deploy target is built; `base`, `deps` and `build` are its ancestors, so a break anywhere in that chain fails the leg. Caching is `type=gha` through `setup-buildx-action` — the default docker driver cannot export cache — scoped per `service-target` so the five legs do not evict one another from the 10 GB per-repository cache. Same triggers and no `needs`, so each leg appears as its own PR check exactly as the five test jobs do.
+
+_The target-name divergence is spelled out, not normalised._ `order-service` is `production`; the other four are `prod`. Recorded as a matrix value with a comment pointing at the PR note rather than renamed, because renaming that stage would also mean editing `compose.yaml` and `compose.dev.yaml`, which belongs to order-service's owner.
+
+_Fix 2, gate check._ AGENTS.md does **not** mandate the numbering. Its §6 template is four columns — `Date | Service | Entry | High-level summary` — with no `#` column, so removing it moves the README *towards* the documented format rather than away from it. No AGENTS.md change was needed and none was made.
+
+_Fix 2 turned up an unrelated defect._ The README held **two** Log index tables, not one: lines 175–304 (128 rows) and 305–461 (155 rows). Almost certainly the 2026-11-03 merge-conflict resolution recorded in the entry above, which kept both sides' rows and in fact kept both sides' whole tables. Rows 1–126 were duplicates, but the stale table's last two rows existed **nowhere else** — `Order service: 404 for missing or non-UUID order ids` and `Frontend: required-field asterisks on the create-errand form`, both of which are real entries in this log (2026-10-22). Deleting the stale table outright would have silently dropped two disclosures. They were reinstated in the position `ai/usage-log.md` itself gives them, and the result is one table of 157 rows.
+
+**Verification actually run:**
+
+- **`actionlint`** (via the `rhysd/actionlint` image) on the new workflow: two `SC2034` shellcheck warnings, both on the pre-existing wait-for-Postgres loops at the old lines 68 and 119. Linting the pre-change file returns the identical two, so the new job adds no findings.
+- **All five images built locally with the exact matrix values** — `user-service:prod`, `credit-service:prod`, `supplier-service:prod`, `frontend:prod`, `order-service:production`. Five of five exit 0.
+- **Mutation check on the job's reason for existing, and it passed.** Removing `COPY scripts ./scripts` from `order-service/Dockerfile` — reinstating the exact PR #137 regression — makes `docker build --no-cache --target production` fail with `Error: Cannot find module '/app/scripts/prisma-generate.mjs'`. So this job would have caught that break on the PR. The Dockerfile was restored and `git diff` confirmed clean.
+- **The naming divergence was confirmed, not assumed:** `docker build --target prod order-service` fails with `target stage "prod" could not be found`.
+- **Fix 2 checked by set comparison, not by eye.** Every row of both old tables was reduced to its four trimmed cells and compared against the new table: 159 unique keys before, 157 after, and the only two absent are the duplicate table's own header and separator rows. No entry text was altered; only the surrounding whitespace padding was renormalised.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (modified: `docker-build` job, header disclosure appended)
+- `README.md` (modified: two Log index tables merged into one, numbering dropped, Log index row)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Should the stage names be unified?** My read, which is not a decision: yes, rename order-service's `production` to `prod` so all five match, but as its owner's own change touching `order-service/Dockerfile`, `compose.yaml` and `compose.dev.yaml` together. Left alone here as instructed.
+2. **What this job does not cover, stated because the brief asked for it.** The `dev` targets are never built, so a dev-only stage break still reaches main. That matters for `order-service` `dev` and `frontend` `dev`, which are real stages with their own `COPY` and `CMD` layers; for user-service, credit-service and supplier-service, `dev` adds only a `CMD` on top of the `base` that prod also builds, so the gap there is negligible. Nothing here *runs* a container either — a green leg says the image assembles, not that it boots, connects or serves — and no image is pushed.
+3. **`compose.yaml`'s base stack still runs `target: dev` for user-service, credit-service and supplier-service**, so for three of five services the image this job validates is not the one `docker compose up` starts. With Option A that is also what would run on EC2. Flagged, not changed: which target the deployed stack uses is a team decision.
+4. **The README carried two Log index tables and two disclosures existed only in the stale one** (see Key responses). Worth the team knowing because it means the 2026-11-03 conflict resolution was wrong in a way that review did not catch, and a future `ai/usage-log.md` conflict should be resolved by merging rows, never by keeping both tables.
+5. **The three previous number collisions were real but are now moot.** `feat/credit-admin-transaction-filters` is still unmerged and still carries a numbered row for 155; whoever merges it should drop the number rather than renumber.
+6. **Not pushed.** The branch's commits are local; opening the PR is the author's step.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
