@@ -441,3 +441,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
 | 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
 | 167 | 2026-11-05 | user-service | Stage 23a: TTL Env Var Bounds (NFR4.1.2) | Bounded `ACCESS_TOKEN_TTL_MINUTES` (1-15) and `REFRESH_TOKEN_TTL_DAYS` (1-30); set the latter to 30 days. |
+| 168 | 2026-11-05 | user-service | Stage 23b: sessionTimeLeftSeconds on Login and Refresh | Added `sessionTimeLeftSeconds`, computed in SQL, to the login and refresh responses. |

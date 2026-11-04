@@ -53,6 +53,11 @@
 //   decision: instructions.md Stage 19.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-05: Stage 23b - login() and refresh() also return sessionTimeLeftSeconds, taken from
+//   tokens.queries.ts' seconds_left (computed in SQL, never Date.now()). Checks, check order,
+//   locking and error codes are unchanged. Governing decision: instructions.md Stage 23b.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -226,6 +231,7 @@ export async function login(
   accessToken: string;
   refreshToken: string;
   user: { id: string; username: string; email: string; role: string; activeView: string };
+  sessionTimeLeftSeconds: number;
 }> {
   const user =
     (await userQueries.findByUsername(identifier)) ?? (await userQueries.findByEmail(identifier));
@@ -280,7 +286,7 @@ export async function login(
     // A successful login clears the failure count, the window and the escalation level.
     await userQueries.resetLoginLock(locked.id, client);
 
-    await tokenQueries.createRefreshToken(
+    const tokenRow = await tokenQueries.createRefreshToken(
       {
         userId: user.id,
         tokenHash: refreshTokenHash,
@@ -290,7 +296,12 @@ export async function login(
       },
       client,
     );
-    return { kind: 'success' as const, role: locked.role, activeView: locked.active_view };
+    return {
+      kind: 'success' as const,
+      role: locked.role,
+      activeView: locked.active_view,
+      sessionTimeLeftSeconds: tokenRow.seconds_left,
+    };
   });
 
   if (outcome.kind === 'locked') {
@@ -312,6 +323,7 @@ export async function login(
       role: outcome.role,
       activeView: outcome.activeView,
     },
+    sessionTimeLeftSeconds: outcome.sessionTimeLeftSeconds,
   };
 }
 
@@ -327,7 +339,9 @@ export async function logout(refreshToken: string): Promise<void> {
   });
 }
 
-export async function refresh(refreshToken: string): Promise<{ accessToken: string }> {
+export async function refresh(
+  refreshToken: string,
+): Promise<{ accessToken: string; sessionTimeLeftSeconds: number }> {
   const tokenHash = sha256(refreshToken);
   const tokenRow = await tokenQueries.findRefreshToken(tokenHash);
 
@@ -342,7 +356,7 @@ export async function refresh(refreshToken: string): Promise<{ accessToken: stri
   // Lock order: user row first, then token row (see the lock ordering rule in Stage 4d).
   // Re-check on the locked rows, so a logout, reset or suspend that committed while this
   // request waited cannot be followed by a freshly issued access token.
-  const { id, role } = await withTransaction(async (client) => {
+  const { id, role, sessionTimeLeftSeconds } = await withTransaction(async (client) => {
     const lockedUser = await userQueries.lockUserById(tokenRow.user_id, client);
     if (!lockedUser) {
       throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
@@ -362,12 +376,16 @@ export async function refresh(refreshToken: string): Promise<{ accessToken: stri
     }
 
     // Role comes from the freshly locked row, so a promotion applies on the next refresh.
-    return { id: lockedUser.id, role: lockedUser.role };
+    return {
+      id: lockedUser.id,
+      role: lockedUser.role,
+      sessionTimeLeftSeconds: lockedToken.seconds_left,
+    };
   });
 
   const accessToken = signAccessToken({ userId: id, role });
 
-  return { accessToken };
+  return { accessToken, sessionTimeLeftSeconds };
 }
 
 export async function verifyRegistrationOtp({

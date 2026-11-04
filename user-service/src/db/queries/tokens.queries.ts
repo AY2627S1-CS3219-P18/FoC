@@ -8,6 +8,10 @@
 // Author review:
 // 25/09/2026: Stage 6d - revokeAllRefreshTokensForUser
 // Author review:
+// 2026-11-05: Stage 23b - createRefreshToken and lockRefreshToken also return seconds_left,
+//   computed in SQL from expires_at and clock_timestamp(). Governing decision: instructions.md
+//   Stage 23b. No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -25,6 +29,13 @@ export interface RefreshTokenRow {
 }
 
 export type RefreshTokenRowWithNow = RefreshTokenRow & { db_now: Date };
+export type RefreshTokenRowWithSecondsLeft = RefreshTokenRow & { seconds_left: number };
+export type RefreshTokenRowWithNowAndSecondsLeft = RefreshTokenRowWithNow & {
+  seconds_left: number;
+};
+
+// Seconds from the database clock until expires_at, whole seconds, rounded down, never negative.
+const SECONDS_LEFT_EXPR = `GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (expires_at - clock_timestamp()))))::int`;
 
 export async function createRefreshToken(
   {
@@ -41,10 +52,11 @@ export async function createRefreshToken(
     ipAddress: string | null;
   },
   db: Queryable = pool,
-): Promise<RefreshTokenRow> {
-  const result = await db.query<RefreshTokenRow>(
+): Promise<RefreshTokenRowWithSecondsLeft> {
+  const result = await db.query<RefreshTokenRowWithSecondsLeft>(
     `INSERT INTO refresh_tokens (user_id, token_hash, expires_at, user_agent, ip_address)
-     VALUES ($1, $2, NOW() + make_interval(days => $3), $4, $5) RETURNING *`,
+     VALUES ($1, $2, NOW() + make_interval(days => $3), $4, $5)
+     RETURNING *, ${SECONDS_LEFT_EXPR} AS seconds_left`,
     [userId, tokenHash, ttlDays, userAgent, ipAddress],
   );
   return result.rows[0]!;
@@ -64,9 +76,10 @@ export async function findRefreshToken(
 export async function lockRefreshToken(
   tokenHash: string,
   db: Queryable = pool,
-): Promise<RefreshTokenRowWithNow | null> {
-  const result = await db.query<RefreshTokenRowWithNow>(
-    `SELECT *, clock_timestamp() AS db_now FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
+): Promise<RefreshTokenRowWithNowAndSecondsLeft | null> {
+  const result = await db.query<RefreshTokenRowWithNowAndSecondsLeft>(
+    `SELECT *, clock_timestamp() AS db_now, ${SECONDS_LEFT_EXPR} AS seconds_left
+     FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE`,
     [tokenHash],
   );
   return result.rows[0] ?? null;
