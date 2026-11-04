@@ -6905,3 +6905,101 @@ stage's decision tables.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 19 (added in this same session, commit `56646d1`)
+
+**Prompts (exact):**
+
+> is stage 19 ready to implement?
+
+> yes go for it, don't forget the git workflow
+
+**Key responses:**
+Before implementing, re-checked the stage's cited line numbers and "username is in scope"
+claims against the current code (all matched exactly). Found one place where the stage's
+decision table disagreed with the code: it said to pass username at `forgotPassword()` (line 466) "from the locked row", but `forgotPassword()` has no locked row at that point — only the
+unlocked `findByEmail` read (`requestOtp` does its own internal lock later, inside
+`otp.service.ts`). Stopped and asked; the user chose to use that unlocked row's username
+(`user.username`), not to add a new lock, since the latter would be a new locking decision, not
+implementation of an existing one.
+
+Implemented the retry loop, per-attempt cap, backoff, deadline and logging entirely inside
+`sendOtpEmail` (`email.service.ts`), per the stage's "retry loop location" decision — its
+contract (resolve on success, throw after the final failure) is unchanged, so `issueOtp`'s
+try/catch/`AppError(503, ...)` wrapping needed no changes beyond threading `username` through.
+Added phase timeouts (`connectionTimeout`/`greetingTimeout`/`socketTimeout`/`dnsTimeout`, all
+5000ms) to `createTransport()`. The per-attempt cap races `sendMail()` against a `setTimeout`;
+an attempt cut off by the cap is left to settle on its own, with a `settled` flag guarding
+`resolve`/`reject` so the eventual result is swallowed (no unhandled rejection, no log line) and
+the timer is cleared whenever the send settles first. Error classification
+(`isTransientError`/`describeAttemptError`) follows the stage's table exactly: `ETIMEDOUT`/
+`ESOCKET`/`ECONNECTION`/`EDNS` always transient; `EENVELOPE`/`EMESSAGE`/`EAUTH` transient only
+for `responseCode` 400–499; everything else (including the synthetic `ATTEMPT_TIMEOUT`, which is
+always transient) non-transient. Backoff is `Math.random() * Math.min(300, 2**(n-1)) * 1000`ms,
+and a wait is skipped (immediate throw instead) if `Date.now() - startedAt + waitMs` would
+exceed the 30s deadline. No new env vars; constants are at the top of `email.service.ts` as
+specified.
+
+Threaded `username` through `issueOtp`/`requestOtp` (`otp.service.ts`) and all six call sites
+across `auth.service.ts` (`register`, `resendRegistrationOtp`, `forgotPassword`) and
+`me.service.ts` (`initiateEmailChange`, `resendChangeEmailOtp`, `resendChangePasswordOtp`,
+`initiatePasswordChange`), using each function's already-fetched row.
+
+Updated the two existing test files whose call sites gained the new required `username` param,
+without changing any existing assertion's intent — except three `email.service.test.ts`
+dev-fallback assertions that checked `console.log` was never called at all, as a proxy for "the
+dev fallback didn't run"; since the real SMTP path now also logs a success line, that proxy no
+longer held, so those three were narrowed to what they actually meant: no `[DEV EMAIL]` line was
+logged (noted inline in the file's header, not silently). Added a new `describe` block to
+`email.service.test.ts` covering every bullet in the stage's Verification list that belongs at
+the email-service unit level: attempt counting/logging on success, retry-then-succeed,
+exhausting all 4 attempts, each transient error code, the `EENVELOPE`/`EMESSAGE`/`EAUTH`
+responseCode boundary (both sides), the three non-transient "fail immediately" cases, backoff
+wait ranges (via fake timers, no real sleeping), the 5s cap cutoff and abandoned-send handling,
+the 30s deadline's wait-skip (via mocking `Date.now` directly, since the stage's own constants
+make 4×5s cap + max 7s backoff = 27s always under 30s in real time — the deadline branch is a
+safety margin that real timing alone can't exercise), masking/no-sensitive-data-in-logs, and
+per-purpose/per-username logging including Change Email's masked-new-email case. Did not add new
+test cases to `otp.service.test.ts` beyond the `username` fixture: that file mocks
+`sendOtpEmail` globally (Stage 7's own setup), so the 4-attempt retry loop is invisible to it —
+its existing success/503-rollback/previous-OTP-still-valid tests already cover what's observable
+at that layer, unchanged.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npm run build` (user-service, `tsc`): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite, default sequential file execution per
+  `vitest.config.ts`): **762/762 passed** (was 693 at Stage 17; 69 new tests, all in
+  `email.service.test.ts`).
+- Not run: no Docker/manual end-to-end check of a real SMTP server's retry/timeout behavior —
+  left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `instructions.md` (modified separately, commit `56646d1`: added the Stage 19 spec)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Flagged and resolved in chat (see Key responses above): the stage's table said to source
+`forgotPassword()`'s logged username from a "locked row" that doesn't exist in that function;
+the user chose the unlocked `findByEmail` row instead of adding a new lock. No other ambiguity
+was found — every retry/backoff/timeout/logging choice came directly from the stage's decision
+tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

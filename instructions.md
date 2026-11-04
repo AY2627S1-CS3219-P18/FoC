@@ -3455,3 +3455,104 @@ Follow the Stage 7 ground rules: real Postgres, the existing mocking policy, and
 
 - **NFR1.1:** the current wording ("lock … after 5 consecutive failed login or OTP attempts within a 15-minute window") no longer matches this stage. Login failures lock with escalation; OTP protection is the existing per-OTP guess limit plus an escalating send block.
 - **NFR1.1.1:** mark as deferred.
+
+# Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)
+
+> **Scope**: `user-service` only. Failed OTP email sends are retried inline, within a time limit,
+> and every send attempt is logged to the console. The outcome after the final failure is
+> unchanged: `503 EMAIL_SEND_FAILED`, and the new OTP is rolled back.
+>
+> Backlog refs: NFR2.1, NFR2.1.1, NFR2.1.2.
+>
+> The read-and-report step for this stage is done; the decisions below incorporate your report.
+> If anything below still disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                                    | Value                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attempts                                | Up to 4 sends in total: the first attempt plus 3 retries                                                                                                                                                                                                                                                                                           |
+| OTP across retries                      | The same OTP and the same email content on every attempt. No new OTP is generated per attempt.                                                                                                                                                                                                                                                     |
+| Transient errors (retried)              | `ETIMEDOUT`, `ESOCKET`, `ECONNECTION`, `EDNS` — always. `EENVELOPE`, `EMESSAGE`, `EAUTH` — only when `responseCode` is between 400 and 499 inclusive. The per-attempt timeout (below) also counts as transient.                                                                                                                                    |
+| Non-transient errors (fail immediately) | `EENVELOPE`, `EMESSAGE`, `EAUTH` with any other `responseCode` or none (this includes 5xx replies and the "Missing credentials" `EAUTH`), `EPROTOCOL`, and any error without a recognised `code`. No further attempts, no wait.                                                                                                                    |
+| Where retries run                       | Inline, inside the request, within the existing transaction                                                                                                                                                                                                                                                                                        |
+| Retry loop location                     | Inside `sendOtpEmail` in `src/services/email.service.ts`. Its contract is unchanged: it resolves on success and throws after the final failure.                                                                                                                                                                                                    |
+| Backoff                                 | The same shape as Stage 14: after the n-th failed attempt, wait `random() × min(300, 1 × 2^(n−1))` seconds (full jitter), so the caps are 1, 2 and 4 s. Computed in code (nothing is stored); `Math.random()` is acceptable here.                                                                                                                  |
+| Nodemailer phase timeouts               | `connectionTimeout`, `greetingTimeout`, `socketTimeout` and `dnsTimeout` all set to 5000 ms on the transport, at `createTransport()` time                                                                                                                                                                                                          |
+| Per-attempt cap                         | 5 s total per attempt, enforced by racing each `sendMail()` against a 5 s timer. If the timer wins, the attempt counts as a failed, transient attempt.                                                                                                                                                                                             |
+| Abandoned sends                         | Nodemailer cannot cancel an in-flight send. An attempt cut off by the timer is left to finish on its own. Its later result must be caught (no unhandled rejection) and is not logged. Accepted consequences: the user may get duplicate emails with the same code, and if all attempts fail, a late email may deliver a code that was rolled back. |
+| Overall deadline                        | 30 s from the start of the first attempt. No wait may start if it would end after the deadline; in that case, stop and fail. An attempt in flight at the deadline is handled like any other cut-off attempt.                                                                                                                                       |
+| Configuration                           | Constants in code at the top of `email.service.ts`, like Stage 14. No new env vars.                                                                                                                                                                                                                                                                |
+| After the final failure                 | Unchanged: `AppError(503, 'Unable to send verification email. Please try again.', 'EMAIL_SEND_FAILED')` from `issueOtp`, and the transaction rolls back                                                                                                                                                                                            |
+| Purposes covered                        | Every send through `issueOtp`: Registration, Forgot Password, Change Email, Change Password                                                                                                                                                                                                                                                        |
+| Dev console fallback                    | Unchanged. When `NODE_ENV=development` and `SMTP_HOST` is empty, there are no retries and no new log lines; the existing `[DEV EMAIL]` line stays as it is.                                                                                                                                                                                        |
+| Logging destination                     | Console only. No DB table.                                                                                                                                                                                                                                                                                                                         |
+| What is logged                          | One line per attempt, both successes and failures                                                                                                                                                                                                                                                                                                  |
+| Log fields                              | Outcome, username, masked email, purpose, attempt number, and error code (failures only)                                                                                                                                                                                                                                                           |
+| Email masking                           | First character of the local part, then `***`, then `@` and the full domain, e.g. `g***@u.nus.edu`                                                                                                                                                                                                                                                 |
+| Never logged                            | The OTP, the full email address, the email body, and SMTP response text                                                                                                                                                                                                                                                                            |
+
+### Log line format
+
+```
+[OTP EMAIL] outcome=sent user=<username> to=<masked email> purpose=<purpose> attempt=<n>/4
+[OTP EMAIL] outcome=failed user=<username> to=<masked email> purpose=<purpose> attempt=<n>/4 error=<code>
+```
+
+- Successes use `console.log`, failures `console.error`.
+- `error` is the Nodemailer `code`, followed by the `responseCode` when present (e.g. `EENVELOPE 452`). An attempt cut off by the 5 s timer logs `error=ATTEMPT_TIMEOUT`.
+- For Change Email, `to` is the masked new email (the address the OTP was sent to).
+
+### Changes to already-implemented code
+
+| #   | File                            | Change                                                                                                                                                          |
+| --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/services/email.service.ts` | Phase timeouts on the transport; `sendOtpEmail` gains `username` and implements the retry loop, per-attempt cap, deadline, backoff and logging                  |
+| 2   | `src/services/otp.service.ts`   | `issueOtp` gains `username` and passes it to `sendOtpEmail`. `requestOtp` gains `username` and passes it to its internal `issueOtp` call (line 159).            |
+| 3   | `src/services/auth.service.ts`  | Pass `username` at `register()` (line 212, normalised input), `resendRegistrationOtp()` (line 444, looked-up row) and `forgotPassword()` (line 466, locked row) |
+| 4   | `src/services/me.service.ts`    | Pass `locked.username` at `initiateEmailChange()` (269), `resendChangeEmailOtp()` (328), `resendChangePasswordOtp()` (356), `initiatePasswordChange()` (437)    |
+| 5   | Existing tests                  | Update mocks or fixtures affected by the signature changes. Do not change what they assert.                                                                     |
+
+Line numbers are from your report; re-check them before editing.
+
+### Watch for
+
+- The final failure must still throw so `withTransaction` rolls back, exactly as today.
+- A non-transient failure must not be retried and must not wait.
+- The 5 s timer must be cleared when the send settles first, so no stray timers keep running.
+- An abandoned send's later rejection must be caught.
+- `requestOtp`'s cooldown is measured from the OTP row's `created_at`, which is set before the send. Do not change this.
+
+### Verification
+
+- SMTP succeeds on the first attempt → `200`, one `outcome=sent ... attempt=1/4` line
+- Transient failure on attempts 1–2, success on attempt 3 → `200`, two `failed` lines then one `sent` line, one OTP row, and the same OTP in every attempt
+- Transient failure on all 4 attempts → `503 EMAIL_SEND_FAILED`, four `failed` lines, no new OTP row (rolled back), and the previous OTP still valid
+- Each of `ETIMEDOUT`, `ESOCKET`, `ECONNECTION`, `EDNS` is retried
+- `EENVELOPE`, `EMESSAGE` and `EAUTH` with `responseCode` 400 and 499 are retried; with 399, 500 and 550 they fail immediately
+- `EAUTH` with no `responseCode` ("Missing credentials"), `EPROTOCOL`, and an error with no `code` each fail immediately: `503`, one `failed` line, no waits
+- Waits between attempts fall within 0–1 s, 0–2 s and 0–4 s
+- An attempt that has not settled after 5 s is cut off, logged as `error=ATTEMPT_TIMEOUT`, and retried; its later rejection does not cause an unhandled rejection and is not logged
+- The whole send never exceeds 30 s; a wait that would end after the deadline is not started, and the result is `503 EMAIL_SEND_FAILED`
+- Each purpose (registration, forgot password, change email, change password) retries and logs, with the correct username
+- Change Email logs the masked new email, not the current one
+- No log line contains the OTP, a full email address, or SMTP response text
+- Dev fallback (development, empty `SMTP_HOST`) behaves exactly as before: no retries, no `[OTP EMAIL]` lines
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout. Stage 7's "do not test NFR2" exclusion is **lifted** for NFR2.1.1 and NFR2.1.2. Every bullet under Verification above is a required test case.
+
+- Mock the Nodemailer transport (permitted by the Stage 7 mocking policy) to produce success, each error type above with chosen `responseCode`s, and sends that never settle.
+- Use Vitest fake timers for the backoff waits, the 5 s cap and the 30 s deadline, so the suite does not actually sleep.
+- Spy on `console.log` / `console.error` to assert the log lines.
+- Use the real test Postgres for the rollback and previous-OTP-still-valid checks.
+- Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+### Backlog note (for the team)
+
+- NFR2.1.2 says "for monitoring". This stage logs to the console only; there is no dashboard or alerting.
