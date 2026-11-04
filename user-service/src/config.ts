@@ -21,6 +21,10 @@
 //    send-escalation. No requirements, architecture, schema, or API decisions were made by the
 //    AI tool — see instructions.md Stage 18 for the governing decision.
 //    Author review:
+//  2026-11-05: Stage 23a - bound ACCESS_TOKEN_TTL_MINUTES (1-15) and REFRESH_TOKEN_TTL_DAYS
+//    (1-30). Bounds are the governing decision already recorded in instructions.md Stage 23a;
+//    no architecture, schema, or API decision was made by the AI tool.
+//    Author review:
 
 import { z } from "zod";
 
@@ -41,8 +45,8 @@ const envSchema = z
     // Set together only during a key-rotation overlap window (Stage 13).
     JWT_PREVIOUS_KEY_ID: z.string().min(1).optional(),
     JWT_PREVIOUS_PUBLIC_KEY_PATH: z.string().min(1).optional(),
-    ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive(),
-    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive(),
+    ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(15),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30),
 
     SMTP_HOST: z.string().default(""),
     SMTP_PORT: z.coerce.number().int().positive(),

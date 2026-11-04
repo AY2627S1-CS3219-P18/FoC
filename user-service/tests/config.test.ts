@@ -2,6 +2,10 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - config.ts validation, run as a child process with a modified env
 // Author review:
+// 2026-11-05: Stage 23a - test cases for the REFRESH_TOKEN_TTL_DAYS (1-30) and
+//   ACCESS_TOKEN_TTL_MINUTES (1-15) bounds. Bounds are the governing decision already recorded
+//   in instructions.md Stage 23a.
+// Author review:
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +71,38 @@ describe('config.ts', () => {
 
     it('rejects an unknown NODE_ENV', () => {
       expect(loadConfig({ NODE_ENV: 'staging' }).status).toBe(1);
+    });
+  });
+
+  describe('TTL env var bounds', () => {
+    it.each([
+      ['REFRESH_TOKEN_TTL_DAYS', '0'],
+      ['REFRESH_TOKEN_TTL_DAYS', '31'],
+      ['ACCESS_TOKEN_TTL_MINUTES', '0'],
+      ['ACCESS_TOKEN_TTL_MINUTES', '16'],
+    ])('rejects %s=%s with an error naming the variable', (name, value) => {
+      const r = loadConfig({ [name]: value });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('Invalid or missing environment variables');
+      expect(r.stderr).toContain(name);
+    });
+
+    it.each([
+      ['REFRESH_TOKEN_TTL_DAYS', '1'],
+      ['REFRESH_TOKEN_TTL_DAYS', '30'],
+      ['ACCESS_TOKEN_TTL_MINUTES', '1'],
+      ['ACCESS_TOKEN_TTL_MINUTES', '15'],
+    ])('accepts %s=%s', (name, value) => {
+      expect(loadConfig({ [name]: value }).status).toBe(0);
+    });
+
+    it('still rejects a non-integer value within range', () => {
+      expect(loadConfig({ REFRESH_TOKEN_TTL_DAYS: '1.5' }).status).toBe(1);
+      expect(loadConfig({ ACCESS_TOKEN_TTL_MINUTES: '1.5' }).status).toBe(1);
+    });
+
+    it('accepts the existing .env.test values', () => {
+      expect(loadConfig({}).status).toBe(0);
     });
   });
 
