@@ -7003,3 +7003,109 @@ tables.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 20a: Backend" (and its "Changes to already-implemented code" table) — moved into `instructions.md` by the user from an earlier, misplaced location before this session's work began.
+
+**Prompts (exact):**
+
+> is stage 20 clear? ready to implement?
+> let's do stage 20a
+
+**Key responses:**
+Scoped this session to Stage 20a (backend, `user-service`) only, per the user's own words; Stage
+20b (frontend eye icon, `getFullEmail` API call, toast text) was explicitly not started.
+
+Followed the "Changes to already-implemented code" table item by item. Extracted the Stage 19
+`maskEmail` helper out of `email.service.ts` into its own module, `src/utils/maskEmail.ts`, so
+`userResponse.ts` could reuse the same masking format without a cross-service-layer import;
+output is byte-for-byte unchanged from Stage 19. Gave `toUserResponse(row, requesterId)` a second
+parameter and masked `email` unless `row.id === requesterId`. Threaded a `requesterId` through
+every admin-facing caller of `toUserResponse` (`listUsers`, `getUserById`, `changeUserStatus`,
+`changeUserRole`, `unlockUser` in `users.service.ts`; their controllers in
+`users.controller.ts` now pass `req.user!.user_id`), and confirmed `me.service.ts`'s
+`changeActiveView` (a self-view path) already passes the caller's own ID, so its email returns
+unmasked as required.
+
+Added `findByIdWithNow` to `users.queries.ts` (unlocked read + `clock_timestamp() AS db_now`,
+following the existing `UserRowWithNow`/`OtpRowWithNow` convention) so the new endpoint's log
+timestamp comes from the database clock, not `Date.now()`, per the stage's logging spec. Added
+`getFullEmail(actorId, targetId, userAgent)` to `users.service.ts`: looks up the actor's
+username, looks up the target, logs `denied reason=USER_NOT_FOUND` and throws `404` if the target
+doesn't exist, logs `denied reason=FORBIDDEN` and throws `403` if the target is a super admin,
+otherwise writes the `granted` line and returns the real email. Also added
+`logUnmaskValidationFailure(actorId, rawTargetId, userAgent)` for the controller's own `400`
+path (invalid UUID in `:id`), matching the stage's requirement that a validation failure still
+produce a denied log line with the actor's username. Both log functions follow the stage's exact
+line format (`[UNMASK EMAIL] actorId=... actorUsername=... targetId=... targetUsername=...
+timestamp=... userAgent=... outcome=...`), quote `userAgent` and (when the target lookup didn't
+resolve a username) `targetId` with `JSON.stringify`, write a literal `-` for a missing
+`User-Agent` header, and use `console.log` for granted / `console.error` for denied. Neither
+function catches its own write failure, so a logging failure still propagates to the global
+error handler as a `500`, per the stage's last Verification bullet.
+
+Added the `fullEmail` controller (`asyncHandler`-wrapped, validates `:id` with the existing
+Stage 9 UUID schema, calls `getUserById`'s sibling `getFullEmail` with
+`req.user!.user_id`, `req.params.id!`, `req.get('user-agent')`) and registered
+`GET /:id/full-email` in `users.routes.ts` ahead of `GET /:id` so it isn't shadowed, exactly as
+the table specifies.
+
+Updated every existing test whose assertions expected a real email in an admin-facing response
+(now masked) across `users.controller.test.ts` and `users.service.test.ts`, and fixed every
+existing call site of `changeUserStatus`/`unlockUser`/`getUserById`/`listUsers` for their new
+leading `requesterId` parameter (including four call sites in
+`tests/concurrency/lock-recheck.concurrency.test.ts`, in a separate directory, missed on the
+first pass and fixed once the full suite surfaced them). Added new test coverage for every
+Stage 20a Verification bullet: masked vs. unmasked rows across `GET /users`, `GET /users/:id`,
+status/role/unlock endpoints, the caller's-own-row exception, the full-email endpoint's success
+path for a user/pending/suspended/admin target as both admin and super admin caller, the
+super-admin-target `403`, unknown-UUID `404`, invalid-UUID `400`, no-token `401` and
+regular-user `403` (neither of the last two logging anything), the admin-vs-super-admin
+own-ID-targeting split, the database-clock timestamp (via a new `dbNow()` test helper), log-line
+content (quoting, `-` for missing user agent, no email ever logged), and the forced-logging-
+failure `500` path.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite): **791/791 passed.** Four separate full-suite runs
+  during this session each showed exactly one `ECONNRESET`/"socket hang up" failure, a different
+  test each time (`me.controller.test.ts`, `auth.service.test.ts`,
+  `users.public.controller.test.ts`, then `auth.controller.test.ts`); each was re-run in
+  isolation and passed cleanly, confirming a pre-existing cross-file DB/connection-pool
+  contention flake (noted in an earlier Stage 18 log entry) rather than a regression from this
+  stage's changes.
+- Not run: no Docker/manual end-to-end check; left for the human, as with prior stages.
+
+**Files:**
+
+- `user-service/src/utils/maskEmail.ts` (created)
+- `user-service/src/services/email.service.ts` (modified — `maskEmail` extracted out)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/utils/maskEmail.test.ts` (created)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `instructions.md` (modified separately, commit `7f75cf2`: Stage 20 spec moved here by the user)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None — the stage's decision table and Verification list were followed as written; no schema,
+API, or security/performance choice was left unrecorded.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -41,6 +41,10 @@ Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #15
        (OTP email retry and delivery logging). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #151 for Stage 20a
+       (email masking for admin responses and the full-email unmask endpoint). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -387,3 +391,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 148 | 2026-11-04 | user-service | Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename | Logged a rename the docs work never recorded, so old-filename references make sense |
 | 149 | 2026-11-04 | user-service | Stage 17: Local Setup Script | `npm run setup` creates `.env`, generates SUPER_ADMIN_PASSWORD and the RS256 keypair |
 | 150 | 2026-11-04 | user-service | Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2) | Inline retry/backoff/timeout for OTP email sends, with a console log line per attempt |
+| 151 | 2026-11-04 | user-service | Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1) | Admin responses mask emails; new `GET /users/:id/full-email` logs each unmask attempt |
