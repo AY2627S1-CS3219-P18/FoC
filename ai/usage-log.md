@@ -8077,3 +8077,50 @@ None — the stage text matched the current code with no conflicts.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-05 — Stage 23c: Expiry Warning Banner — Frontend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23c: Expiry Warning Banner — Frontend".
+
+**Prompts (exact):**
+
+> let's branch off for 23c
+
+> okay, let's continue with 23c then
+
+**Key responses:**
+Read the current code against the Stage 23c table first: `AuthContext.jsx` already held `user`/`status`/`login`/`logout`/`forceReauth`; `http.js` already had the single-callback `setOnSessionExpired` pattern (used for the existing session-expiry redirect) and `refreshAccessToken()`, which every one of the stage's four read points except login funnels through (session restore, the proactive refresh, and the refresh-after-401 retry in `send()` all call it); `auth.js`'s `login()` makes its own `POST /auth/login` call instead. No disagreement with the stage text, so implemented directly, choosing (and reporting, per the stage's "put the text in your summary" instruction) how to wire the four read points and where the lead-time constant and banner component live.
+
+Added `setOnSessionTimeLeft`/`recordSessionTimeLeft` to `http.js`, mirroring the existing `setOnSessionExpired` single-callback pattern: `refreshAccessToken()` now also calls it with the response's `sessionTimeLeftSeconds` (covers session restore, proactive refresh, refresh-after-401 in one place), and `auth.js`'s `login()` calls `recordSessionTimeLeft` directly with its own response's value (the one read point that bypasses `refreshAccessToken`).
+
+In `AuthContext.jsx`: added `LEAD_TIME_MS` (the named 10-minute constant the stage asked for) and `sessionDeadline` (a `performance.now()`-based monotonic timestamp, set from the new callback) plus `sessionExpiringSoon`, exposed on the context. `sessionExpiringSoon` is recomputed by an effect keyed on `[isLoggedIn, sessionDeadline]` rather than polled. That effect originally scheduled one `setTimeout` for the remaining delay; testing caught that a fresh 30-day deadline's delay (~2.59×10⁹ ms) overflows `setTimeout`'s 32-bit signed delay ceiling (~2.147×10⁹ ms) and fires almost immediately instead of ~30 days later, which would have shown the banner right after every login. Fixed by chunking the wait into steps of at most `MAX_TIMEOUT_MS` and rescheduling until the real deadline is reached — this was not something I flagged as a design question since it is purely a `setTimeout` platform limit, not a product decision. The deadline is cleared (set to `null`) in `logout()`, `forceReauth()`, and the `onSessionExpired` handler, so it never carries over to the next login, per the stage's "On logout" bullet.
+
+Created `SessionExpiryBanner.jsx`: visually reuses `FormBanner`'s `info` tone classes (`border-line`/`bg-surface-alt`/`text-ink-70`) rather than rendering `FormBanner` itself, since `FormBanner` only accepts a message string and this banner needs a non-dismissible "Log in again" button (calling `AuthContext.logout()`, same as `TopNav`'s existing control) and spans the full page width rather than sitting inside a form — reported here per the stage's instruction to put the choice in the summary for review. Mounted it in `App.jsx` directly above `TopNav`, outside the `<Routes>`, so it shows at the top of every page regardless of route.
+
+**Banner text (for review):** "Your session will end soon. Log in again to keep working." — does not promise an exact sign-out time, per the stage's requirement.
+
+**Verification run:** `npm run lint` (oxlint): clean, same pre-existing `set-state-in-effect`/`only-export-components` warning patterns as elsewhere in the codebase, no new warnings in the changed files beyond that same pattern. `npm run build` (vite): clean. `npx vitest run` (full frontend suite): 32/32 passed, including the 7 new tests below. Manually confirmed against the live `user-service` (already running locally) via curl that `POST /auth/login` and `POST /auth/refresh` both return `sessionTimeLeftSeconds` matching what the frontend code reads. Could not visually verify the banner in an actual browser — no browser tool was available in this session (built-in browser cannot reach a container-local `localhost`; Claude in Chrome was not connected) — so the UI was not eyeballed end-to-end; the author should click through it manually (`docker compose -f compose.yaml -f compose.dev.yaml up -d user-db user-service frontend` is already running).
+
+Tests added in `frontend/tests/context/AuthContext.test.jsx`, mocking the network layer (`fetch`) directly rather than the `api/*` modules, per the stage's "mock the network layer" instruction, with a fresh module registry (`vi.resetModules`) per test so `http.js`'s module-level state can't leak between tests: no banner after a 30-day restore; a 15-minute restore shows no banner, then one after 5 fake-timer minutes pass; a 5-minute restore shows the banner immediately; the banner has no dismiss control; "Log in again" logs out and the banner disappears; the deadline does not carry over to a fresh login after logout (the test that caught the `setTimeout` overflow above); a refresh-after-401 response also updates the deadline. Not covered, as needing a real browser or multiple tabs rather than fake-timer simulation: the device-clock-change bullet (true by construction, since the deadline is `performance.now()`-based, not `Date`-based) and the two-open-tabs bullet (true by construction, since each tab owns its own module registry); the proactive-refresh trigger specifically was not separately tested since it shares the exact `refreshAccessToken()` code path already exercised by the session-restore and refresh-after-401 tests.
+
+**Files:**
+
+- `frontend/src/api/http.js` (modified)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/components/SessionExpiryBanner.jsx` (created)
+- `frontend/src/App.jsx` (modified)
+- `frontend/tests/context/AuthContext.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row added)
+
+**Deviations / questions raised for the team:**
+None — the stage text matched the current code with no conflicts. The banner text above and the `setTimeout`-overflow fix are reported for review per the stage's own instructions, not raised as open questions.
+
+**What I kept/changed/rejected:**
+Acceepted all changes.
+
+**Author review:** gabriel yap

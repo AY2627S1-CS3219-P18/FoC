@@ -46,10 +46,17 @@
  *        instructions.md Stage 16g.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Mounted SessionExpiryBanner above TopNav, per instructions.md Stage 23c, so the
+ *        non-dismissible expiry warning shows at the top of every page regardless of route.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import SessionExpiryBanner from "./components/SessionExpiryBanner";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
 import DemoControls from "./components/DemoControls";
@@ -88,6 +95,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollToTop />
+      <SessionExpiryBanner />
       <TopNav />
       <main className="flex-1">
         <Routes>
