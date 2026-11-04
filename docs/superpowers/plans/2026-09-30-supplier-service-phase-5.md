@@ -49,11 +49,11 @@ Author review: Congchen
 
 | Spec item | Status here |
 | --- | --- |
-| End-to-end tests proving NFR6.1 | **Ready** — Task 1 |
+| End-to-end tests proving NFR6.1 | **Implemented** — Task 1 |
 | §7.1.1 per-endpoint `message`/`details` content | **Verified in part** — `test/routes/responseMessages.test.ts` covers the shared-middleware/validation rows; DB-dependent rows not covered — Task 2 |
 | Load/pagination tests proving NFR7.1 | **Run, targets missed** — local k6 run recorded in `supplier-service/docs/phase-5-load-test-results.md`; awaiting team decision — Task 3 |
-| Live API-call transcript + independent no-UI demonstration (§9 item 10) | **BLOCKED** on format — Task 4 |
-| Cross-role end-to-end demonstration | **BLOCKED** on format (same answer as Task 4) — Task 5 |
+| Live API-call transcript + independent no-UI demonstration (§9 item 10) | **Implemented; live suite recorded as passing** — Task 4 |
+| Cross-role end-to-end demonstration | **Implemented; live suite recorded as passing** — Task 5 |
 
 Already true and only *cited*, not rebuilt: 401/403 handling (`authenticate`, `requireRole`), the 30/min/IP limiter, and the fixed `limit` of 50 (`422` otherwise). `test/app.integration.test.ts` already covers a subset of 401/403; Task 1 makes the coverage systematic and adds the "no state change" assertion it lacks.
 
@@ -225,11 +225,11 @@ Once the team gives the target, volume, tool and database:
 
 ---
 
-### Task 4: Independent no-UI API demonstration and live transcript (BLOCKED on team decision 3)
+### Task 4: Independent no-UI API demonstration and live transcript (implemented)
 
 Governing decision: Arch §9 item 10 and §8 ("remains usable through its APIs without the UI"). Requests to demonstrate are the ones already recorded in Arch §7.4.
 
-When the team gives the format and location:
+The team selected Vitest, a local JWKS stub and CI-generated transcripts; the recorded live run is in the shared usage log.
 
 - [ ] **Step 1:** Start the stack (`docker compose up` from the repo root with the User Service stub or real tokens as the team chooses) and confirm each service is reachable before recording anything.
 - [ ] **Step 2:** Author the demonstration in the agreed format, covering the full lifecycle through the API alone: reference lookups, create (with `Idempotency-Key`), list/detail, update (with `version`, including a stale-`version` `409`), delete, and the repeated-delete `404`.
@@ -238,7 +238,7 @@ When the team gives the format and location:
 
 ---
 
-### Task 5: Cross-role demonstration (BLOCKED on team decision 3)
+### Task 5: Cross-role demonstration (implemented)
 
 Governing decision: Spec Phase 5 scope bullet 5 (course requirement point 4).
 
@@ -260,7 +260,7 @@ Governing decision: Spec Phase 5 scope bullet 5 (course requirement point 4).
 ## Self-review against the spec
 
 - NFR6.1 tests → Task 1. Per-endpoint wording → Task 2. NFR7.1 → Task 3. API-only demonstration and transcript (§9 item 10) → Task 4. Cross-role demonstration → Task 5. Disclosure → Task 6. No spec bullet is unmapped.
-- No task contains invented decisions; Tasks 2–5 hold steps only and stay blocked until their answers are recorded.
+- The decision record contains the team-supplied answers; the local load run missed its targets and the team has not authorized query or index changes.
 - Names used in Task 1 (`poolStub`, `redisStub`, `nextIp`, `expectNoStateChange`) are defined in the same task.
 
 ## Decision record
@@ -293,3 +293,6 @@ Governing decision: Spec Phase 5 scope bullet 5 (course requirement point 4).
 
 
 **Task 2 — team decision (2026-11-04):** Accept the current messages and optional details documented in [the response inventory](../../../supplier-service/docs/phase-5-response-inventory.md). No new message or details mapping is required. Existing verification work remains; this decision does not specify changes to malformed-JSON or unknown-route handling.
+
+
+**Tasks 4–5 — team decisions and result (2026-11-04):** Use Vitest against the running service and a local JWKS stub; login is a separate test. Generate transcripts in CI without requiring persistence. The shared usage log records the live no-UI and cross-role suites passing 17/17; see `test/api-demo/` and `vitest.apidemo.config.ts`.
