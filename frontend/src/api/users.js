@@ -13,6 +13,11 @@
  *        per instructions.md Stage 18e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added getFullEmail (GET /users/:id/full-email), per instructions.md Stage 20b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -44,4 +49,10 @@ export async function updateUserRole(id, role) {
 // 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin targeting another admin).
 export async function unlockUser(id) {
   return request('/users/' + id + '/unlock', { method: 'POST' })
+}
+
+// 200 { email } (the real, unmasked email). Admin/super admin only (403 FORBIDDEN otherwise).
+// 404 USER_NOT_FOUND, 403 FORBIDDEN (target is a super admin).
+export async function getFullEmail(id) {
+  return request('/users/' + id + '/full-email')
 }

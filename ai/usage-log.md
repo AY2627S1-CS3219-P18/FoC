@@ -7109,3 +7109,112 @@ API, or security/performance choice was left unrecorded.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `instructions.md`, "Stage 20b: Frontend" and its "Tests" section.
+
+**Prompts (exact):**
+
+> let's do stage 20b
+
+**Key responses:**
+`frontend/` had no test runner at all (no Vitest config, no `@testing-library/*`, no test
+script, no existing `*.test.*` files), and the stage's own Tests section says to stop and ask
+before adding one. Asked; the user chose Vitest + React Testing Library (jsdom environment),
+matching the backend's existing Vitest choice. Added `vitest.config.js` (jsdom, a shared
+`tests/setup.js` that loads jest-dom matchers and runs `cleanup()` after each test), a `test`
+script in `package.json`, and the four devDependencies (`vitest`, `jsdom`,
+`@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`). Verified
+the toolchain with a throwaway smoke test before writing any real tests.
+
+Added `getFullEmail(id)` to `src/api/users.js` (`GET /users/:id/full-email`, returns `{ email
+}`), mirroring the file's existing request-wrapper pattern.
+
+In `src/pages/AdminUsers.jsx`: added an eye/eye-off icon (lucide-react) in the email cell,
+gated by `canUnmaskEmail(viewer, row)` — hidden for the caller's own row and any `super admin`
+row, per the stage's rule. Click calls `getFullEmail(id)` and shows the real email with the
+icon switched to "hide"; a second click re-masks instantly with no request (checked via
+`id in unmaskedEmails`, not re-fetching); a 60-second `setTimeout` (`UNMASK_TIMEOUT_MS`)
+auto-re-masks, is cleared on manual re-mask, and is cleared on unmount. State is keyed per row
+(`unmaskedEmails`, `unmaskingRows`, and `unmaskTimersRef` all keyed by user id), so two rows
+unmask and re-mask independently. The existing `useEffect(() => { setRowOverrides({}) },
+[data])` (added in an earlier stage, runs whenever the table data object changes — i.e. after
+any refetch from a filter/sort/page change or a row action's `reload()`) now also calls a new
+`remaskAllRows()`, satisfying "any refetch re-masks every row and clears their timers". A
+failed `getFullEmail` call shows the existing `describeError(err).message` toast and leaves the
+row masked, reusing the page's existing toast pattern — no new error-handling path needed.
+Checked `errorMessages.js`'s `FORBIDDEN`, `USER_NOT_FOUND` and `VALIDATION_ERROR` entries per
+the stage's "Changes to already-implemented code" table: all three already have generic,
+toast-appropriate wording from earlier stages (`AdminUsers.jsx` shows `describeError(err).message`
+directly regardless of the `display` field), so no wording change was needed.
+
+Fixed one `oxlint` warning introduced by the new code (a function used before its textual
+declaration, flagged by `react(immutability)` despite function-declaration hoisting making it
+work at runtime) by moving `remaskRow`/`remaskAllRows` above the effect that calls them. Did not
+touch the pre-existing `react(set-state-in-effect)` warnings on the same lines — confirmed via
+`git stash` that this warning class already existed on this file (and ~8 other files) before
+this stage's changes.
+
+Wrote `tests/pages/AdminUsers.test.jsx` (6 tests, `listUsers`/`getFullEmail`/`AuthContext`
+mocked) covering the stage's frontend-testable Verification bullets: eye-icon visibility rules,
+reveal-then-re-mask-with-no-second-request, the 60s auto-re-mask (Vitest fake timers), two rows
+unmasking and re-masking on independent timers, the failure toast leaving the row masked, and
+re-masking every row after a refetch (a filter change). The last one needed
+`listUsers.mockImplementation(...)` instead of `mockResolvedValue(...)`: the latter reuses one
+object's identity across calls, which hid the very effect being tested (React's `[data]`
+dependency check saw no change) — not a real bug, since a real fetch always returns a fresh
+object. Also wrote `tests/api/users.test.js` for `getFullEmail` itself.
+
+No browser-automation tool is available in this environment, so the click-through could not be
+literally driven in a real browser. Verified the backend contract the UI depends on directly
+instead: brought up `user-db` + `user-service` (plus a throwaway registered user) and the Vite
+dev server, then used `curl` to confirm `GET /users` masks every email except the caller's own
+row, `GET /users/:id/full-email` returns the real email and logs a `granted` line, and targeting
+a super admin returns `403 FORBIDDEN` with a `denied` line — matching Stage 20a's already-merged
+backend exactly. Found the local dev Postgres volume was stale (missing Stage 18's lockout
+columns, since `init.sql`'s new `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` lines only run via
+the container's first-init script, and existing columns added inline in a `CREATE TABLE
+IF NOT EXISTS` for an already-existing table are silently skipped); fixed it by re-applying
+`init.sql` plus the two `users_otps` columns directly, which is purely additive and didn't
+affect the automated test database (`user_service_test`, on the same Postgres instance but a
+separate database that `tests/setup/globalSetup.ts` drops and recreates from `init.sql` fresh
+before every run, so it was never affected by the stale volume or this fix).
+
+**Verification run (this session):**
+
+- `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes (one of
+  them on a newly-added line, same class as throughout the codebase), no new warning categories.
+- `npx vite build` (frontend): clean.
+- `npx vitest run` (frontend): **7/7 passed** (new — this stage added the test runner itself).
+- `curl` against a live `user-service` + Postgres + the Vite dev server (proxying to it):
+  confirmed masked `GET /users`, the caller's-own-row exception, `GET /users/:id/full-email`'s
+  success and super-admin-target `403` paths, and both log-line shapes, all matching Stage 20a's
+  spec.
+- Not run: an actual browser click-through (no browser-automation tool available in this
+  environment) — left for the human.
+
+**Files:**
+
+- `frontend/vitest.config.js` (created)
+- `frontend/tests/setup.js` (created)
+- `frontend/tests/pages/AdminUsers.test.jsx` (created)
+- `frontend/tests/api/users.test.js` (created)
+- `frontend/package.json` (modified — `test` script, new devDependencies)
+- `frontend/package-lock.json` (modified)
+- `frontend/src/api/users.js` (modified — `getFullEmail`)
+- `frontend/src/pages/AdminUsers.jsx` (modified — eye icon, unmask/re-mask/timer logic)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Stopped and asked before adding a test runner to `frontend/`, per the stage's own instruction
+to do so (`frontend/` had none at all). The user chose Vitest + React Testing Library. No other
+ambiguity — `errorMessages.js`'s existing wording was checked and found adequate, as noted above.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
