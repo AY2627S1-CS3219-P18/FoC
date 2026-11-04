@@ -6653,7 +6653,7 @@ Task 2: added `test/routes/responseMessages.test.ts` (6 tests for the shared 401
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review: Congchen**
 
 ## 2026-11-04 — Phase 5: No-UI API suite and cross-role suite
 
@@ -6683,4 +6683,32 @@ Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-d
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Current state and test arrangements
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team-supplied Phase 5 decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` and the 2026-11-04 no-UI suite entry in this log.
+
+**Prompts (exact):**
+> I have finished the changes in another session. I see that the project state still shows W6 - phase 5 as blocked, and that tasks 2-5 are stopped. Is that up to date?
+> Also i want to record the decisions made into the [SupplierServiceArchitecture.md](supplier-service/SupplierServiceArchitecture.md) , particularly those related to the test arrangements so i can see everything in one place
+
+**Key responses:**
+Compared project-state statements with the plan, source files, recorded k6 result and subsequent no-UI suite log. Updated the W6 status, current questions and plan task statuses; documented the team's accepted response wording, load targets, data and workload mix, rate limits, and no-UI/cross-role suite and transcript arrangements in the architecture document. The recorded local k6 run missed the targets and dropped 11,672 iterations on a shared development machine. The log reports 17/17 no-UI and role tests passed; this session did not rerun them. DB-dependent response-message cases remain uncovered by the new response suite. Checked the documentation diff and links; no application tests were run in this documentation task.
+
+**Files:**
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** Review the missed local performance run and decide the next test environment and whether query/index changes are allowed. DB-dependent response-message verification is incomplete. No new design or performance decisions were made.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**

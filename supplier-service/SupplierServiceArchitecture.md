@@ -86,6 +86,9 @@ Scope: 2026-09-30 update — recorded the team's decision that supplier response
        Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied Phase 5 test arrangements.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service Architecture
@@ -1157,6 +1160,42 @@ The storage provider's deletion behavior and availability behavior are outside t
 architecture. The provider itself remains undecided; the service architecture records the storage
 boundary, photo reference, authentication boundary, Redis job-queue handoff, retry responsibility,
 and compensation behavior.
+
+### Phase 5 verification arrangements
+
+The team accepted the service's existing response messages and optional `details`; their current
+wording and code paths are recorded in [the response inventory](docs/phase-5-response-inventory.md).
+
+For pagination performance, use Grafana k6 against a separate MySQL test database populated with
+4,000 synthetic suppliers. Concurrent writes are excluded. The team intends to be able to target a
+cloud MySQL environment later. Evaluate each traffic level over one minute:
+
+| Load | Requests/second | p50 target | p95 target |
+| --- | ---: | ---: | ---: |
+| Typical | 50 | ≤300 ms | ≤500 ms |
+| Peak | 200 | ≤400 ms | ≤600 ms |
+
+Use a mixed workload: 95% public supplier-list requests and 5% admin supplier-list requests. Across
+the workload, 70% use page 1, 20% pages 2–5, and 10% use deep pagination (page 6+) or filters.
+Within that 10% group, 40% use deep pagination, 15% text search, 15% `isOpen`, 15% category and
+15% location. Category and location requests use the numeric `category_id` and `location_id` the
+frontend sends. The team specified `PER_IP_RATE_LIMIT` values of 20,000 requests/minute/IP for
+local and staging, and 30 for production; the code defaults to 30 when unset. Staging configuration
+must supply its value. See the [API test plan](docs/phase-5-api-test-plan.md) and
+[Phase 5 decision record](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md#decision-record).
+
+The no-UI API lifecycle and cross-role checks use a Vitest suite against the running Supplier
+Service, with a local JWKS stub for user, admin and super-admin tokens. Login is tested separately.
+The tests cover the recorded API lifecycle and role access; transcripts are generated in CI and need
+not persist. The relevant scripts and calls are in the [API test plan](docs/phase-5-api-test-plan.md)
+and `test/api-demo/`.
+
+The [local load-test result](docs/phase-5-load-test-results.md) records one run on a single development
+machine. The run missed all percentile thresholds and dropped iterations; the requested arrival rates
+were not sustained. The team has not recorded a decision authorizing query or index changes. The
+shared usage log records the separate live no-UI and cross-role suite run (17/17 passed).
+
+---
 
 ## 9. Requirement traceability notes and unresolved items
 

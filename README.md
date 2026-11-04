@@ -53,6 +53,9 @@ Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrangements index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -402,3 +405,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 151 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
 | 152 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
 | 153 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
+| 154 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |

@@ -16,6 +16,9 @@ Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Recorded the team's revised staging rate limit.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded the team's no-UI suite and transcript decisions.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 # Phase 5 API test plan
 
@@ -69,4 +72,4 @@ DELETE /api/v1/admin/suppliers/<supplier-id>
 DELETE /api/v1/admin/suppliers/<supplier-id>
 ```
 
-The existing Phase 5 plan calls for checking a stale-version `409` and a repeated-delete `404`. The cross-role demonstration uses user, admin and super-admin identities on the same operations, recording live success or rejection; use separate test suppliers for mutations. The team has requested that the live app be used for demonstration. The team confirmed the no-UI test is required and intends it for CI/CD regression testing. The transcript location, token source and executable test format remain to be confirmed.
+The existing Phase 5 plan calls for checking a stale-version `409` and a repeated-delete `404`. The cross-role demonstration uses user, admin and super-admin identities on the same operations, recording live success or rejection; use separate test suppliers for mutations. The team has requested that the live app be used for demonstration. The team confirmed the no-UI test is required and intends it for CI/CD regression testing. The team selected a Vitest suite with a local JWKS stub for tokens; transcripts are generated in CI and need not persist. See `test/api-demo/` and the shared usage log for the recorded live run.
