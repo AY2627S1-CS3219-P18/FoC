@@ -8,6 +8,11 @@
  *        same otpError/otpBannerError state rather than inventing a parallel error channel.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -17,6 +22,7 @@ import FieldError from '../components/FieldError'
 import FormBanner from '../components/FormBanner'
 import Logo from '../components/Logo'
 import OtpInput from '../components/OtpInput'
+import PasswordInput from '../components/PasswordInput'
 import ResendButton from '../components/ResendButton'
 import * as authApi from '../api/auth'
 import { describeError, errorMessages } from '../api/errorMessages'
@@ -167,8 +173,7 @@ export default function ForgotPassword() {
           <form className="mt-2 space-y-4" onSubmit={onSubmitPassword}>
             <label className="block">
               <span className="text-sm font-medium text-ink">New password</span>
-              <input
-                type="password"
+              <PasswordInput
                 value={newPassword}
                 onChange={(e) => {
                   setNewPassword(e.target.value)
