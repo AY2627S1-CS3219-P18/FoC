@@ -14,6 +14,11 @@
 //   decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-05: Stage 23a - reworded the two test descriptions that still said "7 day"/"7 days
+//   out" after their asserted values were changed to 30 (by the author, outside this tool) to
+//   match the new 30-day session lifetime. No requirements, architecture, schema, or API
+//   decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -393,7 +398,7 @@ describe('POST /auth/login', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/password|hash/i);
     });
 
-    it('sets the refresh cookie httpOnly, SameSite=Lax, with a 7 day Max-Age', async () => {
+    it('sets the refresh cookie httpOnly, SameSite=Lax, with a 30 day Max-Age', async () => {
       const user = await createActiveUser(1);
       const res = await loginUser(user);
       const cookie = (res.headers['set-cookie'] as unknown as string[]).find((c) =>
@@ -401,11 +406,11 @@ describe('POST /auth/login', () => {
       )!;
       expect(cookie).toMatch(/HttpOnly/i);
       expect(cookie).toMatch(/SameSite=Lax/i);
-      expect(cookie).toContain(`Max-Age=${7 * 24 * 60 * 60}`);
+      expect(cookie).toContain(`Max-Age=${30 * 24 * 60 * 60}`);
       expect(cookie).not.toMatch(/;\s*Secure/i); // NODE_ENV=test
     });
 
-    it('stores only the SHA-256 hash of the refresh token, expiring 7 days out, with user agent', async () => {
+    it('stores only the SHA-256 hash of the refresh token, expiring 30 days out, with user agent', async () => {
       const user = await createActiveUser(1);
       const res = await post('/auth/login')
         .set('User-Agent', 'vitest-agent')
@@ -419,7 +424,7 @@ describe('POST /auth/login', () => {
       expect(rows[0]!.is_revoked).toBe(false);
       expect(rows[0]!.user_agent).toBe('vitest-agent');
       expect(rows[0]!.expires_at.getTime() - rows[0]!.created_at.getTime()).toBe(
-        7 * 24 * 60 * 60 * 1000,
+        30 * 24 * 60 * 60 * 1000,
       );
     });
 

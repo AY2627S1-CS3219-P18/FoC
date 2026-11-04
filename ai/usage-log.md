@@ -7985,3 +7985,49 @@ None this session.
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-05 — Stage 23a: TTL Env Var Bounds (NFR4.1.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23a: 30-Day Lifetime and TTL Bounds".
+
+**Prompts (exact):**
+> i completelyt changed stage 23, read thru it and let me know if you have any questions
+
+> go for it. don't forget hte git workfow
+
+> run the tests again
+
+> yea sure, help me wrap up this stage.
+
+**Key responses:**
+Before the first prompt, read the new Stage 23 text against the working tree and found it disagreed with already-present uncommitted changes: `user-service/src/config.ts` and `user-service/tests/config.test.ts` had been edited against an earlier, now-superseded draft of Stage 23 (bounding `REFRESH_TOKEN_TTL_DAYS` to 1-7 and citing a since-removed "Open decisions 1-2" section), and `README.md`'s Log index already had a row for a "Stage 23a" entry that was never actually written to `ai/usage-log.md`. Reported both to the user instead of implementing anything, and asked whether to redo that work against the final Stage 23a text.
+
+On confirmation, branched `feat/stage-23a-ttl-bounds` from `main` and redid Stage 23a per the final table: changed `REFRESH_TOKEN_TTL_DAYS`'s bound in `config.ts` from 1-7 to 1-30 (`ACCESS_TOKEN_TTL_MINUTES`'s 1-15 bound was already correct), corrected the stale file-header comment and date, set `REFRESH_TOKEN_TTL_DAYS=30` in `.env` and `.env.test`, and in `.env.example` set it to 30 and added `# 1-15`/`# 1-30` range comments to both TTL lines. Verified with `node -e` using the `dotenv` package directly that those inline comments parse cleanly and that `.env.example`'s lines coerce to `"15"`/`"30"` with no comment text in the value, satisfying the stage's "check that config.ts still parses these lines" step. Updated the boundary test cases in `tests/config.test.ts` (0/31 rejected, 1/30 accepted, replacing the stale 0/8 and 1/7 cases).
+
+Checks before finishing (report only, no changes), per the stage's "Check before finishing" table: the refresh cookie's `Max-Age` is derived from `config.jwt.refreshTokenTtlDays` (`auth.controller.ts:103`), not hardcoded — confirmed clean, also confirmed in the test run below (`Max-Age=2592000`). Searched `user-service/` and `frontend/` for other hardcoded 7-day assumptions: found two in `tests/controllers/auth.controller.test.ts` (lines 404 and 421) that assert the refresh cookie's exact `Max-Age` and the `refresh_tokens` row's `expires_at - created_at` equal `7 * 24 * 60 * 60 (* 1000)` — these now fail and were left unchanged, as instructed. Also found `tests/helpers/db.ts:254` (`seedRefreshToken`, inserts with `NOW() + INTERVAL '7 days'`) — listed per the same instruction, but it is an arbitrary future expiry for test setup, not an assertion about session length, so it needs no change either way. No 7-day session-lifetime mentions found in `user-service/docs/` or the root `README.md`.
+
+**Verification run (first pass):** `npx vitest run` (user-service, full suite): 798/801 passed. The 2 failures are exactly the two hardcoded-7-day assertions reported above (left unchanged per instructions, pending the team's decision on them). A 3rd failure on the first run (`users.controller.test.ts`, `ECONNRESET`/"socket hang up") did not reproduce when that file was rerun alone (77/77 passed) — flaky under parallel load, unrelated to this change.
+
+On "run the tests again," reran the full suite and found the two previously-failing assertions in `tests/controllers/auth.controller.test.ts` (lines 404, 421) now passing: the user had edited their hardcoded `7 * 24 * 60 * 60` values to `30 * 24 * 60 * 60` directly (not by this tool), which is the team's call to make per the stage's "do not change them" instruction. Flagged that those two tests' `it(...)` descriptions still read "7 day"/"7 days out" even though the asserted values were now 30. On confirmation, reworded both descriptions to say 30 and added a disclosure header entry to that file for the wording-only edit.
+
+**Verification run (final):** `npx vitest run` (full suite): 801/801 passed (two more flaky `ECONNRESET` failures appeared on separate full-suite runs, in `users.controller.test.ts` and `tests/concurrency/me.concurrency.test.ts`; each passed when its file was rerun alone, confirming parallel-run flakiness unrelated to this change, not a regression). `npx tsc --noEmit`: clean. `npm run lint`: clean.
+
+**Files:**
+- `user-service/src/config.ts` (modified)
+- `user-service/tests/config.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified — two test descriptions reworded from "7 day(s)" to "30 day(s)"; values were already changed by the author)
+- `user-service/.env` (modified — gitignored, not committed)
+- `user-service/.env.example` (modified)
+- `user-service/.env.test` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row corrected)
+
+**Deviations / questions raised for the team:**
+The two hardcoded-7-day tests in `auth.controller.test.ts` needed a team decision on whether to update them; the author updated the asserted values directly, and this tool only reworded the now-stale test descriptions to match on request.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
