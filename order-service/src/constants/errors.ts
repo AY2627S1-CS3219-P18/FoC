@@ -4,7 +4,7 @@
  * Scope: Added the invalid-field error code and message for malformed edit
  *        payloads. No requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope (2026-10-20): Issue #5 - ORDER_EXPIRED for accepting an order past its
  *        complete-by (George: expired = past completeBy if set; 409). Name and message
@@ -19,6 +19,10 @@
  *        is not open, named by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Codex (model: GPT-6), date: 2026-11-05
+ * Scope: Implemented the team-specified admin user order listing contract from chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 export enum ErrorCode {
@@ -47,6 +51,9 @@ export enum ErrorCode {
   INVALID_CURSOR = 'INVALID_CURSOR',
   INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
   CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
+  MALFORMED_USER_ID = 'MALFORMED_USER_ID',
+  INVALID_USER_ID = 'INVALID_USER_ID',
+  USER_SERVICE_UNAVAILABLE = 'USER_SERVICE_UNAVAILABLE',
   INVALID_STATUS = 'INVALID_STATUS',
 }
 
@@ -85,5 +92,9 @@ export const ErrorMessage: Record<ErrorCode, string> = {
     'You do not have enough credits for this request.',
   [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:
     'Credits could not be reserved right now. Please try again.',
+  [ErrorCode.MALFORMED_USER_ID]: 'User id must be a valid UUID.',
+  [ErrorCode.INVALID_USER_ID]: 'User not found.',
+  [ErrorCode.USER_SERVICE_UNAVAILABLE]:
+    'User Service is temporarily unavailable.',
   [ErrorCode.INVALID_STATUS]: 'Status provided is invalid.',
 };
