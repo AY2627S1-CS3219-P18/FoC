@@ -17,6 +17,11 @@
  *        redirect actually lands on this page) and cleared by its own effect.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -24,6 +29,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Button from '../components/Button'
 import FormBanner from '../components/FormBanner'
 import Logo from '../components/Logo'
+import PasswordInput from '../components/PasswordInput'
 import { clearPendingAuthMessage, consumePendingAuthMessage, useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -95,8 +101,7 @@ export default function Login() {
           </label>
           <label className="block">
             <span className="text-sm font-medium text-ink">Password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"

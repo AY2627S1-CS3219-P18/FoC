@@ -9,6 +9,11 @@
  *        cooldown/limit state rather than two independent ones.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -18,6 +23,7 @@ import FieldError from '../components/FieldError'
 import FormBanner from '../components/FormBanner'
 import Logo from '../components/Logo'
 import OtpInput from '../components/OtpInput'
+import PasswordInput from '../components/PasswordInput'
 import ResendButton from '../components/ResendButton'
 import * as authApi from '../api/auth'
 import { describeError, errorMessages } from '../api/errorMessages'
@@ -221,8 +227,7 @@ export default function Register() {
           </label>
           <label className="block">
             <span className="text-sm font-medium text-ink">Password</span>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => handleFieldChange('password', e.target.value)}
               onBlur={(e) => handleBlur('password', e.target.value)}

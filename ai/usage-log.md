@@ -7330,3 +7330,70 @@ stage's own instruction) found nothing to migrate, so there was nothing further 
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 21b: Show/hide password toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 21b: Show/hide password toggle (frontend)" and its "Tests" section (on branch `feat/stage-21a-row-actions-menu` at the time of writing, since this stage's text had not yet reached `main`).
+
+**Prompts (exact):**
+> yes pls finish up 21b
+
+**Key responses:**
+Built `src/components/PasswordInput.jsx`: a `forwardRef` wrapper around a plain `<input>` with
+an in-field toggle `<button type="button">` (lucide-react `Eye`/`EyeOff`), `aria-label`
+"Show password"/"Hide password", `aria-pressed`, and `autoCapitalize="none"`/`autoCorrect="off"`/
+`spellCheck={false}` fixed on the input. Right padding (`pr-11`) keeps text clear of the icon.
+The existing global `:focus-visible` rule in `index.css` already outlines all buttons, so no
+extra focus styling was needed on the toggle itself.
+
+Ran `grep -rn 'type="password"' src/` and replaced every match with `PasswordInput`, keeping
+each field's existing value/onChange/validation/error display: `Login.jsx` (password,
+`autoComplete="current-password"`, already present), `Register.jsx` (password,
+`autoComplete="new-password"`, already present), `ForgotPassword.jsx` (new password in the
+reset step), and `Account.jsx` (change-email's current-password re-entry, and change-password's
+current and new password fields — three fields total in that file).
+`autoComplete="current-password"` was added to Account's two "current password" fields and
+`autoComplete="new-password"` to its "new password" field, matching the stage's rule. Neither
+`Register.jsx` nor `ForgotPassword.jsx` has a confirm-password field, so there was nothing to
+wire there beyond the one field each already had. A second `grep` after the edits found no
+remaining `type="password"` outside `PasswordInput.jsx`.
+
+Added a base-layer rule to `index.css` hiding Edge's native `input::-ms-reveal` button, so it
+doesn't duplicate `PasswordInput`'s own toggle.
+
+Wrote `tests/components/PasswordInput.test.jsx` (7 tests, a controlled-input harness matching
+how every page actually uses the component): default/toggle `type` switching both ways,
+`aria-pressed`/`aria-label` updating together, the toggle button not submitting an enclosing
+form, the field value surviving a toggle, two instances toggling independently, ref forwarding,
+and pass-through of arbitrary props alongside the fixed autocomplete-hardening attributes.
+
+**Verification run (this session):**
+- `npx vitest run` (frontend, full suite): **14/14 passed** (7 new for `PasswordInput`, 7
+  pre-existing from Stage 20b).
+- `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes, no new
+  warning categories.
+- `npx vite build` (frontend): clean.
+- Not run: an actual browser click-through or phone-width visual check (no browser-automation
+  tool available in this environment, same limitation as Stage 20b) — left for the human. The
+  spec's visual/manual-verification bullets (icon not overlapping text at phone width; Tab/Enter/
+  Space reachability in a real browser) still need a human pass.
+
+**Files:**
+- `frontend/src/components/PasswordInput.jsx` (created)
+- `frontend/tests/components/PasswordInput.test.jsx` (created)
+- `frontend/src/pages/Login.jsx` (modified)
+- `frontend/src/pages/Register.jsx` (modified)
+- `frontend/src/pages/ForgotPassword.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/src/index.css` (modified — Edge reveal-button hiding rule)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None this session.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
