@@ -13,6 +13,10 @@
 //   Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 19 - issueOtp and requestOtp gain username, passed through to
+//   sendOtpEmail for its per-attempt log lines. Governing decision: instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { config } from "../config.js";
 import * as otpQueries from "../db/queries/otp.queries.js";
@@ -31,12 +35,14 @@ export async function issueOtp(
     email,
     purpose,
     newEmail,
+    username,
     carryForwardEscalation,
   }: {
     userId: string;
     email: string;
     purpose: OtpPurpose;
     newEmail?: string;
+    username: string;
     // Previous latest row's send-escalation state for this (user, purpose), per Stage 18c.
     carryForwardEscalation?: { level: number; blockedUntil: Date | null };
   },
@@ -59,7 +65,7 @@ export async function issueOtp(
   );
 
   try {
-    await sendOtpEmail({ to: newEmail ?? email, otp, purpose });
+    await sendOtpEmail({ to: newEmail ?? email, otp, purpose, username });
   } catch (err) {
     // Never log the OTP itself.
     console.error(
@@ -90,7 +96,8 @@ export async function requestOtp(
     email,
     purpose,
     newEmail,
-  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string },
+    username,
+  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string; username: string },
   db: Queryable,
 ): Promise<RequestOtpResult> {
   const locked = await userQueries.lockUserById(userId, db);
@@ -162,6 +169,7 @@ export async function requestOtp(
       email,
       purpose,
       newEmail,
+      username,
       carryForwardEscalation: latest
         ? { level: latest.send_escalation_level, blockedUntil: latest.send_blocked_until }
         : undefined,

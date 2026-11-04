@@ -48,6 +48,11 @@
 //   also now match the escalation level. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 19 - pass username to issueOtp/requestOtp at register(), resendRegistrationOtp()
+//   and forgotPassword(), for the new OTP-email retry/logging in email.service.ts. Governing
+//   decision: instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -209,7 +214,7 @@ export async function register({
       throw err;
     }
 
-    await issueOtp({ userId, email, purpose: 'Registration' }, client);
+    await issueOtp({ userId, email, purpose: 'Registration', username }, client);
   });
 }
 
@@ -441,7 +446,10 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
       }
     }
 
-    await issueOtp({ userId: user.id, email: user.email, purpose: 'Registration' }, client);
+    await issueOtp(
+      { userId: user.id, email: user.email, purpose: 'Registration', username: user.username },
+      client,
+    );
   });
 }
 
@@ -463,7 +471,10 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
       );
     }
 
-    return requestOtp({ userId: user.id, email: user.email, purpose: 'Forgot Password' }, client);
+    return requestOtp(
+      { userId: user.id, email: user.email, purpose: 'Forgot Password', username: user.username },
+      client,
+    );
   });
 
   switch (result.status) {

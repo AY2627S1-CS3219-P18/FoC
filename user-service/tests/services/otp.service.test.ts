@@ -9,6 +9,10 @@
 //   carries level/retryAfterSeconds. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 19 - issueOtp/requestOtp calls pass the new required username param
+//   (fixture, not a new assertion). Governing decision: instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as otpQueries from '../../src/db/queries/otp.queries.js';
 import * as userQueries from '../../src/db/queries/users.queries.js';
@@ -36,18 +40,19 @@ resetEmailMock();
 
 let userId: string;
 const email = 'alice@example.com';
+const username = 'alice';
 
 beforeEach(async () => {
   await truncateAll();
   userId = (
-    await userQueries.createUser({ username: 'alice', email, passwordHash: 'h', status: 'active' })
+    await userQueries.createUser({ username, email, passwordHash: 'h', status: 'active' })
   ).id;
 });
 afterEach(truncateAll);
 
 describe('issueOtp', () => {
   it('stores a SHA-256 hash (never the plaintext) and emails the plaintext code', async () => {
-    await withTransaction((c) => issueOtp({ userId, email, purpose: 'Forgot Password' }, c));
+    await withTransaction((c) => issueOtp({ userId, email, purpose: 'Forgot Password', username }, c));
 
     const [row] = await getOtps(userId);
     const [call] = emailCallsFor(email);
@@ -62,7 +67,7 @@ describe('issueOtp', () => {
   it('invalidates the previous active OTP of the same purpose only', async () => {
     await seedOtp(userId, 'Forgot Password', '111111');
     await seedOtp(userId, 'Registration', '222222');
-    await withTransaction((c) => issueOtp({ userId, email, purpose: 'Forgot Password' }, c));
+    await withTransaction((c) => issueOtp({ userId, email, purpose: 'Forgot Password', username }, c));
 
     const forgot = await getOtps(userId, 'Forgot Password');
     expect(forgot).toHaveLength(2);
@@ -73,7 +78,7 @@ describe('issueOtp', () => {
 
   it('sends to newEmail when given and stores it on the row', async () => {
     await withTransaction((c) =>
-      issueOtp({ userId, email, purpose: 'Registration', newEmail: 'new@example.com' }, c),
+      issueOtp({ userId, email, purpose: 'Registration', newEmail: 'new@example.com', username }, c),
     );
     expect(emailCallsFor('new@example.com')).toHaveLength(1);
     expect(emailCallsFor(email)).toHaveLength(0);
@@ -86,7 +91,7 @@ describe('issueOtp', () => {
     failNextEmail();
 
     const err = await withTransaction((c) =>
-      issueOtp({ userId, email, purpose: 'Forgot Password' }, c),
+      issueOtp({ userId, email, purpose: 'Forgot Password', username }, c),
     ).catch((e) => e);
 
     expect(err).toBeInstanceOf(AppError);
@@ -107,7 +112,7 @@ describe('issueOtp', () => {
 
 describe('requestOtp', () => {
   const run = (uid = userId, purpose: otpQueries.OtpPurpose = 'Forgot Password') =>
-    withTransaction((c) => requestOtp({ userId: uid, email, purpose }, c));
+    withTransaction((c) => requestOtp({ userId: uid, email, purpose, username }, c));
 
   it('sends and reports sent for an active user', async () => {
     expect(await run()).toEqual({ status: 'sent' });

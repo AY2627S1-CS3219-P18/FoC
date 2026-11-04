@@ -58,6 +58,14 @@
  *        OTP_RESEND_LIMIT message/Retry-After also now match the escalation level.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Pass locked.username to requestOtp at initiateEmailChange, resendChangeEmailOtp,
+ *        resendChangePasswordOtp and initiatePasswordChange, for the OTP-email retry/logging
+ *        added in email.service.ts and otp.service.ts. Governing decision: instructions.md
+ *        Stage 19.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -267,7 +275,7 @@ export async function initiateEmailChange(
     }
 
     return requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Email', newEmail },
+      { userId: locked.id, email: locked.email, purpose: 'Change Email', newEmail, username: locked.username },
       client,
     );
   });
@@ -331,6 +339,7 @@ export async function resendChangeEmailOtp(userId: string): Promise<void> {
         email: locked.email,
         purpose: 'Change Email',
         newEmail: pending.new_email!,
+        username: locked.username,
       },
       client,
     );
@@ -354,7 +363,7 @@ export async function resendChangePasswordOtp(userId: string): Promise<void> {
     }
 
     return requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+      { userId: locked.id, email: locked.email, purpose: 'Change Password', username: locked.username },
       client,
     );
   });
@@ -435,7 +444,7 @@ export async function initiatePasswordChange(
     }
 
     return requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+      { userId: locked.id, email: locked.email, purpose: 'Change Password', username: locked.username },
       client,
     );
   });
