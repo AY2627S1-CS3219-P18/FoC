@@ -7330,3 +7330,96 @@ stage's own instruction) found nothing to migrate, so there was nothing further 
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Credit Service: administrator transaction filters by user and order
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The user's instruction of 2026-11-04, quoted below. The endpoint surface itself has no FR behind it — recorded as a gap in `credit-service/credit-service-context.md` §10 item 10 rather than treated as a requirement.
+
+**Prompts (exact):**
+
+> Add two admin query filters to credit-service. Read CONTEXT.md and API.md first.
+>
+> ## What to build
+>
+> Extend the existing `GET /credits/transactions/all` with two optional query parameters:
+>
+>   ?userId=<uuid>     rows where that user is the originating OR the destination user
+>   ?requestId=<uuid>  rows for that order
+>
+> Both optional, both combinable (AND them). No parameters means the current behaviour, unchanged.
+>
+> Do NOT add a new route. This is a filter on the existing admin endpoint so it inherits the auth gate, the pagination and the row shape rather than duplicating them.
+>
+> ## Rules
+>
+> - Auth unchanged: bearer token, rank >= admin, so super admin is included. Mirror the existing roleRank comparison.
+> - Response shape unchanged. Same fields, same keyset pagination, 20 per page, newest first. No new fields.
+> - An unknown or unmatched filter returns 200 with an empty array, NOT 404. Credit-service has no view of which orders or users exist, and an order with no transactions yet is a normal state.
+> - A malformed UUID returns 400 with the existing INVALID_REQUEST_BODY code. Validate with the same zod approach used elsewhere.
+> - Cursor pagination must still work with a filter applied — the cursor has to carry the filter or the filter must be re-applied on the next page. Say which you did.
+>
+> ## Report, don't decide
+>
+> `transaction_log` has indexes on originating_user_id and destination_user_id, both `(user, created_at DESC)`. For request_id there are only the three partial unique indexes, each covering one transaction type, so a plain `WHERE request_id = $1` may not use them well.
+>
+> Report whether a general index on request_id is warranted, and what adding one would cost — init.sql only runs on an empty volume, so it would mean another `docker compose down -v`. Do not add it without asking.
+>
+> ## Also
+>
+> - Update API.md with both parameters, the combined case, the empty result behaviour and the error codes.
+> - Record in CONTEXT.md §10 that this endpoint surface has no FR behind it. F19.5.2 covers own-transactions and F20.2 covers all-transactions; an admin filter by user or order is new. It is driven by user-service's F5.3.2. Note it as a gap, do not invent a requirement.
+>
+> ## Tests
+>
+>   - filter by userId returns only rows where they are originating or destination, and nothing else
+>   - filter by requestId returns only that order's rows
+>   - both together
+>   - no filter still returns everything, as before
+>   - a non-admin is still 403 with a filter applied
+>   - an unmatched filter is 200 with an empty array
+>   - a malformed UUID is 400
+>   - pagination still works correctly with a filter across two pages
+>
+> Mutation-check it: break the filter so it is ignored, and confirm a test fails. If nothing fails, the tests aren't testing the filter.
+>
+> ## Afterwards
+>
+> Report what changed, what you verified, and anything you had to invent. Nothing outside credit-service/ should need touching — flag it if that turns out to be wrong.
+
+**Key responses:**
+
+_One code path, two intents._ `listTransactions` now takes a `TransactionFilters` object rather than a bare `userId`. The administrator's `userId` filter is the same SQL predicate F19.5.2 already uses to scope a caller to their own rows — originating OR destination — so both go through one path instead of two that could drift. The service layer keeps the intent distinct with a comment: for F19.5.2 the id comes from the verified token and is not the caller's to choose, which is why that route still has no user parameter.
+
+_Cursor._ Filters travel **beside** the cursor, not inside it. The cursor stays an opaque position token (`created_at|transaction_id`) and the caller re-sends `?userId=…&cursor=…`. The trade-off is that dropping the filter on a later page silently widens the result instead of erroring; a test pins that documented behaviour rather than leaving it assumed. Encoding filters into the cursor would have made the mismatch impossible, at the cost of a cursor that is no longer a pure position and cannot be reused across queries.
+
+_Validation._ Both parameters are zod `z.string().uuid().optional()`, parsed through the existing `parseBody` helper, so a malformed value is `400 INVALID_REQUEST_BODY` before any query runs rather than a Postgres cast error surfacing as a 500.
+
+**Verification actually run:**
+
+- `npx tsc --noEmit` clean. Full suite **142 tests in 14 files, all passing** (123 in 13 before).
+- The new `tests/http/transactionFilters.test.ts` is 19 tests covering every case the brief listed, plus a user who is only ever a destination, a user who exists with no credit activity, and the dropped-filter-on-page-two behaviour.
+- **Mutation checks, two, both caught.** Making the `requestId` filter a no-op fails 6 tests; making the `userId` filter a no-op fails 4. The second also breaks `tests/http/transactions.test.ts > does not leak another user's rows`, because the administrator filter and the F19.5.2 scope share a code path — so the mutation that would silently widen an admin query is the same one that would leak a user's history.
+- **Index measurement** (see Deviations): built a 200 000-row scratch database from the real `init.sql`, compared plans, dropped it afterwards. The dev database holds 11 rows, far too few for Postgres to choose anything but a sequential scan.
+
+**Files:**
+
+- `credit-service/src/db/queries/credits.queries.ts` (modified: `TransactionFilters`)
+- `credit-service/src/services/credits.service.ts` (modified)
+- `credit-service/src/controllers/credits.controller.ts` (modified)
+- `credit-service/tests/http/transactionFilters.test.ts` (created)
+- `credit-service/API.md` (modified: filters, combined case, empty-result behaviour, error codes, invented-items list)
+- `credit-service/credit-service-context.md` (modified: §10 item 10)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **A general index on `request_id` is measured but NOT added**, pending the team's decision. On 200 000 rows: without one, a `WHERE request_id = $1` is a Parallel Seq Scan, 2 318 shared buffers, **8.855 ms**; with `transaction_log (request_id)` it is an Index Scan, 10 buffers, **0.100 ms** — about 88× faster. The three existing partial unique indexes cannot serve it because each is `WHERE transaction_type = '…'` and this query does not filter on type. Cost: **6.2 MB per 200 000 rows** (~12% on top of a 50 MB relation), one more B-tree insert on every credit write — which is the same transaction NFR8.2.1's unmeasured 500 ms budget covers — and a `docker compose down -v` on credit-db, because `init.sql` only runs on an empty volume. My read, which is not a decision: not warranted at current scale, and cheapest folded into whichever change next forces a volume teardown.
+2. **The brief's attribution of this surface to user-service's F5.3.2 is only half right.** F5.3.2 exists and reads *"The system shall allow administrators to view transaction details of individual users"* (`docs/FoC-ProductBacklog.md` line 103), which backs the `userId` filter. It does **not** cover `?requestId=`; filtering by order has no requirement in this backlog or user-service's and was requested directly. §10 item 10 records the two halves separately rather than letting F5.3.2 appear to justify the whole surface.
+3. **Invented, and listed in `API.md` under "What was invented" as item 4a:** the parameter names `userId` and `requestId`; that unknown query keys are ignored rather than rejected, matching the existing cursor handling; that an unmatched filter is an empty `200`; and that filters travel beside the cursor rather than inside it.
+4. **Nothing outside `credit-service/` needed touching**, as the brief expected — apart from this log entry and its README row, which AGENTS.md §5 and §6 require.
+
+**What I kept/changed/rejected:**
