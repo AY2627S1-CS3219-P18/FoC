@@ -24,10 +24,18 @@
  *        No eye icon on the caller's own row or a super admin's row, per the stage's rule.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced RowMenu's inline absolutely-positioned dropdown with the new ActionMenu
+ *        component (Stage 21a), so the open menu is no longer clipped by the table wrapper's
+ *        `overflow-x: auto`. Row action set, handlers and visibility rules unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
+import ActionMenu from '../components/ActionMenu'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import { Pager, useApiNotice } from '../components/ApiNotice'
@@ -196,64 +204,26 @@ function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm }) {
 }
 
 // Three-dot menu: visible on row hover (desktop), always visible below the `sm` breakpoint
-// (touch / small screens have no hover).
+// (touch / small screens have no hover). Rendered via ActionMenu (Stage 21a) so the open menu
+// portals out of the table wrapper's `overflow-x: auto` instead of being clipped by it.
 function RowMenu({ user, viewer, onPick }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onDocMouseDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
-  }, [open])
-
   const actions = getRowActions(viewer, user)
   const items = []
-  if (actions.suspend === 'suspend') items.push({ key: 'suspend', label: 'Suspend' })
-  if (actions.suspend === 'unsuspend') items.push({ key: 'unsuspend', label: 'Unsuspend' })
-  if (actions.role === 'promote') items.push({ key: 'promote', label: 'Promote to admin' })
-  if (actions.role === 'demote') items.push({ key: 'demote', label: 'Demote to user' })
-  if (actions.unlock === 'unlock') items.push({ key: 'unlock', label: 'Unlock' })
-
-  if (items.length === 0) return null
+  if (actions.suspend === 'suspend') items.push({ label: 'Suspend', onSelect: () => onPick('suspend') })
+  if (actions.suspend === 'unsuspend')
+    items.push({ label: 'Unsuspend', onSelect: () => onPick('unsuspend') })
+  if (actions.role === 'promote')
+    items.push({ label: 'Promote to admin', onSelect: () => onPick('promote') })
+  if (actions.role === 'demote') items.push({ label: 'Demote to user', onSelect: () => onPick('demote') })
+  if (actions.unlock === 'unlock') items.push({ label: 'Unlock', onSelect: () => onPick('unlock') })
 
   return (
-    <div ref={ref} className="relative inline-block text-left">
-      <button
-        type="button"
-        aria-label={'Actions for ' + user.username}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-      >
-        <MoreVertical size={16} aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-card border border-line bg-surface shadow-modal"
-        >
-          {items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onPick(item.key)
-              }}
-              className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <ActionMenu
+      ariaLabel={'Actions for ' + user.username}
+      trigger={<MoreVertical size={16} aria-hidden="true" />}
+      triggerClassName="flex h-9 w-9 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      items={items}
+    />
   )
 }
 
