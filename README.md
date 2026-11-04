@@ -37,6 +37,14 @@ Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #1
        user-service docs-rename record and Stage 17 (local setup script). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the admin user order history disclosure and log-index entry.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the Docker postinstall fix log-index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
        (OTP email retry and delivery logging). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
@@ -441,3 +449,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
 | 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
 | 167 | 2026-11-05 | user-service | Stage 23a: TTL Env Var Bounds (NFR4.1.2) | Bounded `ACCESS_TOKEN_TTL_MINUTES` (1-15) and `REFRESH_TOKEN_TTL_DAYS` (1-30); set the latter to 30 days. |
+| 168 | 2026-11-05 | order-service          | F5.3.2: Admin user order history                                                                                 | Implemented admin order history, user existence checks, pagination, tests and documentation.                                                    |
+| 169 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |
