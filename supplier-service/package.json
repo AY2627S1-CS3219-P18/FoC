@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:minio": "vitest run --config vitest.minio.config.ts",
     "seed": "vitest run --config vitest.seed.config.ts",
+    "test:api-demo": "vitest run --config vitest.apidemo.config.ts",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:phase2": "tsx src/db/migratePhase2.ts",
     "lint": "eslint .",
