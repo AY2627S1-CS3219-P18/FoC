@@ -3244,3 +3244,489 @@ Also check every other stage for gaps against its Verification list. Write these
 - **F5.3.2**: an admin user-detail page with a user's credit transactions and their orders. Needs a credit-service endpoint, and order data.
 - **NFR3** masking: emails are shown unmasked in the admin list for now.
 - **`orderSocket.js`**: may need to disconnect on logout and use refreshed tokens. Flag it to the order-service owner if so.
+
+# Stage 17: Local Setup Script
+
+> **Scope**: One script that prepares a fresh checkout of `user-service` to run: creates `.env`,
+> fills in a generated `SUPER_ADMIN_PASSWORD`, and generates the RS256 keypair. Run on the host
+> with `npm run setup`. Part 1 of `user-service/docs/user-service-instructions.md` is updated to
+> point at it, and the missing usage-log record of the doc rename is added.
+>
+> This is local-dev tooling only. It is never run in AWS or CI deployments: there, the private key
+> and `SUPER_ADMIN_PASSWORD` come from Secrets Manager.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                    | Value                                                                                                                                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language / runner       | TypeScript, run with `tsx`, on the host (not inside a container)                                                                                                                                                                              |
+| File                    | `user-service/src/scripts/setupLocalDev.ts` (same folder as `replayCreditOutbox.ts`)                                                                                                                                                          |
+| npm script              | `"setup": "tsx src/scripts/setupLocalDev.ts"`, so it runs as `npm run setup` (and `npm run setup -- --force`)                                                                                                                                 |
+| `.env`                  | If `user-service/.env` does not exist, copy `.env.example` to `.env`. An existing `.env` is never replaced; only the specific lines below are changed.                                                                                        |
+| `SUPER_ADMIN_PASSWORD`  | If blank or missing in `.env`, generate one, write it into `.env`, and print it to the terminal once. If already set, leave it unchanged and do not print it.                                                                                 |
+| Password generation     | 24 characters, CSPRNG only (`crypto.randomInt`; never `Math.random`). One character from each class (lowercase, uppercase, digit, special), the remaining 20 from the combined set, then a Fisher–Yates shuffle driven by `crypto.randomInt`. |
+| Special characters      | `[DECIDE]` — the allowed set, e.g. `!@%^*-_+.~`. Must contain no `#`, `$`, quotes, backslash or whitespace (they break `.env` parsing or Compose interpolation).                                                                              |
+| Password rule           | Imported, not copied: the script checks every generated password against the existing `PASSWORD_REGEX` and throws if it does not match                                                                                                        |
+| Keys                    | RSA-2048 via `crypto.generateKeyPairSync`. Private key PEM (PKCS#8) → `keys/private.pem` with file mode `0600`; public key PEM (SPKI) → `keys/public.pem`. Create `keys/` if missing.                                                         |
+| When keys are generated | If either `private.pem` or `public.pem` is missing, regenerate **both**. If both exist, skip unless `--force` is passed.                                                                                                                      |
+| `--force`               | Applies to the keys and `JWT_KEY_ID` only. It never touches `SUPER_ADMIN_PASSWORD` or any other `.env` value.                                                                                                                                 |
+| `JWT_KEY_ID`            | Whenever keys are generated (first run or `--force`), set `JWT_KEY_ID` in `.env` to the current UTC time to the second, ISO 8601 without milliseconds: `YYYY-MM-DDTHH:MM:SSZ` (e.g. `2026-11-04T01:48:30Z`). Unchanged when keys are skipped. |
+| Editing `.env`          | Replace only the matching `KEY=...` line, preserving every other line and comment. If the key's line is absent (stale `.env`), append it.                                                                                                     |
+| Never printed or logged | The private key. The password is printed exactly once, only when it was just generated.                                                                                                                                                       |
+| Arguments               | No arguments, or exactly `--force`. Anything else → print usage, exit `1`.                                                                                                                                                                    |
+
+### Watch for
+
+- **`config.ts` exits at import time** when `.env` is missing or incomplete, which is exactly the state this script runs in. The script must not import `config.ts`, `pool.ts`, or any module that imports them, directly or transitively. If `PASSWORD_REGEX` is only exported from a module that pulls in `config.ts`, **stop and tell me** — moving it is a code change I need to approve.
+- The script runs from the host, so all paths must resolve relative to the `user-service/` directory (e.g. via `import.meta.url`), not the shell's working directory.
+- Write the key files before updating `JWT_KEY_ID` in `.env`.
+
+### Script output
+
+Print a short summary of what was done:
+
+- `.env`: created from `.env.example` / already existed
+- `SUPER_ADMIN_PASSWORD`: generated (followed by the password, once) / already set
+- Keys: generated (with the new `JWT_KEY_ID`) / already exist, skipped (with a hint that `--force` regenerates them)
+
+After `--force`, also print that tokens signed with the old key are no longer valid, and that other running services (credit, supplier) should be restarted so they pick up the new key.
+
+### Update `package.json`
+
+Add the `setup` script above.
+
+### Update `user-service/docs/user-service-instructions.md`
+
+- Replace Part 1's manual steps 1–3 (copy `.env`, set `SUPER_ADMIN_PASSWORD`, openssl keypair) with: `cd user-service && npm install && npm run setup`, then a short description of what the script does, that it is safe to re-run, and what `--force` does.
+- Keep steps 4 (SMTP / `TEST_USER_*`) and 5 (start the stack). Renumber as needed.
+- Part 2 is unchanged.
+- Add a dated entry to the file's AI disclosure header.
+
+### Usage log: the doc rename
+
+On 2026-10-22 the guide was created and merged as `user-service/docs/local-dev-setup.md`, but was committed as `user-service/docs/user-service-instructions.md` (commit `862f88b`). The log entries say `local-dev-setup.md`.
+
+- First check whether `ai/usage-log.md` already records the rename (search for `user-service-instructions`). If it does, tell me and skip the next step.
+- Otherwise append a new entry recording that `local-dev-setup.md` was renamed to `user-service-instructions.md` before it was committed, so the two 2026-10-22 entries refer to the file now at the new path. Do **not** edit earlier entries; the log is append-only.
+- Add the matching README Log index row, as with every log entry.
+
+### Verification
+
+- Fresh state (no `.env`, no `keys/`): `npm run setup` → `.env` created, `SUPER_ADMIN_PASSWORD` filled and printed, both keys created, `private.pem` mode is `600`, `JWT_KEY_ID` is a UTC timestamp in the required format
+- `docker compose up --build` then starts `user-service` cleanly, the super admin can log in with the printed password, and `GET /auth/.well-known/jwks.json` shows the new `kid`
+- Run `npm run setup` again → nothing changes: same password (not printed), same keys, same `JWT_KEY_ID`
+- Delete only `public.pem` → both keys regenerated, `JWT_KEY_ID` updated
+- `npm run setup -- --force` → new keys, new `JWT_KEY_ID`, `SUPER_ADMIN_PASSWORD` unchanged; the old access token is rejected after restart
+- Existing `.env` with a blank `SUPER_ADMIN_PASSWORD` → only that line changes; every other line and comment is identical
+- Existing `.env` missing the `JWT_KEY_ID` line entirely → line appended when keys are generated
+- `npm run setup -- --foo` → usage, exit `1`
+- Runs on a fresh clone where `.env` is absent without hitting the `config.ts` validation exit
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout. Every bullet under Verification above that does not need Docker is a required test case. To make the script testable, structure it so the logic takes the target directory as a parameter and the CLI entry point passes `user-service/`; tests run against a temp directory. Also cover the password generator directly: over 10,000 runs every password is 24 characters, matches `PASSWORD_REGEX`, and uses only allowed characters. Do not modify other application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+## Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
+
+**Scope:** `user-service` (backend) and `frontend` (the Stage 16 pages that show these errors). NFR1.1.1 (unlock email) is **deferred** and not part of this stage.
+
+Every decision in the table below was made by the team.
+
+### Design decisions (already made, do not change)
+
+#### Login lockout
+
+| Topic                    | Decision                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What counts as a failure | Every password attempt goes to the **same** counter: a wrong password on `POST /auth/login`, and a wrong current password (`INVALID_PASSWORD`) on `PUT /users/me/email` and `PUT /users/me/password`.                                                                                                                           |
+| What does not count      | An identifier that matches no account (there is nothing to lock). Any attempt on a `pending` or `suspended` account, whether the password is right or wrong.                                                                                                                                                                    |
+| Threshold                | 5 failures within 15 minutes, measured from the **first** failure in the window.                                                                                                                                                                                                                                                |
+| Lock length              | Escalates each time the threshold is hit: **1 h**, then **4 h**, then **24 h** (capped at 24 h).                                                                                                                                                                                                                                |
+| Check order              | The lock check runs **before** the password check. A locked account gets the lock error whatever password is sent.                                                                                                                                                                                                              |
+| Requests during a lock   | Rejected with the lock error. They are not counted and do not extend the lock.                                                                                                                                                                                                                                                  |
+| What a lock blocks       | Login, and the current-password check on `PUT /users/me/email` and `PUT /users/me/password` (both rejected with `ACCOUNT_LOCKED`). Existing refresh tokens are **not** revoked.                                                                                                                                                 |
+| What resets everything   | A successful login, a correct current password on `PUT /users/me/email` or `PUT /users/me/password`, or an admin unlock. Each clears the failure count, the window and the escalation level.                                                                                                                                    |
+| Escalation reset         | The login lock has its own quiet window, separate from the OTP side. The level drops back to the start if 24 h pass after the last time the threshold was hit without it being hit again.                                                                                                                                       |
+| Response                 | `429`, code `ACCOUNT_LOCKED`, message following the existing style, e.g. "Too many failed login attempts. Please try again in about an hour." / "…about 4 hours." / "…about a day.", with a `Retry-After` header carrying the exact seconds remaining.                                                                          |
+| Who can be locked        | Any account, including super admin.                                                                                                                                                                                                                                                                                             |
+| Suspend interaction      | A locked account can be suspended. Unsuspending does **not** clear a lock.                                                                                                                                                                                                                                                      |
+| Storage                  | Columns on `users`: `login_failed_attempts`, `login_failure_window_start`, `login_locked_until`, `login_lock_level`. No separate "last locked at" column: the time the threshold was last hit is derived as `login_locked_until` minus the lock length for the current `login_lock_level`, and used for the quiet-window reset. |
+
+#### OTP send escalation (forgot password, change email, change password)
+
+| Topic                  | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-OTP guess limit    | Unchanged: 5 wrong guesses per OTP, then `OTP_ATTEMPTS_EXCEEDED`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Send cap               | Unchanged: 5 resends, counted per user **per purpose** over the existing rolling 60-minute window. The 60 s cooldown is unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Block length           | Escalates each time the cap is hit: **1 h**, then **4 h**, then **24 h** (capped at 24 h). The counting window does **not** grow.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| What a block covers    | Sending only. Verifying an OTP that was already sent still works.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Escalation reset       | Two events reset the level: (a) a successful consuming verify for that purpose (`reset-password` for forgot password, `verify-otp` with `change_email`, `confirm-password-change`); `verify-otp` with `forgot_password` does **not** reset it. (b) 24 h passing after the last time the cap was hit without it being hit again.                                                                                                                                                                                                                                                                                                     |
+| Response               | Unchanged code `OTP_RESEND_LIMIT`, existing message format, with the duration wording matching the level ("about an hour" / "about 4 hours" / "about a day"). Adds a `Retry-After` header with the exact seconds remaining.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Per-target-address cap | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Storage                | New columns on `users_otps`: `send_escalation_level` and `send_blocked_until`. When the cap is hit, the new level and block-end time are written onto the **latest existing row** for that user and purpose (no new row is created). The current level and block are read from that latest row. When a later send creates a new row, `send_escalation_level` and `send_blocked_until` are **copied forward** from the previous latest row. No separate "last capped at" column: the time the cap was last hit is derived as `send_blocked_until` minus the block length for the current level, and used for the quiet-window reset. |
+| Registration           | **Unchanged** in this stage. It keeps its existing all-rows cap. Marked TODO.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+#### Admin
+
+| Topic               | Decision                                                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Unlock endpoint     | New endpoint `POST /users/:id/unlock`, behind `authenticate` + `authorize('admin')`.                                                     |
+| Permission rules    | Same as `PUT /users/:id/status`: `SUPER_ADMIN_IMMUTABLE` on a super-admin target, and `FORBIDDEN` when an admin targets another admin.   |
+| Effect              | Clears the login lock **and** resets the login escalation, and clears OTP send blocks and their escalation for all three purposes.       |
+| `GET /users` fields | Each user object gains `isLocked`, `lockedUntil`, `lockLevel` (camelCase, per Stage 15c).                                                |
+| `GET /users` filter | New query parameter `locked=true\|false`. It is a closed enum and uses the same one-fixed-error-message pattern as the existing filters. |
+
+#### Config
+
+New env vars, added to `config.ts`'s Zod schema and to `.env.example`, `.env` and `.env.test`:
+
+- `LOGIN_MAX_FAILURES=5`
+- `LOGIN_FAILURE_WINDOW_MINUTES=15`
+- `LOCK_ESCALATION_HOURS=1,4,24`, shared by the login lock and the OTP send blocks
+- `LOCK_ESCALATION_RESET_HOURS=24`
+
+#### Cross-cutting
+
+| Topic       | Decision                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Concurrency | Counting must be exact under concurrent requests. For example, N concurrent 5th failures produce exactly one lock. Follow the existing user-row locking pattern and the Stage 4d lock-order rule. |
+| Frontend    | Matches existing patterns: `errorMessages.js` mapping, `FormBanner` / `FieldError` / toast display, and `getRowActions` for the admin row menu.                                                   |
+| Tests       | Stage 7's "do not test NFR1" exclusion is **lifted** for NFR1.1. Simulate time by backdating rows, as in earlier stages.                                                                          |
+
+### Changes to already-implemented code
+
+| #   | File                                                                                                                                                         | Change                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/db/init.sql`                                                                                                                                            | Add the four `users` columns and the two `users_otps` columns. Existing dev volumes need `docker compose down -v`.                                                                |
+| 2   | `src/config.ts`, `.env*`                                                                                                                                     | Add the new env vars.                                                                                                                                                             |
+| 3   | `src/services/auth.service.ts` (`login`)                                                                                                                     | Add the lock check before the credential check. Count failures, lock on threshold, and reset on success. Skip `pending` and `suspended` accounts.                                 |
+| 4   | `src/services/me.service.ts` (`initiateEmailChange`, `initiatePasswordChange`)                                                                               | Reject with `ACCOUNT_LOCKED` before the password check when locked. Count `INVALID_PASSWORD` on the login counter; a correct password resets it.                                  |
+| 5   | `src/services/otp.service.ts` (`requestOtp`)                                                                                                                 | Apply the escalating block for the three purposes, writing level and block-end onto the latest row on a cap hit and copying them onto each new row. Leave registration unchanged. |
+| 6   | `src/services/auth.service.ts` (`forgotPassword`, `resetPassword`) and `me.service.ts` (`throwOnUnsentOtp`, `verifyEmailChangeOtp`, `confirmPasswordChange`) | Level-matched message and `Retry-After` on `OTP_RESEND_LIMIT`. Reset the level on a successful consuming verify.                                                                  |
+| 7   | `src/services/userResponse.ts` (`toUserResponse`)                                                                                                            | Add `isLocked`, `lockedUntil`, `lockLevel`.                                                                                                                                       |
+| 8   | `src/db/queries/users.queries.ts` (`listUsersPage`), `users.controller.ts` (`list`)                                                                          | Add the `locked` filter.                                                                                                                                                          |
+| 9   | `users.routes.ts`, `users.controller.ts`, `users.service.ts`                                                                                                 | Add `POST /users/:id/unlock`.                                                                                                                                                     |
+
+### Sub-stages
+
+- **18a: Schema and config.** Rows 1–2.
+- **18b: Login lockout.** Rows 3–4.
+- **18c: OTP send escalation.** Rows 5–6.
+- **18d: Admin unlock, `GET /users` fields and filter.** Rows 7–9.
+- **18e: Frontend.**
+  - `errorMessages.js`: add `ACCOUNT_LOCKED` (banner).
+  - `Login.jsx`: show it as a banner.
+  - `AdminUsers.jsx`: add the three lock fields as columns, a `locked` filter, and an Unlock row action that follows the same visibility rules as Suspend in `getRowActions`.
+  - `api/users.js`: add `unlockUser`.
+- **18f: Tests**, as below.
+
+### Verification
+
+- 4 wrong logins, then the correct password: login succeeds and the counter resets.
+- 5 wrong logins within 15 min: `429 ACCOUNT_LOCKED` with `Retry-After`. The correct password is still rejected during the lock.
+- 5 wrong logins spread over more than 15 min from the first failure: no lock.
+- Login attempts during a lock do not extend it.
+- Second lock lasts 4 h, third and later 24 h. With the threshold not hit for 24 h after the last lock, the next lock is 1 h again.
+- Wrong passwords on a `pending` or `suspended` account do not count. An unknown identifier does not count.
+- `INVALID_PASSWORD` on `/users/me/email` and `/users/me/password` counts toward the same counter. A correct current password there resets it. While locked, both endpoints return `429 ACCOUNT_LOCKED`.
+- A lock does not revoke refresh tokens. `POST /auth/refresh` still works while locked.
+- A super admin can be locked. Suspending a locked account works. Unsuspending leaves the lock in place.
+- OTP: hitting the send cap blocks sends for 1 h, then 4 h, then 24 h. Verifying an already-sent OTP still works during a block.
+- OTP: `reset-password`, `verify-otp` (`change_email`) and `confirm-password-change` each reset that purpose's level. `verify-otp` (`forgot_password`) does not. 24 h after the last cap hit with no new cap hit, the level resets.
+- OTP: after a block ends and a send succeeds, the new row carries the previous level, so the next cap hit escalates rather than restarting at 1 h.
+- OTP: caps and levels are per purpose. Registration behaviour is unchanged.
+- `POST /users/:id/unlock`: clears the login lock and the OTP blocks and resets escalation. It follows the suspend permission rules (`SUPER_ADMIN_IMMUTABLE` and `FORBIDDEN` cases).
+- `GET /users` shows `isLocked`, `lockedUntil` and `lockLevel`, and `locked=true|false` filters. An invalid value returns `400` with the fixed message.
+- Concurrency: N concurrent wrong logins at the threshold produce exactly one lock and the correct level. Concurrent sends at the cap produce exactly one escalation.
+- Frontend: the login banner shows the lock message. The admin page shows the lock columns, the filter and the Unlock action, and the row updates in place with a toast.
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules: real Postgres, the existing mocking policy, and tests under `tests/` mirroring `src/` with concurrency tests in `tests/concurrency/`. Cover every Verification bullet above that does not need Docker. Simulate elapsed time by backdating the relevant timestamp columns.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR1.1:** the current wording ("lock … after 5 consecutive failed login or OTP attempts within a 15-minute window") no longer matches this stage. Login failures lock with escalation; OTP protection is the existing per-OTP guess limit plus an escalating send block.
+- **NFR1.1.1:** mark as deferred.
+
+# Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)
+
+> **Scope**: `user-service` only. Failed OTP email sends are retried inline, within a time limit,
+> and every send attempt is logged to the console. The outcome after the final failure is
+> unchanged: `503 EMAIL_SEND_FAILED`, and the new OTP is rolled back.
+>
+> Backlog refs: NFR2.1, NFR2.1.1, NFR2.1.2.
+>
+> The read-and-report step for this stage is done; the decisions below incorporate your report.
+> If anything below still disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                                    | Value                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Attempts                                | Up to 4 sends in total: the first attempt plus 3 retries                                                                                                                                                                                                                                                                                           |
+| OTP across retries                      | The same OTP and the same email content on every attempt. No new OTP is generated per attempt.                                                                                                                                                                                                                                                     |
+| Transient errors (retried)              | `ETIMEDOUT`, `ESOCKET`, `ECONNECTION`, `EDNS` — always. `EENVELOPE`, `EMESSAGE`, `EAUTH` — only when `responseCode` is between 400 and 499 inclusive. The per-attempt timeout (below) also counts as transient.                                                                                                                                    |
+| Non-transient errors (fail immediately) | `EENVELOPE`, `EMESSAGE`, `EAUTH` with any other `responseCode` or none (this includes 5xx replies and the "Missing credentials" `EAUTH`), `EPROTOCOL`, and any error without a recognised `code`. No further attempts, no wait.                                                                                                                    |
+| Where retries run                       | Inline, inside the request, within the existing transaction                                                                                                                                                                                                                                                                                        |
+| Retry loop location                     | Inside `sendOtpEmail` in `src/services/email.service.ts`. Its contract is unchanged: it resolves on success and throws after the final failure.                                                                                                                                                                                                    |
+| Backoff                                 | The same shape as Stage 14: after the n-th failed attempt, wait `random() × min(300, 1 × 2^(n−1))` seconds (full jitter), so the caps are 1, 2 and 4 s. Computed in code (nothing is stored); `Math.random()` is acceptable here.                                                                                                                  |
+| Nodemailer phase timeouts               | `connectionTimeout`, `greetingTimeout`, `socketTimeout` and `dnsTimeout` all set to 5000 ms on the transport, at `createTransport()` time                                                                                                                                                                                                          |
+| Per-attempt cap                         | 5 s total per attempt, enforced by racing each `sendMail()` against a 5 s timer. If the timer wins, the attempt counts as a failed, transient attempt.                                                                                                                                                                                             |
+| Abandoned sends                         | Nodemailer cannot cancel an in-flight send. An attempt cut off by the timer is left to finish on its own. Its later result must be caught (no unhandled rejection) and is not logged. Accepted consequences: the user may get duplicate emails with the same code, and if all attempts fail, a late email may deliver a code that was rolled back. |
+| Overall deadline                        | 30 s from the start of the first attempt. No wait may start if it would end after the deadline; in that case, stop and fail. An attempt in flight at the deadline is handled like any other cut-off attempt.                                                                                                                                       |
+| Configuration                           | Constants in code at the top of `email.service.ts`, like Stage 14. No new env vars.                                                                                                                                                                                                                                                                |
+| After the final failure                 | Unchanged: `AppError(503, 'Unable to send verification email. Please try again.', 'EMAIL_SEND_FAILED')` from `issueOtp`, and the transaction rolls back                                                                                                                                                                                            |
+| Purposes covered                        | Every send through `issueOtp`: Registration, Forgot Password, Change Email, Change Password                                                                                                                                                                                                                                                        |
+| Dev console fallback                    | Unchanged. When `NODE_ENV=development` and `SMTP_HOST` is empty, there are no retries and no new log lines; the existing `[DEV EMAIL]` line stays as it is.                                                                                                                                                                                        |
+| Logging destination                     | Console only. No DB table.                                                                                                                                                                                                                                                                                                                         |
+| What is logged                          | One line per attempt, both successes and failures                                                                                                                                                                                                                                                                                                  |
+| Log fields                              | Outcome, username, masked email, purpose, attempt number, and error code (failures only)                                                                                                                                                                                                                                                           |
+| Email masking                           | First character of the local part, then `***`, then `@` and the full domain, e.g. `g***@u.nus.edu`                                                                                                                                                                                                                                                 |
+| Never logged                            | The OTP, the full email address, the email body, and SMTP response text                                                                                                                                                                                                                                                                            |
+
+### Log line format
+
+```
+[OTP EMAIL] outcome=sent user=<username> to=<masked email> purpose=<purpose> attempt=<n>/4
+[OTP EMAIL] outcome=failed user=<username> to=<masked email> purpose=<purpose> attempt=<n>/4 error=<code>
+```
+
+- Successes use `console.log`, failures `console.error`.
+- `error` is the Nodemailer `code`, followed by the `responseCode` when present (e.g. `EENVELOPE 452`). An attempt cut off by the 5 s timer logs `error=ATTEMPT_TIMEOUT`.
+- For Change Email, `to` is the masked new email (the address the OTP was sent to).
+
+### Changes to already-implemented code
+
+| #   | File                            | Change                                                                                                                                                          |
+| --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/services/email.service.ts` | Phase timeouts on the transport; `sendOtpEmail` gains `username` and implements the retry loop, per-attempt cap, deadline, backoff and logging                  |
+| 2   | `src/services/otp.service.ts`   | `issueOtp` gains `username` and passes it to `sendOtpEmail`. `requestOtp` gains `username` and passes it to its internal `issueOtp` call (line 159).            |
+| 3   | `src/services/auth.service.ts`  | Pass `username` at `register()` (line 212, normalised input), `resendRegistrationOtp()` (line 444, looked-up row) and `forgotPassword()` (line 466, locked row) |
+| 4   | `src/services/me.service.ts`    | Pass `locked.username` at `initiateEmailChange()` (269), `resendChangeEmailOtp()` (328), `resendChangePasswordOtp()` (356), `initiatePasswordChange()` (437)    |
+| 5   | Existing tests                  | Update mocks or fixtures affected by the signature changes. Do not change what they assert.                                                                     |
+
+Line numbers are from your report; re-check them before editing.
+
+### Watch for
+
+- The final failure must still throw so `withTransaction` rolls back, exactly as today.
+- A non-transient failure must not be retried and must not wait.
+- The 5 s timer must be cleared when the send settles first, so no stray timers keep running.
+- An abandoned send's later rejection must be caught.
+- `requestOtp`'s cooldown is measured from the OTP row's `created_at`, which is set before the send. Do not change this.
+
+### Verification
+
+- SMTP succeeds on the first attempt → `200`, one `outcome=sent ... attempt=1/4` line
+- Transient failure on attempts 1–2, success on attempt 3 → `200`, two `failed` lines then one `sent` line, one OTP row, and the same OTP in every attempt
+- Transient failure on all 4 attempts → `503 EMAIL_SEND_FAILED`, four `failed` lines, no new OTP row (rolled back), and the previous OTP still valid
+- Each of `ETIMEDOUT`, `ESOCKET`, `ECONNECTION`, `EDNS` is retried
+- `EENVELOPE`, `EMESSAGE` and `EAUTH` with `responseCode` 400 and 499 are retried; with 399, 500 and 550 they fail immediately
+- `EAUTH` with no `responseCode` ("Missing credentials"), `EPROTOCOL`, and an error with no `code` each fail immediately: `503`, one `failed` line, no waits
+- Waits between attempts fall within 0–1 s, 0–2 s and 0–4 s
+- An attempt that has not settled after 5 s is cut off, logged as `error=ATTEMPT_TIMEOUT`, and retried; its later rejection does not cause an unhandled rejection and is not logged
+- The whole send never exceeds 30 s; a wait that would end after the deadline is not started, and the result is `503 EMAIL_SEND_FAILED`
+- Each purpose (registration, forgot password, change email, change password) retries and logs, with the correct username
+- Change Email logs the masked new email, not the current one
+- No log line contains the OTP, a full email address, or SMTP response text
+- Dev fallback (development, empty `SMTP_HOST`) behaves exactly as before: no retries, no `[OTP EMAIL]` lines
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout. Stage 7's "do not test NFR2" exclusion is **lifted** for NFR2.1.1 and NFR2.1.2. Every bullet under Verification above is a required test case.
+
+- Mock the Nodemailer transport (permitted by the Stage 7 mocking policy) to produce success, each error type above with chosen `responseCode`s, and sends that never settle.
+- Use Vitest fake timers for the backoff waits, the 5 s cap and the 30 s deadline, so the suite does not actually sleep.
+- Spy on `console.log` / `console.error` to assert the log lines.
+- Use the real test Postgres for the rollback and previous-OTP-still-valid checks.
+- Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+### Backlog note (for the team)
+
+- NFR2.1.2 says "for monitoring". This stage logs to the console only; there is no dashboard or alerting.
+
+# Stage 20: Email Masking in Admin Views (NFR3.1.1)
+
+> **Scope**: `user-service` and `frontend`. Emails are masked by the backend in every admin
+> response. An admin unmasks one row's email at a time with an eye icon on `/admin/users`. Every
+> unmask attempt, granted or denied, is logged to the console.
+>
+> Backlog refs: NFR3.1.1. Replaces NFR3.1.2 and NFR3.1.3 (no OTP before unmasking, no
+> 15-minute window). The same log is used for NFR3.2.2.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me.
+
+### Design decisions (already made, do not change)
+
+| Rule                          | Value                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Masked field                  | `email` only                                                                                                                                                                                               |
+| Where masking happens         | In the backend. The response's `email` key holds the masked value; there is no separate field and no flag saying whether it is masked.                                                                     |
+| Mask format                   | Same as Stage 19: first character of the local part, then `***`, then `@` and the full domain, e.g. `g***@u.nus.edu`. A one-character local part follows the same rule: `a@x.com` → `a***@x.com`.          |
+| Responses that are masked     | Every admin response containing a user object: `GET /users`, `GET /users/:id`, `PUT /users/:id/status`, `PUT /users/:id/role`, `POST /users/:id/unlock`, including no-op return paths                      |
+| The caller's own row          | Not masked                                                                                                                                                                                                 |
+| Self views                    | Not masked: `GET /users/me`, `PUT /users/me/*` responses, and the `user` object from `POST /auth/login`                                                                                                    |
+| Email search on `GET /users`  | Unchanged (exact match on the real email). Results show the masked email.                                                                                                                                  |
+| Sort by email                 | Unchanged (sorts on the real email)                                                                                                                                                                        |
+| Unmask endpoint               | `GET /users/:id/full-email`, behind `authenticate` + `authorize('admin')`. Returns `200` with `{ email }` (the full email only).                                                                           |
+| Who can unmask                | Admin and super admin                                                                                                                                                                                      |
+| Super admin target            | No one can unmask a super admin's email → `403`, code `FORBIDDEN`, message `'Cannot unmask a super administrator\'s email'`                                                                                |
+| Pending and suspended targets | Can be unmasked                                                                                                                                                                                            |
+| `:id` validation              | Same as Stage 9: Zod `.uuid()` at the controller → `400 VALIDATION_ERROR`, `"Invalid user ID"`. Well-formed but unknown → `404 USER_NOT_FOUND`.                                                            |
+| Unmask granularity            | One row's email per click                                                                                                                                                                                  |
+| Re-masking                    | Frontend only, no server call, no log line. Happens when the eye is clicked again, or 60 seconds after unmasking, whichever comes first.                                                                   |
+| Rate limit                    | None                                                                                                                                                                                                       |
+| Log destination               | Console only (append-only by nature). No DB table. Only developers with console access can read it.                                                                                                        |
+| What is logged                | Every unmask attempt that reaches the unmask controller, granted or denied                                                                                                                                 |
+| Log fields                    | Actor (ID and username), target (ID and username), timestamp, user agent, outcome, and the rejection reason for denied attempts. No IP address.                                                            |
+| Log failure                   | If writing the log line fails, the unmask fails. The granted line is written before the response is sent; if writing it throws, the request fails with `500 INTERNAL_ERROR` and the email is not returned. |
+| NFR3.2.2                      | Shares this log                                                                                                                                                                                            |
+
+### Log line format
+
+```
+[UNMASK EMAIL] actorId=<id> actorUsername=<username> targetId=<id> targetUsername=<username> timestamp=<ISO 8601 UTC> userAgent=<quoted> outcome=granted
+[UNMASK EMAIL] actorId=<id> actorUsername=<username> targetId=<id> targetUsername=<username> timestamp=<ISO 8601 UTC> userAgent=<quoted> outcome=denied reason=<code>
+```
+
+- Granted lines use `console.log`, denied lines `console.error`.
+- `reason` is the error code returned to the caller (e.g. `FORBIDDEN`, `USER_NOT_FOUND`, `VALIDATION_ERROR`).
+- `userAgent` is the `User-Agent` request header written with `JSON.stringify`, since it contains spaces. A missing header is written as `-`.
+- When the target does not exist or `:id` is not a valid UUID, `targetUsername` is `-`, and `targetId` is the raw `:id` value, also written with `JSON.stringify`.
+- The actor's username is not in the access token (only `sub` and `role`), so it is read from the `users` table by `req.user.user_id`.
+- `timestamp` comes from the database clock (`clock_timestamp()`, per convention 5), never `Date.now()`. Read it with a query for each log line (it can be selected alongside the actor or target lookup).
+- Never logged: the email (masked or full).
+- Requests rejected before the unmask controller runs (`authenticate` → `401`, `authorize('admin')` → `403`) are **not** logged.
+- A caller targeting their own ID gets no special handling: the normal rules apply (an admin gets their email, logged as `granted`; a super admin is a super admin target, so `403 FORBIDDEN`).
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                             | Change                                                                                                                                                                  |
+| --- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Stage 19 masking helper (wherever it lives now)                                  | Reuse it. If it lives in `email.service.ts`, move it to `src/utils/maskEmail.ts` and import it from both places. Its output must be unchanged for Stage 19's log lines. |
+| 2   | `src/services/userResponse.ts` (`toUserResponse`)                                | Take the requester's ID. Mask `email` unless the row's `id` equals the requester's ID. Every admin caller passes `req.user.user_id` through to the service.             |
+| 3   | `src/services/me.service.ts` (`changeActiveView`) and any other self-view caller | Must return the email unmasked (the row is always the caller's own, so passing the caller's ID is enough)                                                               |
+| 4   | `src/services/users.service.ts`, `src/controllers/users.controller.ts`           | `listUsers`, `getUserById`, `changeUserStatus`, `changeUserRole`, unlock: pass the requester's ID to the mapper                                                         |
+| 5   | `src/services/users.service.ts`, `users.controller.ts`, `users.routes.ts`        | Add `getFullEmail(actorId, targetId, userAgent)` and the `GET /users/:id/full-email` route                                                                              |
+| 6   | Existing tests                                                                   | Update assertions that expect real emails in admin responses. Do not change what they assert otherwise. If a test fails for another reason, stop and report it.         |
+| 7   | `frontend/src/api/users.js`                                                      | Add `getFullEmail(id)`                                                                                                                                                  |
+| 8   | `frontend/src/pages/AdminUsers.jsx`                                              | Eye icon in the email cell (see Stage 20b)                                                                                                                              |
+| 9   | `frontend/src/api/errorMessages.js`                                              | Check `FORBIDDEN`, `USER_NOT_FOUND` and `VALIDATION_ERROR` have toast text suitable for an unmask failure                                                               |
+
+Route order: register `GET /:id/full-email` so it is reached (it must not be shadowed by `GET /:id`).
+
+---
+
+## Stage 20a: Backend
+
+### `getFullEmail(actorId, targetId, userAgent)` in `src/services/users.service.ts`
+
+1. Look up the actor by `actorId` for their username.
+2. `findById(targetId)`. If none → log `denied reason=USER_NOT_FOUND`, then `AppError(404, 'User not found', 'USER_NOT_FOUND')`.
+3. If the target's `role === 'super admin'` → log `denied reason=FORBIDDEN`, then `AppError(403, 'Cannot unmask a super administrator\'s email', 'FORBIDDEN')`.
+4. Write the `granted` line, then return `{ email: target.email }`. If writing the line throws, let it propagate (global handler → `500`).
+
+No transaction or lock: this is a single read with no state change.
+
+### Controller `fullEmail` in `src/controllers/users.controller.ts`
+
+- `asyncHandler`-wrapped
+- Validate `req.params.id` with the Stage 9 `.uuid()` schema. On failure, log `denied reason=VALIDATION_ERROR`, then return the usual `400`. (The log needs the actor's username, so look it up first.)
+- Calls `usersService.getFullEmail(req.user.user_id, req.params.id, req.get('user-agent'))`, returns `200` with `{ email }`
+
+### Route in `src/routes/users.routes.ts`
+
+```ts
+router.get(
+  "/:id/full-email",
+  authenticate,
+  authorize("admin"),
+  usersController.fullEmail,
+);
+```
+
+### Verification
+
+- `GET /users` as an admin → every `email` masked except the caller's own row; the super admin's row masked
+- `GET /users/:id`, `PUT /users/:id/status`, `PUT /users/:id/role`, `POST /users/:id/unlock` (including no-op paths) → `email` masked unless the target is the caller
+- `GET /users/me`, `PUT /users/me/active-view`, and the `POST /auth/login` `user` object → email unmasked
+- Mask format: `gabriel@u.nus.edu` → `g***@u.nus.edu`; `a@x.com` → `a***@x.com`
+- `GET /users?email=<real email>` still finds the user; the result's email is masked
+- Sort by email still orders by the real email
+- `GET /users/:id/full-email` as admin on a user, a pending user, a suspended user and another admin → `200 { email }` with the real email, and one `outcome=granted` line each
+- Same as super admin on a user and an admin → `200`
+- Any caller targeting the super admin → `403 FORBIDDEN`, one `outcome=denied reason=FORBIDDEN` line
+- Unknown UUID → `404 USER_NOT_FOUND`, one denied line with `targetUsername=-`
+- Non-UUID `:id` → `400 VALIDATION_ERROR`, `"Invalid user ID"`, one denied line
+- Regular user → `403 FORBIDDEN`; no token → `401 UNAUTHORIZED`; neither writes a log line
+- Admin targeting their own ID → `200 { email }`, one `granted` line; super admin targeting their own ID → `403 FORBIDDEN`, one denied line
+- The logged `timestamp` matches the database clock (e.g. compare against `clock_timestamp()` read in the test), not the service clock
+- Log lines contain actor ID and username, target ID and username, timestamp, quoted user agent, outcome; no email of any kind; no IP
+- Missing `User-Agent` header → `userAgent=-`
+- Logging forced to throw → `500 INTERNAL_ERROR`, email not returned
+
+---
+
+## Stage 20b: Frontend
+
+### `src/api/users.js`
+
+Add `getFullEmail(id)` → `GET /users/:id/full-email`, returns `{ email }`.
+
+### `src/pages/AdminUsers.jsx`
+
+- Email cell shows the masked value from the list response, with an eye icon (lucide-react) beside it
+- No eye icon on the caller's own row (compare `id` with `AuthContext.user.id`) or on any row with `role === 'super admin'`
+- Click → `getFullEmail(id)` → show the full email in that cell and switch the icon to "hide"
+- Click again → re-mask (show the masked value from the list response), no request
+- 60 seconds after unmasking → re-mask automatically. Clear the timer on re-mask and on unmount.
+- Each row unmasks independently; unmasking one row does not affect others
+- Failure → toast via the `errorMessages.js` map, row stays masked
+- Any refetch of the table (after a row action, a search, filter or sort change, or a page change) re-masks every row and clears their timers
+- Works with the row-hover three-dot menu and on touch / small screens (the icon is always visible, not hover-only)
+
+### Verification
+
+- Eye icon present on other users' rows, absent on own row and super admin rows
+- Click → full email shown; click again → masked; wait 60 s → masked
+- Two rows unmasked at once each re-mask on their own timers
+- Stop user-service, click the eye → toast, still masked
+- Network tab: re-masking makes no request
+- Unmask a row, then change a filter (or suspend another user) → every row is masked after the refetch
+- Phone-width viewport: the icon is visible and tappable
+
+---
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout (real Postgres, query/service/controller tests mirroring `src/`). Every Verification bullet in 20a and 20b is a required test case. Spy on `console.log` / `console.error` for the log lines.
+
+Frontend tests cover the 20b bullets that don't need a real browser (icon visibility, unmask/re-mask on click, the 60 s timer with Vitest fake timers, failure toast, re-mask on refetch), with `getFullEmail` mocked. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it.
+
+Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR3.1.1:** unchanged in intent; masking is enforced in the backend.
+- **NFR3.1.2:** replace the OTP requirement with: unmasking is per row, via an eye icon, and every attempt is logged.
+- **NFR3.1.3:** replace the 15-minute window with: an unmasked email re-masks when clicked again or after 60 seconds.
+- **NFR3.2.2:** notes that unmask attempts are logged to the same (console) log.

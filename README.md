@@ -3,32 +3,52 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-22, Claude Code, model: claude-sonnet-5): Added Log index rows #129-130 for
        the user-service docs work (local dev setup guide; merge of jwks-verification-guide.md
        into it). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #138 for
        frontend Stage 16c (registration page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #139 for
        frontend Stage 16d (forgot-password page). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #140 for
        frontend Stage 16e (account page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #141 for
        frontend Stage 16f (requester/courier toggle). No requirements, architecture, schema,
        or API decisions were made by the AI tool.
-Author review: Congchen
+Author review:
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #142 for
        frontend Stage 16g (admin user management). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review: Congchen
+Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication test log index row.
+Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication documentation log index row.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #148-149 for the
+       user-service docs-rename record and Stage 17 (local setup script). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
+       (OTP email retry and delivery logging). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #151 for Stage 20a
+       (email masking for admin responses and the full-email unmask endpoint). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #152 for Stage 20b
+       (frontend email eye icon). No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
 Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -56,6 +76,8 @@ Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrangements index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -395,14 +417,24 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 141 | 2026-10-23 | frontend               | Stage 16f: Requester/Courier Toggle                                                                 | New nav toggle wired to AuthContext.setActiveView (already optimistic, built in 16b)                 |
 | 142 | 2026-10-23 | frontend               | Stage 16g: Admin User Management (`/admin/users`)                                                   | New admin user table (search/filter/sort/paginate) with gated suspend/promote row actions            |
 | 143 | 2026-10-23 | user-service           | Test Coverage: Stage 12 (Profile Management), Stage 13a (JWKS `kid` Lookup), Stage 14 (Credit-Allocation Outbox) | Filled Stage 12's zero coverage, a small Stage 13a gap, and Stage 14 outbox/relay test gaps; flagged relay HTTP-mocking question |
-| 144 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
-| 145 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
-| 146 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
-| 147 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
-| 148 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
-| 149 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
-| 150 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
-| 151 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
-| 152 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
-| 153 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
-| 154 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
+| 144 | 2026-11-02 | repo-wide              | CI: GitHub Actions for all five services                                                                         | One job per service on Node 24, plus the prisma postinstall and @types/node fixes CI needed |
+| 145 | 2026-11-02 | supplier-service | Supplier Service: Authentication integration test fixtures | Updated JWT and JWKS test fixtures. |
+| 146 | 2026-11-02 | supplier-service | Supplier Service: Authentication documentation | Updated JWKS authentication documentation. |
+| 147 | 2026-11-03 | repo-wide | CI: restore supplier-service full suite after JWKS test fixes | Verified both root causes in the diff, removed the exclusion, 20/20 clean runs |
+| 148 | 2026-11-04 | user-service | Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename | Logged a rename the docs work never recorded, so old-filename references make sense |
+| 149 | 2026-11-04 | user-service | Stage 17: Local Setup Script | `npm run setup` creates `.env`, generates SUPER_ADMIN_PASSWORD and the RS256 keypair |
+| 150 | 2026-11-04 | user-service | Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2) | Inline retry/backoff/timeout for OTP email sends, with a console log line per attempt |
+| 151 | 2026-11-04 | user-service | Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1) | Admin responses mask emails; new `GET /users/:id/full-email` logs each unmask attempt |
+| 152 | 2026-11-04 | frontend | Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1) | Per-row eye icon reveals the real email, re-masks on click or after 60s |
+| 153 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
+| 154 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
+| 155 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
+| 156 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
+| 157 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
+| 158 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
+| 159 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
+| 160 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
+| 161 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
+| 162 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
+| 163 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
+| 164 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |

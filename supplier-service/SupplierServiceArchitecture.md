@@ -88,6 +88,7 @@ Scope: 2026-09-30 update — recorded the team's decision that supplier response
 Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied Phase 5 test arrangements.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
+Scope (2026-11-02, Codex, model: GPT-6): Documented the existing JWKS cache and verification flow.
 Author review: Congchen
 -->
 
@@ -576,7 +577,9 @@ Service consumes the existing User Service authentication contract:
 
 - access tokens are RS256 JWTs containing the user subject and role;
 - the User Service exposes `GET /auth/.well-known/jwks.json`, which publishes the public signing
-  keys used to verify bearer tokens locally; valid token claims provide the user subject and role; and
+  keys, cached by the Supplier Service, to verify bearer tokens locally; the token `kid` selects a
+  key, and an unknown `kid` triggers one refresh before rejection; valid token claims provide the
+  user subject and role; and
 - the accepted application roles are `user`, `admin`, and `super admin`.
 
 Any OAuth or other upstream login mechanism is an authentication concern outside the Supplier

@@ -21,6 +21,15 @@
  *        corrected wording applies to this one central entry rather than a per-page override.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added ACCOUNT_LOCKED, per instructions.md Stage 18e. Login.jsx already shows any
+ *        unrecognised code's err.message in its banner (its only two special cases are
+ *        INVALID_CREDENTIALS and ACCOUNT_SUSPENDED), which is the server's exact escalation
+ *        wording, so it needed no change; this entry serves Account.jsx's generic banner
+ *        fallback for the email/password-change forms instead.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -30,6 +39,7 @@ export const errorMessages = {
   EMAIL_TAKEN: { message: 'That email is already registered.', display: 'field' },
   INVALID_CREDENTIALS: { message: 'Wrong username/email or password.', display: 'banner' },
   ACCOUNT_SUSPENDED: { message: 'This account has been suspended.', display: 'banner' },
+  ACCOUNT_LOCKED: { message: 'Too many failed attempts. Please try again later.', display: 'banner' },
   ACCOUNT_NOT_VERIFIED: {
     message: 'This account still needs email verification.',
     display: 'banner',

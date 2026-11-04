@@ -4,6 +4,11 @@
 // Author review:
 // 25/09/2026: Stage 6 pre-work - countOtps optional rolling window (sinceMinutes)
 // Author review:
+// 2026-11-04: Stage 18c/18d - added send_escalation_level/send_blocked_until to OtpRow and
+//   createOtp, plus setSendBlock, resetSendEscalation and clearSendBlocksForUser. Governing
+//   decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import type { Queryable } from "../transaction.js";
 
@@ -25,6 +30,8 @@ export interface OtpRow {
   expires_at: Date;
   consumed_at: Date | null;
   created_at: Date;
+  send_escalation_level: number;
+  send_blocked_until: Date | null;
 }
 
 export type OtpRowWithNow = OtpRow & { db_now: Date };
@@ -37,21 +44,59 @@ export async function createOtp(
     purpose,
     newEmail,
     ttlMinutes,
+    sendEscalationLevel,
+    sendBlockedUntil,
   }: {
     userId: string;
     otpHash: string;
     purpose: OtpPurpose;
     newEmail: string | null;
     ttlMinutes: number;
+    // Carried forward from the previous latest row for this (user, purpose), per Stage 18c,
+    // so a cap hit right after a block ends keeps escalating instead of restarting at 1h.
+    sendEscalationLevel?: number;
+    sendBlockedUntil?: Date | null;
   },
   db: Queryable,
 ): Promise<OtpRow> {
   const result = await db.query<OtpRow>(
-    `INSERT INTO users_otps (user_id, otp_hash, purpose, new_email, expires_at)
-     VALUES ($1, $2, $3, $4, NOW() + make_interval(mins => $5)) RETURNING *`,
-    [userId, otpHash, purpose, newEmail, ttlMinutes],
+    `INSERT INTO users_otps
+       (user_id, otp_hash, purpose, new_email, expires_at, send_escalation_level, send_blocked_until)
+     VALUES ($1, $2, $3, $4, NOW() + make_interval(mins => $5), $6, $7) RETURNING *`,
+    [userId, otpHash, purpose, newEmail, ttlMinutes, sendEscalationLevel ?? 0, sendBlockedUntil ?? null],
   );
   return result.rows[0]!;
+}
+
+// Call on a cap hit, against the latest row for this (user, purpose).
+export async function setSendBlock(
+  otpId: string,
+  { level, blockedUntil }: { level: number; blockedUntil: Date },
+  db: Queryable,
+): Promise<void> {
+  await db.query(
+    `UPDATE users_otps SET send_escalation_level = $2, send_blocked_until = $3 WHERE id = $1`,
+    [otpId, level, blockedUntil],
+  );
+}
+
+// Call after a successful consuming verify for a purpose that resets the send-escalation level
+// (Stage 18c): reset-password, verify-otp with change_email, and confirm-password-change.
+export async function resetSendEscalation(otpId: string, db: Queryable): Promise<void> {
+  await db.query(
+    `UPDATE users_otps SET send_escalation_level = 0, send_blocked_until = NULL WHERE id = $1`,
+    [otpId],
+  );
+}
+
+// Admin unlock (Stage 18d): clears the send block and its escalation for all three purposes.
+// Touches every row, not just the latest, which is harmless since only the latest is ever read.
+export async function clearSendBlocksForUser(userId: string, db: Queryable): Promise<void> {
+  await db.query(
+    `UPDATE users_otps SET send_escalation_level = 0, send_blocked_until = NULL
+     WHERE user_id = $1 AND purpose IN ('Forgot Password', 'Change Email', 'Change Password')`,
+    [userId],
+  );
 }
 
 export async function invalidateActiveOtps(

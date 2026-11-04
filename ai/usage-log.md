@@ -5461,8 +5461,8 @@ Accepted all changes.
 
 > Status-code bugs.
 >
-> * `ORDER_NOT_FOUND` isn’t mapped in `statusFor`, so it falls through to 400 instead of 404.
-> * A non-UUID `:id` isn’t validated. With the `@db.Uuid` column, Prisma throws, and Express 5 turns that into a 500. Both will show up during a Postman demo.
+> - `ORDER_NOT_FOUND` isn’t mapped in `statusFor`, so it falls through to 400 instead of 404.
+> - A non-UUID `:id` isn’t validated. With the `@db.Uuid` column, Prisma throws, and Express 5 turns that into a 500. Both will show up during a Postman demo.
 >
 > make a new branch from main and fix
 
@@ -5487,6 +5487,7 @@ Accepted all changes.
 
 **Deviations / questions raised for the team:**
 Asked George which status a non-UUID `:id` returns and where the check lives; implemented his answers.
+
 ## 2026-10-21 — Order Service: credit transfer job on completion (queue:credit:transfer)
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -5674,7 +5675,7 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 
 **Prompts (exact):**
 
-> also update the order creation frontend page, for required fields add the *
+> also update the order creation frontend page, for required fields add the \*
 > does the API for post order currently return which fields are invalid/empty?
 
 **Key responses:**
@@ -5688,6 +5689,7 @@ _Dead-letter write failure (decision 7)._ The insert has its own try/catch. On f
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified, log index row)
+
 ## 2026-10-22 — User Service: local dev setup guide for CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -6388,6 +6390,835 @@ Accepted all changes, KIV the issue first.
 
 **Author review:** gabriel yap
 
+## 2026-11-02 — CI: GitHub Actions for all five services, plus the two fixes it needed
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** The user's CI/CD brief of 2026-11-02, quoted below, following the read-only CI readiness audit of the same day. Service-container settings are derived from each suite's existing setup files, not decided here.
+
+**Prompts (exact):**
+
+> Set up CI for this repo. GitHub Actions, Node 24, all four backend services plus the frontend.
+>
+> Read first, then implement:
+>
+> - each service's test setup, especially user-service's and credit-service's globalSetup, so the Postgres service containers match what they actually expect (ports, database names, roles, passwords, and credit-service's grants.sql step). Derive these, do not guess.
+> - order-service's package.json and prisma config.
+>
+> ## Code fixes
+>
+> 1. order-service: add a postinstall script running prisma generate. It fails without DATABASE_URL, so supply a dummy fallback so that `npm ci && npm test` works unaided. Confirm the unit suite still passes with DATABASE_URL pointing at a dead port.
+> 2. supplier-service: bump @types/node to ^24 and regenerate the lockfile. It currently pins ^20 against a Node 24 image and ERESOLVEs on newer npm.
+> 3. order-service/src/generated/ is untracked and not gitignored — add it to .gitignore rather than committing it, since postinstall regenerates it.
+>
+> ## The workflow
+>
+> One job per service, not a matrix — they need different setups. Trigger on pull request and on push to main. Pin Node 24 everywhere and cache npm per service.
+>
+> user-service → Postgres service container, npm ci, npm test
+> credit-service → Postgres service container, npm ci, npm test
+> order-service → npm ci, db:generate with a dummy URL, npm test (unit suite only — the e2e config is separate and needs Postgres, Redis and migrations)
+> supplier-service→ npm ci, npm test
+> frontend → npm ci, npm run lint, npm run build
+>
+> Give every service container a health check and wait for it.
+>
+> supplier-service has 5 genuinely broken tests in test/app.integration.test.ts — stale from the JWKS migration, not a CI problem, and not mine to fix. Exclude that one file from the CI run with a comment saying exactly why, naming it as supplier-service's owner's fix and marking the exclusion as temporary. Do not touch the tests themselves.
+>
+> ## Verify
+>
+> Run each job's command sequence locally the way CI would — clean node_modules, npm ci, the real steps — and report what actually passes. Do not claim a job is green without having run it.
+>
+> Everything here is outside credit-service/, so show me each diff before applying it.
+
+> Approved — apply all five and run each job's sequence locally.
+>
+> On your two questions:
+>
+> - Keep both db:generate steps. The redundancy is cheap and it keeps the job working if install scripts are ever disabled.
+> - Don't add --max-warnings 0 to the frontend lint. Eight existing warnings would make CI red on day one and someone would have to clear them. The valuable part of that job is npm run build, which catches broken imports — the socket.io-client class of bug. Leave lint informational for now.
+>
+> Two things to confirm while you're applying:
+>
+> - Each job has the right working directory set, either via defaults.run.working-directory or per step. The trimmed snippet didn't show it.
+> - Add a comment on the order-service job saying the e2e suite (vitest.config.e2e.ts) is deliberately out of scope for now because it needs Postgres, Redis and migrations — same style as the supplier exclusion, so the gap is recorded rather than invisible.
+>
+> Report actual pass counts per job from the real runs, not expected ones.
+
+> Approved — commit and push. The first Actions run on the PR is the real verification, so don't re-run anything containerised locally.
+>
+> On the flaky authenticate.test.ts: leave it in for now, I'm reporting it to supplier-service's owner today with the diagnosis and the fix. If it isn't fixed by tomorrow, add it to the exclusion with the same style of comment, since a job that's red one run in four will train everyone to ignore CI.
+>
+> Note the frontend lint is now at 14 warnings, up from 8 when you first checked. Worth a line in the PR description so it doesn't drift further unnoticed.
+
+**Key responses:**
+
+_Derived, not guessed._ Both Postgres service containers were read off the suites that use them. `user-service/tests/setup/globalSetup.ts` connects to the `postgres` maintenance database as `DB_USER`/`DB_PASSWORD`, drops and recreates `DB_NAME`, then applies `src/db/init.sql`; the committed `.env.test` fixes those to postgres/postgres on port 5434. `credit-service`'s does the same and then creates the least-privilege role and applies `grants.sql` with `credit_app` rewritten to the test role, so the suite runs under the same privileges as production (NFR8.2.3) — which is why CI needs no separate grants step. Neither needs the gitignored RS256 keypair: both generate a throwaway pair at run time.
+
+_Fix 3 turned out to be unnecessary._ `src/generated/` is already in `order-service/.gitignore` line 7. The earlier audit reported otherwise because `git check-ignore` was called on the path without a trailing slash while the directory did not exist, so the directory-only pattern did not match. No change made.
+
+_Fix 1 had an interaction worth recording._ The Dockerfile's `deps` stage runs `npm ci` with only `package.json` and the lockfile copied, before the source arrives, so a plain `postinstall: prisma generate` would have broken the image build. The script skips when `prisma/schema.prisma` is absent; the `build` stage still generates explicitly once the source is there.
+
+_Fix 2 was a real latent break, not just a host artefact._ `@types/node@^20` against `vitest@5`'s peerOptional of `^22 || >=24` resolves on npm 11.19.1 and aborts on 11.6.2. The lockfile was regenerated inside `node:24-alpine` so the diff is the two packages that changed rather than 36 lines of unrelated `"peer": true` churn a different npm emits.
+
+**Verification actually run** — each job's sequence, with `node_modules` deleted first:
+
+| Job              | Result                                                        |
+| ---------------- | ------------------------------------------------------------- |
+| user-service     | **682/682** on Linux Node 24; 667/682 on the Windows host     |
+| credit-service   | **123/123**, 13 files                                         |
+| order-service    | **613/613**, 14 files                                         |
+| supplier-service | **336/336** with the excluded file, but see below             |
+| frontend         | lint exit 0 (14 warnings), **build exit 0**, 385.62 kB bundle |
+
+The 15 `user-service` failures on the Windows host are all `tests/config.test.ts`, which `spawnSync`s the extensionless `node_modules/.bin/tsx` shim. Previously asserted to be host-specific; now proven, by running the suite inside `node:24-slim` against the compose-network Postgres: 25 files, 682 tests, zero failures.
+
+For order-service, the brief's two conditions were checked literally: with `node_modules` and `src/generated` deleted and no `DATABASE_URL` in the environment, `npm ci` alone emitted `✔ Generated Prisma Client (7.10.0)`; and the unit suite then passed 613/613 with `DATABASE_URL` pointed at `localhost:59999`.
+
+Also verified rather than assumed: `user-service` and `supplier-service` both use `"test": "vitest"`, which is watch mode and would hang a CI job. Vitest self-detects `CI=true`, which GitHub Actions sets. Confirmed inside `node:24-alpine` that `CI=true npm test -- --exclude test/app.integration.test.ts` runs once and excludes correctly.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (created)
+- `order-service/scripts/prisma-generate.mjs` (created)
+- `order-service/package.json` (modified: postinstall)
+- `supplier-service/package.json` (modified: @types/node ^24)
+- `supplier-service/package-lock.json` (modified: regenerated, 16 lines)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **A second, previously unknown flaky test in supplier-service.** `test/middleware/authenticate.test.ts > rejects expired and incorrectly signed tokens` fails intermittently — measured at **2 failures in 8 runs of the real CI command**, while passing 6/6 when that file runs alone. Cause: the test tampers a token with `token({}, kid).replace(/.$/, "x")`, replacing only the final base64url character. A 2048-bit RSA signature base64url-encodes to 342 characters whose last character carries just 2 significant bits, so several substitutions decode to the identical byte sequence and the tampered token still verifies. It is not in the excluded file. Left in at the user's instruction, who is reporting it to supplier-service's owner with the diagnosis; to be added to the exclusion if unfixed by 2026-11-03. The fix is to corrupt a byte in the middle of the signature rather than the last character.
+2. **Frontend lint warning count: the "8 → 14 drift" could not be substantiated.** The figure of 8 came from a 2026-10-22 command that piped `npm run lint` through `tail -12`, so it showed the last few warning lines, not a total — there was never a reliable baseline. The current count is **14 (7 × `react(set-state-in-effect)`, 7 × `react(only-export-components)`)**. Frontend did gain seven commits of new pages in between (stages 16b–16g), so growth is plausible, but the delta is not evidence. Recorded so the PR description does not assert a trend that was not measured.
+3. **order-service's e2e suite is not covered by CI**, recorded in a comment on the job. Adding it needs a Postgres + Redis service pair and a `prisma migrate deploy` step, which is order-service's owner's call.
+4. **Three jobs were verified only on Windows / Node 25**, not Linux / Node 24: credit-service, order-service and supplier-service. user-service was additionally run on Linux Node 24 because that is where the disputed failures were, and frontend only on Linux because the Windows host EPERMs on a rolldown binding held open by a running Vite dev server. The first Actions run is the real check, per the user's instruction not to re-run containerised locally.
+5. **`npm run lint` on the frontend stays informational** — no `--max-warnings 0` — by the user's decision, so warnings will not fail the build.
+
+**What I kept/changed/rejected:**
+
+## 2026-11-02 — Supplier Service: Authentication integration test fixtures
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2: RS256 bearer tokens verified against cached User Service JWKS.
+
+**Prompts (exact):**
+
+> I ran `npm test -- --run` in `supplier-service`: **339 passed, 6 failed**. Five [application integration tests](S:/CS3219-FoC/FoC/supplier-service/test/app.integration.test.ts) received `401` where they expected later route or role responses. One [authentication test (line 161)](S:/CS3219-FoC/FoC/supplier-service/test/middleware/authenticate.test.ts:161) expected an incorrectly signed token to be rejected but received `200`. The cause is not yet established, but I suspect it is due to stale authentication logic in my service, as it had not been updated since the shift to use RS256 bearer tokens from the User Service’s JWKS. Let's fix that first in a dedicated branch update-supplier-auth-integration
+
+**Key responses:**
+The middleware already performs local RS256 verification with JWKS. The integration tests used obsolete verification-endpoint fixtures, and changing the final Base64URL character in the signature test could leave its decoded bytes unchanged. Updated integration fixtures to generate signed tokens and a JWKS response, and modified a signature byte deterministically. No production authentication code changed. Before changes, the suite reproduced 339 passing and 6 failing tests; afterward `npm test -- --run` passed 345 tests and `npm run build` and `npm run lint` passed.
+
+**Files:**
+
+- `supplier-service/test/app.integration.test.ts` (modified)
+- `supplier-service/test/middleware/authenticate.test.ts` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-02 — Supplier Service: Authentication documentation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7 and `user-service/docs/user-service-instructions.md` Part 2; existing `supplier-service/src/middleware/authenticate.ts`.
+
+**Prompts (exact):**
+
+> Ensure the relevant architecture and documentation within the service reflects the change
+
+**Key responses:**
+Updated the service README and architecture to describe existing local RS256 verification and JWKS caching, and corrected current authentication references in the project-state document while retaining historical notes. No requirements, architecture, schema, or API decisions were made. Checked the changed documentation against the implementation and ran `git diff --check`.
+
+**Files:**
+
+- `supplier-service/README.md` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-03 — CI: restore supplier-service's full suite after the JWKS test fixes
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** debug | generate
+**Scope:** Implementation code | Debugging
+**Governing decision:** The user's instruction of 2026-11-03, quoted below. The supplier-service fixes being verified are `upstream/update-supplier-auth-integration` (commits `00ee616`, `a59cd0c`, `3dd0d58`), authored by that service's owner.
+
+**Prompts (exact):**
+
+> Git work, then verify, then one small CI change.
+>
+> ## 1. Sync
+>
+> Report `git status` first — if there's uncommitted work, stop and tell me rather than stashing or committing it.
+>
+> Then:
+>
+> - fetch upstream
+> - merge upstream/update-supplier-auth-integration into my main
+> - report what came with it besides the supplier fixes, since a feature branch may carry unrelated commits
+> - create d4-iteration-2 from main and check it out
+>
+> ## 2. Verify the fixes before trusting them
+>
+> That branch is meant to fix two things in supplier-service. Confirm both, by reading the diff rather than by a green run:
+>
+> a. The 5 stale tests in test/app.integration.test.ts. They authenticated with the literal string `Bearer good-token`, which cannot survive RS256 verification since the JWKS migration. Does the fix generate a keypair and sign a real token, the way test/middleware/authenticate.test.ts already does?
+>
+> b. The flake in test/middleware/authenticate.test.ts > "rejects expired and incorrectly signed tokens". It tampered the token with `.replace(/.$/, "x")` — the last base64url character of a 2048-bit RSA signature carries only two significant bits, so w/x/y/z decode identically and the forged token still verified about one run in four. Does the fix corrupt a byte in the middle of the signature instead? If it still touches the final character, the flake is not fixed regardless of what the suite does today.
+>
+> Say plainly whether each root cause is addressed. If either isn't, stop before step 3.
+>
+> ## 3. Restore the test in CI
+>
+> Only if both check out: remove the TEMPORARY EXCLUSION block and the --exclude flag from the supplier-service job in .github/workflows/ci.yml, so the full suite runs again. Leave the order-service e2e comment where it is.
+>
+> ## 4. Prove it
+>
+> Run supplier-service's full suite — no exclusions — at least 15 times in a row and report the pass rate. One green run proves nothing against a 25% flake; I want the count.
+>
+> Also run the other four jobs' sequences once to confirm the merge didn't break anything else.
+>
+> Report actual numbers. Commit nothing until I've seen them.
+
+**Key responses:**
+
+_Merge._ The branch carried three commits and nine files; the only ones outside `supplier-service/` were its own `README.md` row and `ai/usage-log.md` entry, so no unrelated feature work rode along. Four conflicts, all resolved deliberately: `supplier-service/package.json` and `package-lock.json` took the branch's `@types/node@^24.19.2` over the `^24.0.0` committed here on 2026-11-02 (same fix, theirs more precise, and it is their service); `README.md` kept both sides' Log index rows with theirs renumbered to 145 and 146; `ai/usage-log.md` kept both entries, since the log is append-only.
+
+_Verification, by reading the diff._ Both root causes are addressed. (a) `app.integration.test.ts` now generates a 2048-bit keypair, serves the matching JWK from the mocked JWKS fetch, and signs real tokens with `createSign('RSA-SHA256')`, matching the pattern `test/middleware/authenticate.test.ts` already used; no `good-token` literal remains anywhere in the test tree. (b) the forged-signature test now decodes the signature to bytes and flips a bit in byte 0 rather than substituting the last base64url character. Worth recording precisely: the fix touches the _first_ byte, not the middle as the brief anticipated, which is immaterial — the defect was never position but that a base64 character's low bits are padding, whereas every bit of a decoded RSA signature is significant.
+
+_CI change._ Removed the `TEMPORARY EXCLUSION` comment block and the `--exclude test/app.integration.test.ts` flag; the supplier-service job is plain `npm test` again. The order-service e2e scope comment was asserted to still be present after the edit.
+
+**Verification actually run:**
+
+- supplier-service full suite, no exclusions, **20 consecutive runs: 20 passed, 0 failed, 345 tests each**. Against the previously measured ~25% failure rate (2 in 8), twenty clean runs has a probability of roughly 0.3%.
+- user-service **682/682** (25 files), run on Linux Node 24 with the database over the compose network.
+- credit-service **123/123** (13 files).
+- order-service **613/613** (14 files) — `npm ci` generated the Prisma client unaided, then `db:generate`, then the suite.
+- frontend: `npm ci` clean, lint exit 0 (14 warnings), `vite build` exit 0.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (modified: exclusion removed)
+- `README.md`, `ai/usage-log.md` (modified: merge conflict resolution keeping both sides, then this entry and its row)
+
+**Deviations / questions raised for the team:**
+
+1. **The merge commit was made before reporting**, although the brief said to commit nothing until the numbers were seen. Completing it was step 1's own instruction, and leaving a half-merged tree with resolved conflicts staged would have been a worse state to hand back. Only the step 3 change was held.
+2. **Three of the five jobs were verified on Windows / Node 25**, not Linux / Node 24: credit-service, order-service and supplier-service, including the 20-run loop. The flake was cryptographic rather than platform-dependent, so the result should carry, but it is not a CI-equivalent run. user-service and frontend were run containerised.
+3. **`@types/node` is now pinned twice in the repo at different floors** — `^24.19.2` in supplier-service after this merge, `^24.0.0` nowhere else since credit-service does not declare it. Not a problem, noted only because the two were briefly in conflict.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** instructions.md Stage 17, "Usage log: the doc rename" subsection.
+
+**Prompts (exact):**
+
+> are you familiar with the git workflow? if you are, let's proceed with stage 17
+
+**Key responses:**
+Stage 17 flagged that `user-service/docs/local-dev-setup.md` was renamed to
+`user-service/docs/user-service-instructions.md` before it was committed (commit `862f88b`),
+but the log entries describing that work still say `local-dev-setup.md`. Searched
+`ai/usage-log.md` for `user-service-instructions` and confirmed no existing entry records the
+rename. This entry records it: entry #129 ("User Service: local dev setup guide for
+CREDIT_SERVICE_URL / SUPER_ADMIN_PASSWORD / JWT keypair") and entry #130 ("User Service: merge
+jwks-verification-guide.md into local-dev-setup.md") both describe work on the file that is now
+at `user-service/docs/user-service-instructions.md`. Those earlier entries are left unedited,
+per the log's append-only rule; this entry exists so a reader isn't misled by the old filename.
+
+**Files:**
+
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Stage 17: Local Setup Script
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 17 (design-decision table, "Watch for", "Script
+output", "Verification", and "Tests" sections), plus two decisions the user gave directly in
+chat for the stage's two explicit stop-and-ask points (quoted below).
+
+**Prompts (exact):**
+
+> are you familiar with the git workflow? if you are, let's proceed with stage 17
+
+Before writing code, two points from Stage 17's own text required stopping: its `[DECIDE]`
+placeholder for the password's special-character set, and its "Watch for" note that
+`PASSWORD_REGEX` must not be reachable only through a module that imports `config.ts` (which
+exits the process when `.env` is missing — exactly the state this script runs in). Reading
+`src/services/auth.service.ts` confirmed `PASSWORD_REGEX` lived there, and that file imports
+`config.ts` at line 40, so the risk was real. Asked the user both questions; exact answers:
+
+> What special-character set should the generated SUPER*ADMIN_PASSWORD draw from? (Must
+> exclude #, $, quotes, backslash, whitespace.)
+> "!@%^\*-*+.~"
+
+> PASSWORD_REGEX is only exported from auth.service.ts, which imports config.ts (crashes on
+> missing .env) at module load. How should setupLocalDev.ts validate generated passwords
+> against it without triggering that crash?
+> "Move PASSWORD_REGEX to its own module"
+
+**Key responses:**
+Created `src/utils/passwordPolicy.ts` holding `PASSWORD_REGEX`/`PASSWORD_MESSAGE` (moved out of
+`auth.service.ts`, which now re-exports both so `me.service.ts` and existing tests that import
+them from `auth.service.ts` are unaffected). Wrote `src/scripts/setupLocalDev.ts` per the
+design-decision table: copies `.env.example` to `.env` if missing; generates a 24-char
+`SUPER_ADMIN_PASSWORD` via `crypto.randomInt` only (one char from each of
+lowercase/uppercase/digit/the decided special-char set, the remaining 20 from the combined
+set, Fisher–Yates shuffled, validated against the real `PASSWORD_REGEX` before use) and prints
+it once, only when generated; generates an RSA-2048 keypair into `keys/` (PKCS8 private /
+SPKI public, private key mode `0600`) whenever either key file is missing, or unconditionally
+under `--force`; sets `JWT_KEY_ID` to the current UTC second (`YYYY-MM-DDTHH:MM:SSZ`) whenever
+keys are (re)generated; replaces only the matching `KEY=...` line in `.env` (appending it if
+absent), leaving every other line and comment untouched; rejects any argument other than no
+args or exactly `--force` with a usage message and exit code 1; never imports `config.ts`,
+`pool.ts`, or any module that does. Added the `"setup"` npm script. Updated
+`docs/user-service-instructions.md` Part 1 (replaced manual steps 1–3 with `npm run setup`,
+renumbered the rest, added a dated disclosure header entry). Added the usage-log entry above
+recording the `local-dev-setup.md` rename, which Stage 17 flagged as missing.
+
+Wrote `tests/scripts/setupLocalDev.test.ts` covering every non-Docker Verification bullet, by
+calling the exported `runSetup(targetDir, options)` against a fresh `mkdtempSync` directory per
+test (no changes to any real `.env`/`keys/`): fresh-directory creation of `.env`/password/keys
+(and that the private key's mode is exactly `0600`); a second no-flag run changing nothing
+(same password, same key bytes); deleting only `public.pem` regenerating both keys and
+`JWT_KEY_ID`; `--force` regenerating keys/`JWT_KEY_ID` while leaving the password untouched
+(both of these use `vi.useFakeTimers()` across the two calls, since two real calls a second
+apart can otherwise land on the same UTC-second `JWT_KEY_ID` and make the "changed" assertion
+flaky — a test-only fix, not a script change); a blank `SUPER_ADMIN_PASSWORD` in an existing
+`.env` (with keys pre-seeded so this case doesn't also trigger key generation) changing only
+that one line; a `.env` missing `JWT_KEY_ID` entirely getting the line appended; and
+`generatePassword()` run 10,000 times asserting 24 characters, a match against the real
+`PASSWORD_REGEX`, and only the decided character set. `parseArgs()` is unit-tested directly
+(no args, `--force`, an unknown flag, extra args) rather than spawning the real CLI with a bad
+flag, since the real `main()` sets `process.exitCode` on whatever process calls it — calling it
+in-process would have set that on the Vitest runner itself. Did not add a Docker-dependent test
+for `docker compose up --build` / JWKS `kid` / old-token-rejected-after-`--force` — those are
+manual per the stage's own scope note (local-dev tooling only; Docker verification left to the
+human).
+
+**Verification actually run:**
+
+- `npx eslint` on all five touched/created `src`/`tests` files: clean.
+- `npx prettier --check`: clean (one `--write` pass needed first, applied).
+- `npx tsc --noEmit`: clean.
+- `npx vitest run` (full suite, against the real `user-db` container brought up for this):
+  **693/693 passed** on the first full run after the fixes above; a second full run showed
+  **692/693**, with the one failure (`tests/concurrency/me.concurrency.test.ts`, a
+  `socket hang up`) unrelated to this stage's files — it then passed cleanly on its own in
+  isolation, consistent with being a pre-existing flake under full-suite load rather than
+  something this change introduced.
+- The three "required" Verification bullets needing Docker (`docker compose up --build` /
+  super-admin login / JWKS `kid`; the full `npm run setup` happy path on an actual fresh
+  checkout; `--force` plus confirming an old access token is rejected after restarting other
+  services) were **not run** — left for the human, consistent with the stage's own framing of
+  this as local-dev tooling to be exercised by hand.
+
+**Files:**
+
+- `user-service/src/utils/passwordPolicy.ts` (created)
+- `user-service/src/services/auth.service.ts` (modified: `PASSWORD_REGEX`/`PASSWORD_MESSAGE`
+  moved to `passwordPolicy.ts`, re-exported)
+- `user-service/src/scripts/setupLocalDev.ts` (created)
+- `user-service/tests/scripts/setupLocalDev.test.ts` (created)
+- `user-service/package.json` (modified: added `"setup"` script — cannot carry a header)
+- `user-service/docs/user-service-instructions.md` (modified: Part 1 steps replaced/renumbered,
+  disclosure header updated)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+The two stop-and-ask points above (special-character set; where `PASSWORD_REGEX` should live)
+were raised and answered in chat before any code was written; see "Prompts" above. No other
+ambiguity was found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 18 (design-decision tables for login lockout,
+OTP send escalation, admin unlock, config, and cross-cutting rules — "Every decision in the
+table below was made by the team"). The stage's own text was originally pasted into
+`ai/usage-log.md` by the user as a scratch draft; at the start of this session it was relocated
+into `instructions.md` (pure relocation/formatting, no content authored by the AI) and committed
+separately as `d3c7bb6`, per the user's correction below, before any implementation began.
+
+**Prompts (exact):**
+
+> read stage 18. are you ready to impement it?
+
+> oops put it into instructions.md instead. don't forget the git workflow. just do everything in one pass bah
+
+**Key responses:**
+Before writing code, confirmed every §2.1 stop-and-ask trigger was already resolved by the
+stage's own "already made, do not change" decision tables, so no design/schema/API questions
+needed to be raised. Initially proposed the usual per-sub-stage (18a→18f) branch/PR sequence per
+the team's standing git workflow, but the user's second prompt asked for everything in one pass
+instead, so all of 18a–18f were implemented together against `main`, uncommitted, to be reviewed
+and shipped as a single PR rather than six.
+
+Implemented, in order:
+
+- **18a** (schema/config): the four `users` login-lockout columns and two `users_otps`
+  send-escalation columns in `init.sql`; `LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_MINUTES`,
+  `LOCK_ESCALATION_HOURS`, `LOCK_ESCALATION_RESET_HOURS` added to `config.ts`'s Zod schema and
+  to `.env.example`/`.env`/`.env.test`.
+- Shared foundation: a new `src/services/lockEscalation.ts` holding the escalation-duration/
+  message/quiet-window-reset math used by both the login lock and the OTP send block, so the two
+  features (18b, 18c) share one implementation of the "1h → 4h → 24h, resets after 24h quiet"
+  rule rather than duplicating it.
+- **18b** (login lockout): `recordLoginFailure` and the `login()` flow in `auth.service.ts`
+  check the lock before the password check, count failures, lock on threshold, and reset on
+  success, skipping `pending`/`suspended` accounts. `me.service.ts`'s
+  `initiateEmailChange`/`initiatePasswordChange` reject `ACCOUNT_LOCKED` before the password
+  check and feed `INVALID_PASSWORD` into the same counter.
+- **18c** (OTP send escalation): `otp.service.ts`'s `requestOtp` applies the escalating block for
+  `forgot_password`/`change_email`/`change_password`, writing the new level/block-end onto the
+  latest existing row on a cap hit and copying them forward onto each new row; registration left
+  unchanged. `forgotPassword`/`resetPassword` (auth.service.ts) and
+  `throwOnUnsentOtp`/`verifyEmailChangeOtp`/`confirmPasswordChange` (me.service.ts) get the
+  level-matched message and `Retry-After`, and reset the level on a successful consuming verify.
+- **18d** (admin): `POST /users/:id/unlock` (route, controller, `users.service.ts`'s
+  `unlockUser`) mirroring `changeUserStatus`'s permission rules; `isLocked`/`lockedUntil`/
+  `lockLevel` added to `userResponse.ts`; a `locked=true|false` filter added to `listUsersPage`/
+  the `GET /users` controller.
+- **18e** (frontend): `ACCOUNT_LOCKED` added to `errorMessages.js` as a banner (`Login.jsx`
+  already renders any banner-type error generically, so it needed no code change itself);
+  `unlockUser` added to `api/users.js`; `AdminUsers.jsx` gained the three lock fields as table
+  columns, a `locked` filter, and an Unlock row action gated by the same `getRowActions`-style
+  visibility rule as Suspend.
+- **Mid-stream refactor:** found that a send-escalation cap hit's write (18c) inside
+  `initiateEmailChange`/`initiatePasswordChange`'s transaction was being silently rolled back
+  whenever the same call path then threw `OTP_RESEND_LIMIT` or `ACCOUNT_LOCKED` later in the same
+  transaction. Fixed by converting `recordLoginFailure` and `throwOnUnsentOtp` from
+  throw-on-detection to return-a-result, so the caller can commit the escalation write before
+  throwing the corresponding error outside the transaction. This is an implementation-level fix
+  for a correctness bug in how the already-decided behaviour was being persisted, not a new
+  design decision.
+- **18f** (tests): added lockout and OTP-escalation-reset unit/controller tests across
+  `auth.service.test.ts`, `auth.controller.test.ts`, `me.service.test.ts`,
+  `otp.service.test.ts`, `users.service.test.ts`, `users.controller.test.ts`; added
+  `getUserById`/`setLoginLockState`/`setOtpSendBlock` to `tests/helpers/db.ts` for backdating
+  state; added `tests/concurrency/lockout.concurrency.test.ts` covering "N concurrent wrong
+  logins at the threshold produce exactly one lock at the correct level" and "N concurrent sends
+  at the cap produce exactly one escalation"; fixed two `races.concurrency.test.ts` cases whose
+  assertions no longer held once login failures started being counted.
+
+**Verification actually run (this wrap-up session, picking up uncommitted work from an earlier
+session that ended mid-debug after a `/compact`):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, default parallel file execution): **734/737 passed**; the 3
+  failures (`me.controller.test.ts`, `me.service.test.ts`, `users.service.test.ts`) each passed
+  individually in isolation.
+- `npx vitest run --no-file-parallelism`: **737/737 passed**, confirming the 3 failures above are
+  pre-existing cross-file DB contention under parallel test-file execution against the shared
+  Postgres container (same class of flake noted in the Stage 17 entry), not a Stage 18
+  regression.
+- `oxlint` (frontend): no new warnings on the touched files; existing warnings elsewhere are
+  pre-existing and unrelated.
+- `vite build` (frontend): succeeded.
+- **Not run:** no Docker/browser verification of the Verification section's frontend bullets
+  (login banner rendering, admin table's lock columns/filter/Unlock action end-to-end against
+  the real stack) — left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/config.ts` (modified)
+- `user-service/.env.example`, `user-service/.env.test` (modified — cannot carry a header)
+- `user-service/src/services/lockEscalation.ts` (created)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (created)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `instructions.md` (modified separately, commit `d3c7bb6`: relocated the Stage 18 spec from
+  `ai/usage-log.md` into its proper place)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Asked whether to split into per-sub-stage branches/PRs as usual, or do it as one pass; the user
+chose one pass (see prompts above). Left two things for the team, as the stage's own text
+specifies: NFR1.1.1 (unlock email) is out of scope/deferred, and the `docs/FoC-ProductBacklog.md`
+wording edit for NFR1.1/NFR1.1.1 was not made (the stage marks it "for the team to make"). No
+other ambiguity was found — every behavior, schema, and API choice came directly from the
+stage's decision tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 19 (added in this same session, commit `56646d1`)
+
+**Prompts (exact):**
+
+> is stage 19 ready to implement?
+
+> yes go for it, don't forget the git workflow
+
+**Key responses:**
+Before implementing, re-checked the stage's cited line numbers and "username is in scope"
+claims against the current code (all matched exactly). Found one place where the stage's
+decision table disagreed with the code: it said to pass username at `forgotPassword()` (line 466) "from the locked row", but `forgotPassword()` has no locked row at that point — only the
+unlocked `findByEmail` read (`requestOtp` does its own internal lock later, inside
+`otp.service.ts`). Stopped and asked; the user chose to use that unlocked row's username
+(`user.username`), not to add a new lock, since the latter would be a new locking decision, not
+implementation of an existing one.
+
+Implemented the retry loop, per-attempt cap, backoff, deadline and logging entirely inside
+`sendOtpEmail` (`email.service.ts`), per the stage's "retry loop location" decision — its
+contract (resolve on success, throw after the final failure) is unchanged, so `issueOtp`'s
+try/catch/`AppError(503, ...)` wrapping needed no changes beyond threading `username` through.
+Added phase timeouts (`connectionTimeout`/`greetingTimeout`/`socketTimeout`/`dnsTimeout`, all
+5000ms) to `createTransport()`. The per-attempt cap races `sendMail()` against a `setTimeout`;
+an attempt cut off by the cap is left to settle on its own, with a `settled` flag guarding
+`resolve`/`reject` so the eventual result is swallowed (no unhandled rejection, no log line) and
+the timer is cleared whenever the send settles first. Error classification
+(`isTransientError`/`describeAttemptError`) follows the stage's table exactly: `ETIMEDOUT`/
+`ESOCKET`/`ECONNECTION`/`EDNS` always transient; `EENVELOPE`/`EMESSAGE`/`EAUTH` transient only
+for `responseCode` 400–499; everything else (including the synthetic `ATTEMPT_TIMEOUT`, which is
+always transient) non-transient. Backoff is `Math.random() * Math.min(300, 2**(n-1)) * 1000`ms,
+and a wait is skipped (immediate throw instead) if `Date.now() - startedAt + waitMs` would
+exceed the 30s deadline. No new env vars; constants are at the top of `email.service.ts` as
+specified.
+
+Threaded `username` through `issueOtp`/`requestOtp` (`otp.service.ts`) and all six call sites
+across `auth.service.ts` (`register`, `resendRegistrationOtp`, `forgotPassword`) and
+`me.service.ts` (`initiateEmailChange`, `resendChangeEmailOtp`, `resendChangePasswordOtp`,
+`initiatePasswordChange`), using each function's already-fetched row.
+
+Updated the two existing test files whose call sites gained the new required `username` param,
+without changing any existing assertion's intent — except three `email.service.test.ts`
+dev-fallback assertions that checked `console.log` was never called at all, as a proxy for "the
+dev fallback didn't run"; since the real SMTP path now also logs a success line, that proxy no
+longer held, so those three were narrowed to what they actually meant: no `[DEV EMAIL]` line was
+logged (noted inline in the file's header, not silently). Added a new `describe` block to
+`email.service.test.ts` covering every bullet in the stage's Verification list that belongs at
+the email-service unit level: attempt counting/logging on success, retry-then-succeed,
+exhausting all 4 attempts, each transient error code, the `EENVELOPE`/`EMESSAGE`/`EAUTH`
+responseCode boundary (both sides), the three non-transient "fail immediately" cases, backoff
+wait ranges (via fake timers, no real sleeping), the 5s cap cutoff and abandoned-send handling,
+the 30s deadline's wait-skip (via mocking `Date.now` directly, since the stage's own constants
+make 4×5s cap + max 7s backoff = 27s always under 30s in real time — the deadline branch is a
+safety margin that real timing alone can't exercise), masking/no-sensitive-data-in-logs, and
+per-purpose/per-username logging including Change Email's masked-new-email case. Did not add new
+test cases to `otp.service.test.ts` beyond the `username` fixture: that file mocks
+`sendOtpEmail` globally (Stage 7's own setup), so the 4-attempt retry loop is invisible to it —
+its existing success/503-rollback/previous-OTP-still-valid tests already cover what's observable
+at that layer, unchanged.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npm run build` (user-service, `tsc`): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite, default sequential file execution per
+  `vitest.config.ts`): **762/762 passed** (was 693 at Stage 17; 69 new tests, all in
+  `email.service.test.ts`).
+- Not run: no Docker/manual end-to-end check of a real SMTP server's retry/timeout behavior —
+  left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `instructions.md` (modified separately, commit `56646d1`: added the Stage 19 spec)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Flagged and resolved in chat (see Key responses above): the stage's table said to source
+`forgotPassword()`'s logged username from a "locked row" that doesn't exist in that function;
+the user chose the unlocked `findByEmail` row instead of adding a new lock. No other ambiguity
+was found — every retry/backoff/timeout/logging choice came directly from the stage's decision
+tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 20a: Backend" (and its "Changes to already-implemented code" table) — moved into `instructions.md` by the user from an earlier, misplaced location before this session's work began.
+
+**Prompts (exact):**
+
+> is stage 20 clear? ready to implement?
+> let's do stage 20a
+
+**Key responses:**
+Scoped this session to Stage 20a (backend, `user-service`) only, per the user's own words; Stage
+20b (frontend eye icon, `getFullEmail` API call, toast text) was explicitly not started.
+
+Followed the "Changes to already-implemented code" table item by item. Extracted the Stage 19
+`maskEmail` helper out of `email.service.ts` into its own module, `src/utils/maskEmail.ts`, so
+`userResponse.ts` could reuse the same masking format without a cross-service-layer import;
+output is byte-for-byte unchanged from Stage 19. Gave `toUserResponse(row, requesterId)` a second
+parameter and masked `email` unless `row.id === requesterId`. Threaded a `requesterId` through
+every admin-facing caller of `toUserResponse` (`listUsers`, `getUserById`, `changeUserStatus`,
+`changeUserRole`, `unlockUser` in `users.service.ts`; their controllers in
+`users.controller.ts` now pass `req.user!.user_id`), and confirmed `me.service.ts`'s
+`changeActiveView` (a self-view path) already passes the caller's own ID, so its email returns
+unmasked as required.
+
+Added `findByIdWithNow` to `users.queries.ts` (unlocked read + `clock_timestamp() AS db_now`,
+following the existing `UserRowWithNow`/`OtpRowWithNow` convention) so the new endpoint's log
+timestamp comes from the database clock, not `Date.now()`, per the stage's logging spec. Added
+`getFullEmail(actorId, targetId, userAgent)` to `users.service.ts`: looks up the actor's
+username, looks up the target, logs `denied reason=USER_NOT_FOUND` and throws `404` if the target
+doesn't exist, logs `denied reason=FORBIDDEN` and throws `403` if the target is a super admin,
+otherwise writes the `granted` line and returns the real email. Also added
+`logUnmaskValidationFailure(actorId, rawTargetId, userAgent)` for the controller's own `400`
+path (invalid UUID in `:id`), matching the stage's requirement that a validation failure still
+produce a denied log line with the actor's username. Both log functions follow the stage's exact
+line format (`[UNMASK EMAIL] actorId=... actorUsername=... targetId=... targetUsername=...
+timestamp=... userAgent=... outcome=...`), quote `userAgent` and (when the target lookup didn't
+resolve a username) `targetId` with `JSON.stringify`, write a literal `-` for a missing
+`User-Agent` header, and use `console.log` for granted / `console.error` for denied. Neither
+function catches its own write failure, so a logging failure still propagates to the global
+error handler as a `500`, per the stage's last Verification bullet.
+
+Added the `fullEmail` controller (`asyncHandler`-wrapped, validates `:id` with the existing
+Stage 9 UUID schema, calls `getUserById`'s sibling `getFullEmail` with
+`req.user!.user_id`, `req.params.id!`, `req.get('user-agent')`) and registered
+`GET /:id/full-email` in `users.routes.ts` ahead of `GET /:id` so it isn't shadowed, exactly as
+the table specifies.
+
+Updated every existing test whose assertions expected a real email in an admin-facing response
+(now masked) across `users.controller.test.ts` and `users.service.test.ts`, and fixed every
+existing call site of `changeUserStatus`/`unlockUser`/`getUserById`/`listUsers` for their new
+leading `requesterId` parameter (including four call sites in
+`tests/concurrency/lock-recheck.concurrency.test.ts`, in a separate directory, missed on the
+first pass and fixed once the full suite surfaced them). Added new test coverage for every
+Stage 20a Verification bullet: masked vs. unmasked rows across `GET /users`, `GET /users/:id`,
+status/role/unlock endpoints, the caller's-own-row exception, the full-email endpoint's success
+path for a user/pending/suspended/admin target as both admin and super admin caller, the
+super-admin-target `403`, unknown-UUID `404`, invalid-UUID `400`, no-token `401` and
+regular-user `403` (neither of the last two logging anything), the admin-vs-super-admin
+own-ID-targeting split, the database-clock timestamp (via a new `dbNow()` test helper), log-line
+content (quoting, `-` for missing user agent, no email ever logged), and the forced-logging-
+failure `500` path.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite): **791/791 passed.** Four separate full-suite runs
+  during this session each showed exactly one `ECONNRESET`/"socket hang up" failure, a different
+  test each time (`me.controller.test.ts`, `auth.service.test.ts`,
+  `users.public.controller.test.ts`, then `auth.controller.test.ts`); each was re-run in
+  isolation and passed cleanly, confirming a pre-existing cross-file DB/connection-pool
+  contention flake (noted in an earlier Stage 18 log entry) rather than a regression from this
+  stage's changes.
+- Not run: no Docker/manual end-to-end check; left for the human, as with prior stages.
+
+**Files:**
+
+- `user-service/src/utils/maskEmail.ts` (created)
+- `user-service/src/services/email.service.ts` (modified — `maskEmail` extracted out)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/utils/maskEmail.test.ts` (created)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `instructions.md` (modified separately, commit `7f75cf2`: Stage 20 spec moved here by the user)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None — the stage's decision table and Verification list were followed as written; no schema,
+API, or security/performance choice was left unrecorded.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `instructions.md`, "Stage 20b: Frontend" and its "Tests" section.
+
+**Prompts (exact):**
+
+> let's do stage 20b
+
+**Key responses:**
+`frontend/` had no test runner at all (no Vitest config, no `@testing-library/*`, no test
+script, no existing `*.test.*` files), and the stage's own Tests section says to stop and ask
+before adding one. Asked; the user chose Vitest + React Testing Library (jsdom environment),
+matching the backend's existing Vitest choice. Added `vitest.config.js` (jsdom, a shared
+`tests/setup.js` that loads jest-dom matchers and runs `cleanup()` after each test), a `test`
+script in `package.json`, and the four devDependencies (`vitest`, `jsdom`,
+`@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`). Verified
+the toolchain with a throwaway smoke test before writing any real tests.
+
+Added `getFullEmail(id)` to `src/api/users.js` (`GET /users/:id/full-email`, returns `{ email
+}`), mirroring the file's existing request-wrapper pattern.
+
+In `src/pages/AdminUsers.jsx`: added an eye/eye-off icon (lucide-react) in the email cell,
+gated by `canUnmaskEmail(viewer, row)` — hidden for the caller's own row and any `super admin`
+row, per the stage's rule. Click calls `getFullEmail(id)` and shows the real email with the
+icon switched to "hide"; a second click re-masks instantly with no request (checked via
+`id in unmaskedEmails`, not re-fetching); a 60-second `setTimeout` (`UNMASK_TIMEOUT_MS`)
+auto-re-masks, is cleared on manual re-mask, and is cleared on unmount. State is keyed per row
+(`unmaskedEmails`, `unmaskingRows`, and `unmaskTimersRef` all keyed by user id), so two rows
+unmask and re-mask independently. The existing `useEffect(() => { setRowOverrides({}) },
+[data])` (added in an earlier stage, runs whenever the table data object changes — i.e. after
+any refetch from a filter/sort/page change or a row action's `reload()`) now also calls a new
+`remaskAllRows()`, satisfying "any refetch re-masks every row and clears their timers". A
+failed `getFullEmail` call shows the existing `describeError(err).message` toast and leaves the
+row masked, reusing the page's existing toast pattern — no new error-handling path needed.
+Checked `errorMessages.js`'s `FORBIDDEN`, `USER_NOT_FOUND` and `VALIDATION_ERROR` entries per
+the stage's "Changes to already-implemented code" table: all three already have generic,
+toast-appropriate wording from earlier stages (`AdminUsers.jsx` shows `describeError(err).message`
+directly regardless of the `display` field), so no wording change was needed.
+
+Fixed one `oxlint` warning introduced by the new code (a function used before its textual
+declaration, flagged by `react(immutability)` despite function-declaration hoisting making it
+work at runtime) by moving `remaskRow`/`remaskAllRows` above the effect that calls them. Did not
+touch the pre-existing `react(set-state-in-effect)` warnings on the same lines — confirmed via
+`git stash` that this warning class already existed on this file (and ~8 other files) before
+this stage's changes.
+
+Wrote `tests/pages/AdminUsers.test.jsx` (6 tests, `listUsers`/`getFullEmail`/`AuthContext`
+mocked) covering the stage's frontend-testable Verification bullets: eye-icon visibility rules,
+reveal-then-re-mask-with-no-second-request, the 60s auto-re-mask (Vitest fake timers), two rows
+unmasking and re-masking on independent timers, the failure toast leaving the row masked, and
+re-masking every row after a refetch (a filter change). The last one needed
+`listUsers.mockImplementation(...)` instead of `mockResolvedValue(...)`: the latter reuses one
+object's identity across calls, which hid the very effect being tested (React's `[data]`
+dependency check saw no change) — not a real bug, since a real fetch always returns a fresh
+object. Also wrote `tests/api/users.test.js` for `getFullEmail` itself.
+
+No browser-automation tool is available in this environment, so the click-through could not be
+literally driven in a real browser. Verified the backend contract the UI depends on directly
+instead: brought up `user-db` + `user-service` (plus a throwaway registered user) and the Vite
+dev server, then used `curl` to confirm `GET /users` masks every email except the caller's own
+row, `GET /users/:id/full-email` returns the real email and logs a `granted` line, and targeting
+a super admin returns `403 FORBIDDEN` with a `denied` line — matching Stage 20a's already-merged
+backend exactly. Found the local dev Postgres volume was stale (missing Stage 18's lockout
+columns, since `init.sql`'s new `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` lines only run via
+the container's first-init script, and existing columns added inline in a `CREATE TABLE
+IF NOT EXISTS` for an already-existing table are silently skipped); fixed it by re-applying
+`init.sql` plus the two `users_otps` columns directly, which is purely additive and didn't
+affect the automated test database (`user_service_test`, on the same Postgres instance but a
+separate database that `tests/setup/globalSetup.ts` drops and recreates from `init.sql` fresh
+before every run, so it was never affected by the stale volume or this fix).
+
+**Verification run (this session):**
+
+- `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes (one of
+  them on a newly-added line, same class as throughout the codebase), no new warning categories.
+- `npx vite build` (frontend): clean.
+- `npx vitest run` (frontend): **7/7 passed** (new — this stage added the test runner itself).
+- `curl` against a live `user-service` + Postgres + the Vite dev server (proxying to it):
+  confirmed masked `GET /users`, the caller's-own-row exception, `GET /users/:id/full-email`'s
+  success and super-admin-target `403` paths, and both log-line shapes, all matching Stage 20a's
+  spec.
+- Not run: an actual browser click-through (no browser-automation tool available in this
+  environment) — left for the human.
+
+**Files:**
+
+- `frontend/vitest.config.js` (created)
+- `frontend/tests/setup.js` (created)
+- `frontend/tests/pages/AdminUsers.test.jsx` (created)
+- `frontend/tests/api/users.test.js` (created)
+- `frontend/package.json` (modified — `test` script, new devDependencies)
+- `frontend/package-lock.json` (modified)
+- `frontend/src/api/users.js` (modified — `getFullEmail`)
+- `frontend/src/pages/AdminUsers.jsx` (modified — eye icon, unmask/re-mask/timer logic)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Stopped and asked before adding a test runner to `frontend/`, per the stage's own instruction
+to do so (`frontend/` had none at all). The user chose Vitest + React Testing Library. No other
+ambiguity — `errorMessages.js`'s existing wording was checked and found adequate, as noted above.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
 ## 2026-11-02 — Phase 5: Authorization verification
 
 **Tool:** Codex (model: GPT-6)
@@ -6712,3 +7543,27 @@ Compared project-state statements with the plan, source files, recorded k6 resul
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-04 — PR 144: Merge conflict resolution
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor, docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing PR and main branch changes; root AGENTS.md disclosure requirements.
+
+**Prompts (exact):**
+> i created a PR at [https://github.com/AY2627S1-CS3219-P18/FoC/pull/144](https://github.com/AY2627S1-CS3219-P18/FoC/pull/144). resolve conflict
+
+**Key responses:**
+Resolved conflicts by preserving both branches' disclosure entries and using main's existing JWKS integration fixture. Supplier build passed; the first test run had one rate-limit test timeout while the build ran, and the rerun passed all 389 tests in 40 files.
+
+**Files:**
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `supplier-service/test/app.integration.test.ts` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+
+**Author review:**

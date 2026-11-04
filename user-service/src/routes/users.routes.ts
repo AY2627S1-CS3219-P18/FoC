@@ -15,6 +15,17 @@
  * Scope: Added GET /public and GET /public/:id, the public display-name lookup.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added POST /:id/unlock, per instructions.md Stage 18d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added GET /:id/full-email, per instructions.md Stage 20 (NFR3.1.1). Registered
+ *        before GET /:id per the stage's explicit route-order instruction.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -30,8 +41,11 @@ router.get('/public', authenticate, usersController.listPublic);
 router.get('/public/:id', authenticate, usersController.getPublicById);
 
 router.get('/', authenticate, authorize('admin'), usersController.list);
+// Must precede GET /:id, per instructions.md Stage 20's explicit route-order instruction.
+router.get('/:id/full-email', authenticate, authorize('admin'), usersController.fullEmail);
 router.get('/:id', authenticate, authorize('admin'), usersController.getById);
 router.put('/:id/status', authenticate, authorize('admin'), usersController.updateStatus);
 router.put('/:id/role', authenticate, authorize('super admin'), usersController.changeRole);
+router.post('/:id/unlock', authenticate, authorize('admin'), usersController.unlock);
 
 export default router;

@@ -12,6 +12,16 @@
 //   end-of-project test stage). No requirements, architecture, schema, or API decisions were
 //   made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 18f - added getUserById, setLoginLockState and setOtpSendBlock, so tests
+//   can seed/backdate the login-lockout and OTP send-escalation state directly. Governing
+//   decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// 2026-11-04: Stage 20 - added dbNow, so tests can assert that a logged timestamp came from
+//   the database clock rather than the service's own clock. Governing decision:
+//   instructions.md Stage 20.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -24,6 +34,11 @@ export async function truncateAll(): Promise<void> {
   await pool.query('TRUNCATE users CASCADE');
 }
 
+export async function dbNow(): Promise<Date> {
+  const r = await pool.query<{ now: Date }>('SELECT clock_timestamp() AS now');
+  return r.rows[0]!.now;
+}
+
 export async function getUserByEmail(email: string): Promise<UserRow | undefined> {
   const r = await pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
   return r.rows[0];
@@ -32,6 +47,62 @@ export async function getUserByEmail(email: string): Promise<UserRow | undefined
 export async function getUserByUsername(username: string): Promise<UserRow | undefined> {
   const r = await pool.query<UserRow>('SELECT * FROM users WHERE username = $1', [username]);
   return r.rows[0];
+}
+
+export async function getUserById(userId: string): Promise<UserRow | undefined> {
+  const r = await pool.query<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
+  return r.rows[0];
+}
+
+// Directly sets the Stage 18b login-lockout columns, so tests can seed a lock or an escalation
+// level/window without driving the rate limit through real requests. `lockedUntil` and
+// `windowStart` take an offset in minutes from now (negative = in the past).
+export async function setLoginLockState(
+  userId: string,
+  {
+    failedAttempts = 0,
+    windowStartMinutesAgo,
+    lockedUntilMinutesFromNow,
+    lockLevel = 0,
+  }: {
+    failedAttempts?: number;
+    windowStartMinutesAgo?: number;
+    lockedUntilMinutesFromNow?: number;
+    lockLevel?: number;
+  },
+): Promise<void> {
+  await pool.query(
+    `UPDATE users SET
+       login_failed_attempts = $2,
+       login_failure_window_start = CASE WHEN $3::int IS NULL THEN NULL
+         ELSE NOW() - make_interval(mins => $3::int) END,
+       login_locked_until = CASE WHEN $4::int IS NULL THEN NULL
+         ELSE NOW() + make_interval(mins => $4::int) END,
+       login_lock_level = $5
+     WHERE id = $1`,
+    [userId, failedAttempts, windowStartMinutesAgo ?? null, lockedUntilMinutesFromNow ?? null, lockLevel],
+  );
+}
+
+// Directly sets the Stage 18c OTP send-escalation columns on the latest row for
+// (userId, purpose), so tests can seed a block/level without driving the send cap through real
+// requests. `blockedUntilMinutesFromNow` takes an offset in minutes from now (negative = past).
+export async function setOtpSendBlock(
+  userId: string,
+  purpose: OtpPurpose,
+  { level, blockedUntilMinutesFromNow }: { level: number; blockedUntilMinutesFromNow: number | null },
+): Promise<void> {
+  await pool.query(
+    `UPDATE users_otps SET
+       send_escalation_level = $3,
+       send_blocked_until = CASE WHEN $4::int IS NULL THEN NULL
+         ELSE NOW() + make_interval(mins => $4::int) END
+     WHERE id = (
+       SELECT id FROM users_otps WHERE user_id = $1 AND purpose = $2
+       ORDER BY created_at DESC LIMIT 1
+     )`,
+    [userId, purpose, level, blockedUntilMinutesFromNow],
+  );
 }
 
 export async function countUsers(): Promise<number> {

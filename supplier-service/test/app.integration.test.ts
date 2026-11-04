@@ -6,15 +6,20 @@
  * Author review: Congchen
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Phase 1 route tests. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-29, Claude Code, model: claude-sonnet-5): added Phase 2 route tests per Phase 2
  *        plan Task 8. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/app.integration.test.ts to test/app.integration.test.ts and updated
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-02, Codex, model: GPT-6): updated integration fixtures for RS256 and JWKS.
+ * Author review: Congchen
  * Scope (2026-11-02, Codex, model: GPT-6): updated integration test credentials for JWKS authentication.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-04, Codex, model: GPT-6): Resolved merge conflict using the existing JWKS test fixture.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -24,24 +29,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../src/app.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const kid = 'app-integration';
+const kid = 'integration-test-key';
+const jwk = { ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256', use: 'sig' };
+
 function asRole(role: string): string {
+  vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ keys: [jwk] }), { status: 200 }));
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  const input = `${encode({ alg: 'RS256', kid })}.${encode({ sub: 'u-1', role, exp: Math.floor(Date.now() / 1000) + 300 })}`;
+  const input = `${encode({ alg: 'RS256', typ: 'JWT', kid })}.${encode({ sub: 'u-1', role, exp: Math.floor(Date.now() / 1000) + 300 })}`;
   const signer = createSign('RSA-SHA256');
   signer.update(input);
   signer.end();
   return `Bearer ${input}.${signer.sign(privateKey).toString('base64url')}`;
 }
-function stubJwks(): void {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
-    keys: [{ ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256' }],
-  }), { status: 200 })));
-}
 
 describe('app (Phase 0 middleware chain)', () => {
   beforeEach(() => {
-    stubJwks();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
@@ -55,8 +58,9 @@ describe('app (Phase 0 middleware chain)', () => {
   });
 
   it('returns 404 for an unknown route once authenticated', async () => {
+    const auth = asRole('user');
 
-    const res = await request(app).get('/api/v1/__probe').set('Authorization', asRole('user'));
+    const res = await request(app).get('/api/v1/__probe').set('Authorization', auth);
     expect(res.status).toBe(404);
   });
 
@@ -72,7 +76,8 @@ describe('app (Phase 0 middleware chain)', () => {
   });
 
   it('routes an authenticated user to the supplier list (empty database rows mocked out)', async () => {
-    const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', asRole('user'));
+    const auth = asRole('user');
+    const res = await request(app).get('/api/v1/suppliers?limit=51').set('Authorization', auth);
     // limit=51 fails validation before any database access, so no MySQL is needed for this test.
     expect(res.status).toBe(422);
   });
@@ -80,7 +85,7 @@ describe('app (Phase 0 middleware chain)', () => {
 
 describe('Phase 2 routes', () => {
   beforeEach(() => {
-    stubJwks();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
@@ -104,12 +109,14 @@ describe('Phase 2 routes', () => {
   });
 
   it('returns 400 for an admin create without an Idempotency-Key', async () => {
-    const res = await request(app).post('/api/v1/admin/suppliers').set('Authorization', asRole('admin'));
+    const auth = asRole('admin');
+    const res = await request(app).post('/api/v1/admin/suppliers').set('Authorization', auth);
     expect(res.status).toBe(400);
   });
 
   it('returns 422 for an admin list with a bad limit', async () => {
-    const res = await request(app).get('/api/v1/admin/suppliers?limit=10').set('Authorization', asRole('super admin'));
+    const auth = asRole('super admin');
+    const res = await request(app).get('/api/v1/admin/suppliers?limit=10').set('Authorization', auth);
     expect(res.status).toBe(422);
   });
 });

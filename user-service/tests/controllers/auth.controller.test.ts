@@ -9,6 +9,11 @@
 //   reused /auth/verify now use GET /users/me instead. Governing decision: instructions.md
 //   Stage 13b and 13c.
 // Author review:
+// 2026-11-04: Stage 18b/18c - the login lockout test suite below, and updated the
+//   OTP_RESEND_LIMIT Retry-After/rolling-window tests for the send-escalation block. Governing
+//   decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -25,8 +30,11 @@ import {
   getRefreshTokenByPlain,
   getRefreshTokens,
   getUserByEmail,
+  getUserById,
   getUserByUsername,
   seedRefreshToken,
+  setLoginLockState,
+  setOtpSendBlock,
   setUserRole,
   setUserStatus,
   truncateAll,
@@ -528,6 +536,45 @@ describe('POST /auth/login', () => {
         message: 'Request contains unexpected fields',
         code: 'VALIDATION_ERROR',
       });
+    });
+  });
+
+  describe('login lockout (Stage 18b)', () => {
+    it('the 5th wrong password in the window: 429 ACCOUNT_LOCKED with an exact Retry-After header', async () => {
+      const user = await createActiveUser(1);
+      await setLoginLockState(user.id, { failedAttempts: 4, windowStartMinutesAgo: 1 });
+
+      const res = await post('/auth/login').send({ identifier: user.email, password: 'Wrong!Pass1' });
+
+      expect(res.status).toBe(429);
+      expect(res.body).toEqual({
+        message: 'Too many failed login attempts. Please try again in about an hour.',
+        code: 'ACCOUNT_LOCKED',
+      });
+      expect(res.headers['retry-after']).toBe('3600');
+      expect((await getUserById(user.id))!.login_lock_level).toBe(1);
+    });
+
+    it('while locked, the correct password is still rejected with 429 ACCOUNT_LOCKED', async () => {
+      const user = await createActiveUser(1);
+      await setLoginLockState(user.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+      const res = await post('/auth/login').send({ identifier: user.email, password: PASSWORD });
+      expect(res.status).toBe(429);
+      expect(res.body.code).toBe('ACCOUNT_LOCKED');
+    });
+
+    it('a successful login resets the lock state, shown on GET /users', async () => {
+      const user = await createActiveUser(1);
+      await setLoginLockState(user.id, { failedAttempts: 4, windowStartMinutesAgo: 1 });
+
+      const res = await post('/auth/login').send({ identifier: user.email, password: PASSWORD });
+      expect(res.status).toBe(200);
+
+      const row = (await getUserById(user.id))!;
+      expect(row.login_failed_attempts).toBe(0);
+      expect(row.login_locked_until).toBeNull();
+      expect(row.login_lock_level).toBe(0);
     });
   });
 });
@@ -1226,12 +1273,14 @@ describe('POST /auth/resend-otp', () => {
         message: 'Maximum OTP resends reached. Please try again in about an hour.',
         code: 'OTP_RESEND_LIMIT',
       });
-      expect(res.headers['retry-after']).toBeUndefined();
+      // Stage 18c: the cap hit now also carries an escalating send block, reported here as an
+      // exact Retry-After.
+      expect(res.headers['retry-after']).toBe('3600');
       expect(await getOtps(user.id, 'Forgot Password')).toHaveLength(6);
       expect(sendOtpEmailMock).not.toHaveBeenCalled();
     });
 
-    it('the limit is not permanent: once the rows fall outside the window, resend works again', async () => {
+    it('the limit is not permanent once both the rolling window and the Stage 18c send block have passed', async () => {
       const user = await createActiveUser(1);
       await post('/auth/forgot-password').send({ email: user.email });
       for (let i = 0; i < 5; i++) {
@@ -1241,7 +1290,10 @@ describe('POST /auth/resend-otp', () => {
       await backdateOtps(user.id, 2, 'Forgot Password');
       expect((await resendForgot(user.email)).body.code).toBe('OTP_RESEND_LIMIT');
 
+      // The rolling window excludes the old rows, but the escalating send block (1h) is a
+      // separate, longer-lived gate; expire it directly so this isolates the window's effect.
       await backdateOtps(user.id, 61, 'Forgot Password');
+      await setOtpSendBlock(user.id, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: -1 });
       expect((await resendForgot(user.email)).status).toBe(200);
     });
 
@@ -1359,7 +1411,9 @@ describe('POST /auth/forgot-password', () => {
       message: 'Maximum OTP resends reached. Please try again in about an hour.',
       code: 'OTP_RESEND_LIMIT',
     });
-    expect(res.headers['retry-after']).toBeUndefined();
+    // Stage 18c: the cap hit now also carries an escalating send block, reported here as an
+    // exact Retry-After.
+    expect(res.headers['retry-after']).toBe('3600');
     expect(await getOtps(user.id, 'Forgot Password')).toHaveLength(6);
     expect(sendOtpEmailMock).not.toHaveBeenCalled();
   });
