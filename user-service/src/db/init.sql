@@ -10,6 +10,10 @@
 --    the credit-allocation transactional outbox. No requirements, architecture, schema, or API
 --    decisions were made by the AI tool — see instructions.md Stage 14 for the governing decision.
 --    Author review:
+--  2026-11-04: Stage 18a - added the login-lockout columns on users and the OTP
+--    send-escalation columns on users_otps. No requirements, architecture, schema, or API
+--    decisions were made by the AI tool — see instructions.md Stage 18 for the governing decision.
+--    Author review:
 
 DO $$ BEGIN
   CREATE TYPE status_enum AS ENUM ('pending', 'active', 'suspended');
@@ -48,6 +52,14 @@ CREATE TABLE IF NOT EXISTS users (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active_view active_view_enum NOT NULL DEFAULT 'requester';
 
+-- Stage 18a: login lockout state (NFR1.1). login_lock_level is the escalation level that
+-- produced login_locked_until (0 = never locked); the time it was last hit is derived from
+-- login_locked_until minus that level's lock length, not stored separately.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_failed_attempts SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_failure_window_start TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_locked_until TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_lock_level SMALLINT NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS users_otps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -58,7 +70,12 @@ CREATE TABLE IF NOT EXISTS users_otps (
   max_attempts SMALLINT NOT NULL DEFAULT 5,
   expires_at TIMESTAMPTZ NOT NULL,
   consumed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Stage 18c: OTP send-escalation state, carried onto whichever row is latest for its
+  -- (user_id, purpose). send_escalation_level is the level that produced send_blocked_until
+  -- (0 = never capped); the time it was last hit is derived the same way as the login lock.
+  send_escalation_level SMALLINT NOT NULL DEFAULT 0,
+  send_blocked_until TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (

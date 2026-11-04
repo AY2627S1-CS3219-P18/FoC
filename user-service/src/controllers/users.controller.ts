@@ -22,6 +22,12 @@
  *        instructions.md Stage 15b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: `list` validates the new `locked` filter, and added the `unlock` controller, per
+ *        instructions.md Stage 18d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -107,6 +113,7 @@ const listUsersQuerySchema = z
       "sortBy must be 'username', 'email' or 'createdAt'",
     ),
     sortDir: enumFilterField(['asc', 'desc'] as const, "sortDir must be 'asc' or 'desc'"),
+    locked: enumFilterField(['true', 'false'] as const, "locked must be 'true' or 'false'"),
   })
   .strict();
 
@@ -153,6 +160,7 @@ export const list = asyncHandler(async (req, res) => {
     email: parsed.email,
     status: parsed.status,
     role: parsed.role,
+    locked: parsed.locked === undefined ? undefined : parsed.locked === 'true',
     sortBy,
     sortDir,
   });
@@ -192,5 +200,12 @@ export const changeRole = asyncHandler(async (req, res) => {
   const { role } = changeRoleSchema.parse(req.body);
   // authenticate has run, so req.user is set.
   const user = await usersService.changeUserRole(req.user!.user_id, id, role);
+  res.status(200).json(user);
+});
+
+export const unlock = asyncHandler(async (req, res) => {
+  const { id } = idParamsSchema.parse(req.params);
+  // authenticate has run, so req.user is set.
+  const user = await usersService.unlockUser(req.user!.role, id);
   res.status(200).json(user);
 });

@@ -27,8 +27,15 @@
  *        (src/services/userResponse.ts), per instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: listUsers takes the `locked` filter, and added unlockUser (POST /users/:id/unlock),
+ *        per instructions.md Stage 18d. Its permission rules mirror changeUserStatus's.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
+import * as otpQueries from '../db/queries/otp.queries.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
@@ -67,6 +74,7 @@ export interface ListUsersParams {
   email?: string;
   status?: 'pending' | 'active' | 'suspended';
   role?: 'user' | 'admin' | 'super admin';
+  locked?: boolean;
   sortBy: 'username' | 'email' | 'createdAt';
   sortDir: 'asc' | 'desc';
 }
@@ -85,6 +93,7 @@ export async function listUsers({
   email,
   status,
   role,
+  locked,
   sortBy,
   sortDir,
 }: ListUsersParams): Promise<ListUsersResult> {
@@ -94,6 +103,7 @@ export async function listUsers({
     email,
     status,
     role,
+    locked,
     sortBy,
     sortDir,
     limit: PAGE_SIZE,
@@ -203,5 +213,36 @@ export async function changeUserRole(
     await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
 
     return toUserResponse(updated);
+  });
+}
+
+// POST /users/:id/unlock. Permission rules mirror changeUserStatus's: SUPER_ADMIN_IMMUTABLE on
+// a super-admin target, FORBIDDEN when an admin targets another admin (Stage 18d).
+export async function unlockUser(requestorRole: string, targetId: string): Promise<UserResponse> {
+  return withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(targetId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    if (locked.role === 'super admin') {
+      throw new AppError(403, 'Cannot modify a super administrator', 'SUPER_ADMIN_IMMUTABLE');
+    }
+    if (locked.role === 'admin' && requestorRole === 'admin') {
+      throw new AppError(403, 'Only a super admin may unlock an admin', 'FORBIDDEN');
+    }
+
+    // Clears the login lock and its escalation, and the OTP send blocks and their escalation
+    // for all three purposes.
+    await userQueries.resetLoginLock(locked.id, client);
+    await otpQueries.clearSendBlocksForUser(locked.id, client);
+
+    return toUserResponse({
+      ...locked,
+      login_failed_attempts: 0,
+      login_failure_window_start: null,
+      login_locked_until: null,
+      login_lock_level: 0,
+    });
   });
 }

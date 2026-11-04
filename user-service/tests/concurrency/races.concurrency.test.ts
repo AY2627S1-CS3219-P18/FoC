@@ -2,6 +2,12 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - concurrency suite: simultaneous requests against the real test DB
 // Author review:
+// 2026-11-04: Stage 18b - updated two pre-existing tests whose repeated wrong-password login
+//   attempts now interact with the login lockout: "concurrent reset-password" accepts 429
+//   ACCOUNT_LOCKED alongside 401 for a stale password, and "login racing reset-password"
+//   additionally tolerates 429 mid-race and clears any lock between rounds so it cannot carry
+//   over. No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import app from '../../src/app.js';
@@ -20,6 +26,7 @@ import {
   getUserByEmail,
   seedOtp,
   seedRefreshToken,
+  setLoginLockState,
   truncateAll,
 } from '../helpers/db.js';
 import { latestOtpFor, resetEmailMock } from '../helpers/email.js';
@@ -206,10 +213,13 @@ describe('concurrent reset-password', () => {
     expectOneWinner(rs, 400, 'INVALID_OTP');
     const winner = passwords[rs.findIndex((r) => r.status === 200)]!;
     expect((await loginUser(user, winner)).status).toBe(200);
-    for (const p of passwords.filter((p) => p !== winner)) {
-      expect((await loginUser(user, p)).status).toBe(401);
+    // Each wrong password below also counts as a login failure (Stage 18b): by the 5th one
+    // (including the stale original PASSWORD), the shared counter may have locked the account,
+    // so a login attempt can legitimately get 429 ACCOUNT_LOCKED instead of 401 — either way,
+    // it is never let in.
+    for (const p of [...passwords.filter((p) => p !== winner), PASSWORD]) {
+      expect([401, 429]).toContain((await loginUser(user, p)).status);
     }
-    expect((await loginUser(user, PASSWORD)).status).toBe(401);
   });
 });
 
@@ -333,12 +343,19 @@ describe('login racing reset-password', () => {
       await Promise.all(workers);
 
       expect(reset.status, `round ${i}: reset`).toBe(200);
+      // Three workers hammering login with the now-stale password can rack up enough failures
+      // within the race window to trip the Stage 18b lock, which then also rejects a
+      // correct-password attempt with 429 rather than letting it through as 200 — still "never
+      // let in with the old password", the invariant this test actually cares about.
       expect(
-        loginStatuses.every((s) => s === 200 || s === 401),
+        loginStatuses.every((s) => s === 200 || s === 401 || s === 429),
         `round ${i}: ${loginStatuses}`,
       ).toBe(true);
       const live = (await getRefreshTokens(user.id)).filter((t) => !t.is_revoked);
       expect(live, `round ${i}: live tokens from old-password logins`).toHaveLength(0);
+      // Clear any lock the burst of old-password failures above may have set, so it cannot
+      // carry over and poison the next round.
+      await setLoginLockState(user.id, {});
       current = next;
     }
   });

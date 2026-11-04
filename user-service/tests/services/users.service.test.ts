@@ -15,13 +15,24 @@
  * Scope: Updated the expected keys for the new active_view column (Stage 11); no new test cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Updated the expected UserResponse keys for isLocked/lockedUntil/lockLevel, and added
+ *        coverage for listUsers' `locked` filter and unlockUser's permission rules and effect
+ *        (clears the login lock and the OTP send blocks), per instructions.md Stage 18d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
 import {
+  getOtps,
   getRefreshTokens,
   getUserByEmail,
+  getUserById,
   seedRefreshToken,
+  setLoginLockState,
+  setOtpSendBlock,
   setUserRole,
   setUserStatus,
   truncateAll,
@@ -47,7 +58,19 @@ describe('listUsers', () => {
     for (const u of result.users) {
       expect(u).not.toHaveProperty('password_hash');
       expect(Object.keys(u).sort()).toEqual(
-        ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
+        [
+          'activeView',
+          'createdAt',
+          'email',
+          'id',
+          'isLocked',
+          'lockLevel',
+          'lockedUntil',
+          'role',
+          'status',
+          'updatedAt',
+          'username',
+        ].sort(),
       );
     }
   });
@@ -358,5 +381,112 @@ describe('changeUserRole', () => {
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
     });
+  });
+});
+
+describe('listUsers locked filter (Stage 18d)', () => {
+  it('locked=true/false partition the result set', async () => {
+    const locked = await createActiveUser(1);
+    await setLoginLockState(locked.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const notLocked = await createActiveUser(2);
+
+    const lockedOnly = await usersService.listUsers({
+      page: 1,
+      locked: true,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
+    });
+    expect(lockedOnly.users.map((u) => u.id)).toEqual([locked.id]);
+    expect(lockedOnly.users[0]!.isLocked).toBe(true);
+    expect(lockedOnly.users[0]!.lockLevel).toBe(1);
+
+    const notLockedOnly = await usersService.listUsers({
+      page: 1,
+      locked: false,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
+    });
+    expect(notLockedOnly.users.map((u) => u.id)).toEqual([notLocked.id]);
+  });
+
+  it('an expired lock counts as not locked', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: -1 });
+    const result = await usersService.listUsers({
+      page: 1,
+      locked: false,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
+    });
+    expect(result.users.map((r) => r.id)).toContain(u.id);
+  });
+});
+
+describe('unlockUser (Stage 18d)', () => {
+  it('clears the login lock and its escalation', async () => {
+    await createUserWithRole('sa', 'super admin');
+    const target = await createActiveUser(1);
+    await setLoginLockState(target.id, { lockLevel: 2, lockedUntilMinutesFromNow: 60, failedAttempts: 5 });
+
+    const result = await usersService.unlockUser('super admin', target.id);
+    expect(result).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
+
+    const row = (await getUserById(target.id))!;
+    expect(row.login_failed_attempts).toBe(0);
+    expect(row.login_failure_window_start).toBeNull();
+    expect(row.login_locked_until).toBeNull();
+    expect(row.login_lock_level).toBe(0);
+  });
+
+  it('clears the OTP send blocks and their escalation for all three purposes', async () => {
+    const target = await createActiveUser(1);
+    for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
+      await setOtpSendBlock(target.id, purpose, { level: 2, blockedUntilMinutesFromNow: 60 });
+    }
+
+    await usersService.unlockUser('super admin', target.id);
+
+    for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
+      const rows = await getOtps(target.id, purpose);
+      for (const row of rows) {
+        expect(row.send_escalation_level).toBe(0);
+        expect(row.send_blocked_until).toBeNull();
+      }
+    }
+  });
+
+  it('throws 404 USER_NOT_FOUND for an id that does not exist', async () => {
+    await expect(usersService.unlockUser('admin', UNKNOWN_ID)).rejects.toMatchObject({
+      status: 404,
+      code: 'USER_NOT_FOUND',
+    });
+  });
+
+  it('throws 403 SUPER_ADMIN_IMMUTABLE on a super-admin target', async () => {
+    const otherSa = await createUserWithRole('sa2', 'super admin');
+    await setLoginLockState(otherSa.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    await expect(usersService.unlockUser('super admin', otherSa.id)).rejects.toMatchObject({
+      status: 403,
+      code: 'SUPER_ADMIN_IMMUTABLE',
+    });
+  });
+
+  it('throws 403 FORBIDDEN when an admin targets another admin, but a super admin may unlock an admin', async () => {
+    const admin2 = await createUserWithRole('admin2', 'admin');
+    await setLoginLockState(admin2.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    await expect(usersService.unlockUser('admin', admin2.id)).rejects.toMatchObject({
+      status: 403,
+      code: 'FORBIDDEN',
+    });
+
+    const result = await usersService.unlockUser('super admin', admin2.id);
+    expect(result.isLocked).toBe(false);
+  });
+
+  it('an admin may unlock a plain user', async () => {
+    const target = await createActiveUser(1);
+    await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const result = await usersService.unlockUser('admin', target.id);
+    expect(result.isLocked).toBe(false);
   });
 });

@@ -7,15 +7,24 @@
  *        updateUserRole (PUT /users/:id/role).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: listUsers takes the `locked` filter, and added unlockUser (POST /users/:id/unlock),
+ *        per instructions.md Stage 18e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
 
 // 200 { users, page, pageSize, total, totalPages }. users.js's shape mirrors profile.js's
-// getProfile: { id, username, email, status, role, activeView, createdAt, updatedAt }.
+// getProfile, plus isLocked/lockedUntil/lockLevel (Stage 18d): { id, username, email, status,
+// role, activeView, createdAt, updatedAt, isLocked, lockedUntil, lockLevel }.
 // Admin/super admin only (403 FORBIDDEN otherwise).
-export async function listUsers({ page, username, email, status, role, sortBy, sortDir }) {
-  return request('/users', { query: { page, username, email, status, role, sortBy, sortDir } })
+export async function listUsers({ page, username, email, status, role, locked, sortBy, sortDir }) {
+  return request('/users', {
+    query: { page, username, email, status, role, locked, sortBy, sortDir },
+  })
 }
 
 // 200 the full user shape. 404 USER_NOT_FOUND, 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin
@@ -29,4 +38,10 @@ export async function updateUserStatus(id, status) {
 // CANNOT_CHANGE_ROLE_SUSPENDED_USER.
 export async function updateUserRole(id, role) {
   return request('/users/' + id + '/role', { method: 'PUT', json: { role } })
+}
+
+// 200 the full user shape. Admin/super admin (403 FORBIDDEN otherwise). 404 USER_NOT_FOUND,
+// 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin targeting another admin).
+export async function unlockUser(id) {
+  return request('/users/' + id + '/unlock', { method: 'POST' })
 }
