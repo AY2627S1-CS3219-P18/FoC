@@ -44,6 +44,34 @@
  *        instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: initiateEmailChange and initiatePasswordChange now run as two transactions: phase 1
+ *        checks the login lockout and the current password (counting a wrong one on the same
+ *        counter as login, Stage 18b) and commits its reset/failure write on its own; phase 2
+ *        does the email/password-specific checks and the OTP request. This is so a later
+ *        failure in phase 2 (e.g. EMAIL_UNCHANGED) can never roll back phase 1's lockout write.
+ *        Renamed throwOnUnsentOtp to unsentOtpError (returns the error instead of throwing it)
+ *        for the same reason on the OTP side: a send-escalation cap hit (Stage 18c) writes the
+ *        new level/block end inside the same transaction that calls requestOtp, so every
+ *        caller now applies the result after that transaction commits, not inside it. Its
+ *        OTP_RESEND_LIMIT message/Retry-After also now match the escalation level.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Pass locked.username to requestOtp at initiateEmailChange, resendChangeEmailOtp,
+ *        resendChangePasswordOtp and initiatePasswordChange, for the OTP-email retry/logging
+ *        added in email.service.ts and otp.service.ts. Governing decision: instructions.md
+ *        Stage 19.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: changeActiveView passes its own userId as toUserResponse's new requesterId param
+ *        (self-view, so the email stays unmasked), per instructions.md Stage 20.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -53,13 +81,17 @@ import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import {
+  accountLockedAppError,
   EMAIL_REGEX,
   OTP_REGEX,
   PASSWORD_MESSAGE,
   PASSWORD_REGEX,
+  recordLoginFailure,
+  throwIfLoginLocked,
   USERNAME_MESSAGE,
   USERNAME_REGEX,
 } from './auth.service.js';
+import { escalationWording } from './lockEscalation.js';
 import { checkOtp, requestOtp, type RequestOtpResult } from './otp.service.js';
 import { toUserResponse, type UserResponse } from './userResponse.js';
 
@@ -77,28 +109,34 @@ function isPgUniqueViolation(err: unknown): err is { code: string; constraint?: 
 // Shared by initiateEmailChange, resendChangeEmailOtp and resendChangePasswordOtp.
 // no-user/not-verified cannot occur at any of these call sites, since each already holds
 // the user row locked and active, but the switch stays exhaustive.
-function throwOnUnsentOtp(result: RequestOtpResult): void {
+//
+// Returns the error rather than throwing it: a cap hit writes the new escalation level/block
+// end (Stage 18c) inside the same transaction that calls requestOtp, so throwing in there would
+// roll that write back. Callers return the RequestOtpResult as their transaction's value and
+// call `if (err) throw err;` with this only after that transaction has committed.
+function unsentOtpError(result: RequestOtpResult): AppError | null {
   switch (result.status) {
     case 'sent':
-      return;
+      return null;
     case 'throttled':
       if (result.reason === 'cooldown') {
-        throw new AppError(
+        return new AppError(
           429,
           'Please wait before requesting another OTP',
           'OTP_RESEND_COOLDOWN',
           result.retryAfterSeconds,
         );
       }
-      throw new AppError(
+      return new AppError(
         429,
-        'Maximum OTP resends reached. Please try again in about an hour.',
+        `Maximum OTP resends reached. Please try again in ${escalationWording(result.level)}.`,
         'OTP_RESEND_LIMIT',
+        result.retryAfterSeconds,
       );
     case 'no-user':
-      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+      return new AppError(404, 'User not found', 'USER_NOT_FOUND');
     case 'not-verified':
-      throw new AppError(
+      return new AppError(
         403,
         'Account not verified. Please finish registration first.',
         'ACCOUNT_NOT_VERIFIED',
@@ -116,7 +154,7 @@ export async function changeActiveView(
   if (!row) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return toUserResponse(row);
+  return toUserResponse(row, userId);
 }
 
 export async function getOwnProfile(
@@ -184,31 +222,50 @@ export async function initiateEmailChange(
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
   const passwordMatches = await bcrypt.compare(currentPassword, user.password_hash);
-  if (!passwordMatches) {
-    throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
-  }
-  if (newEmail === user.email) {
-    throw new AppError(
-      409,
-      'New email must be different from your current email',
-      'EMAIL_UNCHANGED',
-    );
-  }
-  const existing = await userQueries.findByEmail(newEmail);
-  if (existing && existing.id !== userId) {
-    throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
-  }
 
-  await withTransaction(async (client) => {
-    const locked = await userQueries.lockUserById(userId, client);
+  // Phase 1: the lock check and current-password check, committed on their own, so a correct
+  // password's reset of the login-lockout counter (Stage 18b) is never undone by a later
+  // failure in phase 2 (e.g. EMAIL_UNCHANGED) rolling back this transaction.
+  const authOutcome = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserByIdWithNow(userId, client);
     if (!locked) {
       throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
 
+    // Check order (Stage 18b): the lock check runs before the current-password check.
+    throwIfLoginLocked(locked);
+
     // Re-verify against the locked row: the pre-lock read can be stale.
-    const stillMatches = await bcrypt.compare(currentPassword, locked.password_hash);
+    const stillMatches = passwordMatches && (await bcrypt.compare(currentPassword, locked.password_hash));
     if (!stillMatches) {
-      throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+      if (locked.status !== 'pending' && locked.status !== 'suspended') {
+        const failureResult = await recordLoginFailure(locked, client);
+        // The failure that hits the threshold is itself rejected with ACCOUNT_LOCKED, not
+        // INVALID_PASSWORD, but the lock write must commit before that is thrown.
+        if (failureResult.locked) {
+          return { kind: 'locked' as const, result: failureResult };
+        }
+      }
+      return { kind: 'invalid' as const };
+    }
+    // A correct current password resets the login-lockout counter (Stage 18b).
+    await userQueries.resetLoginLock(locked.id, client);
+    return { kind: 'ok' as const };
+  });
+
+  if (authOutcome.kind === 'locked') {
+    throw accountLockedAppError(authOutcome.result);
+  }
+  if (authOutcome.kind === 'invalid') {
+    throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+  }
+
+  // Phase 2: email validation and the OTP request. A cap hit's write must commit even though
+  // the result is an error, so unsentOtpError is applied after this transaction, not inside it.
+  const otpResult = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserById(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
 
     if (newEmail === locked.email) {
@@ -223,12 +280,13 @@ export async function initiateEmailChange(
       throw new AppError(409, 'Email already in use', 'EMAIL_TAKEN');
     }
 
-    const result = await requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Email', newEmail },
+    return requestOtp(
+      { userId: locked.id, email: locked.email, purpose: 'Change Email', newEmail, username: locked.username },
       client,
     );
-    throwOnUnsentOtp(result);
   });
+  const err = unsentOtpError(otpResult);
+  if (err) throw err;
 }
 
 // The OTP row's new_email is always set for a Change Email purpose: initiateEmailChange is
@@ -268,7 +326,9 @@ export async function verifyEmailChangeOtp(userId: string, otp: string): Promise
 }
 
 export async function resendChangeEmailOtp(userId: string): Promise<void> {
-  await withTransaction(async (client) => {
+  // A cap hit's write must commit even though the result is an error, so unsentOtpError is
+  // applied after this transaction, not inside it.
+  const result = await withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(userId, client);
     if (!locked) {
       throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
@@ -279,21 +339,25 @@ export async function resendChangeEmailOtp(userId: string): Promise<void> {
       throw new AppError(400, 'No pending email change found', 'NO_PENDING_EMAIL_CHANGE');
     }
 
-    const result = await requestOtp(
+    return requestOtp(
       {
         userId: locked.id,
         email: locked.email,
         purpose: 'Change Email',
         newEmail: pending.new_email!,
+        username: locked.username,
       },
       client,
     );
-    throwOnUnsentOtp(result);
   });
+  const err = unsentOtpError(result);
+  if (err) throw err;
 }
 
 export async function resendChangePasswordOtp(userId: string): Promise<void> {
-  await withTransaction(async (client) => {
+  // A cap hit's write must commit even though the result is an error, so unsentOtpError is
+  // applied after this transaction, not inside it.
+  const result = await withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(userId, client);
     if (!locked) {
       throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
@@ -304,12 +368,13 @@ export async function resendChangePasswordOtp(userId: string): Promise<void> {
       throw new AppError(400, 'No pending password change found', 'NO_PENDING_PASSWORD_CHANGE');
     }
 
-    const result = await requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+    return requestOtp(
+      { userId: locked.id, email: locked.email, purpose: 'Change Password', username: locked.username },
       client,
     );
-    throwOnUnsentOtp(result);
   });
+  const err = unsentOtpError(result);
+  if (err) throw err;
 }
 
 // newPassword is validated here but never written anywhere — it is discarded once this
@@ -328,36 +393,69 @@ export async function initiatePasswordChange(
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
   const passwordMatches = await bcrypt.compare(currentPassword, user.password_hash);
-  if (!passwordMatches) {
+
+  // Phase 1: the lock check and current-password check, committed on their own, so a correct
+  // password's reset of the login-lockout counter (Stage 18b) is never undone by a later
+  // failure in phase 2 (e.g. PASSWORD_UNCHANGED) rolling back this transaction.
+  const authOutcome = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserByIdWithNow(userId, client);
+    if (!locked) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
+
+    // Check order (Stage 18b): the lock check runs before the current-password check.
+    throwIfLoginLocked(locked);
+
+    // Re-verify against the locked row: the pre-lock read can be stale.
+    const stillMatches = passwordMatches && (await bcrypt.compare(currentPassword, locked.password_hash));
+    if (!stillMatches) {
+      if (locked.status !== 'pending' && locked.status !== 'suspended') {
+        const failureResult = await recordLoginFailure(locked, client);
+        // The failure that hits the threshold is itself rejected with ACCOUNT_LOCKED, not
+        // INVALID_PASSWORD, but the lock write must commit before that is thrown.
+        if (failureResult.locked) {
+          return { kind: 'locked' as const, result: failureResult };
+        }
+      }
+      return { kind: 'invalid' as const };
+    }
+    // A correct current password resets the login-lockout counter (Stage 18b).
+    await userQueries.resetLoginLock(locked.id, client);
+    return { kind: 'ok' as const };
+  });
+
+  if (authOutcome.kind === 'locked') {
+    throw accountLockedAppError(authOutcome.result);
+  }
+  if (authOutcome.kind === 'invalid') {
     throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
   }
-  const sameAsCurrent = await bcrypt.compare(newPassword, user.password_hash);
-  if (sameAsCurrent) {
-    throw new AppError(
-      400,
-      'New password must be different from your current password',
-      'PASSWORD_UNCHANGED',
-    );
-  }
 
-  await withTransaction(async (client) => {
+  // Phase 2: the new-password check and the OTP request. A cap hit's write must commit even
+  // though the result is an error, so unsentOtpError is applied after this transaction, not
+  // inside it.
+  const otpResult = await withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(userId, client);
     if (!locked) {
       throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
 
-    // Re-verify against the locked row: the pre-lock read can be stale.
-    const stillMatches = await bcrypt.compare(currentPassword, locked.password_hash);
-    if (!stillMatches) {
-      throw new AppError(401, 'Current password is incorrect', 'INVALID_PASSWORD');
+    const sameAsCurrent = await bcrypt.compare(newPassword, locked.password_hash);
+    if (sameAsCurrent) {
+      throw new AppError(
+        400,
+        'New password must be different from your current password',
+        'PASSWORD_UNCHANGED',
+      );
     }
 
-    const result = await requestOtp(
-      { userId: locked.id, email: locked.email, purpose: 'Change Password' },
+    return requestOtp(
+      { userId: locked.id, email: locked.email, purpose: 'Change Password', username: locked.username },
       client,
     );
-    throwOnUnsentOtp(result);
   });
+  const err = unsentOtpError(otpResult);
+  if (err) throw err;
 }
 
 export async function confirmPasswordChange(

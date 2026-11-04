@@ -10,6 +10,11 @@
 //   its tests to the end-of-project test stage). No requirements, architecture, schema, or API
 //   decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 18b/18c - added coverage for login()'s lockout (threshold, escalation,
+//   reset, pending/suspended exclusion, Retry-After) and forgotPassword's OTP_RESEND_LIMIT
+//   escalation wording. Governing decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
@@ -25,8 +30,11 @@ import {
   getRefreshTokenByPlain,
   getRefreshTokens,
   getUserByEmail,
+  getUserById,
   seedOtp,
   seedRefreshToken,
+  setLoginLockState,
+  setOtpSendBlock,
   setUserRole,
   setUserStatus,
   truncateAll,
@@ -229,6 +237,153 @@ describe('login', () => {
     await setUserRole(u.id, 'super admin');
     const r = await authService.login({ identifier: u.email, password: PASSWORD }, null, null);
     expect(r.user.role).toBe('super admin');
+  });
+});
+
+describe('login lockout (Stage 18b)', () => {
+  it('4 wrong passwords then the correct one: login succeeds and the counter resets', async () => {
+    const u = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    const r = await authService.login({ identifier: u.email, password: PASSWORD }, null, null);
+    expect(r.user.id).toBe(u.id);
+    const row = (await getUserById(u.id))!;
+    expect(row.login_failed_attempts).toBe(0);
+    expect(row.login_failure_window_start).toBeNull();
+    expect(row.login_locked_until).toBeNull();
+    expect(row.login_lock_level).toBe(0);
+  });
+
+  it('the 5th wrong password within the window locks for 1h with Retry-After, and the correct password is still rejected', async () => {
+    const u = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    const err = await appError(
+      authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null),
+    );
+    expect(err).toMatchObject({
+      status: 429,
+      code: 'ACCOUNT_LOCKED',
+      message: 'Too many failed login attempts. Please try again in about an hour.',
+    });
+    expect(err.retryAfterSeconds).toBeGreaterThan(3500);
+    expect(err.retryAfterSeconds).toBeLessThanOrEqual(3600);
+
+    const stillLocked = await appError(
+      authService.login({ identifier: u.email, password: PASSWORD }, null, null),
+    );
+    expect(stillLocked).toMatchObject({ status: 429, code: 'ACCOUNT_LOCKED' });
+
+    const row = (await getUserById(u.id))!;
+    expect(row.login_lock_level).toBe(1);
+  });
+
+  it('5 wrong passwords spread over more than the window: no lock', async () => {
+    const u = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    // The window (15 min) has expired, so this starts a fresh window instead of locking.
+    await setLoginLockState(u.id, { failedAttempts: 4, windowStartMinutesAgo: 20 });
+    await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    const row = (await getUserById(u.id))!;
+    expect(row.login_locked_until).toBeNull();
+    expect(row.login_failed_attempts).toBe(1);
+  });
+
+  it('a wrong password on a pending or suspended account does not count, and an unknown identifier does not count', async () => {
+    const pending = await registerPending(1);
+    for (let i = 0; i < 10; i++) {
+      await appError(authService.login({ identifier: pending.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    expect((await getUserByEmail(pending.email))!.login_failed_attempts).toBe(0);
+
+    const suspended = await createActiveUser(2);
+    await setUserStatus(suspended.id, 'suspended');
+    for (let i = 0; i < 10; i++) {
+      await appError(authService.login({ identifier: suspended.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    expect((await getUserById(suspended.id))!.login_failed_attempts).toBe(0);
+
+    for (let i = 0; i < 10; i++) {
+      await appError(authService.login({ identifier: 'nobody@example.com', password: 'x' }, null, null));
+    }
+    expect(await countUsers()).toBe(2);
+  });
+
+  it('escalates 1h -> 4h -> 24h, and a lock does not revoke refresh tokens (/auth/refresh keeps working)', async () => {
+    const u = await createActiveUser(1);
+    const { refreshToken } = await authService.login({ identifier: u.email, password: PASSWORD }, null, null);
+
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    let err = await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    expect(err).toMatchObject({ status: 429, code: 'ACCOUNT_LOCKED' });
+    expect(err.message).toContain('about an hour');
+
+    // Lock has passed and the next failure escalates to level 2 (4h).
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: -1 });
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    err = await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    expect(err.message).toContain('about 4 hours');
+    expect((await getUserById(u.id))!.login_lock_level).toBe(2);
+
+    // Third lock escalates to 24h, worded "about a day".
+    await setLoginLockState(u.id, { lockLevel: 2, lockedUntilMinutesFromNow: -1 });
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    err = await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    expect(err.message).toContain('about a day');
+    expect((await getUserById(u.id))!.login_lock_level).toBe(3);
+
+    // The lock never revoked the refresh token issued before it.
+    const refreshResult = await authService.refresh(refreshToken);
+    expect(refreshResult.accessToken).toBeTruthy();
+  });
+
+  it('the escalation level resets to 1h after 24h with no new lock, but not before', async () => {
+    const u = await createActiveUser(1);
+
+    // 23h since the last hit (derived from lockedUntil - 4h, the level-2 duration): still level 2.
+    await setLoginLockState(u.id, {
+      lockLevel: 2,
+      lockedUntilMinutesFromNow: -(23 * 60 - 4 * 60),
+    });
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    let err = await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    expect(err.message).toContain('about a day');
+
+    // 25h since the last hit: the quiet window has passed, so this escalates from 0, not 3.
+    await setLoginLockState(u.id, {
+      lockLevel: 2,
+      lockedUntilMinutesFromNow: -(25 * 60 - 4 * 60),
+    });
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    err = await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    expect(err.message).toContain('about an hour');
+    expect((await getUserById(u.id))!.login_lock_level).toBe(1);
+  });
+
+  it('a super admin can be locked; suspending a locked account works and does not clear the lock', async () => {
+    const u = await createActiveUser(1);
+    await setUserRole(u.id, 'super admin');
+    for (let i = 0; i < 5; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    expect((await getUserById(u.id))!.login_locked_until).not.toBeNull();
+
+    await setUserStatus(u.id, 'suspended');
+    const row = (await getUserById(u.id))!;
+    expect(row.status).toBe('suspended');
+    expect(row.login_locked_until).not.toBeNull();
   });
 });
 
@@ -436,7 +591,7 @@ describe('forgotPassword and resendForgotPasswordOtp', () => {
     ).toHaveLength(0);
   });
 
-  it('throws OTP_RESEND_LIMIT with the "about an hour" message', async () => {
+  it('throws OTP_RESEND_LIMIT with the "about an hour" message and a 3600s Retry-After on the first cap hit', async () => {
     const u = await createActiveUser(1);
     for (let i = 0; i < 6; i++) {
       await authService.forgotPassword({ email: u.email });
@@ -448,7 +603,52 @@ describe('forgotPassword and resendForgotPasswordOtp', () => {
       code: 'OTP_RESEND_LIMIT',
       message: 'Maximum OTP resends reached. Please try again in about an hour.',
     });
-    expect(err.retryAfterSeconds).toBeUndefined();
+    expect(err.retryAfterSeconds).toBe(3600);
+  });
+
+  it('a second cap hit (no verify in between) escalates to "about 4 hours"', async () => {
+    const u = await createActiveUser(1);
+    await authService.forgotPassword({ email: u.email });
+    await setOtpSendBlock(u.id, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: -1 });
+    await backdateOtps(u.id, 2, 'Forgot Password');
+    // One row already exists above, so 5 more (not 6) reach the cap exactly on the explicit
+    // call below, rather than inside this loop.
+    for (let i = 0; i < 5; i++) {
+      await authService.forgotPassword({ email: u.email });
+      await backdateOtps(u.id, 2, 'Forgot Password');
+    }
+    const err = await appError(authService.forgotPassword({ email: u.email }));
+    expect(err.message).toBe('Maximum OTP resends reached. Please try again in about 4 hours.');
+    expect(err.retryAfterSeconds).toBe(4 * 3600);
+  });
+
+  it('a successful reset-password resets the escalation level back to 1h on the next cap hit', async () => {
+    const u = await createActiveUser(1);
+    await authService.forgotPassword({ email: u.email });
+    await setOtpSendBlock(u.id, 'Forgot Password', { level: 2, blockedUntilMinutesFromNow: -1 });
+    const otp = latestOtpFor(u.email);
+    await authService.resetPassword({ email: u.email, otp, newPassword: NEW_PASSWORD });
+    await backdateOtps(u.id, 2, 'Forgot Password');
+
+    // One (now consumed) row already exists above, so 5 more (not 6) reach the cap exactly on
+    // the explicit call below, rather than inside this loop.
+    for (let i = 0; i < 5; i++) {
+      await authService.forgotPassword({ email: u.email });
+      await backdateOtps(u.id, 2, 'Forgot Password');
+    }
+    const err = await appError(authService.forgotPassword({ email: u.email }));
+    expect(err.message).toBe('Maximum OTP resends reached. Please try again in about an hour.');
+  });
+
+  it('a send while blocked is rejected without creating a new OTP row', async () => {
+    const u = await createActiveUser(1);
+    await authService.forgotPassword({ email: u.email });
+    await setOtpSendBlock(u.id, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: 60 });
+    const before = await getOtps(u.id, 'Forgot Password');
+    const err = await appError(authService.forgotPassword({ email: u.email }));
+    expect(err).toMatchObject({ status: 429, code: 'OTP_RESEND_LIMIT' });
+    expect(err.retryAfterSeconds).toBeGreaterThan(3500);
+    expect(await getOtps(u.id, 'Forgot Password')).toHaveLength(before.length);
   });
 });
 

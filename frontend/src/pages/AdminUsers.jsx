@@ -9,18 +9,49 @@
  *        Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added the Locked column, the `locked` filter and a per-row Unlock action calling
+ *        POST /users/:id/unlock, per instructions.md Stage 18e. Unlock's visibility follows
+ *        the same rule as Suspend in getRowActions, per the governing decision.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added the per-row email eye icon (Stage 20b): click calls getFullEmail to reveal the
+ *        real email, click again or a 60s timer re-masks it with no request, and any refetch
+ *        (filter/sort/page change or a row action) clears every row's unmask state and timers.
+ *        No eye icon on the caller's own row or a super admin's row, per the stage's rule.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced RowMenu's inline absolutely-positioned dropdown with the new ActionMenu
+ *        component (Stage 21a), so the open menu is no longer clipped by the table wrapper's
+ *        `overflow-x: auto`. Row action set, handlers and visibility rules unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, MoreVertical } from 'lucide-react'
+import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
+import ActionMenu from '../components/ActionMenu'
 import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import { Pager, useApiNotice } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { useApi } from '../api/useApi'
-import { listUsers, updateUserRole, updateUserStatus } from '../api/users'
+import { getFullEmail, listUsers, unlockUser, updateUserRole, updateUserStatus } from '../api/users'
 import { describeError } from '../api/errorMessages'
+
+// No eye icon for the caller's own row (already unmasked everywhere else) or a super admin's
+// row, per instructions.md Stage 20b.
+function canUnmaskEmail(viewer, row) {
+  return row.id !== viewer.id && row.role !== 'super admin'
+}
+
+const UNMASK_TIMEOUT_MS = 60_000
 
 const inputClass =
   'h-11 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink md:h-10 md:text-sm'
@@ -40,13 +71,14 @@ const ROLE_TONES = {
   'super admin': 'border-orange text-orange',
 }
 
-function Badge({ tone, children }) {
+function Badge({ tone, children, ...rest }) {
   return (
     <span
       className={
         'inline-flex h-5 items-center rounded-pill border bg-surface px-2 text-[11px] font-medium ' +
         tone
       }
+      {...rest}
     >
       {children}
     </span>
@@ -61,18 +93,30 @@ function formatDate(iso) {
   })
 }
 
-// Mirrors user-service's changeUserStatus/changeUserRole (src/services/users.service.ts)
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+// Mirrors user-service's changeUserStatus/changeUserRole/unlockUser (src/services/users.service.ts)
 // exactly, so the menu never offers an action the backend would reject. Returns the action each
-// control performs, or null to hide it; both null means "no menu" for that row.
+// control performs, or null to hide it; both null means "no menu" for that row. Unlock follows
+// the same visibility rule as suspend (Stage 18d/18e's governing decision).
 function getRowActions(viewer, row) {
-  if (row.id === viewer.id) return { suspend: null, role: null }
-  if (row.role === 'super admin') return { suspend: null, role: null }
-  if (row.status === 'pending') return { suspend: null, role: null }
+  if (row.id === viewer.id) return { suspend: null, role: null, unlock: null }
+  if (row.role === 'super admin') return { suspend: null, role: null, unlock: null }
+  if (row.status === 'pending') return { suspend: null, role: null, unlock: null }
 
   const viewerIsSuperAdmin = viewer.role === 'super admin'
+  const canActOnLock = viewerIsSuperAdmin || row.role === 'user'
 
   let suspend = null
-  if (viewerIsSuperAdmin || row.role === 'user') {
+  if (canActOnLock) {
     suspend = row.status === 'suspended' ? 'unsuspend' : 'suspend'
   }
 
@@ -81,7 +125,9 @@ function getRowActions(viewer, row) {
     role = row.role === 'user' ? 'promote' : 'demote'
   }
 
-  return { suspend, role }
+  const unlock = canActOnLock && row.isLocked ? 'unlock' : null
+
+  return { suspend, role, unlock }
 }
 
 const ACTION_SUCCESS = {
@@ -89,6 +135,7 @@ const ACTION_SUCCESS = {
   unsuspend: (name) => name + ' was unsuspended.',
   promote: (name) => name + ' was promoted to admin.',
   demote: (name) => name + ' was demoted to user.',
+  unlock: (name) => name + ' was unlocked.',
 }
 
 const ACTION_DIALOG = {
@@ -115,6 +162,12 @@ const ACTION_DIALOG = {
     body: 'They will be signed out everywhere and lose admin access on their next login.',
     confirmLabel: 'Demote',
     variant: 'danger',
+  },
+  unlock: {
+    title: (name) => 'Unlock ' + name + '?',
+    body: 'They will be able to log in and change their email/password again immediately.',
+    confirmLabel: 'Unlock',
+    variant: 'primary',
   },
 }
 
@@ -151,63 +204,26 @@ function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm }) {
 }
 
 // Three-dot menu: visible on row hover (desktop), always visible below the `sm` breakpoint
-// (touch / small screens have no hover).
+// (touch / small screens have no hover). Rendered via ActionMenu (Stage 21a) so the open menu
+// portals out of the table wrapper's `overflow-x: auto` instead of being clipped by it.
 function RowMenu({ user, viewer, onPick }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onDocMouseDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
-  }, [open])
-
   const actions = getRowActions(viewer, user)
   const items = []
-  if (actions.suspend === 'suspend') items.push({ key: 'suspend', label: 'Suspend' })
-  if (actions.suspend === 'unsuspend') items.push({ key: 'unsuspend', label: 'Unsuspend' })
-  if (actions.role === 'promote') items.push({ key: 'promote', label: 'Promote to admin' })
-  if (actions.role === 'demote') items.push({ key: 'demote', label: 'Demote to user' })
-
-  if (items.length === 0) return null
+  if (actions.suspend === 'suspend') items.push({ label: 'Suspend', onSelect: () => onPick('suspend') })
+  if (actions.suspend === 'unsuspend')
+    items.push({ label: 'Unsuspend', onSelect: () => onPick('unsuspend') })
+  if (actions.role === 'promote')
+    items.push({ label: 'Promote to admin', onSelect: () => onPick('promote') })
+  if (actions.role === 'demote') items.push({ label: 'Demote to user', onSelect: () => onPick('demote') })
+  if (actions.unlock === 'unlock') items.push({ label: 'Unlock', onSelect: () => onPick('unlock') })
 
   return (
-    <div ref={ref} className="relative inline-block text-left">
-      <button
-        type="button"
-        aria-label={'Actions for ' + user.username}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-      >
-        <MoreVertical size={16} aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-card border border-line bg-surface shadow-modal"
-        >
-          {items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false)
-                onPick(item.key)
-              }}
-              className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-alt"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <ActionMenu
+      ariaLabel={'Actions for ' + user.username}
+      trigger={<MoreVertical size={16} aria-hidden="true" />}
+      triggerClassName="flex h-9 w-9 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+      items={items}
+    />
   )
 }
 
@@ -244,6 +260,7 @@ export default function AdminUsers() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('')
   const [role, setRole] = useState('')
+  const [locked, setLocked] = useState('')
   const [sortBy, setSortBy] = useState('createdAt')
   const [sortDir, setSortDir] = useState('desc')
   const [page, setPage] = useState(1)
@@ -251,6 +268,10 @@ export default function AdminUsers() {
   const [busy, setBusy] = useState(false)
   // Patches successful actions into the current page's rows until the next load replaces them.
   const [rowOverrides, setRowOverrides] = useState({})
+  // Per-row unmasked email (Stage 20b), keyed by user id; absent = masked.
+  const [unmaskedEmails, setUnmaskedEmails] = useState({})
+  const [unmaskingRows, setUnmaskingRows] = useState({})
+  const unmaskTimersRef = useRef({})
 
   useEffect(() => {
     const t = setTimeout(() => setUsername(usernameInput.trim()), 300)
@@ -262,19 +283,70 @@ export default function AdminUsers() {
   }, [emailInput])
   useEffect(() => {
     setPage(1)
-  }, [username, email, status, role, sortBy, sortDir])
+  }, [username, email, status, role, locked, sortBy, sortDir])
 
   const params = useMemo(
-    () => ({ page, username, email, status, role, sortBy, sortDir }),
-    [page, username, email, status, role, sortBy, sortDir],
+    () => ({ page, username, email, status, role, locked, sortBy, sortDir }),
+    [page, username, email, status, role, locked, sortBy, sortDir],
   )
   const { data, loading, error, reload } = useApi(() => listUsers(params), [params])
   const notice = useApiNotice({ loading: loading && !data, error }, 'users')
   const rows = (data?.users ?? []).map((u) => rowOverrides[u.id] ?? u)
 
+  function remaskRow(id) {
+    clearTimeout(unmaskTimersRef.current[id])
+    delete unmaskTimersRef.current[id]
+    setUnmaskedEmails((prev) => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  function remaskAllRows() {
+    Object.values(unmaskTimersRef.current).forEach(clearTimeout)
+    unmaskTimersRef.current = {}
+    setUnmaskedEmails({})
+  }
+
+  // Any refetch (filter/sort/page change, or a row action's reload()) re-masks every row and
+  // clears their 60s timers, per the stage's rule.
   useEffect(() => {
     setRowOverrides({})
+    remaskAllRows()
   }, [data])
+
+  // Clear any still-running timers on unmount.
+  useEffect(() => {
+    return () => {
+      Object.values(unmaskTimersRef.current).forEach(clearTimeout)
+    }
+  }, [])
+
+  async function toggleUnmask(targetUser) {
+    if (targetUser.id in unmaskedEmails) {
+      remaskRow(targetUser.id)
+      return
+    }
+    setUnmaskingRows((prev) => ({ ...prev, [targetUser.id]: true }))
+    try {
+      const { email } = await getFullEmail(targetUser.id)
+      setUnmaskedEmails((prev) => ({ ...prev, [targetUser.id]: email }))
+      unmaskTimersRef.current[targetUser.id] = setTimeout(
+        () => remaskRow(targetUser.id),
+        UNMASK_TIMEOUT_MS,
+      )
+    } catch (err) {
+      showToast(describeError(err).message, 'error')
+    } finally {
+      setUnmaskingRows((prev) => {
+        const next = { ...prev }
+        delete next[targetUser.id]
+        return next
+      })
+    }
+  }
 
   function toggleSort(column) {
     if (sortBy === column) {
@@ -291,7 +363,9 @@ export default function AdminUsers() {
       const updated =
         action === 'suspend' || action === 'unsuspend'
           ? await updateUserStatus(targetUser.id, action === 'suspend' ? 'suspended' : 'active')
-          : await updateUserRole(targetUser.id, action === 'promote' ? 'admin' : 'user')
+          : action === 'unlock'
+            ? await unlockUser(targetUser.id)
+            : await updateUserRole(targetUser.id, action === 'promote' ? 'admin' : 'user')
       setRowOverrides((prev) => ({ ...prev, [updated.id]: updated }))
       setConfirm(null)
       showToast(ACTION_SUCCESS[action](targetUser.username), 'success')
@@ -308,7 +382,7 @@ export default function AdminUsers() {
     <div className="page-width page-gutter py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Manage users</h1>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px_160px]">
+      <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px_160px_160px]">
         <input
           type="search"
           value={usernameInput}
@@ -347,6 +421,16 @@ export default function AdminUsers() {
           <option value="admin">Admin</option>
           <option value="super admin">Super admin</option>
         </select>
+        <select
+          aria-label="Filter by locked"
+          value={locked}
+          onChange={(e) => setLocked(e.target.value)}
+          className={selectClass}
+        >
+          <option value="">Any lock state</option>
+          <option value="true">Locked</option>
+          <option value="false">Not locked</option>
+        </select>
       </div>
 
       {notice}
@@ -383,6 +467,9 @@ export default function AdminUsers() {
                     <th scope="col" className="py-2 pr-2 text-left font-medium">
                       Role
                     </th>
+                    <th scope="col" className="py-2 pr-2 text-left font-medium">
+                      Locked
+                    </th>
                     <SortHeader
                       column="createdAt"
                       sortBy={sortBy}
@@ -398,12 +485,43 @@ export default function AdminUsers() {
                   {rows.map((u) => (
                     <tr key={u.id} className="group border-b border-line last:border-0">
                       <td className="py-2.5 pr-2 font-medium text-ink">{u.username}</td>
-                      <td className="py-2.5 pr-2 text-ink-70">{u.email}</td>
+                      <td className="py-2.5 pr-2 text-ink-70">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{unmaskedEmails[u.id] ?? u.email}</span>
+                          {canUnmaskEmail(viewer, u) && (
+                            <button
+                              type="button"
+                              aria-label={
+                                (u.id in unmaskedEmails ? 'Hide email for ' : 'Show email for ') +
+                                u.username
+                              }
+                              onClick={() => toggleUnmask(u)}
+                              disabled={!!unmaskingRows[u.id]}
+                              className="shrink-0 text-ink-40 hover:text-ink disabled:opacity-50"
+                            >
+                              {u.id in unmaskedEmails ? (
+                                <EyeOff size={14} aria-hidden="true" />
+                              ) : (
+                                <Eye size={14} aria-hidden="true" />
+                              )}
+                            </button>
+                          )}
+                        </span>
+                      </td>
                       <td className="py-2.5 pr-2">
                         <Badge tone={STATUS_TONES[u.status]}>{STATUS_LABELS[u.status]}</Badge>
                       </td>
                       <td className="py-2.5 pr-2">
                         <Badge tone={ROLE_TONES[u.role]}>{ROLE_LABELS[u.role]}</Badge>
+                      </td>
+                      <td className="py-2.5 pr-2">
+                        {u.isLocked ? (
+                          <Badge tone="border-alert text-alert" title={formatDateTime(u.lockedUntil)}>
+                            Locked (level {u.lockLevel})
+                          </Badge>
+                        ) : (
+                          <span className="text-ink-40">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 pr-2 text-ink-70">{formatDate(u.createdAt)}</td>
                       <td className="py-2.5 pl-2 text-right">

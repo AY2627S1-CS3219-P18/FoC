@@ -45,6 +45,47 @@ Tool: Codex (model: GPT-6), date: 2026-11-05
 Scope: Added the Docker postinstall fix log-index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
+       (OTP email retry and delivery logging). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #151 for Stage 20a
+       (email masking for admin responses and the full-email unmask endpoint). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #152 for Stage 20b
+       (frontend email eye icon). No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-03, Codex, model: GPT-6): Added the Phase 5 documentation log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the clarified Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the configurable rate-limit log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the pagination load-test log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the staging-limit correction log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrangements index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -390,5 +431,22 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 147 | 2026-11-03 | repo-wide              | CI: restore supplier-service full suite after JWKS test fixes                                                    | Verified both root causes in the diff, removed the exclusion, 20/20 clean runs                                                                  |
 | 148 | 2026-11-04 | user-service           | Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename                                    | Logged a rename the docs work never recorded, so old-filename references make sense                                                             |
 | 149 | 2026-11-04 | user-service           | Stage 17: Local Setup Script                                                                                     | `npm run setup` creates `.env`, generates SUPER_ADMIN_PASSWORD and the RS256 keypair                                                            |
-| 150 | 2026-11-05 | order-service          | F5.3.2: Admin user order history                                                                                 | Implemented admin order history, user existence checks, pagination, tests and documentation.                                                    |
-| 151 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |
+| 150 | 2026-11-04 | user-service           | Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)                                              | Inline retry/backoff/timeout for OTP email sends, with a console log line per attempt                                                           |
+| 151 | 2026-11-04 | user-service           | Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1)                           | Admin responses mask emails; new `GET /users/:id/full-email` logs each unmask attempt                                                           |
+| 152 | 2026-11-04 | frontend               | Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1)                                                    | Per-row eye icon reveals the real email, re-masks on click or after 60s                                                                         |
+| 153 | 2026-11-04 | frontend               | Stage 21a: Fix Clipped Row-Actions Menu (frontend)                                                               | Row-actions menu now portals out of the table wrapper, flips to fit the viewport                                                                |
+| 154 | 2026-11-04 | frontend               | Stage 21b: Show/hide password toggle                                                                             | New PasswordInput component with eye-icon toggle, wired into every password field                                                               |
+| 155 | 2026-11-02 | supplier-service       | Phase 5: Authorization verification                                                                              | Tested mutating endpoint authorization and updated JWKS integration tests.                                                                      |
+| 156 | 2026-11-03 | supplier-service       | Phase 5: Response inventory and API test plan                                                                    | Documented existing messages and API calls; recorded supplied latency objective.                                                                |
+| 157 | 2026-11-04 | supplier-service       | Phase 5: Performance and no-UI test decisions                                                                    | Recorded supplied load targets and no-UI CI test intent.                                                                                        |
+| 158 | 2026-11-04 | supplier-service       | Phase 5: Clarified load-test decisions                                                                           | Recorded MySQL choice and four percentile targets.                                                                                              |
+| 159 | 2026-11-04 | supplier-service       | Phase 5: Configurable rate limit and workload                                                                    | Configured rate limit and recorded supplied workload distribution.                                                                              |
+| 160 | 2026-11-04 | supplier-service       | Phase 5: Pagination k6 workload                                                                                  | Added the mixed pagination load-test script.                                                                                                    |
+| 161 | 2026-11-04 | supplier-service       | Phase 5: Staging limit correction                                                                                | Recorded the revised staging limit and current task status.                                                                                     |
+| 162 | 2026-11-04 | supplier-service       | Phase 5: Accepted existing response messages                                                                     | Recorded acceptance of existing messages and optional details.                                                                                  |
+| 163 | 2026-11-04 | supplier-service       | Phase 5: Response-message tests and local pagination load run                                                    | Added message tests, load-test seed scripts; local k6 run missed targets.                                                                       |
+| 164 | 2026-11-04 | supplier-service       | Phase 5: No-UI API suite and cross-role suite                                                                    | Added Vitest live-stack lifecycle and role suites using a local token stub.                                                                     |
+| 165 | 2026-11-04 | supplier-service       | PR 144: Merge conflict resolution                                                                                | Preserved disclosure entries and reconciled the integration test fixture.                                                                       |
+| 166 | 2026-11-04 | supplier-service       | Phase 5: Current state and test arrangements                                                                     | Updated Phase 5 status and recorded team-supplied test arrangements.                                                                            |
+| 167 | 2026-11-05 | order-service          | F5.3.2: Admin user order history                                                                                 | Implemented admin order history, user existence checks, pagination, tests and documentation.                                                    |
+| 168 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |

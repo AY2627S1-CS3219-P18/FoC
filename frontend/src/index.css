@@ -5,6 +5,12 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added a base-layer rule hiding Edge's native `::-ms-reveal` button on password inputs
+ *        (Stage 21b), so it doesn't duplicate PasswordInput.jsx's own show/hide toggle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 @tailwind base;
@@ -51,6 +57,12 @@
   ::placeholder {
     color: var(--ink-40);
     opacity: 1;
+  }
+
+  /* Edge adds its own reveal button to password inputs; PasswordInput.jsx supplies its own,
+     so hide Edge's to avoid showing two. */
+  input::-ms-reveal {
+    display: none;
   }
 }
 

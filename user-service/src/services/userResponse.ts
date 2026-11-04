@@ -5,9 +5,21 @@
  *        instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added isLocked, lockedUntil and lockLevel, per instructions.md Stage 18d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: toUserResponse now takes the requester's ID and masks email unless the row is the
+ *        requester's own, per instructions.md Stage 20 (NFR3.1.1).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { UserRow } from '../db/queries/users.queries.js';
+import { maskEmail } from '../utils/maskEmail.js';
 
 export interface UserResponse {
   id: string;
@@ -18,19 +30,26 @@ export interface UserResponse {
   activeView: 'requester' | 'courier';
   createdAt: Date;
   updatedAt: Date;
+  isLocked: boolean;
+  lockedUntil: Date | null;
+  lockLevel: number;
 }
 
 // password_hash must never leave the service layer, and DB columns stay snake_case -
 // this is the one place that maps a user row to the camelCase shape every response uses.
-export function toUserResponse(row: UserRow): UserResponse {
+// requesterId masks email (Stage 20) unless the row is the requester's own.
+export function toUserResponse(row: UserRow, requesterId: string): UserResponse {
   return {
     id: row.id,
     username: row.username,
-    email: row.email,
+    email: row.id === requesterId ? row.email : maskEmail(row.email),
     status: row.status,
     role: row.role,
     activeView: row.active_view,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    isLocked: row.login_locked_until !== null && row.login_locked_until.getTime() > Date.now(),
+    lockedUntil: row.login_locked_until,
+    lockLevel: row.login_lock_level,
   };
 }

@@ -86,6 +86,8 @@ Scope: 2026-09-30 update — recorded the team's decision that supplier response
        Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied Phase 5 test arrangements.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
 Scope (2026-11-02, Codex, model: GPT-6): Documented the existing JWKS cache and verification flow.
 Author review: Congchen
 -->
@@ -699,7 +701,7 @@ project-specific endpoint mapping for the team to complete:
 | Requested supplier or reference resource does not exist                  | `GET /api/v1/suppliers/:id` `GET /api/v1/admin/suppliers/:id` `PUT /api/v1/admin/suppliers/:id` `DELETE /api/v1/admin/suppliers/:id`                                                                                     | `404 Not Found`             | Referenced resource cannot be found                         | Triggered when a request references a supplier ID that does not exist or has already been (hard) deleted from the database.                                                                                                                                                                                                                                                      |
 | Submitted `version` does not match the supplier's current stored version | `PUT /api/v1/admin/suppliers/:id`                                                                                                                                                                                        | `409 Conflict`              | Request conflicts with the current state of the resource    | Optimistic-concurrency conflict: another edit already advanced `version`. The client should re-fetch the record and retry.                                                                                                                                                                                                                                                       |
 | `POST` retried with an `Idempotency-Key` that is still being processed   | `POST /api/v1/admin/suppliers`                                                                                                                                                                                           | `409 Conflict`              | Request conflicts with the current state of the resource    | Idempotency-key replay while the original request has not yet completed. A replay after completion instead returns the original cached response.                                                                                                                                                                                                                                 |
-| Client has exceeded the rate limit                                       | All API Endpoints                                                                                                                                                                                                        | `429 Too Many Requests`     | Too many requests in a given time window                    | Fixed at 30 requests/minute/IP.                                                                                                                                                                                                                                                                                                                                                  |
+| Client has exceeded the rate limit                                       | All API Endpoints                                                                                                                                                                                                        | `429 Too Many Requests`     | Too many requests in a given time window                    | Configured by `PER_IP_RATE_LIMIT`; defaults to 30 requests/minute/IP.                                                                                                                                                                                                                                                                                                                                                  |
 | Unhandled service, database, storage, or job-queue failure               | All API Endpoints                                                                                                                                                                                                        | `500 Internal Server Error` | Server failed while processing the request                  | The client receives an immediate 500 error error response code.                                                                                                                                                                                                                                                                                                                  |
 
 For each row, the team can complete the endpoint list, trigger condition, response `message`, and
@@ -965,8 +967,9 @@ Concurrent edits to the same supplier are detected using the `supplier.version` 
 stored `version` has since advanced, the update matches no row, is not applied, and the API returns
 `409 Conflict` rather than overwriting the newer record.
 
-All Supplier Service endpoints are rate-limited to 30 requests per minute per client IP. Requests
-beyond this limit receive `429 Too Many Requests`.
+All Supplier Service endpoints are rate-limited per client IP per minute. `PER_IP_RATE_LIMIT`
+defaults to 30; the team specified 20,000 locally and in staging. Requests beyond the
+configured limit receive `429 Too Many Requests`.
 
 Health-check endpoints are deferred and out of scope for this revision of the service architecture.
 
@@ -1161,6 +1164,42 @@ architecture. The provider itself remains undecided; the service architecture re
 boundary, photo reference, authentication boundary, Redis job-queue handoff, retry responsibility,
 and compensation behavior.
 
+### Phase 5 verification arrangements
+
+The team accepted the service's existing response messages and optional `details`; their current
+wording and code paths are recorded in [the response inventory](docs/phase-5-response-inventory.md).
+
+For pagination performance, use Grafana k6 against a separate MySQL test database populated with
+4,000 synthetic suppliers. Concurrent writes are excluded. The team intends to be able to target a
+cloud MySQL environment later. Evaluate each traffic level over one minute:
+
+| Load | Requests/second | p50 target | p95 target |
+| --- | ---: | ---: | ---: |
+| Typical | 50 | ≤300 ms | ≤500 ms |
+| Peak | 200 | ≤400 ms | ≤600 ms |
+
+Use a mixed workload: 95% public supplier-list requests and 5% admin supplier-list requests. Across
+the workload, 70% use page 1, 20% pages 2–5, and 10% use deep pagination (page 6+) or filters.
+Within that 10% group, 40% use deep pagination, 15% text search, 15% `isOpen`, 15% category and
+15% location. Category and location requests use the numeric `category_id` and `location_id` the
+frontend sends. The team specified `PER_IP_RATE_LIMIT` values of 20,000 requests/minute/IP for
+local and staging, and 30 for production; the code defaults to 30 when unset. Staging configuration
+must supply its value. See the [API test plan](docs/phase-5-api-test-plan.md) and
+[Phase 5 decision record](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md#decision-record).
+
+The no-UI API lifecycle and cross-role checks use a Vitest suite against the running Supplier
+Service, with a local JWKS stub for user, admin and super-admin tokens. Login is tested separately.
+The tests cover the recorded API lifecycle and role access; transcripts are generated in CI and need
+not persist. The relevant scripts and calls are in the [API test plan](docs/phase-5-api-test-plan.md)
+and `test/api-demo/`.
+
+The [local load-test result](docs/phase-5-load-test-results.md) records one run on a single development
+machine. The run missed all percentile thresholds and dropped iterations; the requested arrival rates
+were not sustained. The team has not recorded a decision authorizing query or index changes. The
+shared usage log records the separate live no-UI and cross-role suite run (17/17 passed).
+
+---
+
 ## 9. Requirement traceability notes and unresolved items
 
 These are factual observations about the supplied plan and the requirement context. They are not
@@ -1216,7 +1255,7 @@ additional design decisions.
     `Idempotency-Key` header cached in Redis, returning `409 Conflict` on a still-in-flight replay or
     the cached response on a replay after completion. The header name is finalized.
 15. Cross-cutting API policies are now recorded: all endpoints are versioned under `/api/v1`,
-    rate-limited to 30 requests/minute/IP (`429 Too Many Requests`), and reached through the same
+    rate-limited per IP (`429 Too Many Requests`; default 30 requests/minute), and reached through the same
     origin as the SPA via a single API gateway fronting all FoC services (no CORS configuration
     required). Health-check endpoints are explicitly deferred and out of scope for this revision.
 16. `photo_location`/`photoLocation` values are now specified as provider-issued signed URLs, valid

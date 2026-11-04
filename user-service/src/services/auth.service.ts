@@ -39,6 +39,20 @@
 //   transitively importing config.ts. No requirements, architecture, schema, or API decisions
 //   were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 18b/18c - login() checks and records the escalating login lockout before
+//   the password check (throwIfLoginLocked/recordLoginFailure), with the failure that hits the
+//   threshold itself rejected as ACCOUNT_LOCKED (429) rather than INVALID_CREDENTIALS once its
+//   lock write has committed. forgotPassword's switch on requestOtp's result now runs after
+//   that call's transaction commits, not inside it, so an OTP send-escalation cap hit's write
+//   (Stage 18c) is never rolled back by the OTP_RESEND_LIMIT throw; its message/Retry-After
+//   also now match the escalation level. Governing decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// 2026-11-04: Stage 19 - pass username to issueOtp/requestOtp at register(), resendRegistrationOtp()
+//   and forgotPassword(), for the new OTP-email retry/logging in email.service.ts. Governing
+//   decision: instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -46,13 +60,81 @@ import { config } from '../config.js';
 import * as creditOutboxQueries from '../db/queries/creditOutbox.queries.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
-import { withTransaction } from '../db/transaction.js';
+import type { UserRowWithNow } from '../db/queries/users.queries.js';
+import { withTransaction, type Queryable } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
 import { signAccessToken } from '../utils/jwt.js';
 import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
+import { durationHoursForLevel, effectiveEscalationLevel, escalationWording } from './lockEscalation.js';
 import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
+
+function accountLockedMessage(lockLevel: number): string {
+  return `Too many failed login attempts. Please try again in ${escalationWording(lockLevel)}.`;
+}
+
+// Shared with me.service.ts (initiateEmailChange / initiatePasswordChange), which count a
+// wrong current password on the same login-lockout counter (Stage 18b). Safe to throw directly
+// (rather than returning a result for the caller to throw after commit, as recordLoginFailure
+// below does): nothing has been written yet in either caller's transaction at the point this is
+// called, so there is nothing a rollback would undo.
+export function throwIfLoginLocked(row: UserRowWithNow): void {
+  if (!row.login_locked_until || row.login_locked_until.getTime() <= row.db_now.getTime()) {
+    return;
+  }
+  const retryAfterSeconds = Math.ceil(
+    (row.login_locked_until.getTime() - row.db_now.getTime()) / 1000,
+  );
+  throw new AppError(429, accountLockedMessage(row.login_lock_level), 'ACCOUNT_LOCKED', retryAfterSeconds);
+}
+
+export type RecordLoginFailureResult =
+  | { locked: false }
+  | { locked: true; lockLevel: number; retryAfterSeconds: number };
+
+// Call inside a transaction, against a row already locked with lockUserByIdWithNow, when a
+// password attempt on that row's account failed. Not called for pending/suspended accounts
+// (Stage 18b: "what does not count").
+//
+// Returns rather than throws when the threshold is hit on this very call: the lock write must
+// commit, so the caller throws accountLockedAppError(result) itself only after its
+// withTransaction call resolves (the same "thrown only after commit" pattern used elsewhere in
+// this file for OTP attempt counts) — the 5th failure in the window is itself rejected with
+// ACCOUNT_LOCKED, per the Stage 18b Verification bullet.
+export async function recordLoginFailure(
+  row: UserRowWithNow,
+  db: Queryable,
+): Promise<RecordLoginFailureResult> {
+  const windowMs = config.lock.loginFailureWindowMinutes * 60_000;
+  const windowStart = row.login_failure_window_start;
+  const windowExpired = !windowStart || row.db_now.getTime() - windowStart.getTime() > windowMs;
+  const newCount = windowExpired ? 1 : row.login_failed_attempts + 1;
+
+  if (newCount >= config.lock.maxLoginFailures) {
+    const currentLevel = effectiveEscalationLevel(
+      row.login_lock_level,
+      row.login_locked_until,
+      row.db_now,
+    );
+    const newLevel = currentLevel + 1;
+    const durationHours = durationHoursForLevel(newLevel);
+    const lockedUntil = new Date(row.db_now.getTime() + durationHours * 3_600_000);
+    await userQueries.lockLoginAccount(row.id, { lockedUntil, lockLevel: newLevel }, db);
+    return { locked: true, lockLevel: newLevel, retryAfterSeconds: durationHours * 3600 };
+  }
+
+  await userQueries.recordLoginFailure(
+    row.id,
+    { failedAttempts: newCount, windowStart: windowExpired ? row.db_now : windowStart },
+    db,
+  );
+  return { locked: false };
+}
+
+export function accountLockedAppError(result: { lockLevel: number; retryAfterSeconds: number }): AppError {
+  return new AppError(429, accountLockedMessage(result.lockLevel), 'ACCOUNT_LOCKED', result.retryAfterSeconds);
+}
 
 export { PASSWORD_MESSAGE, PASSWORD_REGEX };
 
@@ -132,7 +214,7 @@ export async function register({
       throw err;
     }
 
-    await issueOtp({ userId, email, purpose: 'Registration' }, client);
+    await issueOtp({ userId, email, purpose: 'Registration', username }, client);
   });
 }
 
@@ -152,32 +234,51 @@ export async function login(
     throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
   }
 
+  // bcrypt is slow, so compute it before taking the row lock below. Its result is used only
+  // after the lock check and the stale-hash re-check inside the transaction.
   const passwordMatches = await bcrypt.compare(password, user.password_hash);
-  if (!passwordMatches) {
-    throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
-  }
-
-  if (user.status === 'pending') {
-    throw new AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED');
-  }
-
-  if (user.status === 'suspended') {
-    throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
-  }
 
   const refreshTokenPlain = randomBytes(32).toString('hex');
   const refreshTokenHash = sha256(refreshTokenPlain);
 
-  // The password was verified before locking (bcrypt is slow). Lock the user and re-check,
-  // so a reset or suspend that committed in between cannot be followed by a new refresh token.
-  const { role, activeView } = await withTransaction(async (client) => {
-    const locked = await userQueries.lockUserById(user.id, client);
-    if (!locked || locked.password_hash !== user.password_hash) {
+  // Lock the user and re-check everything against the locked row, so a reset, suspend or
+  // another login's failure/lock that committed in between is never missed.
+  const outcome = await withTransaction(async (client) => {
+    const locked = await userQueries.lockUserByIdWithNow(user.id, client);
+    if (!locked) {
       throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+    }
+
+    // Check order (Stage 18b): the lock check runs before the password check, whatever
+    // password was sent. Nothing has been written yet, so throwing here directly is safe.
+    throwIfLoginLocked(locked);
+
+    // Stale-hash guard: the pre-lock bcrypt result is only valid if the hash has not changed
+    // since (e.g. a concurrent password reset).
+    const effectiveMatch = passwordMatches && locked.password_hash === user.password_hash;
+    const countsTowardLock = locked.status !== 'pending' && locked.status !== 'suspended';
+
+    if (!effectiveMatch) {
+      if (countsTowardLock) {
+        const failureResult = await recordLoginFailure(locked, client);
+        // The 5th failure in the window is itself rejected with ACCOUNT_LOCKED, not
+        // INVALID_CREDENTIALS, but the lock write must commit before that is thrown.
+        if (failureResult.locked) {
+          return { kind: 'locked' as const, result: failureResult };
+        }
+      }
+      return { kind: 'invalid' as const };
+    }
+
+    if (locked.status === 'pending') {
+      throw new AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED');
     }
     if (locked.status === 'suspended') {
       throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
     }
+
+    // A successful login clears the failure count, the window and the escalation level.
+    await userQueries.resetLoginLock(locked.id, client);
 
     await tokenQueries.createRefreshToken(
       {
@@ -189,15 +290,28 @@ export async function login(
       },
       client,
     );
-    return { role: locked.role, activeView: locked.active_view };
+    return { kind: 'success' as const, role: locked.role, activeView: locked.active_view };
   });
 
-  const accessToken = signAccessToken({ userId: user.id, role });
+  if (outcome.kind === 'locked') {
+    throw accountLockedAppError(outcome.result);
+  }
+  if (outcome.kind === 'invalid') {
+    throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+  }
+
+  const accessToken = signAccessToken({ userId: user.id, role: outcome.role });
 
   return {
     accessToken,
     refreshToken: refreshTokenPlain,
-    user: { id: user.id, username: user.username, email: user.email, role, activeView },
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: outcome.role,
+      activeView: outcome.activeView,
+    },
   };
 }
 
@@ -332,12 +446,18 @@ export async function resendRegistrationOtp({ email }: { email: string }): Promi
       }
     }
 
-    await issueOtp({ userId: user.id, email: user.email, purpose: 'Registration' }, client);
+    await issueOtp(
+      { userId: user.id, email: user.email, purpose: 'Registration', username: user.username },
+      client,
+    );
   });
 }
 
 export async function forgotPassword({ email }: { email: string }): Promise<void> {
-  await withTransaction(async (client) => {
+  // A cap hit writes the new escalation level/block end (Stage 18c) inside the same
+  // transaction that calls requestOtp, so the switch below runs after this transaction has
+  // committed rather than inside it, or that write would be rolled back by the throw.
+  const result = await withTransaction(async (client) => {
     // Plain read is a cheap early exit; requestOtp re-checks after locking the row.
     const user = await userQueries.findByEmail(email, client);
     if (!user) {
@@ -351,38 +471,39 @@ export async function forgotPassword({ email }: { email: string }): Promise<void
       );
     }
 
-    const result = await requestOtp(
-      { userId: user.id, email: user.email, purpose: 'Forgot Password' },
+    return requestOtp(
+      { userId: user.id, email: user.email, purpose: 'Forgot Password', username: user.username },
       client,
     );
+  });
 
-    switch (result.status) {
-      case 'sent':
-        return;
-      case 'throttled':
-        if (result.reason === 'cooldown') {
-          throw new AppError(
-            429,
-            'Please wait before requesting another OTP',
-            'OTP_RESEND_COOLDOWN',
-            result.retryAfterSeconds,
-          );
-        }
+  switch (result.status) {
+    case 'sent':
+      return;
+    case 'throttled':
+      if (result.reason === 'cooldown') {
         throw new AppError(
           429,
-          'Maximum OTP resends reached. Please try again in about an hour.',
-          'OTP_RESEND_LIMIT',
+          'Please wait before requesting another OTP',
+          'OTP_RESEND_COOLDOWN',
+          result.retryAfterSeconds,
         );
-      case 'no-user':
-        throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
-      case 'not-verified':
-        throw new AppError(
-          403,
-          'Account not verified. Please finish registration first.',
-          'ACCOUNT_NOT_VERIFIED',
-        );
-    }
-  });
+      }
+      throw new AppError(
+        429,
+        `Maximum OTP resends reached. Please try again in ${escalationWording(result.level)}.`,
+        'OTP_RESEND_LIMIT',
+        result.retryAfterSeconds,
+      );
+    case 'no-user':
+      throw new AppError(404, 'Email not found', 'EMAIL_NOT_FOUND');
+    case 'not-verified':
+      throw new AppError(
+        403,
+        'Account not verified. Please finish registration first.',
+        'ACCOUNT_NOT_VERIFIED',
+      );
+  }
 }
 
 // Same operation as forgotPassword (both request a fresh OTP through requestOtp), so it is

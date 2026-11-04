@@ -25,6 +25,17 @@
 //   sorted). Governing decision: instructions.md Stage 15b.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-04: Stage 18a/18b/18d - added the login-lockout columns to UserRow, lockUserByIdWithNow,
+//   recordLoginFailure, lockLoginAccount, resetLoginLock, and the `locked` filter on
+//   listUsersPage. Governing decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// 2026-11-04: Stage 20 - added findByIdWithNow, an unlocked read (no FOR UPDATE) alongside
+//   clock_timestamp(), for the unmask-email actor lookup (NFR3.1.1), which needs the DB clock
+//   for its log line but takes no lock since it writes no state. Governing decision:
+//   instructions.md Stage 20.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -39,7 +50,13 @@ export interface UserRow {
   status: "pending" | "active" | "suspended";
   role: "user" | "admin" | "super admin";
   active_view: "requester" | "courier";
+  login_failed_attempts: number;
+  login_failure_window_start: Date | null;
+  login_locked_until: Date | null;
+  login_lock_level: number;
 }
+
+export type UserRowWithNow = UserRow & { db_now: Date };
 
 export async function createUser(
   {
@@ -94,6 +111,19 @@ export async function findById(
   return result.rows[0] ?? null;
 }
 
+// Unlocked read plus the database's own clock, for callers that log a timestamp but take no
+// lock (Stage 20's unmask-email actor lookup: a read with no state change).
+export async function findByIdWithNow(
+  userId: string,
+  db: Queryable = pool,
+): Promise<UserRowWithNow | null> {
+  const result = await db.query<UserRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM users WHERE id = $1`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function findSuperAdmin(
   db: Queryable = pool,
 ): Promise<UserRow | null> {
@@ -134,6 +164,62 @@ export async function lockUserById(
     [userId],
   );
   return result.rows[0] ?? null;
+}
+
+// Same as lockUserById, plus the database's own clock so login-lockout decisions (Stage 18b)
+// compare against the same clock that backdated test rows use, not the app server's clock.
+export async function lockUserByIdWithNow(
+  userId: string,
+  db: Queryable = pool,
+): Promise<UserRowWithNow | null> {
+  const result = await db.query<UserRowWithNow>(
+    `SELECT *, clock_timestamp() AS db_now FROM users WHERE id = $1 FOR UPDATE`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+// Call inside a transaction, against a row already locked with lockUserByIdWithNow.
+// windowStart is null to start a fresh rolling window (the previous one had expired).
+export async function recordLoginFailure(
+  userId: string,
+  { failedAttempts, windowStart }: { failedAttempts: number; windowStart: Date },
+  db: Queryable = pool,
+): Promise<void> {
+  await db.query(
+    `UPDATE users SET login_failed_attempts = $2, login_failure_window_start = $3,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [userId, failedAttempts, windowStart],
+  );
+}
+
+// Call inside a transaction, against a row already locked with lockUserByIdWithNow.
+// Also clears the failure counter/window: once locked, further attempts are rejected before
+// reaching this point and do not extend it (Stage 18b), and a fresh window starts once the
+// lock has passed.
+export async function lockLoginAccount(
+  userId: string,
+  { lockedUntil, lockLevel }: { lockedUntil: Date; lockLevel: number },
+  db: Queryable = pool,
+): Promise<void> {
+  await db.query(
+    `UPDATE users SET login_failed_attempts = 0, login_failure_window_start = NULL,
+       login_locked_until = $2, login_lock_level = $3, updated_at = NOW()
+     WHERE id = $1`,
+    [userId, lockedUntil, lockLevel],
+  );
+}
+
+// A successful login, a correct current password on the email/password change endpoints, or
+// an admin unlock all clear the failure count, the window and the escalation level (Stage 18b).
+export async function resetLoginLock(userId: string, db: Queryable = pool): Promise<void> {
+  await db.query(
+    `UPDATE users SET login_failed_attempts = 0, login_failure_window_start = NULL,
+       login_locked_until = NULL, login_lock_level = 0, updated_at = NOW()
+     WHERE id = $1`,
+    [userId],
+  );
 }
 
 export async function activateUser(
@@ -214,6 +300,7 @@ export interface ListUsersPageParams {
   email?: string;
   status?: "pending" | "active" | "suspended";
   role?: "user" | "admin" | "super admin";
+  locked?: boolean;
   sortBy: keyof typeof SORT_COLUMNS;
   sortDir: keyof typeof SORT_DIRECTIONS;
   limit: number;
@@ -221,7 +308,7 @@ export interface ListUsersPageParams {
 }
 
 export async function listUsersPage(
-  { usernameContains, email, status, role, sortBy, sortDir, limit, offset }: ListUsersPageParams,
+  { usernameContains, email, status, role, locked, sortBy, sortDir, limit, offset }: ListUsersPageParams,
   db: Queryable = pool,
 ): Promise<{ rows: UserRow[]; total: number }> {
   const conditions: string[] = [];
@@ -242,6 +329,9 @@ export async function listUsersPage(
   if (role) {
     values.push(role);
     conditions.push(`role = $${values.length}`);
+  }
+  if (locked !== undefined) {
+    conditions.push(locked ? `login_locked_until > NOW()` : `(login_locked_until IS NULL OR login_locked_until <= NOW())`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

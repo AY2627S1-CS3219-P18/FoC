@@ -6,6 +6,17 @@
 // Author review:
 // 25/09/2026: Stage 6a - requestOtp (locked, rate-limited OTP request)
 // Author review:
+// 2026-11-04: Stage 18c - issueOtp carries the send-escalation level/block-end forward onto
+//   the new row; requestOtp enforces the escalating send block ahead of the existing cap
+//   check and reports the level/exact retry seconds on a cap hit; checkOtp resets the
+//   escalation level on a successful consuming verify. Governing decision: instructions.md
+//   Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// 2026-11-04: Stage 19 - issueOtp and requestOtp gain username, passed through to
+//   sendOtpEmail for its per-attempt log lines. Governing decision: instructions.md Stage 19.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { config } from "../config.js";
 import * as otpQueries from "../db/queries/otp.queries.js";
@@ -15,6 +26,7 @@ import type { Queryable } from "../db/transaction.js";
 import { AppError } from "../utils/AppError.js";
 import { hashesMatch, sha256 } from "../utils/hash.js";
 import { generateOtp } from "../utils/otp.js";
+import { durationHoursForLevel, effectiveEscalationLevel } from "./lockEscalation.js";
 import { sendOtpEmail } from "./email.service.js";
 
 export async function issueOtp(
@@ -23,7 +35,17 @@ export async function issueOtp(
     email,
     purpose,
     newEmail,
-  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string },
+    username,
+    carryForwardEscalation,
+  }: {
+    userId: string;
+    email: string;
+    purpose: OtpPurpose;
+    newEmail?: string;
+    username: string;
+    // Previous latest row's send-escalation state for this (user, purpose), per Stage 18c.
+    carryForwardEscalation?: { level: number; blockedUntil: Date | null };
+  },
   db: Queryable,
 ): Promise<void> {
   await otpQueries.invalidateActiveOtps(userId, purpose, db);
@@ -36,12 +58,14 @@ export async function issueOtp(
       purpose,
       newEmail: newEmail ?? null,
       ttlMinutes: config.otp.ttlMinutes,
+      sendEscalationLevel: carryForwardEscalation?.level,
+      sendBlockedUntil: carryForwardEscalation?.blockedUntil,
     },
     db,
   );
 
   try {
-    await sendOtpEmail({ to: newEmail ?? email, otp, purpose });
+    await sendOtpEmail({ to: newEmail ?? email, otp, purpose, username });
   } catch (err) {
     // Never log the OTP itself.
     console.error(
@@ -60,7 +84,7 @@ export type RequestOtpResult =
   | { status: "sent" }
   | { status: "no-user" }
   | { status: "not-verified" }
-  | { status: "throttled"; reason: "limit" }
+  | { status: "throttled"; reason: "limit"; level: number; retryAfterSeconds: number }
   | { status: "throttled"; reason: "cooldown"; retryAfterSeconds: number };
 
 // Any endpoint that sends an OTP must go through this, never issueOtp directly.
@@ -72,7 +96,8 @@ export async function requestOtp(
     email,
     purpose,
     newEmail,
-  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string },
+    username,
+  }: { userId: string; email: string; purpose: OtpPurpose; newEmail?: string; username: string },
   db: Queryable,
 ): Promise<RequestOtpResult> {
   const locked = await userQueries.lockUserById(userId, db);
@@ -84,6 +109,21 @@ export async function requestOtp(
     return { status: "not-verified" };
   }
 
+  const latest = await otpQueries.findLatestOtp(userId, purpose, db);
+
+  // Stage 18c: a prior cap hit blocks further sends until send_blocked_until, regardless of
+  // the rolling-window count below.
+  if (latest?.send_blocked_until && latest.send_blocked_until.getTime() > latest.db_now.getTime()) {
+    return {
+      status: "throttled",
+      reason: "limit",
+      level: latest.send_escalation_level,
+      retryAfterSeconds: Math.ceil(
+        (latest.send_blocked_until.getTime() - latest.db_now.getTime()) / 1000,
+      ),
+    };
+  }
+
   // Rolling window, so the limit is never permanent.
   const count = await otpQueries.countOtps(
     userId,
@@ -92,10 +132,24 @@ export async function requestOtp(
     config.otp.resendWindowMinutes,
   );
   if (count - 1 >= config.otp.maxResends) {
-    return { status: "throttled", reason: "limit" };
+    // latest must exist: count only reaches the cap once at least one row has been created.
+    const currentLevel = effectiveEscalationLevel(
+      latest!.send_escalation_level,
+      latest!.send_blocked_until,
+      latest!.db_now,
+    );
+    const newLevel = currentLevel + 1;
+    const durationHours = durationHoursForLevel(newLevel);
+    const blockedUntil = new Date(latest!.db_now.getTime() + durationHours * 3_600_000);
+    await otpQueries.setSendBlock(latest!.id, { level: newLevel, blockedUntil }, db);
+    return {
+      status: "throttled",
+      reason: "limit",
+      level: newLevel,
+      retryAfterSeconds: durationHours * 3600,
+    };
   }
 
-  const latest = await otpQueries.findLatestOtp(userId, purpose, db);
   if (latest) {
     const availableAt =
       latest.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
@@ -109,7 +163,19 @@ export async function requestOtp(
     }
   }
 
-  await issueOtp({ userId, email, purpose, newEmail }, db);
+  await issueOtp(
+    {
+      userId,
+      email,
+      purpose,
+      newEmail,
+      username,
+      carryForwardEscalation: latest
+        ? { level: latest.send_escalation_level, blockedUntil: latest.send_blocked_until }
+        : undefined,
+    },
+    db,
+  );
   return { status: "sent" };
 }
 
@@ -155,6 +221,10 @@ export async function checkOtp(
     if (!consumed) {
       throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
     }
+    // A successful consuming verify resets the send-escalation level for this purpose
+    // (Stage 18c): reset-password, verify-otp with change_email, confirm-password-change.
+    // verifyForgotPasswordOtp's non-consuming check (consume=false) never reaches here.
+    await otpQueries.resetSendEscalation(row.id, db);
   }
   return { ok: true };
 }

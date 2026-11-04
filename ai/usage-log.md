@@ -6981,3 +6981,1007 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-04 — Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 18 (design-decision tables for login lockout,
+OTP send escalation, admin unlock, config, and cross-cutting rules — "Every decision in the
+table below was made by the team"). The stage's own text was originally pasted into
+`ai/usage-log.md` by the user as a scratch draft; at the start of this session it was relocated
+into `instructions.md` (pure relocation/formatting, no content authored by the AI) and committed
+separately as `d3c7bb6`, per the user's correction below, before any implementation began.
+
+**Prompts (exact):**
+
+> read stage 18. are you ready to impement it?
+
+> oops put it into instructions.md instead. don't forget the git workflow. just do everything in one pass bah
+
+**Key responses:**
+Before writing code, confirmed every §2.1 stop-and-ask trigger was already resolved by the
+stage's own "already made, do not change" decision tables, so no design/schema/API questions
+needed to be raised. Initially proposed the usual per-sub-stage (18a→18f) branch/PR sequence per
+the team's standing git workflow, but the user's second prompt asked for everything in one pass
+instead, so all of 18a–18f were implemented together against `main`, uncommitted, to be reviewed
+and shipped as a single PR rather than six.
+
+Implemented, in order:
+
+- **18a** (schema/config): the four `users` login-lockout columns and two `users_otps`
+  send-escalation columns in `init.sql`; `LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_MINUTES`,
+  `LOCK_ESCALATION_HOURS`, `LOCK_ESCALATION_RESET_HOURS` added to `config.ts`'s Zod schema and
+  to `.env.example`/`.env`/`.env.test`.
+- Shared foundation: a new `src/services/lockEscalation.ts` holding the escalation-duration/
+  message/quiet-window-reset math used by both the login lock and the OTP send block, so the two
+  features (18b, 18c) share one implementation of the "1h → 4h → 24h, resets after 24h quiet"
+  rule rather than duplicating it.
+- **18b** (login lockout): `recordLoginFailure` and the `login()` flow in `auth.service.ts`
+  check the lock before the password check, count failures, lock on threshold, and reset on
+  success, skipping `pending`/`suspended` accounts. `me.service.ts`'s
+  `initiateEmailChange`/`initiatePasswordChange` reject `ACCOUNT_LOCKED` before the password
+  check and feed `INVALID_PASSWORD` into the same counter.
+- **18c** (OTP send escalation): `otp.service.ts`'s `requestOtp` applies the escalating block for
+  `forgot_password`/`change_email`/`change_password`, writing the new level/block-end onto the
+  latest existing row on a cap hit and copying them forward onto each new row; registration left
+  unchanged. `forgotPassword`/`resetPassword` (auth.service.ts) and
+  `throwOnUnsentOtp`/`verifyEmailChangeOtp`/`confirmPasswordChange` (me.service.ts) get the
+  level-matched message and `Retry-After`, and reset the level on a successful consuming verify.
+- **18d** (admin): `POST /users/:id/unlock` (route, controller, `users.service.ts`'s
+  `unlockUser`) mirroring `changeUserStatus`'s permission rules; `isLocked`/`lockedUntil`/
+  `lockLevel` added to `userResponse.ts`; a `locked=true|false` filter added to `listUsersPage`/
+  the `GET /users` controller.
+- **18e** (frontend): `ACCOUNT_LOCKED` added to `errorMessages.js` as a banner (`Login.jsx`
+  already renders any banner-type error generically, so it needed no code change itself);
+  `unlockUser` added to `api/users.js`; `AdminUsers.jsx` gained the three lock fields as table
+  columns, a `locked` filter, and an Unlock row action gated by the same `getRowActions`-style
+  visibility rule as Suspend.
+- **Mid-stream refactor:** found that a send-escalation cap hit's write (18c) inside
+  `initiateEmailChange`/`initiatePasswordChange`'s transaction was being silently rolled back
+  whenever the same call path then threw `OTP_RESEND_LIMIT` or `ACCOUNT_LOCKED` later in the same
+  transaction. Fixed by converting `recordLoginFailure` and `throwOnUnsentOtp` from
+  throw-on-detection to return-a-result, so the caller can commit the escalation write before
+  throwing the corresponding error outside the transaction. This is an implementation-level fix
+  for a correctness bug in how the already-decided behaviour was being persisted, not a new
+  design decision.
+- **18f** (tests): added lockout and OTP-escalation-reset unit/controller tests across
+  `auth.service.test.ts`, `auth.controller.test.ts`, `me.service.test.ts`,
+  `otp.service.test.ts`, `users.service.test.ts`, `users.controller.test.ts`; added
+  `getUserById`/`setLoginLockState`/`setOtpSendBlock` to `tests/helpers/db.ts` for backdating
+  state; added `tests/concurrency/lockout.concurrency.test.ts` covering "N concurrent wrong
+  logins at the threshold produce exactly one lock at the correct level" and "N concurrent sends
+  at the cap produce exactly one escalation"; fixed two `races.concurrency.test.ts` cases whose
+  assertions no longer held once login failures started being counted.
+
+**Verification actually run (this wrap-up session, picking up uncommitted work from an earlier
+session that ended mid-debug after a `/compact`):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, default parallel file execution): **734/737 passed**; the 3
+  failures (`me.controller.test.ts`, `me.service.test.ts`, `users.service.test.ts`) each passed
+  individually in isolation.
+- `npx vitest run --no-file-parallelism`: **737/737 passed**, confirming the 3 failures above are
+  pre-existing cross-file DB contention under parallel test-file execution against the shared
+  Postgres container (same class of flake noted in the Stage 17 entry), not a Stage 18
+  regression.
+- `oxlint` (frontend): no new warnings on the touched files; existing warnings elsewhere are
+  pre-existing and unrelated.
+- `vite build` (frontend): succeeded.
+- **Not run:** no Docker/browser verification of the Verification section's frontend bullets
+  (login banner rendering, admin table's lock columns/filter/Unlock action end-to-end against
+  the real stack) — left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/config.ts` (modified)
+- `user-service/.env.example`, `user-service/.env.test` (modified — cannot carry a header)
+- `user-service/src/services/lockEscalation.ts` (created)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (created)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `instructions.md` (modified separately, commit `d3c7bb6`: relocated the Stage 18 spec from
+  `ai/usage-log.md` into its proper place)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Asked whether to split into per-sub-stage branches/PRs as usual, or do it as one pass; the user
+chose one pass (see prompts above). Left two things for the team, as the stage's own text
+specifies: NFR1.1.1 (unlock email) is out of scope/deferred, and the `docs/FoC-ProductBacklog.md`
+wording edit for NFR1.1/NFR1.1.1 was not made (the stage marks it "for the team to make"). No
+other ambiguity was found — every behavior, schema, and API choice came directly from the
+stage's decision tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 19 (added in this same session, commit `56646d1`)
+
+**Prompts (exact):**
+
+> is stage 19 ready to implement?
+
+> yes go for it, don't forget the git workflow
+
+**Key responses:**
+Before implementing, re-checked the stage's cited line numbers and "username is in scope"
+claims against the current code (all matched exactly). Found one place where the stage's
+decision table disagreed with the code: it said to pass username at `forgotPassword()` (line 466) "from the locked row", but `forgotPassword()` has no locked row at that point — only the
+unlocked `findByEmail` read (`requestOtp` does its own internal lock later, inside
+`otp.service.ts`). Stopped and asked; the user chose to use that unlocked row's username
+(`user.username`), not to add a new lock, since the latter would be a new locking decision, not
+implementation of an existing one.
+
+Implemented the retry loop, per-attempt cap, backoff, deadline and logging entirely inside
+`sendOtpEmail` (`email.service.ts`), per the stage's "retry loop location" decision — its
+contract (resolve on success, throw after the final failure) is unchanged, so `issueOtp`'s
+try/catch/`AppError(503, ...)` wrapping needed no changes beyond threading `username` through.
+Added phase timeouts (`connectionTimeout`/`greetingTimeout`/`socketTimeout`/`dnsTimeout`, all
+5000ms) to `createTransport()`. The per-attempt cap races `sendMail()` against a `setTimeout`;
+an attempt cut off by the cap is left to settle on its own, with a `settled` flag guarding
+`resolve`/`reject` so the eventual result is swallowed (no unhandled rejection, no log line) and
+the timer is cleared whenever the send settles first. Error classification
+(`isTransientError`/`describeAttemptError`) follows the stage's table exactly: `ETIMEDOUT`/
+`ESOCKET`/`ECONNECTION`/`EDNS` always transient; `EENVELOPE`/`EMESSAGE`/`EAUTH` transient only
+for `responseCode` 400–499; everything else (including the synthetic `ATTEMPT_TIMEOUT`, which is
+always transient) non-transient. Backoff is `Math.random() * Math.min(300, 2**(n-1)) * 1000`ms,
+and a wait is skipped (immediate throw instead) if `Date.now() - startedAt + waitMs` would
+exceed the 30s deadline. No new env vars; constants are at the top of `email.service.ts` as
+specified.
+
+Threaded `username` through `issueOtp`/`requestOtp` (`otp.service.ts`) and all six call sites
+across `auth.service.ts` (`register`, `resendRegistrationOtp`, `forgotPassword`) and
+`me.service.ts` (`initiateEmailChange`, `resendChangeEmailOtp`, `resendChangePasswordOtp`,
+`initiatePasswordChange`), using each function's already-fetched row.
+
+Updated the two existing test files whose call sites gained the new required `username` param,
+without changing any existing assertion's intent — except three `email.service.test.ts`
+dev-fallback assertions that checked `console.log` was never called at all, as a proxy for "the
+dev fallback didn't run"; since the real SMTP path now also logs a success line, that proxy no
+longer held, so those three were narrowed to what they actually meant: no `[DEV EMAIL]` line was
+logged (noted inline in the file's header, not silently). Added a new `describe` block to
+`email.service.test.ts` covering every bullet in the stage's Verification list that belongs at
+the email-service unit level: attempt counting/logging on success, retry-then-succeed,
+exhausting all 4 attempts, each transient error code, the `EENVELOPE`/`EMESSAGE`/`EAUTH`
+responseCode boundary (both sides), the three non-transient "fail immediately" cases, backoff
+wait ranges (via fake timers, no real sleeping), the 5s cap cutoff and abandoned-send handling,
+the 30s deadline's wait-skip (via mocking `Date.now` directly, since the stage's own constants
+make 4×5s cap + max 7s backoff = 27s always under 30s in real time — the deadline branch is a
+safety margin that real timing alone can't exercise), masking/no-sensitive-data-in-logs, and
+per-purpose/per-username logging including Change Email's masked-new-email case. Did not add new
+test cases to `otp.service.test.ts` beyond the `username` fixture: that file mocks
+`sendOtpEmail` globally (Stage 7's own setup), so the 4-attempt retry loop is invisible to it —
+its existing success/503-rollback/previous-OTP-still-valid tests already cover what's observable
+at that layer, unchanged.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npm run build` (user-service, `tsc`): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite, default sequential file execution per
+  `vitest.config.ts`): **762/762 passed** (was 693 at Stage 17; 69 new tests, all in
+  `email.service.test.ts`).
+- Not run: no Docker/manual end-to-end check of a real SMTP server's retry/timeout behavior —
+  left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `instructions.md` (modified separately, commit `56646d1`: added the Stage 19 spec)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Flagged and resolved in chat (see Key responses above): the stage's table said to source
+`forgotPassword()`'s logged username from a "locked row" that doesn't exist in that function;
+the user chose the unlocked `findByEmail` row instead of adding a new lock. No other ambiguity
+was found — every retry/backoff/timeout/logging choice came directly from the stage's decision
+tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 20a: Backend" (and its "Changes to already-implemented code" table) — moved into `instructions.md` by the user from an earlier, misplaced location before this session's work began.
+
+**Prompts (exact):**
+
+> is stage 20 clear? ready to implement?
+> let's do stage 20a
+
+**Key responses:**
+Scoped this session to Stage 20a (backend, `user-service`) only, per the user's own words; Stage
+20b (frontend eye icon, `getFullEmail` API call, toast text) was explicitly not started.
+
+Followed the "Changes to already-implemented code" table item by item. Extracted the Stage 19
+`maskEmail` helper out of `email.service.ts` into its own module, `src/utils/maskEmail.ts`, so
+`userResponse.ts` could reuse the same masking format without a cross-service-layer import;
+output is byte-for-byte unchanged from Stage 19. Gave `toUserResponse(row, requesterId)` a second
+parameter and masked `email` unless `row.id === requesterId`. Threaded a `requesterId` through
+every admin-facing caller of `toUserResponse` (`listUsers`, `getUserById`, `changeUserStatus`,
+`changeUserRole`, `unlockUser` in `users.service.ts`; their controllers in
+`users.controller.ts` now pass `req.user!.user_id`), and confirmed `me.service.ts`'s
+`changeActiveView` (a self-view path) already passes the caller's own ID, so its email returns
+unmasked as required.
+
+Added `findByIdWithNow` to `users.queries.ts` (unlocked read + `clock_timestamp() AS db_now`,
+following the existing `UserRowWithNow`/`OtpRowWithNow` convention) so the new endpoint's log
+timestamp comes from the database clock, not `Date.now()`, per the stage's logging spec. Added
+`getFullEmail(actorId, targetId, userAgent)` to `users.service.ts`: looks up the actor's
+username, looks up the target, logs `denied reason=USER_NOT_FOUND` and throws `404` if the target
+doesn't exist, logs `denied reason=FORBIDDEN` and throws `403` if the target is a super admin,
+otherwise writes the `granted` line and returns the real email. Also added
+`logUnmaskValidationFailure(actorId, rawTargetId, userAgent)` for the controller's own `400`
+path (invalid UUID in `:id`), matching the stage's requirement that a validation failure still
+produce a denied log line with the actor's username. Both log functions follow the stage's exact
+line format (`[UNMASK EMAIL] actorId=... actorUsername=... targetId=... targetUsername=...
+timestamp=... userAgent=... outcome=...`), quote `userAgent` and (when the target lookup didn't
+resolve a username) `targetId` with `JSON.stringify`, write a literal `-` for a missing
+`User-Agent` header, and use `console.log` for granted / `console.error` for denied. Neither
+function catches its own write failure, so a logging failure still propagates to the global
+error handler as a `500`, per the stage's last Verification bullet.
+
+Added the `fullEmail` controller (`asyncHandler`-wrapped, validates `:id` with the existing
+Stage 9 UUID schema, calls `getUserById`'s sibling `getFullEmail` with
+`req.user!.user_id`, `req.params.id!`, `req.get('user-agent')`) and registered
+`GET /:id/full-email` in `users.routes.ts` ahead of `GET /:id` so it isn't shadowed, exactly as
+the table specifies.
+
+Updated every existing test whose assertions expected a real email in an admin-facing response
+(now masked) across `users.controller.test.ts` and `users.service.test.ts`, and fixed every
+existing call site of `changeUserStatus`/`unlockUser`/`getUserById`/`listUsers` for their new
+leading `requesterId` parameter (including four call sites in
+`tests/concurrency/lock-recheck.concurrency.test.ts`, in a separate directory, missed on the
+first pass and fixed once the full suite surfaced them). Added new test coverage for every
+Stage 20a Verification bullet: masked vs. unmasked rows across `GET /users`, `GET /users/:id`,
+status/role/unlock endpoints, the caller's-own-row exception, the full-email endpoint's success
+path for a user/pending/suspended/admin target as both admin and super admin caller, the
+super-admin-target `403`, unknown-UUID `404`, invalid-UUID `400`, no-token `401` and
+regular-user `403` (neither of the last two logging anything), the admin-vs-super-admin
+own-ID-targeting split, the database-clock timestamp (via a new `dbNow()` test helper), log-line
+content (quoting, `-` for missing user agent, no email ever logged), and the forced-logging-
+failure `500` path.
+
+**Verification run (this session):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, full suite): **791/791 passed.** Four separate full-suite runs
+  during this session each showed exactly one `ECONNRESET`/"socket hang up" failure, a different
+  test each time (`me.controller.test.ts`, `auth.service.test.ts`,
+  `users.public.controller.test.ts`, then `auth.controller.test.ts`); each was re-run in
+  isolation and passed cleanly, confirming a pre-existing cross-file DB/connection-pool
+  contention flake (noted in an earlier Stage 18 log entry) rather than a regression from this
+  stage's changes.
+- Not run: no Docker/manual end-to-end check; left for the human, as with prior stages.
+
+**Files:**
+
+- `user-service/src/utils/maskEmail.ts` (created)
+- `user-service/src/services/email.service.ts` (modified — `maskEmail` extracted out)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/utils/maskEmail.test.ts` (created)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `instructions.md` (modified separately, commit `7f75cf2`: Stage 20 spec moved here by the user)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None — the stage's decision table and Verification list were followed as written; no schema,
+API, or security/performance choice was left unrecorded.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `instructions.md`, "Stage 20b: Frontend" and its "Tests" section.
+
+**Prompts (exact):**
+
+> let's do stage 20b
+
+**Key responses:**
+`frontend/` had no test runner at all (no Vitest config, no `@testing-library/*`, no test
+script, no existing `*.test.*` files), and the stage's own Tests section says to stop and ask
+before adding one. Asked; the user chose Vitest + React Testing Library (jsdom environment),
+matching the backend's existing Vitest choice. Added `vitest.config.js` (jsdom, a shared
+`tests/setup.js` that loads jest-dom matchers and runs `cleanup()` after each test), a `test`
+script in `package.json`, and the four devDependencies (`vitest`, `jsdom`,
+`@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`). Verified
+the toolchain with a throwaway smoke test before writing any real tests.
+
+Added `getFullEmail(id)` to `src/api/users.js` (`GET /users/:id/full-email`, returns `{ email
+}`), mirroring the file's existing request-wrapper pattern.
+
+In `src/pages/AdminUsers.jsx`: added an eye/eye-off icon (lucide-react) in the email cell,
+gated by `canUnmaskEmail(viewer, row)` — hidden for the caller's own row and any `super admin`
+row, per the stage's rule. Click calls `getFullEmail(id)` and shows the real email with the
+icon switched to "hide"; a second click re-masks instantly with no request (checked via
+`id in unmaskedEmails`, not re-fetching); a 60-second `setTimeout` (`UNMASK_TIMEOUT_MS`)
+auto-re-masks, is cleared on manual re-mask, and is cleared on unmount. State is keyed per row
+(`unmaskedEmails`, `unmaskingRows`, and `unmaskTimersRef` all keyed by user id), so two rows
+unmask and re-mask independently. The existing `useEffect(() => { setRowOverrides({}) },
+[data])` (added in an earlier stage, runs whenever the table data object changes — i.e. after
+any refetch from a filter/sort/page change or a row action's `reload()`) now also calls a new
+`remaskAllRows()`, satisfying "any refetch re-masks every row and clears their timers". A
+failed `getFullEmail` call shows the existing `describeError(err).message` toast and leaves the
+row masked, reusing the page's existing toast pattern — no new error-handling path needed.
+Checked `errorMessages.js`'s `FORBIDDEN`, `USER_NOT_FOUND` and `VALIDATION_ERROR` entries per
+the stage's "Changes to already-implemented code" table: all three already have generic,
+toast-appropriate wording from earlier stages (`AdminUsers.jsx` shows `describeError(err).message`
+directly regardless of the `display` field), so no wording change was needed.
+
+Fixed one `oxlint` warning introduced by the new code (a function used before its textual
+declaration, flagged by `react(immutability)` despite function-declaration hoisting making it
+work at runtime) by moving `remaskRow`/`remaskAllRows` above the effect that calls them. Did not
+touch the pre-existing `react(set-state-in-effect)` warnings on the same lines — confirmed via
+`git stash` that this warning class already existed on this file (and ~8 other files) before
+this stage's changes.
+
+Wrote `tests/pages/AdminUsers.test.jsx` (6 tests, `listUsers`/`getFullEmail`/`AuthContext`
+mocked) covering the stage's frontend-testable Verification bullets: eye-icon visibility rules,
+reveal-then-re-mask-with-no-second-request, the 60s auto-re-mask (Vitest fake timers), two rows
+unmasking and re-masking on independent timers, the failure toast leaving the row masked, and
+re-masking every row after a refetch (a filter change). The last one needed
+`listUsers.mockImplementation(...)` instead of `mockResolvedValue(...)`: the latter reuses one
+object's identity across calls, which hid the very effect being tested (React's `[data]`
+dependency check saw no change) — not a real bug, since a real fetch always returns a fresh
+object. Also wrote `tests/api/users.test.js` for `getFullEmail` itself.
+
+No browser-automation tool is available in this environment, so the click-through could not be
+literally driven in a real browser. Verified the backend contract the UI depends on directly
+instead: brought up `user-db` + `user-service` (plus a throwaway registered user) and the Vite
+dev server, then used `curl` to confirm `GET /users` masks every email except the caller's own
+row, `GET /users/:id/full-email` returns the real email and logs a `granted` line, and targeting
+a super admin returns `403 FORBIDDEN` with a `denied` line — matching Stage 20a's already-merged
+backend exactly. Found the local dev Postgres volume was stale (missing Stage 18's lockout
+columns, since `init.sql`'s new `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` lines only run via
+the container's first-init script, and existing columns added inline in a `CREATE TABLE
+IF NOT EXISTS` for an already-existing table are silently skipped); fixed it by re-applying
+`init.sql` plus the two `users_otps` columns directly, which is purely additive and didn't
+affect the automated test database (`user_service_test`, on the same Postgres instance but a
+separate database that `tests/setup/globalSetup.ts` drops and recreates from `init.sql` fresh
+before every run, so it was never affected by the stale volume or this fix).
+
+**Verification run (this session):**
+
+- `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes (one of
+  them on a newly-added line, same class as throughout the codebase), no new warning categories.
+- `npx vite build` (frontend): clean.
+- `npx vitest run` (frontend): **7/7 passed** (new — this stage added the test runner itself).
+- `curl` against a live `user-service` + Postgres + the Vite dev server (proxying to it):
+  confirmed masked `GET /users`, the caller's-own-row exception, `GET /users/:id/full-email`'s
+  success and super-admin-target `403` paths, and both log-line shapes, all matching Stage 20a's
+  spec.
+- Not run: an actual browser click-through (no browser-automation tool available in this
+  environment) — left for the human.
+
+**Files:**
+
+- `frontend/vitest.config.js` (created)
+- `frontend/tests/setup.js` (created)
+- `frontend/tests/pages/AdminUsers.test.jsx` (created)
+- `frontend/tests/api/users.test.js` (created)
+- `frontend/package.json` (modified — `test` script, new devDependencies)
+- `frontend/package-lock.json` (modified)
+- `frontend/src/api/users.js` (modified — `getFullEmail`)
+- `frontend/src/pages/AdminUsers.jsx` (modified — eye icon, unmask/re-mask/timer logic)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Stopped and asked before adding a test runner to `frontend/`, per the stage's own instruction
+to do so (`frontend/` had none at all). The user chose Vitest + React Testing Library. No other
+ambiguity — `errorMessages.js`'s existing wording was checked and found adequate, as noted above.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-02 — Phase 5: Authorization verification
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug, docs
+**Scope:** Implementation code | Debugging | Refactor/Docs
+**Governing decision:** `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 1; `supplier-service/SupplierServiceSpec.md` Phase 5; existing JWKS authentication.
+
+**Prompts (exact):**
+
+> pull main into supplier-phase-5 branch and continue with phase 5 task
+
+**Key responses:**
+Fetched and merged origin/main; resolved README and usage-log conflicts, retaining both branches' indexed entries. Added tests for missing credentials, invalid tokens and an authenticated user on all 12 mutating endpoints, asserting no MySQL or Redis stub calls. Adapted authentication to signed tokens and a stubbed JWKS because main changed token verification. Temporarily removed the lookup role guard: nine cases failed; restored it afterward. The first full suite found five existing integration tests using obsolete placeholder tokens; updated those tests for JWKS. Final verification: `npx vitest run` passed 39 files and 381 tests; `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. The separate MinIO and seed suites were not run.
+
+**Files:**
+
+- `supplier-service/test/security/mutatingEndpoints.test.ts` (created)
+- `supplier-service/test/app.integration.test.ts` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Tasks 2–5 remain blocked on the team's endpoint wording, performance target, data volume, tool and database, and API/cross-role demonstration format, location and token source; see the Phase 5 plan's blocked decisions. No decisions were made by the agent.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-03 — Phase 5: Response inventory and API test plan
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** explain, docs
+**Scope:** Refactor/Docs
+**Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7.4, `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 2–5 and the team's chat instruction below.
+
+**Prompts (exact):**
+
+> 1. In that case, just give me all the messages the code returns and I will decide on the exact phrasing myself, mapping to each.
+> 2. The testing is mainly for latency of pagination when the load increases. Let's run at p50 - representative of typical load and p95 - representative of the general experience during load, as defined by microsoft. according to the NFR, we are aiming for near instant loads. Concretizing that, the time to load should ideally not exceed 1s. The plan already lists some test conditions
+> 3. A test plan should also be created that lists the exact API calls to make for the tests
+
+**Key responses:**
+Inventoried current response messages and locations, including generated Zod details, for team review. Documented the existing Phase 5 pagination and API lifecycle calls. Recorded the team's p50/p95 and ideal one-second objective, and its preceding instruction to demonstrate on the live app. Flagged the existing per-IP rate limit and outstanding test parameters; no load test or live demonstration was run. Verified documentation against source and checked the diff for whitespace errors.
+
+**Files:**
+
+- `supplier-service/docs/phase-5-response-inventory.md` (created)
+- `supplier-service/docs/phase-5-api-test-plan.md` (created)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Confirm whether one second is a strict pass criterion and specify load rate, supplier counts, duration, load tool, database and permitted action if the target is missed. Confirm whether the API-only transcript remains required, its format and location, and token source. The team will decide the response wording.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Congchen
+
+## 2026-11-04 — Phase 5: Performance and no-UI test decisions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 3–5.
+
+**Prompts (exact):**
+
+> Task 3: Let's break the NFR even further - during typical load, the target is to keep to within 300ms. This is the p50 target. Under heavy load, the target is within 600ms, for p95. These criteria will be evaluated with an aggregated percentile compliance over 1 minute. Since a single user probably only toggles a page every 5-10s after reading the contents, the baseline rate for normal usage will be 50 requests per second (emulating a few hundred ~400 concurrent users), while the peak load will be 200 requests per second (emulating ~1600 concurrent users). These numbers are estimates for the number of users of this application in the early phases. For the database, we can use a mock db populated with 4000 records (actual suppliers is expected to be 100+, but to prevent artificial caching as the tests will not be repeatedly calling the same 20-record chunks). Writes are extremely rare and concurrent read writes will be negligible, so we can ignore that in the tests. For the tool, lets use k6 by Grafana, an industry standard for concurrent API load tests, which can also be easily integrated into existing CI/CD pipelines with its JS tests
+> Task 4-5: Yes, the no UI test is still required. I plan to use this as part of CI/CD test to ensure nothing on the logic side broke
+
+**Key responses:**
+Recorded the team's percentile targets, request rates, duration, record count, load tool and no-UI CI intent in the decision record and API test plan. The current limiter allows 30 requests per minute per IP. Asked for clarification about the meaning of mock database, handling that limiter and the association between targets and load levels. No performance or live API tests were run.
+
+**Files:**
+
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Database implementation, rate-limit handling, threshold/load association, no-UI test format and token source remain open. Any query or index change requires a team decision.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Congchen
+
+## 2026-11-04 — Phase 5: Clarified load-test decisions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs | Debugging
+**Governing decision:** Team answers below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
+
+**Prompts (exact):**
+
+> separate mysql test database for now. eventually i will also add in cloud mysql db so the target env can just be swapped over
+
+> the rate limit is controlled by an env vir. in staging and local, that limit is disabled (some very high number)
+> Both p50 and p95 metrics should be applied. p50 Measures what the typical user experiences (the 50th percentile mark). p95 Measures worst-case behavior under that specific traffic pattern. a framework could be under typical load, p50 target is <=300ms, p95 target is <=500ms. For peak load, p50 target is <=400ms, p95 target is <=600ms
+
+**Key responses:**
+Recorded separate MySQL test database and the four supplied percentile targets. Inspected the existing limiter and config: the limiter is hard-coded at 30 requests/minute/IP and there is no rate-limit environment variable in Supplier Service. Asked the team for the variable name and exact local/staging and production/unset behavior, and for the distribution of request variants across each load level. No load tests were run.
+
+**Files:**
+
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Rate-limit configuration and request-variant workload distribution are unresolved; changing a security setting requires the team decision. No-UI test format and token source remain open.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Configurable rate limit and workload
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
+
+**Prompts (exact):**
+
+> **Supplier Service currently hard-codes 30 requests/minute/IP; it has no rate-limit environment variable. What variable name and exact local/staging limit should be used, and should production retain 30 when it is unset?**
+>
+> PER_IP_RATE_LIMIT. Local and staging can be 10000. production is 30
+>
+> **Should each listed pagination request be tested separately at the full 50 and 200 requests/s, or should the requests share those rates in a mixed workload? If mixed, what proportions should each receive?**
+>
+> Testing each paginated route separately at 200 RPS would simulate an unrealistic scenario where the entire user base simultaneously spams a single endpoint. A mixed workload represents true production traffic, testing how the backend handles concurrent execution of different offset depths, filters, and cache hits. We should use a combined workflow with
+> [ Total Target: 50 / 200 RPS ]:
+> 70% ── Page 1 (Shallow Offset / Default View)
+> 20% ── Pages 2–5 (Next / Previous Toggles)
+> 10% ── Page 6+ / Deep Offsets / Filtered Queries
+>
+> Also update the local rate limit to 20000 instead of 10000
+
+> 95% for public, 5% for admin.
+> [ 10% Complex Group Share ]
+> 40% ── Deep Pagination (Pages 6+, high OFFSET)
+> 15% ── Text Search (`?search=errand`)
+> 15% ── Status Filter (`?isOpen=true`)
+> 15% ── Category Filter (`?category=cleaning`)
+> 15% ── Location Filter (`?location=central`)
+
+**Key responses:**
+Added positive-integer `PER_IP_RATE_LIMIT` configuration with default 30, used it in the per-IP limiter, set local Compose and the service environment example to 20,000, and documented the team's staging value of 10,000. Staging must supply that setting; there is no staging configuration in this checkout. Recorded the mixed workload and asked how category and location names should map to the existing numeric ID filters. A 200 requests/s test for one minute from one IP exceeds the staging limit. TDD: the two new tests initially failed before implementation and then passed. The first full run had 382 passes and one failure in the existing incorrect-signature authentication test; it changes a Base64 final character, which can decode to the same bytes. A subsequent full run passed 39 files and 383 tests. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. No k6 load test was run.
+
+**Files:**
+
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/middleware/rateLimit.ts` (modified)
+- `supplier-service/test/middleware/rateLimit.test.ts` (modified)
+- `supplier-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `supplier-service/openapi.yaml` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** The supplied category and location filter names do not match the API's numeric `category_id` and `location_id` parameters; asked whether to look up IDs. Staging's 10,000/min/IP rate limit is below the 12,000 requests in the one-minute peak test from one IP. No staging configuration was found. The existing authentication test can be flaky when its signature mutation leaves decoded bytes unchanged.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Pagination k6 workload
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team's mixed-workload decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md`, Task 3.
+
+**Prompts (exact):**
+
+> The test should emulate how the real requests are sent. On the fe the dropdown is loaded with the categories that maps to ids, so the test can just use ids instead
+
+**Key responses:**
+Recorded the team's numeric ID clarification and added a k6 script with the specified mixed load, separate one-minute typical and peak scenarios and latency thresholds. Used Grafana's [constant-arrival-rate executor documentation](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/) and [metric documentation](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/); `http_req_duration` excludes initial connection setup. The script validates its required environment inputs, checks HTTP responses, and fails on dropped iterations or HTTP failures. The 100,000-iteration local mocked-request simulation gave 4,985 admin, 69,830 page-one, 19,945 pages 2–5, 4,096 deep, and 1,564/1,510/1,512/1,543 search/open/category/location requests; `node --check` and lint passed. This was not a k6 or live-database run. The 4,000-record seeding script and no-UI CI test remain to be implemented; Docker access was denied and k6 was not installed in the environment.
+
+**Files:**
+
+- `supplier-service/test/load/pagination.k6.js` (created)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Staging's 10,000 requests/minute/IP is below the 12,000 requests in a one-minute peak run from one IP. The no-UI test format and token source remain open. No live k6 verification was possible.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Staging limit correction
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction below and Phase 5 implementation plan.
+
+**Prompts (exact):**
+
+> staging env limit is also updated to local's 20000. Where did the 100,000 request simulation come from?
+> what other blockers are there for this phase
+
+**Key responses:**
+Recorded the staging limit correction and updated the current Phase 5 status. The 100,000 iterations were an agent-chosen local Node simulation of the k6 script's randomized selection logic with HTTP calls mocked; they did not make real requests or measure latency. Identified the outstanding implementation, environment and team-decision items. No staging deployment configuration is present in the checkout; no live load test was run.
+
+**Files:**
+
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** Staging configuration must be updated in its deployment environment. Other remaining items are reported to the team; no decisions were inferred.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Accepted existing response messages
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team instruction below; Phase 5 plan Task 2 and existing response inventory.
+
+**Prompts (exact):**
+
+> accept current messages and optional details. Does this unblock the rest of the implementation
+
+**Key responses:**
+Recorded the team's acceptance of the current response messages and optional details. The wording decision is unblocked; verification remains. Pagination data setup and live k6 verification, plus the no-UI and cross-role tests, still remain. The earlier Docker access and k6 availability limitations still apply; demonstration format, token source and transcript location were not selected. This decision does not specify changes to malformed-JSON or unknown-route handling.
+
+**Files:**
+
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** No-UI test format, token source and transcript location remain open; a team decision is needed before changing query/index behavior if performance targets are missed.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Response-message tests and local pagination load run
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** Phase 5 plan Task 2 (team accepted current messages, response inventory) and Task 3 (team load targets, 4,000-record separate MySQL database, k6, `PER_IP_RATE_LIMIT`), both recorded in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Decision record.
+
+**Prompts (exact):**
+
+> you should be in the supplier-phase-5 branch. Continue with implementing the plans so we can move on
+
+**Key responses:**
+Task 2: added `test/routes/responseMessages.test.ts` (6 tests for the shared 401, 403, idempotency-key 400, and 422 validation messages and details from the inventory); all passed against current code, so no message strings were changed. The inventory rows that need database state (404, duplicate/referenced 422, stale-version 409, 500 save/upload failures) were not covered by new tests. Task 3: added `scripts/seedLoadTestData.ts` (schema from `src/db/init.sql`, 4,000 synthetic suppliers) and `scripts/loadTestAuth.ts` (local JWKS stub and test tokens), then ran `test/load/pagination.k6.js` once against a throwaway MySQL 8 container, with k6 in Docker, all on one laptop. The targets were not met: typical p50 8.7 s, p95 11.03 s; peak p50 15.21 s, p95 17.09 s; 11,672 dropped iterations; no 429s. Per plan Task 3 step 4, no index or query was changed. Raw output and caveats are in `supplier-service/docs/phase-5-load-test-results.md`. Tasks 4 and 5 were not started (format, token source and location undecided).
+
+**Files:**
+
+- `supplier-service/test/routes/responseMessages.test.ts` (created)
+- `supplier-service/scripts/seedLoadTestData.ts` (created)
+- `supplier-service/scripts/loadTestAuth.ts` (created)
+- `supplier-service/docs/phase-5-load-test-results.md` (created)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `supplier-service/SupplierServiceSpec.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** NFR7.1 targets were missed in this run (single-machine, dev-mode service); the team must decide whether to re-run in a closer-to-production setup and whether index/query changes are allowed. A single `isOpen=true` request took 3.46 s on its own. Tasks 4 and 5 still need the demonstration format, token source and evidence location. A local service process and JWKS stub started for the run could not be stopped by the agent (the stop command was denied) and may still be running.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: No-UI API suite and cross-role suite
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** Phase 5 plan Tasks 4 and 5, with the team's chat answers below (Vitest suite, local JWKS stub for tokens, evidence under `test/`); Arch §7.4 for the calls.
+
+**Prompts (exact):**
+
+> use a vitest suite. For the token source, use the local stub as the whole test deals with supplier side logic. whether login path works will be a separate test
+
+**Key responses:**
+Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-demo/*.apidemo.test.ts` against an already-running service (`API_BASE_URL`, default `http://localhost:3002`). `globalSetup.ts` serves a JWKS stub and provides user, admin and super admin tokens; the service must be started with `USER_SERVICE_URL` pointing at it and a high `PER_IP_RATE_LIMIT`. `lifecycle` covers reference lookups, create with Idempotency-Key, replay, list/detail, update, stale-version 409, delete, repeated-delete 404. `roles` runs the same operations as each role and asserts 200/201 versus 403. Each file saves a generated transcript to `test/api-demo/transcripts/`. Ran live against a throwaway MySQL/Redis and a local service: 17 of 17 passed. Two corrections along the way: the replayed Idempotency-Key returns the stored 201, not 200 as I first assumed; and a reused JWKS key id was cached by a long-running service, so the stub now uses a per-run key id. One default-suite run showed 1 failed test (not identified) and the rerun passed 389/389. The default `vitest run` excludes these suites.
+
+**Files:**
+
+- `supplier-service/test/api-demo/globalSetup.ts` (created)
+- `supplier-service/test/api-demo/client.ts` (created)
+- `supplier-service/test/api-demo/lifecycle.apidemo.test.ts` (created)
+- `supplier-service/test/api-demo/roles.apidemo.test.ts` (created)
+- `supplier-service/.gitignore` (modified; transcripts are generated in CI and not committed)
+- `supplier-service/vitest.apidemo.config.ts` (created)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/package.json` (modified; no header possible)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:** Team decision (chat, 2026-11-04): transcripts are generated in CI and need not persist, so they are git-ignored. CI needs a stack with a seeded location row and the stub reachable by the service. The unidentified default-suite failure was not investigated.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — Phase 5: Current state and test arrangements
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs, explain
+**Scope:** Refactor/Docs
+**Governing decision:** Team-supplied Phase 5 decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` and the 2026-11-04 no-UI suite entry in this log.
+
+**Prompts (exact):**
+
+> I have finished the changes in another session. I see that the project state still shows W6 - phase 5 as blocked, and that tasks 2-5 are stopped. Is that up to date?
+> Also i want to record the decisions made into the [SupplierServiceArchitecture.md](supplier-service/SupplierServiceArchitecture.md) , particularly those related to the test arrangements so i can see everything in one place
+
+**Key responses:**
+Compared project-state statements with the plan, source files, recorded k6 result and subsequent no-UI suite log. Updated the W6 status, current questions and plan task statuses; documented the team's accepted response wording, load targets, data and workload mix, rate limits, and no-UI/cross-role suite and transcript arrangements in the architecture document. The recorded local k6 run missed the targets and dropped 11,672 iterations on a shared development machine. The log reports 17/17 no-UI and role tests passed; this session did not rerun them. DB-dependent response-message cases remain uncovered by the new response suite. Checked the documentation diff and links; no application tests were run in this documentation task.
+
+**Files:**
+
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `supplier-service/docs/phase-5-api-test-plan.md` (modified)
+- `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** Review the missed local performance run and decide the next test environment and whether query/index changes are allowed. DB-dependent response-message verification is incomplete. No new design or performance decisions were made.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-04 — PR 144: Merge conflict resolution
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor, docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing PR and main branch changes; root AGENTS.md disclosure requirements.
+
+**Prompts (exact):**
+
+> i created a PR at [https://github.com/AY2627S1-CS3219-P18/FoC/pull/144](https://github.com/AY2627S1-CS3219-P18/FoC/pull/144). resolve conflict
+
+**Key responses:**
+Resolved conflicts by preserving both branches' disclosure entries and using main's existing JWKS integration fixture. Supplier build passed; the first test run had one rate-limit test timeout while the build ran, and the rerun passed all 389 tests in 40 files.
+
+**Files:**
+
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `supplier-service/test/app.integration.test.ts` (modified)
+
+**Deviations / questions raised for the team:** None
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-04 — Stage 21a: Fix Clipped Row-Actions Menu (frontend)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor | debug
+**Scope:** Implementation code | Requirements formatting
+**Governing decision:** `instructions.md`, "Stage 21a: Fix clipped row-actions menu (frontend)" and its "Tests" section.
+
+**Prompts (exact):**
+
+> let's do 21 stage by stage. any questions before you start?
+
+> Should I move the Stage 21a/21b spec text out of ai/usage-log.md into instructions.md (as a new "## Stage 21" section with 21a/21b subsections, matching Stages 1-20's format) before I start implementing? → Move it to instructions.md first (Recommended)
+
+> Should 21a and 21b each get their own branch/PR (like the 12a-12e sub-stages did), pausing for you to merge each before the next starts — or do both in one combined branch/PR? → separate branch and PR, and don't forget to pause after each sub stage to let me verify first (as per normal git workflow)
+
+**Key responses:**
+Before writing any code, found that the Stage 21a/21b spec existed only as an uncommitted draft
+sitting in `ai/usage-log.md`, with nothing past Stage 20b in `instructions.md` (where every
+prior stage's governing spec lives). Asked the user; they chose to relocate it. Moved the draft
+text verbatim into a new `# Stage 21: Row-Actions Menu Fix & Password Visibility Toggle
+(frontend)` section in `instructions.md` (with `## Stage 21a` / `## Stage 21b` subsections,
+matching the Stage 20 structure), then reverted the now-redundant draft out of `ai/usage-log.md`
+via `git checkout`. The only wording added was the top-level title; everything else is the
+user's own spec text, unchanged.
+
+Created `frontend/src/components/ActionMenu.jsx`: a trigger `<button>` (`aria-haspopup="menu"`,
+`aria-expanded`, caller-supplied `aria-label` and trigger content) plus a `role="menu"` panel
+rendered via `createPortal` into `document.body`. A `useLayoutEffect` (run once per open, after
+the portal content commits) measures the trigger and menu with `getBoundingClientRect()` and
+sets `position: fixed` coordinates: below the trigger and right-aligned to it with a 4px gap by
+default, flipped above the trigger if it would overflow `window.innerHeight - 8px`, with `left`
+clamped to a minimum of 8px. The menu stays `visibility: hidden` until a position is computed,
+avoiding a flash at `(0, 0)`. A second effect (also keyed on `open`) attaches `mousedown`
+(outside-close), `keydown` (Escape — closes and returns focus to the trigger), `resize`, and
+`scroll` (capture phase, so a scroll starting on an ancestor like the table wrapper still
+closes it) listeners, all removed on close/unmount. Items are `{ label, onSelect, danger? }`;
+`danger` reuses the existing `text-alert` destructive colour. Returns `null` when `items` is
+empty, matching the old `RowMenu`'s behaviour.
+
+In `frontend/src/pages/AdminUsers.jsx`, replaced `RowMenu`'s inline absolutely-positioned
+dropdown (the thing `overflow-x: auto` on the table wrapper was clipping) with `ActionMenu`,
+passing through the same `getRowActions`-derived item set, the same per-item handlers via
+`onPick`, and the same trigger styling (`sm:opacity-0 sm:group-hover:opacity-100
+sm:group-focus-within:opacity-100`, so it's hover-revealed on desktop and always visible below
+the `sm` breakpoint, unchanged). `getRowActions`, `ACTION_SUCCESS`, `ACTION_DIALOG` and the
+confirm-dialog flow were untouched. The table wrapper's `overflow-x: auto` was left exactly as
+it was, per the stage's instruction.
+
+Searched `src/` for other dropdowns/popovers rendered inside an overflow container, per the
+stage's "Other usages" instruction. Found none: `Chat.jsx` and `SupplierDetail.jsx` only use
+`overflow-y-auto`/`overflow-hidden` for scrollable lists or rounded card clipping, with no
+absolutely-positioned menu inside them; `AdminSuppliers.jsx` (the stage's own "e.g." example)
+has no dropdown/popover at all — its only `absolute` elements are a modal backdrop and a search
+icon. Nothing to migrate, so nothing to ask about.
+
+Wrote `frontend/tests/components/ActionMenu.test.jsx` (11 tests, mocking
+`HTMLElement.prototype.getBoundingClientRect` and `window.innerHeight`): portal rendering (menu
+is in `document.body`, not under the trigger's own container), opens-below vs. flips-above
+positioning math, the 8px left clamp, and every close path (outside mousedown, Escape with
+focus return, item selection calling the handler exactly once, `resize`, a `scroll` event
+dispatched on a nested element to exercise the capture-phase listener, and only one menu open at
+a time across two sibling `ActionMenu` instances — the last one needed an explicit
+`fireEvent.mouseDown` before the second trigger's click, since `fireEvent.click` alone doesn't
+synthesize the `mousedown` a real click produces, which is what closes the first menu). Also a
+renders-nothing-with-no-items case.
+
+**Verification run (this session):**
+
+- `npx vitest run` (frontend): **18/18 passed** across 3 files (11 new in
+  `ActionMenu.test.jsx`, 7 pre-existing).
+- `npx oxlint` (frontend): same pre-existing `react(set-state-in-effect)` /
+  `react(only-export-components)` warning classes as before this stage (one new instance in
+  `ActionMenu.jsx`, same shape as ones already on `AdminUsers.jsx`, `TopNav.jsx`,
+  `AuthContext.jsx`, etc.); no new warning categories; exit code 0.
+- `npx vite build` (frontend): clean.
+- Live browser check: brought up `user-db` + `user-service` + `frontend` via
+  `docker compose -f compose.yaml -f compose.dev.yaml up -d --build`, installed Playwright and
+  Chromium into the scratchpad directory (no browser-automation tool was available otherwise),
+  logged in as the seeded `superadmin` account, and drove `/admin/users` directly. Confirmed:
+  the last actionable row's menu flips upward with the table wrapper's `scrollHeight` still
+  equal to its `clientHeight` (no scrollbar added) when the viewport is short enough to force
+  it; the first row's menu opens below; a click outside the menu closes it; at a 390×844
+  viewport the trigger is visible without hovering, and after scrolling the table wrapper
+  horizontally the menu opens fully within the viewport, unclipped and aligned to its trigger.
+  Screenshots saved under the session scratchpad. Two unrelated console errors appeared (a 401
+  on `/auth/refresh` before login, a 404 on `/credits/balance/...` since `credit-service` wasn't
+  part of this verification's running stack) — pre-existing app-chrome behaviour, not touched by
+  this stage. Stopped the three containers afterward, leaving the rest of the already-running
+  stack as found.
+- Not automated: Tab/Enter/Space keyboard reachability (native `<button>` semantics, not
+  application logic) and the general visual appearance — left for manual/human verification
+  alongside the browser check above.
+
+**Files:**
+
+- `instructions.md` (modified — relocated the Stage 21a/21b spec from the `ai/usage-log.md`
+  draft into a new `# Stage 21` section)
+- `ai/usage-log.md` (modified — reverted the now-relocated draft text; this entry)
+- `frontend/src/components/ActionMenu.jsx` (created)
+- `frontend/src/pages/AdminUsers.jsx` (modified — `RowMenu` now renders via `ActionMenu`)
+- `frontend/tests/components/ActionMenu.test.jsx` (created)
+
+**Deviations / questions raised for the team:**
+Asked, before starting, where the Stage 21 spec should live and whether 21a/21b should each get
+their own branch/PR — both answered above. No other ambiguity; the "Other usages" search (the
+stage's own instruction) found nothing to migrate, so there was nothing further to ask.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-04 — Stage 21b: Show/hide password toggle
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 21b: Show/hide password toggle (frontend)" and its "Tests" section (on branch `feat/stage-21a-row-actions-menu` at the time of writing, since this stage's text had not yet reached `main`).
+
+**Prompts (exact):**
+
+> yes pls finish up 21b
+
+**Key responses:**
+Built `src/components/PasswordInput.jsx`: a `forwardRef` wrapper around a plain `<input>` with
+an in-field toggle `<button type="button">` (lucide-react `Eye`/`EyeOff`), `aria-label`
+"Show password"/"Hide password", `aria-pressed`, and `autoCapitalize="none"`/`autoCorrect="off"`/
+`spellCheck={false}` fixed on the input. Right padding (`pr-11`) keeps text clear of the icon.
+The existing global `:focus-visible` rule in `index.css` already outlines all buttons, so no
+extra focus styling was needed on the toggle itself.
+
+Ran `grep -rn 'type="password"' src/` and replaced every match with `PasswordInput`, keeping
+each field's existing value/onChange/validation/error display: `Login.jsx` (password,
+`autoComplete="current-password"`, already present), `Register.jsx` (password,
+`autoComplete="new-password"`, already present), `ForgotPassword.jsx` (new password in the
+reset step), and `Account.jsx` (change-email's current-password re-entry, and change-password's
+current and new password fields — three fields total in that file).
+`autoComplete="current-password"` was added to Account's two "current password" fields and
+`autoComplete="new-password"` to its "new password" field, matching the stage's rule. Neither
+`Register.jsx` nor `ForgotPassword.jsx` has a confirm-password field, so there was nothing to
+wire there beyond the one field each already had. A second `grep` after the edits found no
+remaining `type="password"` outside `PasswordInput.jsx`.
+
+Added a base-layer rule to `index.css` hiding Edge's native `input::-ms-reveal` button, so it
+doesn't duplicate `PasswordInput`'s own toggle.
+
+Wrote `tests/components/PasswordInput.test.jsx` (7 tests, a controlled-input harness matching
+how every page actually uses the component): default/toggle `type` switching both ways,
+`aria-pressed`/`aria-label` updating together, the toggle button not submitting an enclosing
+form, the field value surviving a toggle, two instances toggling independently, ref forwarding,
+and pass-through of arbitrary props alongside the fixed autocomplete-hardening attributes.
+
+**Verification run (this session):**
+
+- `npx vitest run` (frontend, full suite): **14/14 passed** (7 new for `PasswordInput`, 7
+  pre-existing from Stage 20b).
+- `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes, no new
+  warning categories.
+- `npx vite build` (frontend): clean.
+- Not run: an actual browser click-through or phone-width visual check (no browser-automation
+  tool available in this environment, same limitation as Stage 20b) — left for the human. The
+  spec's visual/manual-verification bullets (icon not overlapping text at phone width; Tab/Enter/
+  Space reachability in a real browser) still need a human pass.
+
+**Files:**
+
+- `frontend/src/components/PasswordInput.jsx` (created)
+- `frontend/tests/components/PasswordInput.test.jsx` (created)
+- `frontend/src/pages/Login.jsx` (modified)
+- `frontend/src/pages/Register.jsx` (modified)
+- `frontend/src/pages/ForgotPassword.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/src/index.css` (modified — Edge reveal-button hiding rule)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+None this session.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**

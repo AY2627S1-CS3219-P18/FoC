@@ -8,6 +8,8 @@ Scope: Bootstrapped this project-state document (Orientation, Workstreams, Archi
        the team stated in those sources; where no reason was found the cell says "unknown — no
        record". No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Updated Phase 5 status from the recorded tests and decisions.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
 Scope (2026-11-02, Codex, model: GPT-6): Updated current authentication descriptions to match
        the implemented JWKS verification; preserved dated historical records.
 Author review: Congchen
@@ -19,11 +21,11 @@ Author review: Congchen
 anything, then run `git log --oneline -20` to confirm it still matches reality. Update it at
 every boundary, not at the end of the session.
 
-- **Phase:** Phases 0–4 implemented and committed; Phase 5 (hardening and verification) not started — Task 1 ready, Tasks 2–5 blocked on team decisions (Q1). Frontend integration against this service is in progress on the current branch (owned by the `frontend` project, uncommitted).
+- **Phase:** Phases 0–4 implemented; Phase 5 is in progress. Authorization and response tests exist; the recorded local load run missed targets; the no-UI and cross-role suites were recorded as passing. See W6 and Q1.
 - **Stack:** TypeScript, Node.js, Express 4, MySQL 8 (`mysql2`), Redis (`ioredis`) with BullMQ, `zod`, `multer`, `@aws-sdk/client-s3` (MinIO locally), Vitest + Supertest
-- **Branch:** `supplier-service-ui-integration` (82 commits ahead of `main`; the per-phase branches `supplier-phase-1`…`4` are its ancestors and are **not** merged to `main`)
+- **Branch:** `supplier-phase-5` (observed 2026-11-04).
 - **Method:** Spec → plan (`docs/superpowers/plans/`) → subagent-driven development, one implementer per task with reviewer subagents (see C49); every change disclosed per root `AGENTS.md`
-- **Last updated:** 2026-10-01 by Claude Sonnet 5.5 — bootstrapped from conversation history
+- **Last updated:** 2026-11-04 — Phase 5 status and test decisions; other sections retain their earlier dates.
 - **Last verified against repo:** 2026-10-01
 - **Developer guide:** not created (the `update-documentation` skill is not installed in this repo; Guide column is `—` throughout)
 
@@ -54,7 +56,7 @@ requirements, backlog items F6.1–F8.4 and NFR6.1/NFR7.1.
 |---|---|
 | `SupplierServiceArchitecture.md` | Team-decided architecture (tiers, schema DDL, API inventory, saga/outbox flows, §9 traceability and unresolved items). **Serves as the spec's architecture source (A2)** |
 | `SupplierServiceSpec.md` | Phased implementation spec (Phases 0–5) mapping architecture sections to backlog items and GitHub issues #40–#46, #60, #61 |
-| `../docs/superpowers/plans/` | Phase plans: `2026-09-28-supplier-service-phase-0.md`, `2026-09-28-…-phase-1.md`, `2026-09-29-…-phase-2.md`, `2026-09-29-…-phase-3.md`, `2026-09-30-…-phase-4.md`. **The Phase 5 plan is not in this checkout (D14)** |
+| `../docs/superpowers/plans/` | Phase plans: `2026-09-28-supplier-service-phase-0.md`, `2026-09-28-…-phase-1.md`, `2026-09-29-…-phase-2.md`, `2026-09-29-…-phase-3.md`, `2026-09-30-…-phase-4.md`. The [Phase 5 plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) is present. D14 is historical. |
 | `../docs/FoC-ProductBacklog.md` | Product backlog (requirement IDs cited by the spec) |
 | `docs/project-state/done-ledger.md` | The Done ledger — every change, newest first |
 | `../ai/usage-log.md`, `../README.md` (§ AI Use Summary / Log index) | Course-mandated AI disclosure log; **every supplier-service change gets an entry and an index row** |
@@ -98,7 +100,7 @@ used a local stub of the former `/auth/verify` endpoint (D9).
 
 | Session | Started | Agent(s) | Branch | Workstream | Status | Doing | Last touched |
 |---|---|---|---|---|---|---|---|
-| S7 | 2026-09-30 | Claude Sonnet 5.5 | (none — plan not in checkout) | W6 | Paused | Phase 5 plan drafted; Tasks 2–5 stopped: Q1; plan file missing: D14 | 2026-09-30 |
+| S7 | 2026-09-30 | Claude Sonnet 5.5 | (historical) | W6 | Superseded | Phase 5 plan is present; see W6 for current status | 2026-11-04 |
 | S8 | 2026-09-30 | Claude Sonnet 5.5 | supplier-service-ui-integration | W7 | Paused | Frontend integration; uncommitted files: Q5; seed run by operator: D13 | 2026-09-30 |
 | S9 | 2026-10-01 | Claude Sonnet 5.5 | supplier-service-ui-integration | — | Active | Bootstrapped this file; next: operator review of A-entries and Q-list | 2026-10-01 |
 
@@ -118,7 +120,7 @@ priority (C47).
 | W3 | Phase 2 — Admin reads, lookup management, supplier create/reactivate, photo storage | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-29-supplier-service-phase-2.md) | 10/10 tasks; migrate:phase2 not run on the real DB (Q9) | — |
 | W4 | Phase 3 — Admin update (`PUT`, version check, photo saga) | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-29-supplier-service-phase-3.md) | 9/9 tasks; live check not run at the time (D2, D6) | — |
 | W5 | Phase 4 — Soft delete, transactional outbox, BullMQ worker, reactivation rework | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md) | 17/17 tasks; live check passed except in-flight shutdown (D11, D18) | — |
-| W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | plan missing (D14) | Task 1 ready; Tasks 2–5 stopped: Q1 | — |
+| W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) | Authorization tests and no-UI/cross-role suites run; response tests partial; local load targets missed (Q1) | — |
 | W7 | OpenAPI description, seed-as-test, response ids (`location_id`, `faculty_id`, category ids) | In review | [architecture §7.3, §9 item 23](SupplierServiceArchitecture.md) | — | Ids committed (`05a0386`); openapi/seed uncommitted: Q5 | — |
 
 Cross-project (not a supplier workstream): the **frontend** project's supplier screens call this
@@ -336,12 +338,12 @@ These are decisions or accepted limits, **not a TODO list**. If one looks wrong,
 
 | ID | What is needed | What it blocks | Raised |
 |---|---|---|---|
-| Q1 | Decide Phase 5 items: **(T2)** per-endpoint `message`/`details` wording (a table you write); **(T3)** NFR7.1 latency target, "at scale" size, load tool, DB, requests measured, seed shape, whether an index/query change is allowed if missed; **(T4/T5)** demo format, location, token source (real vs stub), calls covered, roles covered | W6 Tasks 2–5. Task 1 (NFR6.1 test: no token / invalid token / `user` on all 12 mutating endpoints) can proceed | 2026-09-30 |
+| Q1 | Review the missed local NFR7.1 run and decide the next test environment and whether query/index changes are allowed. Response wording, test targets, k6/MySQL setup, Vitest format, stub tokens and transcript handling have been supplied. | W6 performance acceptance; DB-dependent response-message verification also remains incomplete | 2026-11-04 |
 | Q2 | Decide whether a queued `supplier_suspension` job should still run after the supplier is reactivated (final Phase 4 review, finding I1) — design decision, not implemented | Nothing blocks; the behaviour exists today | 2026-09-30 |
 | Q3 | Sign `Author review` on files, header pairs and log entries still blank — the Phase 3 and Phase 4 log entries (and their file headers), the OpenAPI/seed/frontend entries, and anything from 2026-09-30 onward | Course disclosure compliance, not builds | 2026-10-01 |
 | Q4 | Decide how the phase branches reach `main` (none of `supplier-phase-1…4` or the current branch is in `main`; 82 commits ahead) | Merge/PR; other services already on `main` | 2026-10-01 |
 | Q5 | Commit or discard the uncommitted files: `openapi.yaml`, `test/seed/`, `vitest.seed.config.ts`, `package.json` (seed script), `vitest.config.ts`, `README.md`, `../README.md`, `../ai/usage-log.md`, `../frontend/` | Clean history; W7 leaving `In review` | 2026-10-01 |
-| Q6 | Locate the Phase 5 plan: `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` was reported written by the Phase 5 planning session but is absent from this checkout and every branch (D14) | W6 Task 1 execution | 2026-10-01 |
+| Q6 | Resolved: the [Phase 5 plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) is present. D14 records the earlier state. | None | 2026-11-04 |
 | Q7 | Fix or accept the `vitest` vs `@types/node` peer conflict that breaks plain `npm install` / `npm ci` (CI and other machines) | CI; fresh installs (D4) | 2026-09-29 |
 | Q8 | Run `npm run migrate:phase2` on the real `supplier_service` database if it predates Phase 2 (its 15 hours rows include Sunday=0 rows), and confirm it ran; record the seed outcome (operator reported `npm run seed` succeeded 2026-09-30) | Correct `is_open` and creates on that DB (D10) | 2026-09-29 |
 | Q9 | Verify the flows against the **real** User Service token (Phases 2–4 used a stub; Phase 1 used a real token) and log in with a real admin in the browser | Evidence for course requirement 4 | 2026-09-30 |
