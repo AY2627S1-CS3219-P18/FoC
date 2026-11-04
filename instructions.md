@@ -3730,3 +3730,109 @@ Same as earlier stages: header comment on every file created or modified, and a 
 - **NFR3.1.2:** replace the OTP requirement with: unmasking is per row, via an eye icon, and every attempt is logged.
 - **NFR3.1.3:** replace the 15-minute window with: an unmasked email re-masks when clicked again or after 60 seconds.
 - **NFR3.2.2:** notes that unmask attempts are logged to the same (console) log.
+
+---
+
+# Stage 21: Row-Actions Menu Fix & Password Visibility Toggle (frontend)
+
+## Stage 21a: Fix clipped row-actions menu (frontend)
+
+### Problem
+
+On `/admin/users`, the row-hover three-dot menu is rendered inside the table wrapper, which has `overflow-x: auto`. A non-`visible` overflow on one axis forces the other axis to `auto`, so the open menu is clipped and adds a vertical scrollbar to the table.
+
+### `src/components/ActionMenu.jsx` (new)
+
+- Trigger: `<button type="button">` with `aria-haspopup="menu"`, `aria-expanded`, and `aria-label` from a prop (e.g. `"Actions for testalice"`). Trigger content (e.g. lucide-react `MoreVertical`) passed as a prop.
+- Menu rendered with `createPortal` into `document.body`, `position: fixed`, `role="menu"`; each item a `<button role="menuitem">`.
+- Positioning: in `useLayoutEffect` after the menu renders, measure trigger and menu with `getBoundingClientRect()`.
+  - Place below the trigger, right-aligned to it, 4px gap.
+  - If it doesn't fit below the viewport bottom, flip above the trigger.
+  - Clamp `left` to ≥ 8px.
+  - Keep it `visibility: hidden` until positioned (no flash).
+- Close on:
+  - outside `mousedown`
+  - Escape (return focus to the trigger)
+  - item selection
+  - `resize`
+  - `scroll` (capture phase, so scrolling the table itself also closes it)
+
+  Remove all listeners on close and unmount.
+
+- `z-index` above the header and the chat button.
+- Items: `{ label, onSelect, danger? }`; `danger` uses the existing destructive text colour.
+
+### `src/pages/AdminUsers.jsx`
+
+- Replace the existing absolutely positioned dropdown markup with `ActionMenu`. Delete the old menu code and its CSS; no dead code.
+- Keep the existing item set and handlers (Suspend / Unsuspend, etc.) unchanged.
+- Do not change the table wrapper's `overflow-x: auto`.
+- The trigger must remain usable on touch / small screens. If it is currently hover-only, make it always visible below the existing mobile breakpoint.
+
+### Other usages
+
+Search `src/` for other dropdowns or popovers rendered inside an overflow container (e.g. Manage suppliers). List them and ask me before migrating any.
+
+### Verification
+
+- Open the menu on the last row → it flips upward, the table gains no scrollbar, and the menu is fully visible
+- Open the menu on the first row → opens below
+- Escape closes the menu and focus returns to the trigger; outside click closes it; scrolling the page or the table closes it
+- Selecting an item closes the menu and calls the handler once
+- Only one menu is open at a time
+- At phone width with the table scrolled horizontally → the menu is unclipped and aligned to its trigger
+- Keyboard: Tab reaches the trigger, Enter/Space opens the menu, and the items are focusable
+
+---
+
+## Stage 21b: Show/hide password toggle (frontend)
+
+### `src/components/PasswordInput.jsx` (new)
+
+- `forwardRef` component; passes through all `<input>` props except `type`.
+- Internal `visible` state, default `false`; input `type` switches between `"password"` and `"text"`.
+- Toggle: `<button type="button">` (must never submit the form), absolutely positioned inside the field on the right.
+  - lucide-react `Eye` / `EyeOff` icons
+  - `aria-label` "Show password" / "Hide password"
+  - `aria-pressed={visible}`
+  - visible `:focus-visible` outline
+- Right padding on the input so text never runs under the icon.
+- `autoCapitalize="none"`, `autoCorrect="off"`, `spellCheck={false}`.
+- Hide Edge's native reveal button (`input::-ms-reveal { display: none; }`) so there aren't two toggles.
+- Each instance toggles independently.
+
+### Replace every password field
+
+- `grep -rn 'type="password"' src/` and replace each match with `PasswordInput`, keeping all existing props, validation and error display.
+- Expected locations: Login, Register, Forgot/Reset password, Change password (current, new, confirm), and the password re-entry in Change email. Report any extra matches, or any of these that are missing.
+- `autoComplete`:
+  - `"current-password"` for Login and any "current password" field
+  - `"new-password"` for Register, Reset, and any new/confirm field
+- OTP fields are not password fields; leave them unchanged.
+
+### Verification
+
+- Every password field listed above has a toggle
+- Clicking the toggle reveals and hides the value, does not submit the form, and does not clear the value
+- Toggling one field does not affect any other
+- The toggle is reachable by Tab and works with Enter/Space; its `aria-label` updates when toggled
+- The icon doesn't overlap the text at phone width
+- Existing validation errors still render correctly
+- `grep` finds no remaining raw `type="password"` outside `PasswordInput.jsx`
+
+---
+
+### Tests (Vitest)
+
+Every Verification bullet in 21a and 21b that doesn't need a real browser is a required test case:
+
+- Menu: portal rendering, flip logic (mock `getBoundingClientRect` / `innerHeight`), and every close path
+- Password input: type switching, no submit on toggle, independence between fields, and ARIA attributes
+
+List the visual and phone-width checks in your summary for manual verification. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it.
+
+Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.

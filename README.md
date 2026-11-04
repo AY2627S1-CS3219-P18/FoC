@@ -426,15 +426,17 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 150 | 2026-11-04 | user-service | Stage 19: OTP Email Retry and Delivery Logging (NFR2.1.1, NFR2.1.2) | Inline retry/backoff/timeout for OTP email sends, with a console log line per attempt |
 | 151 | 2026-11-04 | user-service | Stage 20a: Email Masking for Admin Responses and Full-Email Unmask Endpoint (NFR3.1.1) | Admin responses mask emails; new `GET /users/:id/full-email` logs each unmask attempt |
 | 152 | 2026-11-04 | frontend | Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1) | Per-row eye icon reveals the real email, re-masks on click or after 60s |
-| 153 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
-| 154 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
-| 155 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
-| 156 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
-| 157 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
-| 158 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
-| 159 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
-| 160 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
-| 161 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
-| 162 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
-| 163 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
-| 164 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
+| 153 | 2026-11-04 | frontend | Stage 21a: Fix Clipped Row-Actions Menu (frontend) | Row-actions menu now portals out of the table wrapper, flips to fit the viewport |
+| 154 | 2026-11-04 | frontend | Stage 21b: Show/hide password toggle | New PasswordInput component with eye-icon toggle, wired into every password field |
+| 155 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
+| 156 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
+| 157 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
+| 158 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
+| 159 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
+| 160 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
+| 161 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
+| 162 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
+| 163 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
+| 164 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
+| 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
+| 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |

@@ -11,6 +11,12 @@
  *        user by that point.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Replaced every raw password input (change email's re-entry, change password's current
+ *        and new fields) with PasswordInput (Stage 21b) for a show/hide toggle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -18,6 +24,7 @@ import Button from '../components/Button'
 import FieldError from '../components/FieldError'
 import FormBanner from '../components/FormBanner'
 import OtpInput from '../components/OtpInput'
+import PasswordInput from '../components/PasswordInput'
 import ResendButton from '../components/ResendButton'
 import * as profileApi from '../api/profile'
 import { describeError, errorMessages } from '../api/errorMessages'
@@ -206,8 +213,7 @@ function EmailSection({ email, updateUser }) {
       <form className="space-y-3" onSubmit={onSubmitForm}>
         <label className="block">
           <span className="text-sm font-medium text-ink">Current password</span>
-          <input
-            type="password"
+          <PasswordInput
             value={currentPassword}
             onChange={(e) => {
               setCurrentPassword(e.target.value)
@@ -324,8 +330,7 @@ function PasswordSection({ forceReauth }) {
       <form className="space-y-3" onSubmit={onSubmitForm}>
         <label className="block">
           <span className="text-sm font-medium text-ink">Current password</span>
-          <input
-            type="password"
+          <PasswordInput
             value={currentPassword}
             onChange={(e) => {
               setCurrentPassword(e.target.value)
@@ -338,8 +343,7 @@ function PasswordSection({ forceReauth }) {
         </label>
         <label className="block">
           <span className="text-sm font-medium text-ink">New password</span>
-          <input
-            type="password"
+          <PasswordInput
             value={newPassword}
             onChange={(e) => {
               setNewPassword(e.target.value)
