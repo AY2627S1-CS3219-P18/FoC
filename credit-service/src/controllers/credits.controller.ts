@@ -9,6 +9,10 @@
 //  2026-10-19: Week 9 - transaction history handlers (F19.5.2, F20.2).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-04: Admin filters - optional ?userId= and ?requestId= on the all-transactions
+//    handler. No new route and no new response fields.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 //  2026-10-16: Week 7/8 catch-up - transfer, release and balance-read handlers.
 //    Bodies and status codes for the new endpoints follow the team's decisions of
 //    2026-10-16; anything not covered by them is flagged in credit-service/API.md.
@@ -107,8 +111,23 @@ export async function getMyTransactions(req: Request, res: Response): Promise<vo
   res.status(200).json(await getTransactionsForUser(req.user!.userId, cursor));
 }
 
+// Optional administrator filters on GET /credits/transactions/all. Both are UUIDs owned
+// by other services (context §3), validated here so a malformed one is a 400 before any
+// query runs rather than a Postgres cast error. `.optional()` on each keeps both absent
+// meaning "no filter"; unknown query keys are ignored, as elsewhere.
+const transactionFilterSchema = z.object({
+  userId: z.string().uuid().optional(),
+  requestId: z.string().uuid().optional(),
+});
+
 /** GET /credits/transactions/all — F20.2, F20.2.1. Gated on rank >= admin. */
 export async function getEveryTransaction(req: Request, res: Response): Promise<void> {
   const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
-  res.status(200).json(await getAllTransactions(cursor));
+  // parseBody is named for bodies but is just "validate this object or throw 400
+  // INVALID_REQUEST_BODY"; the balance route already reuses it for req.params.
+  const filters = parseBody(transactionFilterSchema, {
+    ...(typeof req.query.userId === 'string' ? { userId: req.query.userId } : {}),
+    ...(typeof req.query.requestId === 'string' ? { requestId: req.query.requestId } : {}),
+  });
+  res.status(200).json(await getAllTransactions(filters, cursor));
 }

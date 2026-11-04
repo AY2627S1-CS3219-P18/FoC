@@ -8,6 +8,9 @@
    2026-10-19: Week 9 - JWKS authentication, the two transaction-history endpoints,
      and the pagination contract.
      Author review:
+   2026-11-04: Optional ?userId= and ?requestId= filters on the administrator
+     transaction view. No new route, no new fields, no requirement behind it.
+     Author review:
    2026-10-22 (Claude Code, model: claude-sonnet-5): Updated a doc path reference after
      user-service's docs/local-dev-setup.md was renamed to docs/user-service-instructions.md.
      No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -257,6 +260,53 @@ the only difference is row scope (team decision 2026-10-19). Requires rank >= `a
 Same query parameters, same `400 INVALID_CURSOR`, plus `403 FORBIDDEN` for a caller
 below `admin`.
 
+### Optional filters
+
+```
+GET /credits/transactions/all
+GET /credits/transactions/all?userId=<uuid>
+GET /credits/transactions/all?requestId=<uuid>
+GET /credits/transactions/all?userId=<uuid>&requestId=<uuid>
+GET /credits/transactions/all?userId=<uuid>&cursor=<opaque>
+```
+
+| Parameter | Matches |
+|---|---|
+| `userId` | rows where that user is the **originating OR the destination** party — the same predicate the own-history endpoint uses for its scope |
+| `requestId` | rows for that order. Allocations carry no `request_id`, so they never match |
+
+Both are optional and **combinable: supplying both ANDs them.** With neither, the
+response is exactly what it was before — every row, unchanged.
+
+These are filters on this endpoint, not a new route, so they inherit its authentication,
+its administrator gate, its page size, its ordering and its row shape. **No new response
+fields.**
+
+**An unmatched filter is `200` with an empty array, never `404`.** Credit Service holds
+no list of users or orders (context §3), so it cannot tell "no such order" from "an order
+with no credit activity yet", and the second is an ordinary state. A requester who has
+been allocated credits but has spent none likewise returns their allocation row only.
+
+**Filters are re-sent with the cursor, not carried inside it.** The cursor stays an
+opaque position token — base64url of `created_at|transaction_id` — with no filter baked
+in, so paging a filtered set means sending `?userId=…&cursor=…` on each request. The
+trade-off is that dropping the filter on a later page silently widens the result instead
+of erroring; the caller owns the filter. Encoding filters into the cursor would have made
+it impossible to mismatch, at the cost of a cursor that is no longer a pure position and
+cannot be reused across queries.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `INVALID_REQUEST_BODY` | `userId` or `requestId` is not a UUID. Validated before any query runs |
+| 400 | `INVALID_CURSOR` | The cursor is malformed |
+| 401 | `UNAUTHORIZED` | Missing or invalid token |
+| 403 | `FORBIDDEN` | Authenticated but ranked below `admin` — enforced with or without a filter |
+
+> **INVENTED — no requirement covers this surface.** F19.5.2 covers a user's own
+> transactions and F20.2 covers all of them; filtering the administrator view by user or
+> order is neither. It exists to serve user-service's F5.3.2. See
+> `credit-service-context.md` §10 item 10.
+
 ## Pagination
 
 **20 records per page, `created_at DESC`**, tie-broken by `transaction_id`.
@@ -292,6 +342,10 @@ requirement or a recorded team decision. Listed so it can be ratified or replace
 3. **`ALREADY_RELEASED` on transfer and `ALREADY_TRANSFERRED` on release.** No
    requirement states what happens when the two orderings collide.
 4. **`GET /health`.**
+4a. **The `?userId=` and `?requestId=` filters on `GET /credits/transactions/all`**,
+   their parameter names, that an unmatched filter is an empty `200`, and that filters
+   travel beside the cursor rather than inside it. No FR covers this endpoint surface —
+   see context §10 item 10.
 4b. **The four write endpoints take no token.** Service-to-service authentication is
    unspecified in the backlog; leaving them open was the agent's call, not the team's.
 4c. **`INVALID_CURSOR` (400)** and the opaque cursor format. Decision 5 left the cursor
