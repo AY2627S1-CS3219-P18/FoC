@@ -6769,3 +6769,215 @@ ambiguity was found.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-05 — F5.3.2: Admin user order history
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Refactor/Docs
+**Governing decision:** Team decisions supplied in the exact chat prompts below; existing order schema in `order-service/prisma/schema.prisma`; existing authentication/role handling; existing User Service `GET /users/:id` in `user-service/src/routes/users.routes.ts`. No schema changes.
+
+**Prompts (exact):**
+
+> hi bro this is what user-service sent me:
+>
+> I'm working on F5.3.2: admins being able to view an individual user's transaction history. The plan is an admin page reached from /admin/users. Clicking a user shows their orders (both ones they requested and ones they delivered as courier), and each order has a small section showing its status and the credit transactions linked to it. Admins and super admins both get access (view only).
+>
+> Right now order-service can't give an admin one specific user's orders. GET /orders, /orders/mine and /orders/active only return the caller's own orders. Admins can open any single order by ID, but can't list another user's orders.
+>
+> Could you add a way for an admin or super admin to fetch a given user's orders, covering both requester and courier? You know the service best, so please decide how it should look (path, params, response).
+>
+> If possible, I'd like the list to work like the /admin/users page: paginated, ideally with a total count, plus search, filters and sorting where it makes sense. If that doesn't fit, just let me know what you can support and I'll work around it.
+>
+> Once you've decided, could you send me the endpoint details (path, params, response fields, error codes)? Then I can build the frontend side. Thanks!
+
+> ah ok
+>
+> `/orders/admin/users/:userId` GET
+> returned in the order of time (descending, most recent first). the user can only either be a requester or a courier, so he wont have both roles. just need to have a field saying `"role": "requester"` or `"role": "courier"`.
+>
+> pagination: 10 per page first, but implement it as a constant that is easy to change. what do u mean by total-count behavior?
+
+> oh yes please. and sorting by the order's completion time if it's possible, else creation time
+
+> - page
+
+> starts at 1!
+>
+> skip the search and filters for now. will do that in frontend.
+>
+> invalid user ID: add another enum to errorcode for invalid user id and malformed user id (not uuid). if not uuid, then return 400 for invaid request param. if is uuid but no such user, return 404 not found.
+> also do check that the actor is an admin. if not, return 403 forbidden (already in ErrorCode enum).
+> if actor is unauthenticated return 401
+> user with no orders: empty array []
+
+> return all the order fields. so an array
+> [
+>
+> > {order: <order obj>
+> > role: <requester/courier>
+> > }
+> > ]
+
+> oh thnen maybe {
+> total count: <count>,
+> orders: [array i described earlier]
+> pagination details
+> }
+
+> yes i thinnk u can use`/users/:id` for that! but user service is calling this endpoint so logiucally it wont be down no?
+
+> - **`503 Service Unavailable`** – User Service is temporarily unavailable.
+
+> caller is user service tho
+
+> from user service:
+>
+> Ah sorry, I should have been clearer! User-service won't call order-service at all. The frontend calls order-service directly with the admin's own bearer token (same as every other call it makes), so you can authenticate the admin with your existing JWKS auth and check role >= admin.
+>
+> What I need is an endpoint where an admin can fetch a given user's orders, both as requester and as courier.
+>
+> Also, what did you need GET /users/:id for? If it's to check the user exists or to get usernames, let me know and we can work out how to handle it.
+
+> ah yes use that existence check!
+
+> ya i think nd to forward the admin's bearer token, and pagination details shd have:
+>
+> - totalCount
+> - currentPage
+> - pageSize
+> - totalPages
+
+**Key responses:**
+Initially declined to select the API contract under the repository course policy. Asked the team for the route, pagination, sorting, response fields, access rules, user existence lookup, token forwarding and unavailable-service response; implemented after those decisions were supplied. Implemented `GET /orders/admin/users/:userId?page=1`, with all order fields inside `{ order, role }` entries and top-level `totalCount`, `currentPage`, `pageSize`, `totalPages`, and `orders`. Used creation-time descending because the existing schema has no completion timestamp; ID is the existing listing tie-breaker. The page-size constant is 10. Both requester and courier orders and all statuses are included. The existing JWKS middleware authenticates callers; the handler checks admin/super-admin before querying User Service. The lookup forwards the admin bearer token, maps missing users to 404, and connection/unavailable responses to 503. Existing error message envelope retained. Documented the endpoint in the service README. Added local HTTP tests with synthetic authentication data, a real fetch call to a local user-service stand-in, and mocked Prisma access. No live user data or credentials used.
+
+**Verification actually run:**
+
+- Initial typecheck failed because the local generated Prisma client was stale and Socket.IO dependencies were missing. Regenerated Prisma from the existing unchanged schema.
+- Initial `npm run typecheck` was accidentally invoked at repository root (no package.json), then rerun in order-service.
+- Initial sandboxed `npm test` failed because local HTTP listening was denied; reran with local-port permission. That run passed 625 tests using the original installed dependencies.
+- Restored dependencies with `npm ci` against the existing lockfile. The first sandboxed install stalled; a concurrent install failed at postinstall while dependency files were being removed. After the original process exited, a sequential install completed successfully. Its install audit reported 13 existing dependency vulnerabilities; no dependency versions or lockfiles were changed.
+- `npm run typecheck`: passed after dependency restoration, including the new test file.
+- `npm run build`: passed.
+- `npm run lint`: passed.
+- Final `npm test`: **634/634 tests passed in 15 files**, including **21 new admin-history endpoint cases** using a local HTTP user-service stand-in. This covers forwarding the synthetic bearer token, both admin roles, requester/courier mapping, uppercase UUID normalization, default/second/out-of-range pages, empty results, malformed parameters, authentication/authorization rejection, upstream 401/403/404/503, and connection failure. Prisma access was mocked; no live database/User Service test was run.
+- Prettier applied to all changed TypeScript files; `git diff --check`: passed.
+- `postman --version`: 1.73.0; `postman status` failed (unknown command), including the final setup check. No Postman simulation was run or claimed.
+
+**Files:**
+
+- `order-service/src/app.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/admin-user-orders.spec.ts` (created)
+- `order-service/README.md` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (appended: this entry)
+- `order-service/src/generated/prisma/` (regenerated, ignored generated files; no headers)
+- `order-service/node_modules/` (local locked dependency installation, ignored generated files; no headers)
+
+**Deviations / questions raised for the team:**
+The interface and security decisions above were requested before implementation. Search and filters were explicitly deferred by the team. No completion timestamp was added. Real User Service and database integration have not been exercised. Postman CLI 1.73.0 is installed but `postman status` is unsupported; no external workspace or publication was used. Local HTTP stand-in tests exercised the dependency without uploading project content. Runtime fetch uses existing platform defaults; no new timeout/retry policy was selected.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-05 — Docker: Fix order-service postinstall script copy
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** Existing dependency/build stages in `order-service/Dockerfile`, existing `postinstall` in `order-service/package.json`, and schema-absent skip behavior in `order-service/scripts/prisma-generate.mjs`.
+
+**Prompts (exact):**
+
+> ## => ERROR [order-service deps 2/2] RUN npm ci 13.5s
+>
+> > [order-service deps 2/2] RUN npm ci:
+> > 12.71
+> > 12.71 > order-service@0.0.1 postinstall
+> > 12.71 > node scripts/prisma-generate.mjs
+> > 12.71
+> > 12.73 node:internal/modules/cjs/loader:1568
+> > 12.73 throw err;
+> > 12.73 ^
+> > 12.73
+> > 12.73 Error: Cannot find module '/app/scripts/prisma-generate.mjs'
+> > 12.73 at Module.\_resolveFilename (node:internal/modules/cjs/loader:1564:15)
+> > 12.73 at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)
+> > 12.73 at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)
+> > 12.73 at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)
+> > 12.73 at Module.\_load (node:internal/modules/cjs/loader:1341:5)
+> > 12.73 at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+> > 12.73 at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+> > 12.73 at node:internal/main/run_main_module:33:47 {
+> > 12.73 code: 'MODULE_NOT_FOUND',
+> > 12.73 requireStack: []
+> > 12.73 }
+> > 12.73
+> > 12.73 Node.js v24.22.2
+> > 12.74 npm error code 1
+> > 12.74 npm error path /app
+> > 12.74 npm error command failed
+> > 12.74 npm error command sh -c node scripts/prisma-generate.mjs
+> > 12.74 npm notice
+> > 12.74 npm notice New major version of npm available! 11.19.1 -> 12.2.1
+> > 12.74 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+> > 12.74 npm notice To update run: npm install -g npm@12.2.1
+> > 12.74 npm notice
+>
+> ## 12.74 npm error A complete log of this run can be found in: /root/.npm/\_logs/2026-11-04T17_44_48_017Z-debug-0.log
+>
+> [+] up 0/8
+> ⠙ Image foc-frontend Building 40.4s
+> ⠙ Image foc-supplier-worker Building 40.4s
+> ⠙ Image foc-supplier-service Building 40.4s
+> ⠙ Image foc-user-service Building 40.4s
+> ⠙ Image foc-credit-service Building 40.4s
+> ⠙ Image foc-credit-worker Building 40.4s
+> ⠙ Image foc-order-worker Building 40.4s
+> ⠙ Image foc-order-service Building 40.4s
+> Dockerfile:26
+>
+> ---
+>
+> 24 | FROM base AS deps
+>
+> 25 | COPY package.json package-lock.json ./
+>
+> 26 | >>> RUN npm ci
+>
+> 27 |
+>
+> 28 | # ---- dev: source is synced in by `docker compose watch` ---------------------
+>
+> ---
+>
+> target order-worker: failed to solve: process "/bin/sh -c npm ci" did not complete successfully: exit code: 1
+>
+> What's next:
+> Debug this Compose error with Gordon → docker ai "help me fix this compose error"
+
+**Key responses:**
+Diagnosed that `npm ci` invokes the existing script before the Docker dependency stage copies it. Added `COPY scripts/prisma-generate.mjs ./scripts/prisma-generate.mjs` before `RUN npm ci`; the script already skips generation until the schema arrives. Added the Dockerfile disclosure and README log-index row. No application or package changes.
+
+**Verification:** `docker build --target deps -t foc-order-deps-check ./order-service` passed: npm ci found the script and correctly skipped schema generation. `docker build --target production -t foc-order-build-check ./order-service` passed, including Prisma generation and TypeScript compilation. `git diff --check` passed. Full Compose startup was not run.
+
+**Files:**
+
+- `order-service/Dockerfile` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:** None. Initial Docker verification required permission to access the Docker socket.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
