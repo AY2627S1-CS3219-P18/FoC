@@ -33,6 +33,10 @@ Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication test 
 Author review:
 Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication documentation log index row.
 Author review:
+Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #148-149 for the
+       user-service docs-rename record and Stage 17 (local setup script). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -376,3 +380,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 145 | 2026-11-02 | supplier-service | Supplier Service: Authentication integration test fixtures | Updated JWT and JWKS test fixtures. |
 | 146 | 2026-11-02 | supplier-service | Supplier Service: Authentication documentation | Updated JWKS authentication documentation. |
 | 147 | 2026-11-03 | repo-wide | CI: restore supplier-service full suite after JWKS test fixes | Verified both root causes in the diff, removed the exclusion, 20/20 clean runs |
+| 148 | 2026-11-04 | user-service | Docs: record the `local-dev-setup.md` → `user-service-instructions.md` rename | Logged a rename the docs work never recorded, so old-filename references make sense |
+| 149 | 2026-11-04 | user-service | Stage 17: Local Setup Script | `npm run setup` creates `.env`, generates SUPER_ADMIN_PASSWORD and the RS256 keypair |

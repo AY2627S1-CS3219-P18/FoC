@@ -9,7 +9,8 @@
     "test": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "outbox:replay": "tsx src/scripts/replayCreditOutbox.ts"
+    "outbox:replay": "tsx src/scripts/replayCreditOutbox.ts",
+    "setup": "tsx src/scripts/setupLocalDev.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
