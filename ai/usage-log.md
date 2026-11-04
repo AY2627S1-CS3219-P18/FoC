@@ -6769,3 +6769,139 @@ ambiguity was found.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-04 — Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 18 (design-decision tables for login lockout,
+OTP send escalation, admin unlock, config, and cross-cutting rules — "Every decision in the
+table below was made by the team"). The stage's own text was originally pasted into
+`ai/usage-log.md` by the user as a scratch draft; at the start of this session it was relocated
+into `instructions.md` (pure relocation/formatting, no content authored by the AI) and committed
+separately as `d3c7bb6`, per the user's correction below, before any implementation began.
+
+**Prompts (exact):**
+
+> read stage 18. are you ready to impement it?
+
+> oops put it into instructions.md instead. don't forget the git workflow. just do everything in one pass bah
+
+**Key responses:**
+Before writing code, confirmed every §2.1 stop-and-ask trigger was already resolved by the
+stage's own "already made, do not change" decision tables, so no design/schema/API questions
+needed to be raised. Initially proposed the usual per-sub-stage (18a→18f) branch/PR sequence per
+the team's standing git workflow, but the user's second prompt asked for everything in one pass
+instead, so all of 18a–18f were implemented together against `main`, uncommitted, to be reviewed
+and shipped as a single PR rather than six.
+
+Implemented, in order:
+
+- **18a** (schema/config): the four `users` login-lockout columns and two `users_otps`
+  send-escalation columns in `init.sql`; `LOGIN_MAX_FAILURES`, `LOGIN_FAILURE_WINDOW_MINUTES`,
+  `LOCK_ESCALATION_HOURS`, `LOCK_ESCALATION_RESET_HOURS` added to `config.ts`'s Zod schema and
+  to `.env.example`/`.env`/`.env.test`.
+- Shared foundation: a new `src/services/lockEscalation.ts` holding the escalation-duration/
+  message/quiet-window-reset math used by both the login lock and the OTP send block, so the two
+  features (18b, 18c) share one implementation of the "1h → 4h → 24h, resets after 24h quiet"
+  rule rather than duplicating it.
+- **18b** (login lockout): `recordLoginFailure` and the `login()` flow in `auth.service.ts`
+  check the lock before the password check, count failures, lock on threshold, and reset on
+  success, skipping `pending`/`suspended` accounts. `me.service.ts`'s
+  `initiateEmailChange`/`initiatePasswordChange` reject `ACCOUNT_LOCKED` before the password
+  check and feed `INVALID_PASSWORD` into the same counter.
+- **18c** (OTP send escalation): `otp.service.ts`'s `requestOtp` applies the escalating block for
+  `forgot_password`/`change_email`/`change_password`, writing the new level/block-end onto the
+  latest existing row on a cap hit and copying them forward onto each new row; registration left
+  unchanged. `forgotPassword`/`resetPassword` (auth.service.ts) and
+  `throwOnUnsentOtp`/`verifyEmailChangeOtp`/`confirmPasswordChange` (me.service.ts) get the
+  level-matched message and `Retry-After`, and reset the level on a successful consuming verify.
+- **18d** (admin): `POST /users/:id/unlock` (route, controller, `users.service.ts`'s
+  `unlockUser`) mirroring `changeUserStatus`'s permission rules; `isLocked`/`lockedUntil`/
+  `lockLevel` added to `userResponse.ts`; a `locked=true|false` filter added to `listUsersPage`/
+  the `GET /users` controller.
+- **18e** (frontend): `ACCOUNT_LOCKED` added to `errorMessages.js` as a banner (`Login.jsx`
+  already renders any banner-type error generically, so it needed no code change itself);
+  `unlockUser` added to `api/users.js`; `AdminUsers.jsx` gained the three lock fields as table
+  columns, a `locked` filter, and an Unlock row action gated by the same `getRowActions`-style
+  visibility rule as Suspend.
+- **Mid-stream refactor:** found that a send-escalation cap hit's write (18c) inside
+  `initiateEmailChange`/`initiatePasswordChange`'s transaction was being silently rolled back
+  whenever the same call path then threw `OTP_RESEND_LIMIT` or `ACCOUNT_LOCKED` later in the same
+  transaction. Fixed by converting `recordLoginFailure` and `throwOnUnsentOtp` from
+  throw-on-detection to return-a-result, so the caller can commit the escalation write before
+  throwing the corresponding error outside the transaction. This is an implementation-level fix
+  for a correctness bug in how the already-decided behaviour was being persisted, not a new
+  design decision.
+- **18f** (tests): added lockout and OTP-escalation-reset unit/controller tests across
+  `auth.service.test.ts`, `auth.controller.test.ts`, `me.service.test.ts`,
+  `otp.service.test.ts`, `users.service.test.ts`, `users.controller.test.ts`; added
+  `getUserById`/`setLoginLockState`/`setOtpSendBlock` to `tests/helpers/db.ts` for backdating
+  state; added `tests/concurrency/lockout.concurrency.test.ts` covering "N concurrent wrong
+  logins at the threshold produce exactly one lock at the correct level" and "N concurrent sends
+  at the cap produce exactly one escalation"; fixed two `races.concurrency.test.ts` cases whose
+  assertions no longer held once login failures started being counted.
+
+**Verification actually run (this wrap-up session, picking up uncommitted work from an earlier
+session that ended mid-debug after a `/compact`):**
+
+- `npx tsc --noEmit` (user-service): clean.
+- `npx eslint .` (user-service): clean.
+- `npx vitest run` (user-service, default parallel file execution): **734/737 passed**; the 3
+  failures (`me.controller.test.ts`, `me.service.test.ts`, `users.service.test.ts`) each passed
+  individually in isolation.
+- `npx vitest run --no-file-parallelism`: **737/737 passed**, confirming the 3 failures above are
+  pre-existing cross-file DB contention under parallel test-file execution against the shared
+  Postgres container (same class of flake noted in the Stage 17 entry), not a Stage 18
+  regression.
+- `oxlint` (frontend): no new warnings on the touched files; existing warnings elsewhere are
+  pre-existing and unrelated.
+- `vite build` (frontend): succeeded.
+- **Not run:** no Docker/browser verification of the Verification section's frontend bullets
+  (login banner rendering, admin table's lock columns/filter/Unlock action end-to-end against
+  the real stack) — left for the human, as with prior stages' Docker-dependent checks.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/config.ts` (modified)
+- `user-service/.env.example`, `user-service/.env.test` (modified — cannot carry a header)
+- `user-service/src/services/lockEscalation.ts` (created)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (created)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `instructions.md` (modified separately, commit `d3c7bb6`: relocated the Stage 18 spec from
+  `ai/usage-log.md` into its proper place)
+- `ai/usage-log.md` (this entry)
+
+**Deviations / questions raised for the team:**
+Asked whether to split into per-sub-stage branches/PRs as usual, or do it as one pass; the user
+chose one pass (see prompts above). Left two things for the team, as the stage's own text
+specifies: NFR1.1.1 (unlock email) is out of scope/deferred, and the `docs/FoC-ProductBacklog.md`
+wording edit for NFR1.1/NFR1.1.1 was not made (the stage marks it "for the team to make"). No
+other ambiguity was found — every behavior, schema, and API choice came directly from the
+stage's decision tables.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

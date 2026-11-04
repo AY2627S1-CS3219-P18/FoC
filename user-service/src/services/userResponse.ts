@@ -5,6 +5,11 @@
  *        instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added isLocked, lockedUntil and lockLevel, per instructions.md Stage 18d.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { UserRow } from '../db/queries/users.queries.js';
@@ -18,6 +23,9 @@ export interface UserResponse {
   activeView: 'requester' | 'courier';
   createdAt: Date;
   updatedAt: Date;
+  isLocked: boolean;
+  lockedUntil: Date | null;
+  lockLevel: number;
 }
 
 // password_hash must never leave the service layer, and DB columns stay snake_case -
@@ -32,5 +40,8 @@ export function toUserResponse(row: UserRow): UserResponse {
     activeView: row.active_view,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    isLocked: row.login_locked_until !== null && row.login_locked_until.getTime() > Date.now(),
+    lockedUntil: row.login_locked_until,
+    lockLevel: row.login_lock_level,
   };
 }

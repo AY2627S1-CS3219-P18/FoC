@@ -16,6 +16,13 @@
  * Scope: Updated the expected keys for the new active_view column (Stage 11); no new test cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Updated the expected GET /users keys for isLocked/lockedUntil/lockLevel, and added
+ *        HTTP tests for the `locked` filter and POST /users/:id/unlock, covering the Stage 18d
+ *        Verification bullets in instructions.md.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -23,6 +30,7 @@ import app from '../../src/app.js';
 import {
   getRefreshTokens,
   getUserByEmail,
+  setLoginLockState,
   seedRefreshToken,
   setUserStatus,
   truncateAll,
@@ -117,9 +125,129 @@ describe('GET /users', () => {
     for (const u of res.body.users) {
       expect(u).not.toHaveProperty('password_hash');
       expect(Object.keys(u).sort()).toEqual(
-        ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
+        [
+          'activeView',
+          'createdAt',
+          'email',
+          'id',
+          'isLocked',
+          'lockLevel',
+          'lockedUntil',
+          'role',
+          'status',
+          'updatedAt',
+          'username',
+        ].sort(),
       );
     }
+  });
+});
+
+describe('GET /users locked filter and fields (Stage 18d)', () => {
+  it('returns isLocked/lockedUntil/lockLevel, and locked=true|false filters the result set', async () => {
+    const { token } = await callerToken('admin');
+    const locked = await createActiveUser(1);
+    await setLoginLockState(locked.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const notLocked = await createActiveUser(2);
+
+    const lockedRes = await get('/users?locked=true', token);
+    expect(lockedRes.status).toBe(200);
+    expect(lockedRes.body.users.map((u: { id: string }) => u.id)).toEqual([locked.id]);
+    expect(lockedRes.body.users[0]).toMatchObject({ isLocked: true, lockLevel: 1 });
+    expect(typeof lockedRes.body.users[0].lockedUntil).toBe('string');
+
+    const notLockedRes = await get('/users?locked=false', token);
+    const notLockedIds = notLockedRes.body.users.map((u: { id: string }) => u.id);
+    // Also includes the admin caller created by callerToken(), which is active and not locked.
+    expect(notLockedIds).toContain(notLocked.id);
+    expect(notLockedIds).not.toContain(locked.id);
+  });
+
+  it("rejects an invalid locked value with 400 VALIDATION_ERROR \"locked must be 'true' or 'false'\"", async () => {
+    const { token } = await callerToken('admin');
+    const res = await get('/users?locked=maybe', token);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      message: "locked must be 'true' or 'false'",
+      code: 'VALIDATION_ERROR',
+    });
+  });
+});
+
+describe('POST /users/:id/unlock', () => {
+  const unlock = (token: string | undefined, target: { id: string }) => {
+    const r = request(app).post(`/users/${target.id}/unlock`);
+    return token ? r.set('Authorization', bearer(token)) : r;
+  };
+
+  it('rejects a request with no Authorization header with 401 UNAUTHORIZED', async () => {
+    const target = await createActiveUser(1);
+    const res = await unlock(undefined, target);
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual(UNAUTHORIZED);
+  });
+
+  it('rejects a regular user with 403 FORBIDDEN', async () => {
+    const { token } = await callerToken('user');
+    const target = await createActiveUser(1);
+    const res = await unlock(token, target);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual(FORBIDDEN);
+  });
+
+  it('an admin can unlock a plain user: 200, isLocked false, lockedUntil null, lockLevel 0', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+    const res = await unlock(token, target);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
+  });
+
+  it('rejects an admin unlocking another admin with 403 FORBIDDEN, but a super admin may', async () => {
+    const { token: adminToken } = await callerToken('admin', 'caller1');
+    const target = await createUserWithRole('target', 'admin');
+    await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+    const res = await unlock(adminToken, target);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({
+      message: 'Only a super admin may unlock an admin',
+      code: 'FORBIDDEN',
+    });
+
+    const { token: saToken } = await callerToken('super admin', 'caller2');
+    const saRes = await unlock(saToken, target);
+    expect(saRes.status).toBe(200);
+    expect(saRes.body.isLocked).toBe(false);
+  });
+
+  it('rejects unlocking a super admin with 403 SUPER_ADMIN_IMMUTABLE', async () => {
+    const { token } = await callerToken('super admin', 'caller1');
+    const target = await createUserWithRole('target', 'super admin');
+    await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+    const res = await unlock(token, target);
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({
+      message: 'Cannot modify a super administrator',
+      code: 'SUPER_ADMIN_IMMUTABLE',
+    });
+  });
+
+  it('returns 404 USER_NOT_FOUND for an id that does not exist', async () => {
+    const { token } = await callerToken('admin');
+    const res = await unlock(token, { id: UNKNOWN_ID });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ message: 'User not found', code: 'USER_NOT_FOUND' });
+  });
+
+  it('returns 400 VALIDATION_ERROR "Invalid user ID" for a non-UUID id', async () => {
+    const { token } = await callerToken('admin');
+    const res = await unlock(token, { id: 'not-a-uuid' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
   });
 });
 

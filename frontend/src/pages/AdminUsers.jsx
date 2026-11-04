@@ -9,6 +9,13 @@
  *        Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added the Locked column, the `locked` filter and a per-row Unlock action calling
+ *        POST /users/:id/unlock, per instructions.md Stage 18e. Unlock's visibility follows
+ *        the same rule as Suspend in getRowActions, per the governing decision.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -19,7 +26,7 @@ import { Pager, useApiNotice } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { useApi } from '../api/useApi'
-import { listUsers, updateUserRole, updateUserStatus } from '../api/users'
+import { listUsers, unlockUser, updateUserRole, updateUserStatus } from '../api/users'
 import { describeError } from '../api/errorMessages'
 
 const inputClass =
@@ -40,13 +47,14 @@ const ROLE_TONES = {
   'super admin': 'border-orange text-orange',
 }
 
-function Badge({ tone, children }) {
+function Badge({ tone, children, ...rest }) {
   return (
     <span
       className={
         'inline-flex h-5 items-center rounded-pill border bg-surface px-2 text-[11px] font-medium ' +
         tone
       }
+      {...rest}
     >
       {children}
     </span>
@@ -61,18 +69,30 @@ function formatDate(iso) {
   })
 }
 
-// Mirrors user-service's changeUserStatus/changeUserRole (src/services/users.service.ts)
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+// Mirrors user-service's changeUserStatus/changeUserRole/unlockUser (src/services/users.service.ts)
 // exactly, so the menu never offers an action the backend would reject. Returns the action each
-// control performs, or null to hide it; both null means "no menu" for that row.
+// control performs, or null to hide it; both null means "no menu" for that row. Unlock follows
+// the same visibility rule as suspend (Stage 18d/18e's governing decision).
 function getRowActions(viewer, row) {
-  if (row.id === viewer.id) return { suspend: null, role: null }
-  if (row.role === 'super admin') return { suspend: null, role: null }
-  if (row.status === 'pending') return { suspend: null, role: null }
+  if (row.id === viewer.id) return { suspend: null, role: null, unlock: null }
+  if (row.role === 'super admin') return { suspend: null, role: null, unlock: null }
+  if (row.status === 'pending') return { suspend: null, role: null, unlock: null }
 
   const viewerIsSuperAdmin = viewer.role === 'super admin'
+  const canActOnLock = viewerIsSuperAdmin || row.role === 'user'
 
   let suspend = null
-  if (viewerIsSuperAdmin || row.role === 'user') {
+  if (canActOnLock) {
     suspend = row.status === 'suspended' ? 'unsuspend' : 'suspend'
   }
 
@@ -81,7 +101,9 @@ function getRowActions(viewer, row) {
     role = row.role === 'user' ? 'promote' : 'demote'
   }
 
-  return { suspend, role }
+  const unlock = canActOnLock && row.isLocked ? 'unlock' : null
+
+  return { suspend, role, unlock }
 }
 
 const ACTION_SUCCESS = {
@@ -89,6 +111,7 @@ const ACTION_SUCCESS = {
   unsuspend: (name) => name + ' was unsuspended.',
   promote: (name) => name + ' was promoted to admin.',
   demote: (name) => name + ' was demoted to user.',
+  unlock: (name) => name + ' was unlocked.',
 }
 
 const ACTION_DIALOG = {
@@ -115,6 +138,12 @@ const ACTION_DIALOG = {
     body: 'They will be signed out everywhere and lose admin access on their next login.',
     confirmLabel: 'Demote',
     variant: 'danger',
+  },
+  unlock: {
+    title: (name) => 'Unlock ' + name + '?',
+    body: 'They will be able to log in and change their email/password again immediately.',
+    confirmLabel: 'Unlock',
+    variant: 'primary',
   },
 }
 
@@ -171,6 +200,7 @@ function RowMenu({ user, viewer, onPick }) {
   if (actions.suspend === 'unsuspend') items.push({ key: 'unsuspend', label: 'Unsuspend' })
   if (actions.role === 'promote') items.push({ key: 'promote', label: 'Promote to admin' })
   if (actions.role === 'demote') items.push({ key: 'demote', label: 'Demote to user' })
+  if (actions.unlock === 'unlock') items.push({ key: 'unlock', label: 'Unlock' })
 
   if (items.length === 0) return null
 
@@ -244,6 +274,7 @@ export default function AdminUsers() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState('')
   const [role, setRole] = useState('')
+  const [locked, setLocked] = useState('')
   const [sortBy, setSortBy] = useState('createdAt')
   const [sortDir, setSortDir] = useState('desc')
   const [page, setPage] = useState(1)
@@ -262,11 +293,11 @@ export default function AdminUsers() {
   }, [emailInput])
   useEffect(() => {
     setPage(1)
-  }, [username, email, status, role, sortBy, sortDir])
+  }, [username, email, status, role, locked, sortBy, sortDir])
 
   const params = useMemo(
-    () => ({ page, username, email, status, role, sortBy, sortDir }),
-    [page, username, email, status, role, sortBy, sortDir],
+    () => ({ page, username, email, status, role, locked, sortBy, sortDir }),
+    [page, username, email, status, role, locked, sortBy, sortDir],
   )
   const { data, loading, error, reload } = useApi(() => listUsers(params), [params])
   const notice = useApiNotice({ loading: loading && !data, error }, 'users')
@@ -291,7 +322,9 @@ export default function AdminUsers() {
       const updated =
         action === 'suspend' || action === 'unsuspend'
           ? await updateUserStatus(targetUser.id, action === 'suspend' ? 'suspended' : 'active')
-          : await updateUserRole(targetUser.id, action === 'promote' ? 'admin' : 'user')
+          : action === 'unlock'
+            ? await unlockUser(targetUser.id)
+            : await updateUserRole(targetUser.id, action === 'promote' ? 'admin' : 'user')
       setRowOverrides((prev) => ({ ...prev, [updated.id]: updated }))
       setConfirm(null)
       showToast(ACTION_SUCCESS[action](targetUser.username), 'success')
@@ -308,7 +341,7 @@ export default function AdminUsers() {
     <div className="page-width page-gutter py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Manage users</h1>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px_160px]">
+      <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px_160px_160px]">
         <input
           type="search"
           value={usernameInput}
@@ -347,6 +380,16 @@ export default function AdminUsers() {
           <option value="admin">Admin</option>
           <option value="super admin">Super admin</option>
         </select>
+        <select
+          aria-label="Filter by locked"
+          value={locked}
+          onChange={(e) => setLocked(e.target.value)}
+          className={selectClass}
+        >
+          <option value="">Any lock state</option>
+          <option value="true">Locked</option>
+          <option value="false">Not locked</option>
+        </select>
       </div>
 
       {notice}
@@ -383,6 +426,9 @@ export default function AdminUsers() {
                     <th scope="col" className="py-2 pr-2 text-left font-medium">
                       Role
                     </th>
+                    <th scope="col" className="py-2 pr-2 text-left font-medium">
+                      Locked
+                    </th>
                     <SortHeader
                       column="createdAt"
                       sortBy={sortBy}
@@ -404,6 +450,15 @@ export default function AdminUsers() {
                       </td>
                       <td className="py-2.5 pr-2">
                         <Badge tone={ROLE_TONES[u.role]}>{ROLE_LABELS[u.role]}</Badge>
+                      </td>
+                      <td className="py-2.5 pr-2">
+                        {u.isLocked ? (
+                          <Badge tone="border-alert text-alert" title={formatDateTime(u.lockedUntil)}>
+                            Locked (level {u.lockLevel})
+                          </Badge>
+                        ) : (
+                          <span className="text-ink-40">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 pr-2 text-ink-70">{formatDate(u.createdAt)}</td>
                       <td className="py-2.5 pl-2 text-right">

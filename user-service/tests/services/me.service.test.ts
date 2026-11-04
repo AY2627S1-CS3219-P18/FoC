@@ -18,6 +18,13 @@
  *        own rule is not to duplicate a case elsewhere just because a new call site exists.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
+ * Scope: Added coverage for initiateEmailChange/initiatePasswordChange's login-lockout check
+ *        (precedence over the password check, shared counter with login, reset on success),
+ *        per instructions.md Stage 18b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as meService from '../../src/services/me.service.js';
@@ -28,7 +35,9 @@ import {
   getOtps,
   getRefreshTokens,
   getUserByEmail,
+  getUserById,
   seedRefreshToken,
+  setLoginLockState,
   truncateAll,
 } from '../helpers/db.js';
 import {
@@ -76,7 +85,19 @@ describe('changeActiveView', () => {
     const user = await createActiveUser(1);
     const result = await meService.changeActiveView(user.id, 'courier');
     expect(Object.keys(result).sort()).toEqual(
-      ['activeView', 'createdAt', 'email', 'id', 'role', 'status', 'updatedAt', 'username'].sort(),
+      [
+        'activeView',
+        'createdAt',
+        'email',
+        'id',
+        'isLocked',
+        'lockLevel',
+        'lockedUntil',
+        'role',
+        'status',
+        'updatedAt',
+        'username',
+      ].sort(),
     );
   });
 
@@ -214,6 +235,50 @@ describe('initiateEmailChange', () => {
     await expect(
       meService.initiateEmailChange(UNKNOWN_ID, { currentPassword: 'whatever', newEmail }),
     ).rejects.toMatchObject({ status: 404, code: 'USER_NOT_FOUND' });
+  });
+});
+
+describe('initiateEmailChange / initiatePasswordChange login lockout (Stage 18b)', () => {
+  const newEmail = 'new@example.com';
+
+  it.each([
+    ['initiateEmailChange', (id: string, pw: string) => meService.initiateEmailChange(id, { currentPassword: pw, newEmail })],
+    ['initiatePasswordChange', (id: string, pw: string) => meService.initiatePasswordChange(id, { currentPassword: pw, newPassword: NEW_PASSWORD })],
+  ])('%s: locked rejects with ACCOUNT_LOCKED even with the correct password', async (_n, fn) => {
+    const user = await createActiveUser(1);
+    await setLoginLockState(user.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    await expect(fn(user.id, user.password)).rejects.toMatchObject({
+      status: 429,
+      code: 'ACCOUNT_LOCKED',
+    });
+  });
+
+  it.each([
+    ['initiateEmailChange', (id: string, pw: string) => meService.initiateEmailChange(id, { currentPassword: pw, newEmail })],
+    ['initiatePasswordChange', (id: string, pw: string) => meService.initiatePasswordChange(id, { currentPassword: pw, newPassword: NEW_PASSWORD })],
+  ])('%s: a wrong current password counts toward the shared login-lockout counter', async (_n, fn) => {
+    const user = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await expect(fn(user.id, 'Wrong!Pass1')).rejects.toMatchObject({ status: 401, code: 'INVALID_PASSWORD' });
+    }
+    await expect(fn(user.id, 'Wrong!Pass1')).rejects.toMatchObject({
+      status: 429,
+      code: 'ACCOUNT_LOCKED',
+    });
+    expect((await getUserById(user.id))!.login_lock_level).toBe(1);
+  });
+
+  it('a correct current password on initiateEmailChange resets the login-lockout counter', async () => {
+    const user = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await expect(
+        meService.initiateEmailChange(user.id, { currentPassword: 'Wrong!Pass1', newEmail }),
+      ).rejects.toMatchObject({ status: 401, code: 'INVALID_PASSWORD' });
+    }
+    await meService.initiateEmailChange(user.id, { currentPassword: user.password, newEmail });
+    const row = (await getUserById(user.id))!;
+    expect(row.login_failed_attempts).toBe(0);
+    expect(row.login_lock_level).toBe(0);
   });
 });
 

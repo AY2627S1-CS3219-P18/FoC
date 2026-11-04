@@ -16,6 +16,11 @@
 //    No requirements, architecture, schema, or API decisions were made by the AI tool — see
 //    instructions.md Stage 14 for the governing decision.
 //    Author review:
+//  2026-11-04: Stage 18a - add LOGIN_MAX_FAILURES, LOGIN_FAILURE_WINDOW_MINUTES,
+//    LOCK_ESCALATION_HOURS and LOCK_ESCALATION_RESET_HOURS for the login lockout and OTP
+//    send-escalation. No requirements, architecture, schema, or API decisions were made by the
+//    AI tool — see instructions.md Stage 18 for the governing decision.
+//    Author review:
 
 import { z } from "zod";
 
@@ -60,6 +65,18 @@ const envSchema = z
     OTP_RESEND_WINDOW_MINUTES: z.coerce.number().int().positive(),
 
     CREDIT_SERVICE_URL: z.string().url(),
+
+    LOGIN_MAX_FAILURES: z.coerce.number().int().positive(),
+    LOGIN_FAILURE_WINDOW_MINUTES: z.coerce.number().int().positive(),
+    // Comma-separated hours for the 1st, 2nd, 3rd+ escalation (e.g. "1,4,24"), shared by the
+    // login lock and the OTP send block.
+    LOCK_ESCALATION_HOURS: z
+      .string()
+      .min(1)
+      .refine((value) => value.split(",").every((part) => /^\d+$/.test(part.trim())), {
+        message: "Must be a comma-separated list of positive integers",
+      }),
+    LOCK_ESCALATION_RESET_HOURS: z.coerce.number().int().positive(),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -138,5 +155,11 @@ export const config = {
   },
   creditService: {
     url: env.CREDIT_SERVICE_URL.replace(/\/$/, ""),
+  },
+  lock: {
+    maxLoginFailures: env.LOGIN_MAX_FAILURES,
+    loginFailureWindowMinutes: env.LOGIN_FAILURE_WINDOW_MINUTES,
+    escalationHours: env.LOCK_ESCALATION_HOURS.split(",").map((part) => Number(part.trim())),
+    escalationResetHours: env.LOCK_ESCALATION_RESET_HOURS,
   },
 } as const;

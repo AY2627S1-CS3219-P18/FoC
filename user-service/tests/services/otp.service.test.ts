@@ -2,6 +2,13 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - integration tests for otp.service.ts (issueOtp, requestOtp, checkOtp)
 // Author review:
+// 2026-11-04: Stage 18c - added coverage for requestOtp's send-escalation block (exact
+//   Retry-After, carry-forward onto the new row, quiet-window reset) and checkOtp's reset of
+//   the escalation level on a successful consuming verify. Updated two pre-existing
+//   `reason: 'limit'` assertions from toEqual to toMatchObject, since that result now also
+//   carries level/retryAfterSeconds. Governing decision: instructions.md Stage 18.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as otpQueries from '../../src/db/queries/otp.queries.js';
 import * as userQueries from '../../src/db/queries/users.queries.js';
@@ -14,6 +21,7 @@ import {
   expireOtps,
   getOtps,
   seedOtp,
+  setOtpSendBlock,
   setUserStatus,
   truncateAll,
 } from '../helpers/db.js';
@@ -158,7 +166,9 @@ describe('requestOtp', () => {
     }
     sendOtpEmailMock.mockClear();
 
-    expect(await run()).toEqual({ status: 'throttled', reason: 'limit' });
+    const result = await run();
+    expect(result).toMatchObject({ status: 'throttled', reason: 'limit', level: 1 });
+    expect((result as { retryAfterSeconds: number }).retryAfterSeconds).toBe(3600);
     expect(sendOtpEmailMock).not.toHaveBeenCalled();
     expect(await getOtps(userId, 'Forgot Password')).toHaveLength(6);
   });
@@ -168,10 +178,76 @@ describe('requestOtp', () => {
       await run();
       await backdateOtps(userId, 2);
     }
-    expect(await run()).toEqual({ status: 'throttled', reason: 'limit' });
+    expect(await run()).toMatchObject({ status: 'throttled', reason: 'limit' });
 
+    // The rolling window excludes the old rows, but the Stage 18c escalating block (1h) is a
+    // separate, longer-lived gate; expire it directly so this isolates the window's own effect.
     await backdateOtps(userId, 61);
+    await setOtpSendBlock(userId, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: -1 });
     expect(await run()).toEqual({ status: 'sent' });
+  });
+
+  describe('send escalation (Stage 18c)', () => {
+    it('a cap hit blocks sends until send_blocked_until, reporting the exact retryAfterSeconds', async () => {
+      for (let i = 0; i < 6; i++) {
+        await run();
+        await backdateOtps(userId, 2);
+      }
+      await run(); // the cap hit: blocks for 1h
+
+      sendOtpEmailMock.mockClear();
+      const result = await run();
+      expect(result).toMatchObject({ status: 'throttled', reason: 'limit', level: 1 });
+      const retry = (result as { retryAfterSeconds: number }).retryAfterSeconds;
+      expect(retry).toBeGreaterThan(3500);
+      expect(retry).toBeLessThanOrEqual(3600);
+      expect(sendOtpEmailMock).not.toHaveBeenCalled();
+      expect(await getOtps(userId, 'Forgot Password')).toHaveLength(6);
+    });
+
+    it('a second cap hit (no verify in between) escalates to 4h, carried forward onto the new row', async () => {
+      await run();
+      await setOtpSendBlock(userId, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: -1 });
+      await backdateOtps(userId, 2);
+
+      for (let i = 0; i < 6; i++) {
+        await run();
+        await backdateOtps(userId, 2);
+      }
+      expect(await run()).toMatchObject({ status: 'throttled', reason: 'limit', level: 2 });
+
+      const rows = await getOtps(userId, 'Forgot Password');
+      expect(rows.at(-1)!.send_escalation_level).toBe(2);
+    });
+
+    it('24h after the last cap hit with no new cap hit, the level resets to 1h', async () => {
+      await run();
+      await setOtpSendBlock(userId, 'Forgot Password', {
+        level: 2,
+        // Last hit derived as blockEnd - durationHoursForLevel(2) (4h) = 25h ago: past the
+        // 24h quiet window.
+        blockedUntilMinutesFromNow: -(25 * 60 - 4 * 60),
+      });
+      await backdateOtps(userId, 2);
+
+      for (let i = 0; i < 6; i++) {
+        await run();
+        await backdateOtps(userId, 2);
+      }
+      expect(await run()).toMatchObject({ status: 'throttled', reason: 'limit', level: 1 });
+    });
+
+    it('verifying an already-sent OTP still works while sending is blocked', async () => {
+      await seedOtp(userId, 'Forgot Password', '123456');
+      await setOtpSendBlock(userId, 'Forgot Password', { level: 1, blockedUntilMinutesFromNow: 60 });
+
+      expect(await run()).toMatchObject({ status: 'throttled', reason: 'limit' });
+
+      const result = await withTransaction((c) =>
+        checkOtp({ userId, purpose: 'Forgot Password', otp: '123456' }, c),
+      );
+      expect(result.ok).toBe(true);
+    });
   });
 
   it('propagates EMAIL_SEND_FAILED as 503 and leaves the previous OTP valid', async () => {
@@ -274,6 +350,37 @@ describe('checkOtp', () => {
     await seedOtp(userId, 'Registration', '123456');
     await expect(check('123456', true, 'Forgot Password')).rejects.toMatchObject({
       code: 'INVALID_OTP',
+    });
+  });
+
+  describe('send-escalation reset on a consuming verify (Stage 18c)', () => {
+    it('a successful consume=true verify resets the escalation level/block on that row', async () => {
+      await seedOtp(userId, 'Forgot Password', '123456');
+      await setOtpSendBlock(userId, 'Forgot Password', { level: 2, blockedUntilMinutesFromNow: 60 });
+      expect(await check('123456', true)).toEqual({ ok: true });
+
+      const row = (await getOtps(userId, 'Forgot Password'))[0]!;
+      expect(row.send_escalation_level).toBe(0);
+      expect(row.send_blocked_until).toBeNull();
+    });
+
+    it('consume=false (the forgot-password verify step) does not reset the escalation level', async () => {
+      await seedOtp(userId, 'Forgot Password', '123456');
+      await setOtpSendBlock(userId, 'Forgot Password', { level: 2, blockedUntilMinutesFromNow: 60 });
+      expect(await check('123456', false)).toEqual({ ok: true });
+
+      const row = (await getOtps(userId, 'Forgot Password'))[0]!;
+      expect(row.send_escalation_level).toBe(2);
+      expect(row.send_blocked_until).not.toBeNull();
+    });
+
+    it('a wrong guess does not reset the escalation level', async () => {
+      await seedOtp(userId, 'Forgot Password', '123456');
+      await setOtpSendBlock(userId, 'Forgot Password', { level: 2, blockedUntilMinutesFromNow: 60 });
+      expect(await check('000000', true)).toEqual({ ok: false });
+
+      const row = (await getOtps(userId, 'Forgot Password'))[0]!;
+      expect(row.send_escalation_level).toBe(2);
     });
   });
 });
