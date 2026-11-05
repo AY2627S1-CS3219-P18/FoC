@@ -10,50 +10,72 @@
  * Scope: Reads the API-contract supplier fields: category chips from the category reference, grouping by location, and no separate 'On their own' group (every supplier has a location). No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
  *        no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The landing supplier list and category chips now load from the Supplier Service (list and category reference endpoints) instead of mock data. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The list query depends on the category id (a number) rather than the options array. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: Added a Bookmarked chip that sends the user's bookmark ids and clears deleted bookmarks,
+ *        per the 2026-11-05 supplier-bookmarking spec. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import SupplierCard from '../components/SupplierCard'
 import { useApiNotice } from '../components/ApiNotice'
 import { useApi, useReferenceData } from '../api/useApi'
-import { listSuppliers } from '../api/suppliers'
+import { EMPTY_PAGE, listSuppliers } from '../api/suppliers'
 import { groupByLocation, locationOpenSummary } from '../data/suppliers'
+import { useBookmarks } from '../context/BookmarksContext'
 
 // User F2 / Supplier F1.1 — the supplier list comes from GET /api/v1/suppliers, which needs a login.
 export default function Landing() {
   const navigate = useNavigate()
   const [chip, setChip] = useState('All')
   const { categories } = useReferenceData()
-  const chips = ['All', ...categories.map((c) => c.category), 'Open now']
+  const { ids, ready, pruneDeleted } = useBookmarks()
+  const chips = ['All', ...categories.map((c) => c.category), 'Open now', 'Bookmarked']
 
-  // One chip at a time: a category chip filters by category_id, 'Open now' by isOpen.
+  // One chip at a time: a category chip filters by category_id, 'Open now' by isOpen, 'Bookmarked' by
+  // the user's bookmarked supplier ids.
   const categoryId = categories.find((c) => c.category === chip)?.category_id
+  const bookmarkedOnly = chip === 'Bookmarked'
+  const idsKey = ids.join(',')
   const query = useMemo(
     () => ({
       category_id: categoryId,
       isOpen: chip === 'Open now' ? 'true' : undefined,
       sortOrder: 'A-Z',
+      ids: bookmarkedOnly ? idsKey : undefined,
     }),
-    [chip, categoryId],
+    [chip, categoryId, bookmarkedOnly, idsKey],
   )
-  const { data, loading, error } = useApi(() => listSuppliers(query), [query])
+  // No bookmarks: show the empty page here. The request helper drops empty query values, so an empty
+  // ids would never reach the service and the call would list every supplier.
+  const { data, loading, error } = useApi(
+    () => (bookmarkedOnly && idsKey === '' ? Promise.resolve(EMPTY_PAGE) : listSuppliers(query)),
+    [query],
+  )
   const notice = useApiNotice({ loading, error })
+
+  // Ids the service reports as deleted are cleared from the user's bookmarks.
+  useEffect(() => {
+    if (bookmarkedOnly && data?.unavailable?.length) pruneDeleted(data.unavailable)
+  }, [bookmarkedOnly, data, pruneDeleted])
 
   const grouped = groupByLocation(data?.data ?? [])
 
@@ -107,6 +129,9 @@ export default function Landing() {
         </p>
 
         {notice}
+        {bookmarkedOnly && ready && !notice && grouped.length === 0 && (
+          <p className="mt-8 text-sm text-ink-40">No bookmarked suppliers.</p>
+        )}
 
         {/* Grouping by location is a view over the flat supplier list, not a parent-child
             relationship in the data. */}
