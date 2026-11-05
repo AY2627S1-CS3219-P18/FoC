@@ -7746,3 +7746,160 @@ None this session.
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-05 — Supplier bookmarking: design spec and implementation plan
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** The team's chat answers of 2026-11-05 (quoted below); recorded as B1–B16 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> In my supplier service, I want to add a functionality for users to bookmark their favorite locations. The idea is that these can appear at the top of the supplier page before the user searches for anything in particular. This will be in a new supplier-bookmarking branch.
+> Ask the necessary decision questions, if any, to design this feature with me. I see it as a very small change, likely just storing each user's bookmarked suppliers somewhere in the supplier service, so that when a specific user queries for the inital home page load, these bookmarked suppliers will be sent to facilitate the pinned display
+
+> 1. in this change, i meant the bookmarked supplier cards. locations will be another change.
+> 2. the more robust solution is for the returned suppliers to already contain a isBookmarked flag that is computed in the backend from a comparison with a list of user-level bookmarked suppliers. This would allow the flag to be shown whenever that supplier appears on screen
+> 3. all can bookmark, but bookmarking is user-specific. One will not bookmark for everyone. this means that we are not storing an additional universal field for suppliers. Hence I said that we will need a separate table to store the favourites. I am inclined to put this into user-service, which should already be maintaining user-specific details.
+> 4. user-service stores the bookmarkings in an appropriate table in user-service, or even a new table in user-service. Typically, the bookmarking can be rendered on the user side with a simple comparison of the ids and their personal list. But the user can also filter by saved, of which theoir list of bookmarked supplier ids will be sent to the supplier service so the supplier service can return the marked suppliers separately
+> 5. since the supplier-service returns the results, hidden or deleted suppliers will just not show up
+> 6. lets set maximum to be 20 bookmarks per user. Clicking on the bookmark icon bookmarks it, the icon will change state, and clicking again will unbookmark the supplier. By default, ordering will follow the same per location sectioning the supplier page already applies
+> 7. Since Adding and removing bookmarks uses the same button, is this an issue?
+> 8. start from main
+> 9. this will touch user-service, the fe under user-service, and a little of supplier-service
+
+> 1. Agree with the button firing different endpoints based on the current state of the icon
+> 2. lets ditch theisBookmarked flag. As menioned in 4, the user side will render the bookmarking by comparing with their own list. If the user requests to filter just by bookmarked, the ids will be sent. This keeps cross service communication more contained
+> 3. When the user filters by bookmarked and the supplier-service sees that any of the bookmarks point to a hidden or deleted supplier, the supplier-service will return "hidden" and "deleted" respectively. If the entry is "deleted", the user service side will remove that bookmark. If it is hidden, the bookmark will be retained.
+
+> 1. Yes, follow existing route conventions. 422 can be used for 21st bookmark with accompanying user-oriented message along the lines of "You can only bookmark 20 locations! Unbookmark another before bookmarking this" (tighten up the language for the actual)
+> 2. Yes new table. Adding a supplier that doesnt exist will be gated on the fe with the icon. Even if the user somehow gets around that, that id will be sent during a filter for "saved" call. Thats when the supplier service can perform the check - following the response suggestion from 3, such a supplier that does not exist will return the same status of "deleted" and cleared from the user table.
+> 3. yes, the IDs can be passed in the existing endpoint. What do you mean by where do hidden and deleted status go? They are part of the return payload, and would be ignored by the fe entirely so nothing will be displayed, as there is no information anyway. Filters can still be applied on top of the saved suppliers
+> 4. yes, the fe calls user-service's bookmark delete (unbookmark) endpoint
+> 5. ditch the pin. the filter works just fine
+> 6. yes. hidden counts towards the cap as they can be reenabled, but deleted will be cleared on the next saved filter load
+
+> 1. yes, filter parameter just uses the existing list endpoint.
+> 2. extra array works
+> 3. hidden ids will be under the unavailable array and ignored from filters, as you suggested
+> 4. yes.
+> 5. yes
+> proceed with spec and plan
+
+**Key responses:**
+- Asked the decision questions instead of choosing (this is architecture/design work under root `AGENTS.md` §2.1): which entity is bookmarked, where the data lives, the response shape, the cap, hidden/deleted handling and the base branch. Recorded the team's answers as B1–B16.
+- Created the local branch `supplier-bookmarking` from `main` (no files changed by that step).
+- Wrote the spec and a 3-part, TDD-style implementation plan (user-service, supplier-service, frontend) from those decisions only. Where the team had not decided something, the spec's "Not yet decided by the team" table (G1–G7) shows the plan's working choice: soft-deleted wins over inactive, `code` string names, `400` for a bad id, `422` for an empty `ids=`, placement of the Saved filter in the UI, a composite primary key, and oldest-first ordering of the id list.
+- Noted that the user-service mounts these routes at `/users/me/*`, so the new routes are `/users/me/bookmarks`, not the `/me/bookmarks` written in an earlier question.
+- Added workstream W8 (Planned) to `supplier-service/PROJECT_STATE.md`.
+- Verification: none run. No code was written or executed; the plan's code was written against files read in this session and has not been compiled or tested.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (created)
+- `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (created)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+G1–G7 in the spec's "Not yet decided by the team" table need a team answer before the code is reviewed. The user-service has no `PROJECT_STATE.md` and its `AGENTS.md` is empty, so this work is recorded in the supplier-service project state and in the spec.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-05 — Supplier bookmarking: spec and plan updated for the team's gap answers
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** The team's chat answers below; recorded as B17–B22 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> 1. delete take precedence. Use deleted if both are active
+> 2. Codename works
+> 3. bad supplier ids will not exist in a typical flow - only via injections. The supplier service will return a dedicated status "invalid" that follows the same logic as "deleted" and be removed. Other valid ids are not blocked
+> 4. if there are no saved suppliers, filtering by bookmark should just return an empty payload which the fe can render as "No bookmarked supplier"
+> 5. Use "Bookmarked" as the label in place of Saved
+> 6. Table keys are correct
+> 7. oldest id first works - whatever the supplier replies
+
+**Key responses:**
+- Recorded the answers in the spec (B17–B22) and cut the open-gaps table to what is still undecided (G3, G5, G8–G10).
+- Updated the plan: a malformed item in `ids` no longer fails the request (the parameter now parses to `{ valid, invalid }`); the service returns an `invalid` entry for each and an empty payload when nothing is well-formed or `ids` is empty; the frontend clears `deleted` and `invalid` entries; the filter is labelled "Bookmarked".
+- Found that the frontend's request helper (`frontend/src/api/http.js`) drops empty query values, so an empty `ids` would never reach the service and the call would list every supplier. The plan therefore keeps a frontend shortcut that shows the empty state itself when there are no bookmarks, alongside the service behaviour the team asked for.
+- Wording choices not given by the team: the empty-state text "No bookmarked suppliers." (you wrote "No bookmarked supplier") and the order of `unavailable` entries (well-formed first, then malformed).
+- Verification: none run. Documents only; no code was written or executed.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
+- `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+Still undecided (spec §6): G3 status for a bad id on the user-service routes, G5 where the Bookmarked control sits in the UI, G8 empty-state wording, G9 ordering of `unavailable`, G10 the largest id treated as well-formed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-05 — Supplier bookmarking: remaining spec gaps closed
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting | Refactor/Docs
+**Governing decision:** The team's chat answers below; recorded as B23–B24 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> G3: as decided before, if a supplier ID is invalid (from manual injection), it will not block the call. The supplier-service will just return it as invalid, and the fe calls to drop the record
+> G5: Go with this for now. I will amend the UI later on if needed
+> G8: Yes stick to this first
+> G9: yes. malformed ones are ordered later
+> G10: does this still matter if any invalid id just returns as invalid?
+
+**Key responses:**
+- Recorded G5, G8 and G9 as decided (B24). Answered G10: it is an implementation detail, because an oversized id is reported as `invalid` and leads to the same bookmark removal as `deleted`.
+- Read G3 as applying to the user-service `DELETE` as well: the plan now makes `DELETE /users/me/bookmarks/:supplierId` with a malformed id a no-op that returns `200` (B23), so the frontend's clean-up call never errors. `PUT` with a malformed id is still `400` because it cannot be stored; that is the one remaining open item, working choice stated in the spec.
+- Verification: none run. Documents only.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
+- `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+Whether `PUT` with a malformed id should stay `400` (spec §6, G3). The `DELETE` reading above is the agent's interpretation of the answer and needs confirming.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-05 — Supplier bookmarking: last spec gap closed
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The team's chat answer below; recorded as B25 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> Approve G3's 400 error in that rare case
+
+**Key responses:** Recorded B25 (`PUT` with a malformed id returns `400 VALIDATION_ERROR`) and removed the last open gap from the spec, the plan header and `supplier-service/PROJECT_STATE.md`. Verification: none run; documents only.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
+- `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

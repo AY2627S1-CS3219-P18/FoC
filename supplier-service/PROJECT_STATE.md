@@ -8,6 +8,10 @@ Scope: Bootstrapped this project-state document (Orientation, Workstreams, Archi
        the team stated in those sources; where no reason was found the cell says "unknown — no
        record". No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added workstream W8 (supplier bookmarking) and
+       updated the Branch and Last updated lines. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 Scope (2026-11-04, Codex, model: GPT-6): Updated Phase 5 status from the recorded tests and decisions.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Scope (2026-11-02, Codex, model: GPT-6): Updated current authentication descriptions to match
@@ -23,9 +27,9 @@ every boundary, not at the end of the session.
 
 - **Phase:** Phases 0–4 implemented; Phase 5 is in progress. Authorization and response tests exist; the recorded local load run missed targets; the no-UI and cross-role suites were recorded as passing. See W6 and Q1.
 - **Stack:** TypeScript, Node.js, Express 4, MySQL 8 (`mysql2`), Redis (`ioredis`) with BullMQ, `zod`, `multer`, `@aws-sdk/client-s3` (MinIO locally), Vitest + Supertest
-- **Branch:** `supplier-phase-5` (observed 2026-11-04).
+- **Branch:** `supplier-bookmarking` (created from `main` 2026-11-05; W8). Earlier: `supplier-phase-5` (observed 2026-11-04).
 - **Method:** Spec → plan (`docs/superpowers/plans/`) → subagent-driven development, one implementer per task with reviewer subagents (see C49); every change disclosed per root `AGENTS.md`
-- **Last updated:** 2026-11-04 — Phase 5 status and test decisions; other sections retain their earlier dates.
+- **Last updated:** 2026-11-05 — W8 supplier bookmarking added (Planned); other sections retain their earlier dates.
 - **Last verified against repo:** 2026-10-01
 - **Developer guide:** not created (the `update-documentation` skill is not installed in this repo; Guide column is `—` throughout)
 
@@ -122,6 +126,7 @@ priority (C47).
 | W5 | Phase 4 — Soft delete, transactional outbox, BullMQ worker, reactivation rework | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md) | 17/17 tasks; live check passed except in-flight shutdown (D11, D18) | — |
 | W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) | Authorization tests and no-UI/cross-role suites run; response tests partial; local load targets missed (Q1) | — |
 | W7 | OpenAPI description, seed-as-test, response ids (`location_id`, `faculty_id`, category ids) | In review | [architecture §7.3, §9 item 23](SupplierServiceArchitecture.md) | — | Ids committed (`05a0386`); openapi/seed uncommitted: Q5 | — |
+| W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | Planned | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | Spec and plan written; no code yet; no open gaps | — |
 
 Cross-project (not a supplier workstream): the **frontend** project's supplier screens call this
 API — see D15 for what it exposed.
