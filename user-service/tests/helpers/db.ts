@@ -26,6 +26,8 @@
 //   refresh token's expires_at to an arbitrary point for sessionTimeLeftSeconds coverage.
 //   Governing decision: instructions.md Stage 23b.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// 2026-11-05: Added getBookmarkRows for supplier bookmarking tests (Tool: Claude Code, model:
+//   claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
@@ -301,4 +303,14 @@ export async function waitForLockWaiters(count = 1, timeoutMs = 5000): Promise<v
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error('Timed out waiting for a query to block on a lock');
+}
+
+export async function getBookmarkRows(
+  userId: string,
+): Promise<{ supplier_id: number; created_at: Date }[]> {
+  const r = await pool.query<{ supplier_id: number; created_at: Date }>(
+    'SELECT supplier_id, created_at FROM user_bookmarks WHERE user_id = $1 ORDER BY created_at, supplier_id',
+    [userId],
+  );
+  return r.rows;
 }

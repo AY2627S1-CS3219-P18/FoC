@@ -17,6 +17,9 @@
   * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): expectations for location_id, faculty_id and
  *        categories as {category, category_id}, per the team's decision in chat.
  * Author review:
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added listSuppliers ids tests, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../../src/utils/AppError.js';
@@ -78,6 +81,7 @@ function fakeRepo(overrides: Partial<SupplierRepository> = {}): SupplierReposito
     findAdminPage: vi.fn().mockResolvedValue({ rows: [adminStore], total: 1 }),
     findAllAdmin: vi.fn().mockResolvedValue([adminStore, adminFacility]),
     findAdminById: vi.fn().mockResolvedValue(adminStore),
+    findStatusesByIds: vi.fn().mockResolvedValue([]),
     findCategoryLinks: vi.fn().mockResolvedValue([
       { supplierId: 1, categoryId: 3, category: 'Drinks' },
       { supplierId: 1, categoryId: 2, category: 'Food' },
@@ -304,5 +308,130 @@ describe('admin reads', () => {
   it('throws 404 for an unknown admin id', async () => {
     const repo = fakeRepo({ findAdminById: vi.fn().mockResolvedValue(null) });
     await expect(createSupplierService(repo).getAdminSupplier(99)).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('listSuppliers with ids', () => {
+  const statuses = [
+    { supplierId: 1, isActive: true, isDeleted: false },
+    { supplierId: 7, isActive: false, isDeleted: false },
+    { supplierId: 12, isActive: false, isDeleted: true },
+    { supplierId: 13, isActive: true, isDeleted: true },
+  ];
+  const withStatuses = () => fakeRepo({ findStatusesByIds: vi.fn().mockResolvedValue(statuses) });
+  const ids = (valid: number[], invalid: string[] = []) => ({ valid, invalid });
+
+  it('restricts the page query to the ids and keeps the other filters', async () => {
+    const repo = withStatuses();
+
+    await service(repo).listSuppliers({ page: 1, sortOrder: 'Z-A', search: 'store', ids: ids([1, 7]) });
+
+    expect(repo.findVisiblePage).toHaveBeenCalledWith(
+      expect.objectContaining({ supplierIds: [1, 7], search: 'store', sortOrder: 'Z-A' }),
+    );
+  });
+
+  it('restricts the unpaged read used by the isOpen filter too', async () => {
+    const repo = withStatuses();
+
+    await service(repo).listSuppliers({ page: 1, sortOrder: 'A-Z', isOpen: true, ids: ids([1, 7]) });
+
+    expect(repo.findAllVisible).toHaveBeenCalledWith(expect.objectContaining({ supplierIds: [1, 7] }));
+  });
+
+  it('lists hidden, deleted and unknown ids in the order sent, skipping visible ones', async () => {
+    const result = await service(withStatuses()).listSuppliers({
+      page: 1,
+      sortOrder: 'A-Z',
+      ids: ids([12, 1, 99, 7]),
+    });
+
+    expect(result.unavailable).toEqual([
+      { id: 12, status: 'deleted' },
+      { id: 99, status: 'deleted' },
+      { id: 7, status: 'hidden' },
+    ]);
+  });
+
+  it('reports a supplier that is both deleted and inactive as deleted', async () => {
+    const result = await service(withStatuses()).listSuppliers({
+      page: 1,
+      sortOrder: 'A-Z',
+      ids: ids([12, 13]),
+    });
+
+    expect(result.unavailable).toEqual([
+      { id: 12, status: 'deleted' },
+      { id: 13, status: 'deleted' },
+    ]);
+  });
+
+  it('reports malformed items as invalid, after the well-formed ones, without blocking them', async () => {
+    const repo = withStatuses();
+
+    const result = await service(repo).listSuppliers({
+      page: 1,
+      sortOrder: 'A-Z',
+      ids: ids([7, 1], ['abc', '0']),
+    });
+
+    expect(repo.findVisiblePage).toHaveBeenCalledWith(expect.objectContaining({ supplierIds: [7, 1] }));
+    expect(result.unavailable).toEqual([
+      { id: 7, status: 'hidden' },
+      { id: 'abc', status: 'invalid' },
+      { id: '0', status: 'invalid' },
+    ]);
+  });
+
+  it('returns an empty payload without touching the database when no id is well-formed', async () => {
+    const repo = withStatuses();
+
+    const result = await service(repo).listSuppliers({ page: 3, sortOrder: 'A-Z', ids: ids([], ['abc']) });
+
+    expect(result).toEqual({
+      metadata: { totalRecords: 0, currPage: 3, limit: 50, totalPages: 0 },
+      data: [],
+      unavailable: [{ id: 'abc', status: 'invalid' }],
+    });
+    expect(repo.findVisiblePage).not.toHaveBeenCalled();
+    expect(repo.findAllVisible).not.toHaveBeenCalled();
+    expect(repo.findStatusesByIds).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty payload with an empty unavailable array for an empty ids list', async () => {
+    const result = await service(withStatuses()).listSuppliers({ page: 1, sortOrder: 'A-Z', ids: ids([]) });
+
+    expect(result.data).toEqual([]);
+    expect(result.metadata.totalRecords).toBe(0);
+    expect(result.unavailable).toEqual([]);
+  });
+
+  it('always includes unavailable (empty) when every id is visible', async () => {
+    const result = await service(withStatuses()).listSuppliers({ page: 1, sortOrder: 'A-Z', ids: ids([1]) });
+
+    expect(result.unavailable).toEqual([]);
+  });
+
+  it('checks every well-formed id, whatever the other filters are', async () => {
+    const repo = withStatuses();
+
+    await service(repo).listSuppliers({
+      page: 2,
+      sortOrder: 'A-Z',
+      search: 'zzz',
+      locationId: 4,
+      ids: ids([1, 7, 12]),
+    });
+
+    expect(repo.findStatusesByIds).toHaveBeenCalledWith([1, 7, 12]);
+  });
+
+  it('adds no unavailable field and does no status lookup without ids', async () => {
+    const repo = fakeRepo();
+
+    const result = await service(repo).listSuppliers({ page: 1, sortOrder: 'A-Z' });
+
+    expect(result).not.toHaveProperty('unavailable');
+    expect(repo.findStatusesByIds).not.toHaveBeenCalled();
   });
 });

@@ -39,6 +39,9 @@ Scope: 2026-10-20 update — documented local JWKS retrieval and RS256 bearer-to
 Author review: tng wen xi
 Scope (2026-11-02, Codex, model: GPT-6): Clarified the implemented JWKS authentication setup.
 Author review: Congchen
+Scope: 2026-11-05 update (Claude Code, model: claude-sonnet-5-5) — Documented the ids filter and unavailable array, and recorded workstream W8, per the 2026-11-05 supplier-bookmarking spec.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Supplier Service
@@ -135,7 +138,7 @@ Accepted roles: `user`, `admin`, `super admin` (§7).
 
 | Method & path                                | Query parameters                                                                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/v1/suppliers`                      | `page`, `limit` (fixed at 50), `search`, `location_id`, `category_id`, `isOpen` (`true`/`false`), `sortOrder` (`A-Z`/`Z-A`, default `A-Z`) |
+| `GET /api/v1/suppliers`                      | `page`, `limit` (fixed at 50), `search`, `location_id`, `category_id`, `isOpen` (`true`/`false`), `sortOrder` (`A-Z`/`Z-A`, default `A-Z`), `ids` (comma-separated, up to 20; adds an `unavailable` array) |
 | `GET /api/v1/suppliers/:id`                  | —                                                                                                                                          |
 | `GET /api/v1/suppliers/reference/location`   | —                                                                                                                                          |
 | `GET /api/v1/suppliers/reference/categories` | —                                                                                                                                          |

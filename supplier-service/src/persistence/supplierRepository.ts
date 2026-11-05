@@ -18,6 +18,9 @@
  *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review: Congchen
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added the supplierIds criterion and findStatusesByIds, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export interface SupplierRow {
@@ -77,12 +80,19 @@ export interface ListCriteria {
   search?: string;
   locationId?: number;
   categoryId?: number;
+  supplierIds?: number[];
   sortOrder: 'A-Z' | 'Z-A';
 }
 
 export interface ListFilter extends ListCriteria {
   limit: number;
   offset: number;
+}
+
+export interface SupplierStatusRow {
+  supplierId: number;
+  isActive: boolean;
+  isDeleted: boolean;
 }
 
 export interface SupplierRepository {
@@ -99,6 +109,8 @@ export interface SupplierRepository {
   findAdminPage(filter: ListFilter): Promise<{ rows: AdminSupplierRow[]; total: number }>;
   findAllAdmin(criteria: ListCriteria): Promise<AdminSupplierRow[]>;
   findAdminById(supplierId: number): Promise<AdminSupplierRow | null>;
+  /** Visibility flags for the ids that exist, regardless of state. Missing ids are simply absent. */
+  findStatusesByIds(supplierIds: number[]): Promise<SupplierStatusRow[]>;
   findCategoryLinks(supplierIds: number[]): Promise<CategoryLinkRow[]>;
   findHours(supplierIds: number[]): Promise<HourRow[]>;
   findPhotos(supplierIds: number[]): Promise<PhotoRow[]>;
