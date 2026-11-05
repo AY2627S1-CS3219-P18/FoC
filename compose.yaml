@@ -22,6 +22,12 @@
 #        and a credit-worker service consuming queue:credit:transfer from order-redis.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5), date: 2026-11-04
+# Scope (2026-11-04): frontend service on its new prod target, so `docker compose up`
+#        serves the built app through nginx. compose.dev.yaml already overrides it to
+#        the Vite dev server, the same base-prod / override-dev split order-service uses.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
 # Scope (2026-10-22): order-redis persistence (George, 2026-10-22: RDB + AOF) - append-only
 #        file with everysec fsync alongside the default RDB snapshots, on the named volume
@@ -277,6 +283,38 @@ services:
     depends_on:
       credit-db:
         condition: service_healthy
+
+  # ---- frontend -----------------------------------------------------------
+  # Built bundle served by nginx, which also proxies /api/v1, /auth, /users, /credits,
+  # /orders and /socket.io to the backends — the same table frontend/vite.config.js
+  # proxies in development. One origin, so no VITE_* URL is baked into the bundle.
+  #
+  # compose.dev.yaml overrides this to `target: dev` and the Vite dev server with
+  # Compose Watch, exactly as it does for order-service. Base runs prod so a plain
+  # `docker compose up` gives a complete, working system.
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+    container_name: foc-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    # Ordering only, not readiness: nginx resolves upstreams per request through
+    # Docker's DNS (see frontend/nginx/default.conf), so it starts and serves static
+    # assets even while a backend is still coming up.
+    depends_on:
+      - user-service
+      - credit-service
+      - order-service
+      - supplier-service
+    healthcheck:
+      # 127.0.0.1, not localhost: that resolves to ::1 inside the container.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   # ---- supplier-service ---------------------------------------------------
   # AI Assistance Disclosure:

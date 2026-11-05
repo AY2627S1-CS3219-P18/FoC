@@ -7984,6 +7984,217 @@ None this session.
 
 **What I kept/changed/rejected:**
 
+**Author review:**
+
+## 2026-11-04 — Frontend: production nginx image, compose service, and the order-service build fix it exposed
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** The user's instruction of 2026-11-04, quoted below, plus the team's Option A deployment decision (a single EC2 instance running this compose file), which makes this nginx the production edge rather than a local convenience.
+
+**Prompts (exact):**
+
+> The frontend has no production image. Its Dockerfile stops at the `dev` stage, whose CMD is the Vite dev server — `vite build` is never invoked anywhere, and there is no compose service for it at all.
+>
+> Read first: frontend/Dockerfile, frontend/vite.config.js (its proxy table), compose.yaml and compose.dev.yaml, and how the other services split dev vs prod targets.
+>
+> ## Build
+>
+> 1. Add a production stage to frontend/Dockerfile: run `vite build`, then serve the output with nginx. Match the target naming the majority of services use (dev/prod, not `production` — order-service is the odd one out).
+>
+> 2. Write the nginx config. Two jobs:
+>
+>    - SPA fallback: client-side routes like /wallet and /admin/suppliers must serve index.html rather than 404.
+>    - Proxy the API paths to the backend services, mirroring what vite.config.js does today. Derive the exact path-to-service mapping from that file rather than guessing it.
+>
+>    Using same-origin paths through nginx means no Vite environment variables need baking at build time. Confirm that holds — if anything in the frontend reads import.meta.env for an API base URL, say so.
+>
+> 3. Add a `frontend` service to compose. Check how compose.dev.yaml is used and follow that pattern: if dev overrides live there, the base compose should run the prod target so `docker compose up` gives a complete working system, with the Vite dev server as the override. Tell me which arrangement you chose and why.
+>
+> 4. Give it a health check, consistent with the other services.
+>
+> ## Verify
+>
+>   - the prod image builds
+>   - `docker compose up` brings the whole stack up including the frontend, and the app loads in a browser through the container, not through a host Vite server
+>   - log in, read a balance, page transaction history — all through nginx, proving the proxy paths are right
+>   - a direct hit on a deep route like /wallet serves the app rather than 404
+>   - the existing host workflow still works for anyone running `npm run dev`
+>
+> Report the image size and anything you had to invent. Show me the Dockerfile, the nginx config and the compose diff before applying — all three are outside credit-service/.
+
+> Approved — apply all four and run the verification as described.
+>
+> Two things:
+>
+>   - `ports: !override` — what Compose version does that need, and is everyone on the team new enough? If anyone's on an older Docker Desktop, dev breaks for them and not for me, which is the worst kind of bug. Check and tell me the minimum.
+>
+>   - We've settled on Option A for deployment: a single EC2 instance running this compose file. Nothing to change now, but it means this nginx setup is the production routing, not a stopgap.
+>
+> Report the image size, and confirm all five checks: build, full docker compose up, login + balance + paged history through nginx in a browser, a direct hit on /wallet, and npm run dev still working on the host.
+
+> Go ahead — recreate both user-db and credit-db, not just user-db. Credit's balances are keyed to user UUIDs from the old user-db, so recreating one and not the other leaves orphaned rows. It's all synthetic.
+>
+> Then finish check 3 in a browser: register a user, confirm the allocation outbox gives them 20 credits, read a balance, page the transaction history — all through nginx.
+>
+> Keeping !override. I'll tell the team to check `docker compose version` for 2.24.4+.
+>
+> Two things to add while you're in there:
+>   - a README line saying to run `docker compose down -v` on the affected database after pulling a schema change, since init.sql only runs on an empty volume. This has bitten four times now.
+>   - note the TLS gap somewhere visible — nginx listens on :80 plaintext, and on EC2 we'll need certs terminated either here with certbot or at an ALB. Not today's work, but it shouldn't be invisible.
+>
+> Then commit, write the usage-log entry and README row
+
+**Key responses:**
+
+_Arrangement._ Not really a choice: `compose.dev.yaml` already declared a `frontend` service on `target: dev` with Compose Watch, and the base simply never had one. Adding the base service on `target: prod` completes the pattern order-service already follows, so `docker compose up` yields a working system and the dev overlay keeps hot reload.
+
+_No build-time configuration._ Confirmed by search: nothing under `frontend/src` or `index.html` reads `import.meta.env`, every call is a same-origin relative path, and the Socket.IO client connects with no URL. So the single-origin-through-nginx approach needs nothing baked into the bundle.
+
+_Request-time DNS._ Upstreams go through a variable plus `resolver 127.0.0.11`. With a literal `proxy_pass`, nginx resolves every upstream while loading its config and refuses to start if one is missing — which would mean the frontend could not serve a static asset until all four backends were up. `$request_uri` is explicit because nginx stops appending the URI once `proxy_pass` contains a variable.
+
+**Verification actually run:**
+
+All five checks confirmed, after recreating the `user-db` and `credit-db` volumes together (synthetic data, at the user's instruction; credit balances are keyed to user UUIDs, so recreating one without the other would orphan rows).
+
+1. **Prod image builds** — `docker build --target prod` exit 0. **92.8 MB**: 38.7 MB nginx base, 9.76 MB `dist/`. Of that `dist/`, **8.9 MB is `/images`** — the supplier location photos in `public/`; the app itself is 412 KB of hashed assets, 385 KB JS → 115 KB gzipped.
+2. **Full `docker compose up`** — all 14 services. The frontend could not bind 5173 because the user's own host Vite server holds it, so it was brought up on `FRONTEND_PORT=8099` rather than killing their server; on a clean machine 5173 is free.
+3. **End to end in a browser, through nginx** — registered a fresh user, activated by OTP, and **the credit-allocation outbox fired for the first time ever on this stack**: outbox row `sent` with 0 attempts, and a `balances` row of 20 credits. Then in Chromium against `:8099`: login through `/auth/login`, Wallet showing `20 available · 0 reserved · 20 total`, nav pill `20 cr`, history paging 20 rows then 25 after scroll, zero page errors. Paths exercised through nginx: `/assets/*`, `/auth/login`, `/auth/refresh`, `/users/me`, `/credits/balance`, `/credits/transactions`, `/wallet`.
+4. **Deep route** — `GET /wallet` returns 200 `text/html`; the SPA then guards it to `/login` and returns to `/wallet` after signing in.
+5. **Host `npm run dev`** — still 200 on 5173 throughout, and the merged dev config publishes exactly one port.
+
+Every proxy path was additionally confirmed to reach a *distinct* backend by its error envelope: credit-service's `{"error":{"code":…}}`, supplier-service's `{"status_code":…}`, user-service's `{"message":…}`, and Engine.IO's own `{"code":0,"message":"Transport unknown"}` on `/socket.io`.
+
+**Files:**
+
+- `frontend/Dockerfile` (modified: `build` and `prod` stages)
+- `frontend/nginx/default.conf`, `frontend/nginx/proxy-headers.inc` (created)
+- `compose.yaml` (modified: `frontend` service)
+- `compose.dev.yaml` (modified: `ports: !override`)
+- `order-service/Dockerfile` (modified: see Deviations 1)
+- `README.md` (modified: running the stack, the volume warning, the TLS gap, Log index row)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **The postinstall hook committed in `6f3c174` had broken `docker build` for order-service, and main has been broken since that merged.** The deps stage copies only `package.json` and the lockfile before `npm ci`, so npm tried to run `scripts/prisma-generate.mjs` before that file existed. The script's existing guard covered a missing *schema*, not a missing *script*. Nobody had noticed because the running containers predate the change and nothing had rebuilt since; it surfaced on the first `docker compose up --build` after it. Fixed by copying `scripts/` before `npm ci`, in a separate commit, and verified with `docker build --target production`. **This was my own regression from the CI task, missed because I verified `npm ci` on the host but never re-ran the Docker build after adding the hook.**
+2. **`ports: !override` requires Docker Compose 2.24.4.** Established by running the real binaries, since the documentation does not state it: on 2.24.3 the tag is *silently ignored* and the port lists concatenate, so the first `docker compose -f compose.yaml -f compose.dev.yaml up` fails with "port is already allocated" — for other people and not for the author. The team is checking `docker compose version`. A version-proof alternative exists (give prod a different host port and drop the tag) and was offered.
+3. **The first healthcheck reported unhealthy for 18 minutes.** Inside the container `localhost` resolves to `::1` only, and nginx's `listen 80` binds IPv4, so `wget http://localhost/healthz` was refused while the port worked from outside. Fixed by probing `127.0.0.1` and adding `listen [::]:80`, which is right for a production edge anyway.
+4. **No TLS.** nginx listens on plain HTTP. With Option A this file becomes the production edge, so tokens, refresh cookies and passwords would cross the network in clear text. Recorded in the README and at the top of the nginx config; unowned.
+5. **Invented, none of it a team decision:** `nginx:1.27-alpine` and its pin; `/healthz` as the probe path and `wget --spider` as the command; the caching policy (immutable for `/assets/`, `no-cache` for `index.html`); request-time resolution over literal upstreams; the 3600s WebSocket timeout; `frontend/nginx/` as the config directory.
+6. **Log index row 155 is also claimed by the credit-service admin-filters branch**, which is pushed but not merged. Whoever merges second renumbers, as with the two previous collisions.
+7. **`user-service/.env` needed four Stage 18 variables** (`LOGIN_MAX_FAILURES` and friends) before it would boot. Local and gitignored, not committed — but it is the same recurring problem: user-service is the only service whose configuration lives in a gitignored file, so every new required variable breaks it silently for everyone who already has one.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-04 — CI: Docker build coverage, and de-duplicating the README log index
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** The user's instruction of 2026-11-04, quoted below. Target names are read from the five existing Dockerfiles, not chosen; the four-column log index format is the one AGENTS.md §6 already specifies.
+
+**Prompts (exact):**
+
+> Two fixes on d4-iteration-4, then the PR.
+>
+> ## Fix 1 — CI builds no images
+>
+> The pipeline runs npm ci and npm test but never docker build, which
+> is why the order-service deps-stage break survived a merge and only
+> surfaced days later on a rebuild.
+>
+> Add Docker build coverage to .github/workflows/ci.yml. Build the
+> prod target for all five services — that's what deploys, and the
+> shared base/deps stages mean most breaks surface there anyway.
+>
+> Mind the target naming: user-service, supplier-service,
+> credit-service and frontend use `prod`; order-service uses
+> `production`. Don't paper over it in the workflow — if you think the
+> names should be unified, say so separately rather than renaming
+> someone's Dockerfile inside this change.
+>
+> Use layer caching so the jobs don't take forever, and make them gate
+> the PR the same way the test jobs do.
+>
+> Say explicitly what this does NOT cover — dev targets aren't built,
+> so a dev-only stage break would still get through.
+>
+> ## Fix 2 — README log index numbering
+>
+> Row numbers have collided three times now on parallel branches
+> (155 most recently, against feat/credit-admin-transaction-filters).
+>
+> First check whether AGENTS.md mandates the numbered format. If it
+> does, stop and tell me — changing it means changing AGENTS.md, which
+> is a team decision, not mine to make unilaterally.
+>
+> If it doesn't, drop the numbering so rows append without collision,
+> and preserve every existing entry exactly.
+>
+> ## Then the PR
+>
+> Header and body covering everything on this branch:
+>   - the frontend production image: vite build plus nginx, the
+>     request-time resolver and why literal upstreams would have
+>     stopped nginx starting, the $request_uri detail, the SPA
+>     fallback, /assets/ deliberately 404ing
+>   - the compose service, the !override ports fix and the Compose
+>     v2.24.4 minimum
+>   - the order-service Docker build fix — broken on main since
+>     PR #137, so anyone who hit it knows why
+>   - the IPv4/IPv6 healthcheck fix
+>   - the two documentation additions: the volume-recreation warning
+>     naming all four incidents, and the TLS gap
+>   - these two fixes
+>
+> Note in the body that the allocation flow was verified end to end
+> through nginx for the first time on this stack — fresh user, OTP,
+> outbox sent, 20 credits, visible in the Wallet.
+>
+> Verify both fixes before writing the PR. Report what you ran.
+
+**Key responses:**
+
+_Fix 1._ One `docker-build` matrix job, five legs, `fail-fast: false` so a single broken image does not hide the state of the other four. Only the deploy target is built; `base`, `deps` and `build` are its ancestors, so a break anywhere in that chain fails the leg. Caching is `type=gha` through `setup-buildx-action` — the default docker driver cannot export cache — scoped per `service-target` so the five legs do not evict one another from the 10 GB per-repository cache. Same triggers and no `needs`, so each leg appears as its own PR check exactly as the five test jobs do.
+
+_The target-name divergence is spelled out, not normalised._ `order-service` is `production`; the other four are `prod`. Recorded as a matrix value with a comment pointing at the PR note rather than renamed, because renaming that stage would also mean editing `compose.yaml` and `compose.dev.yaml`, which belongs to order-service's owner.
+
+_Fix 2, gate check._ AGENTS.md does **not** mandate the numbering. Its §6 template is four columns — `Date | Service | Entry | High-level summary` — with no `#` column, so removing it moves the README *towards* the documented format rather than away from it. No AGENTS.md change was needed and none was made.
+
+_Fix 2 turned up an unrelated defect._ The README held **two** Log index tables, not one: lines 175–304 (128 rows) and 305–461 (155 rows). Almost certainly the 2026-11-03 merge-conflict resolution recorded in the entry above, which kept both sides' rows and in fact kept both sides' whole tables. Rows 1–126 were duplicates, but the stale table's last two rows existed **nowhere else** — `Order service: 404 for missing or non-UUID order ids` and `Frontend: required-field asterisks on the create-errand form`, both of which are real entries in this log (2026-10-22). Deleting the stale table outright would have silently dropped two disclosures. They were reinstated in the position `ai/usage-log.md` itself gives them, and the result is one table of 157 rows.
+
+**Verification actually run:**
+
+- **`actionlint`** (via the `rhysd/actionlint` image) on the new workflow: two `SC2034` shellcheck warnings, both on the pre-existing wait-for-Postgres loops at the old lines 68 and 119. Linting the pre-change file returns the identical two, so the new job adds no findings.
+- **All five images built locally with the exact matrix values** — `user-service:prod`, `credit-service:prod`, `supplier-service:prod`, `frontend:prod`, `order-service:production`. Five of five exit 0.
+- **Mutation check on the job's reason for existing, and it passed.** Removing `COPY scripts ./scripts` from `order-service/Dockerfile` — reinstating the exact PR #137 regression — makes `docker build --no-cache --target production` fail with `Error: Cannot find module '/app/scripts/prisma-generate.mjs'`. So this job would have caught that break on the PR. The Dockerfile was restored and `git diff` confirmed clean.
+- **The naming divergence was confirmed, not assumed:** `docker build --target prod order-service` fails with `target stage "prod" could not be found`.
+- **Fix 2 checked by set comparison, not by eye.** Every row of both old tables was reduced to its four trimmed cells and compared against the new table: 159 unique keys before, 157 after, and the only two absent are the duplicate table's own header and separator rows. No entry text was altered; only the surrounding whitespace padding was renormalised.
+
+**Files:**
+
+- `.github/workflows/ci.yml` (modified: `docker-build` job, header disclosure appended)
+- `README.md` (modified: two Log index tables merged into one, numbering dropped, Log index row)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+
+1. **Should the stage names be unified?** My read, which is not a decision: yes, rename order-service's `production` to `prod` so all five match, but as its owner's own change touching `order-service/Dockerfile`, `compose.yaml` and `compose.dev.yaml` together. Left alone here as instructed.
+2. **What this job does not cover, stated because the brief asked for it.** The `dev` targets are never built, so a dev-only stage break still reaches main. That matters for `order-service` `dev` and `frontend` `dev`, which are real stages with their own `COPY` and `CMD` layers; for user-service, credit-service and supplier-service, `dev` adds only a `CMD` on top of the `base` that prod also builds, so the gap there is negligible. Nothing here *runs* a container either — a green leg says the image assembles, not that it boots, connects or serves — and no image is pushed.
+3. **`compose.yaml`'s base stack still runs `target: dev` for user-service, credit-service and supplier-service**, so for three of five services the image this job validates is not the one `docker compose up` starts. With Option A that is also what would run on EC2. Flagged, not changed: which target the deployed stack uses is a team decision.
+4. **The README carried two Log index tables and two disclosures existed only in the stale one** (see Key responses). Worth the team knowing because it means the 2026-11-03 conflict resolution was wrong in a way that review did not catch, and a future `ai/usage-log.md` conflict should be resolved by merging rows, never by keeping both tables.
+5. **The three previous number collisions were real but are now moot.** `feat/credit-admin-transaction-filters` is still unmerged and still carries a numbered row for 155; whoever merges it should drop the number rather than renumber.
+6. **Not pushed.** The branch's commits are local; opening the PR is the author's step.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 **Author review: Congchen**
 
 ## 2026-11-05 — Stage 23a: TTL Env Var Bounds (NFR4.1.2)

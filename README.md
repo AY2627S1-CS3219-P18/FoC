@@ -140,6 +140,65 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 
 ---
 
+## Running the stack
+
+```bash
+cp .env.example .env          # then fill in any blanks
+docker compose up --build     # production targets, frontend on http://localhost:5173
+```
+
+For hot reload, add the dev override, which swaps the frontend and order-service to
+their `dev` targets and enables Compose Watch:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+```
+
+> The dev override uses `ports: !override`, which needs **Docker Compose 2.24.4 or
+> newer**. On older versions the tag is *silently ignored* and the merged config
+> publishes the same host port twice, so `up` fails with "port is already allocated".
+> Check with `docker compose version`.
+
+### ⚠️ After pulling a schema change, recreate that service's database volume
+
+`user-service`, `credit-service` and `supplier-service` load their schema from
+`src/db/init.sql`, mounted into the Postgres/MySQL image's
+`docker-entrypoint-initdb.d`. **Those scripts run only on an empty volume.** Pulling a
+change to an `init.sql` therefore does nothing to a database you already have, and the
+service fails at runtime on the missing table or column rather than at startup — this
+has caught the team out four times now (`credit_allocation_outbox`, `dead_letter_jobs`,
+`users.login_failed_attempts`, and balances keyed to a recreated `user-db`).
+
+```bash
+docker compose down -v user-db        # or credit-db / supplier-db
+docker compose up -d
+```
+
+This destroys that database's contents. Recreate `user-db` and `credit-db` **together**:
+credit balances are keyed to user UUIDs, so recreating one and not the other leaves
+orphaned rows.
+
+`order-service` is the exception — it uses Prisma migrations (`npx prisma migrate
+deploy`, run by `order-worker` at startup), so it upgrades in place and needs none of
+this.
+
+---
+
+### ⚠️ Known gap: no TLS
+
+The `frontend` container serves the built app and proxies every API path
+(`/api/v1`, `/auth`, `/users`, `/credits`, `/orders`, `/socket.io`) through nginx, so
+the browser talks to one origin. **That nginx listens on plain HTTP, port 80 — there is
+no TLS anywhere in this stack.**
+
+Fine for local development. Not fine once it is deployed: the planned single-EC2
+deployment makes this nginx the production edge, and every access token, refresh cookie
+and password would cross the network in clear text. Before any public deployment,
+certificates need terminating either in this container (certbot) or in front of it (an
+ALB). Nobody owns this yet.
+
+---
+
 ## AI Use Summary
 
 **Tools:** Claude Code (claude-sonnet-5; claude-opus-5 / claude-opus-5-5 for the mockup and order-service scaffolding)
