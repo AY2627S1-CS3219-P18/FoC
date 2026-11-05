@@ -28,10 +28,19 @@
  *        ApiNotice prompt), not wrapped in RequireAuth.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Per instructions.md Stage 22: /requests is now wrapped in RequireAuth + ViewGate
+ *        (App.jsx, courier-only), so this page no longer renders while logged out. Its empty
+ *        state (no open errands, or none matching the search) is now one fixed "No errands
+ *        available" / "Check back in a bit." message with no "Post an errand" button, per the
+ *        stage's "Find errands empty state" row (posting is now requester-only, so the CTA no
+ *        longer belongs on this courier-only page).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import RequestCard from "../components/RequestCard";
 import EmptyState from "../components/EmptyState";
@@ -88,7 +97,6 @@ function matches(order, query) {
 
 // Order F2.1 listing, F2.1.1 detail, F3.1 acceptance, F3.2 validation, F3.5.1/F3.5.2 updates.
 export default function RequestBoard() {
-  const navigate = useNavigate();
   const { isLoggedIn, sessionReady } = useAuth();
   const [filter, setFilter] = useState("All");
   const [locationId, setLocationId] = useState("");
@@ -331,27 +339,7 @@ export default function RequestBoard() {
 
       {!notice && shown.length === 0 && (
         <div className="mt-4">
-          <EmptyState
-            title={
-              search.trim()
-                ? "No errands match that search"
-                : "No open errands right now"
-            }
-            body={
-              search.trim()
-                ? "Search covers the errands loaded so far."
-                : "Check back in a bit, or post one yourself."
-            }
-            action={
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => (state.error ? reload() : navigate("/requests/new"))}
-              >
-                {state.error ? "Try again" : "Post an errand"}
-              </Button>
-            }
-          />
+          <EmptyState title="No errands available" body="Check back in a bit." />
         </div>
       )}
     </div>

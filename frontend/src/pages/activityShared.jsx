@@ -1,57 +1,13 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: claude-opus-5), date: 2026-09-08
- * Scope: Generated UI mockup component Activity.jsx from team-authored blueprint.md.
- *        Visual/layout implementation only. No requirements, architecture, or
- *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
- *
- * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
- * Scope: Replaced DemoContext request data with live Order Service orders, loaded supplier details
- *        from the Supplier Service, and connected status actions to Order Service transitions.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: tng wen xi
- */
-
-/*
- * AI Assistance Disclosure:
- * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-20
- * Scope: Wired the existing requester Edit action to the order edit page.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: tng wen xi
- *
- * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
- * Scope: Order Service frontend integration (#6) - My errands come from GET /orders/mine
- *        (pending hidden), My deliveries from GET /orders/active plus the closed ones from
- *        GET /orders/mine?as=courier; pick up, deliver, complete and cancel call their
- *        POST /orders/:id/<action> routes and show the service's rejection; the lists refetch
- *        on order events and after a socket reconnect. Supplier, names and locations resolve
- *        from ids; timeline stamps use createdAt / acceptedAt / deliveredAt. Cancel on an
- *        accepted or picked-up errand appears once its deliver-by time has passed (F17.2).
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: george-yeo
- * Scope (2026-10-20): Edit opens /requests/:id/edit (Wen Xi's edit page, carried over).
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: george-yeo
- * Scope (2026-10-20): Rebased onto PR #115. George chose to keep this implementation, so the
- *        version of this file described in Wen Xi's entries above was replaced.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: george-yeo
- * Scope (2026-10-20): Login prompt waits for the session restore (sessionReady), as
- *        Wallet.jsx does, so a reload while signed in no longer opens it.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: george-yeo
- *
- * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
- * Scope: /activity is now wrapped in RequireAuth (App.jsx), which replaces the gating effect
- *        above that opened the deleted LoginModal via requireLogin. `role` still comes from
- *        DemoContext, per instructions.md Stage 16b.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
- *
- * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
- * Scope: Per instructions.md Stage 16f: the default tab now reads activeView from AuthContext
- *        (the real, persisted requester/courier view) instead of DemoContext's mocked `role`.
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Extracted from the former Activity.jsx (deleted), per instructions.md Stage 22's "My
+ *        activity" row: split into My errands (MyErrands.jsx) and My deliveries
+ *        (MyDeliveries.jsx), which both import this file. useActivityList still fetches both
+ *        halves in one combined call (loadActivity, unchanged) and each page reads only its own
+ *        half, per the stage's "Notes for later" on data fetching ("keep the existing fetch
+ *        behaviour" until the order-service owners decide whether to split the fetch too).
+ *        ActivityCard, Timeline and the action/role constants are unchanged from Activity.jsx.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -63,9 +19,7 @@ import SupplierImage from '../components/SupplierImage'
 import StatusChip from '../components/StatusChip'
 import CreditPill from '../components/CreditPill'
 import Button from '../components/Button'
-import EmptyState from '../components/EmptyState'
 import { useApiNotice } from '../components/ApiNotice'
-import { useAuth } from '../context/AuthContext'
 import { qualifiedName } from '../data/suppliers'
 import { LIFECYCLE, LIFECYCLE_LABELS, clockTime, completeByShort } from '../data/requests'
 import { useApi } from '../api/useApi'
@@ -81,8 +35,8 @@ import {
 } from '../api/orders'
 import { useOrderEvents, useSocketReady } from '../realtime/orderSocket'
 
-const CLOSED = ['completed', 'cancelled', 'expired']
-const ACTIVE = ['open', 'accepted', 'picked_up', 'delivered']
+export const CLOSED = ['completed', 'cancelled', 'expired']
+export const ACTIVE = ['open', 'accepted', 'picked_up', 'delivered']
 // A courier and a requester can only talk while the errand is still in flight.
 const MESSAGEABLE = ['accepted', 'picked_up', 'delivered']
 const ROLE_REQUESTER = 'You requested'
@@ -110,14 +64,15 @@ async function loadActivity() {
   }
 }
 
-// Order F3.4.2 active requests, F5 cancellation, F6 editing, F1.4.1 / F4.1.3 credit outcomes.
-export default function Activity() {
-  const { user } = useAuth()
-  const [tab, setTab] = useState(user?.activeView === 'courier' ? 'deliveries' : 'errands')
+// `kind` is 'errands' (My errands) or 'deliveries' (My deliveries).
+export function useActivityList(kind) {
   const { data, loading, error, reload } = useApi(loadActivity, [])
   // Orders returned by an action, shown until the next fetch replaces `data`.
   const [changed, setChanged] = useState({ data: null, orders: {} })
-  const notice = useApiNotice({ loading: loading && !data, error }, 'your activity')
+  const notice = useApiNotice(
+    { loading: loading && !data, error },
+    kind === 'errands' ? 'your errands' : 'your deliveries',
+  )
   const locationName = useLocationNames()
 
   // Thin events: refetch (once per burst) when one concerns this user's orders. The server only
@@ -132,10 +87,7 @@ export default function Activity() {
   useSocketReady(refetch)
 
   const overrides = changed.data === data ? changed.orders : {}
-  const withChanges = (orders = []) => orders.map((o) => overrides[o.id] ?? o)
-  const mine = withChanges(data?.errands)
-  const deliveries = withChanges(data?.deliveries)
-  const list = tab === 'errands' ? mine : deliveries
+  const list = (data?.[kind] ?? []).map((o) => overrides[o.id] ?? o)
   const active = list.filter((r) => ACTIVE.includes(r.status))
   const history = list.filter((r) => CLOSED.includes(r.status))
 
@@ -148,67 +100,27 @@ export default function Activity() {
     refetch()
   }
 
-  // One live item per tab; everything finished drops into History with no actions left on it.
-  const section = (heading, items, asCourier) =>
-    items.length > 0 && (
-      <section className="mt-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-40">{heading}</h2>
-        <div className="mt-3 space-y-4">
-          {items.map((request) => (
-            <ActivityCard
-              key={request.id}
-              request={request}
-              asCourier={asCourier}
-              locationName={locationName(request.deliveryLocationId)}
-              runAction={runAction}
-            />
-          ))}
-        </div>
-      </section>
-    )
+  return { active, history, notice, locationName, runAction }
+}
 
+// One live item per section; everything finished drops into History with no actions left on it.
+export function ActivitySection({ heading, items, asCourier, locationName, runAction }) {
+  if (items.length === 0) return null
   return (
-    <div className="page-width page-gutter py-8 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">My activity</h1>
-
-      <div className="mt-6 flex w-full rounded-btn border border-line p-1 md:inline-flex md:w-auto">
-        {[
-          ['errands', 'My errands', mine.length],
-          ['deliveries', 'My deliveries', deliveries.length],
-        ].map(([value, text, count]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            aria-pressed={tab === value}
-            className={
-              'h-11 md:h-10 flex-1 rounded-[7px] px-4 text-sm font-medium transition-colors duration-150 md:flex-none ' +
-              (tab === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
-            }
-          >
-            {text} <span className="tnum opacity-60">({count})</span>
-          </button>
+    <section className="mt-8">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-40">{heading}</h2>
+      <div className="mt-3 space-y-4">
+        {items.map((request) => (
+          <ActivityCard
+            key={request.id}
+            request={request}
+            asCourier={asCourier}
+            locationName={locationName(request.deliveryLocationId)}
+            runAction={runAction}
+          />
         ))}
       </div>
-
-      {notice}
-
-      {!notice && section('Active now', active, tab === 'deliveries')}
-      {!notice && section('History', history, tab === 'deliveries')}
-
-      {!notice && list.length === 0 && (
-        <div className="mt-6">
-          <EmptyState
-            title={tab === 'errands' ? 'No errands yet' : 'No deliveries yet'}
-            body={
-              tab === 'errands'
-                ? 'Errands you post will show up here with their progress.'
-                : 'Errands you accept will show up here.'
-            }
-          />
-        </div>
-      )}
-    </div>
+    </section>
   )
 }
 

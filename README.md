@@ -86,6 +86,9 @@ Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrang
 Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
 Author review:
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5): Added the Stage 22 log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -453,3 +456,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 169 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |
 | 170 | 2026-11-05 | user-service | Stage 23b: sessionTimeLeftSeconds on Login and Refresh | Added `sessionTimeLeftSeconds`, computed in SQL, to the login and refresh responses. |
 | 171 | 2026-11-05 | frontend | Stage 23c: Expiry Warning Banner — Frontend | Added the non-dismissible 10-minute session-expiry banner and its deadline tracking. |
+| 172 | 2026-11-05 | frontend | Stage 22: Active View Controls Navigation (frontend) | Gated pages by requester/courier view, split My activity, removed Landing, added Register to nav. |
