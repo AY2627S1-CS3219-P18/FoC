@@ -8124,3 +8124,72 @@ None — the stage text matched the current code with no conflicts. The banner t
 Acceepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-05 — Stage 22: Active View Controls Navigation (frontend)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 22: Active View Controls Navigation (frontend)" and "Stage 22b: Implementation".
+
+**Prompts (exact):**
+
+> let's start on 22. pls follow the git workflow too
+
+**Key responses:**
+Read the current routing, nav, and auth code against the stage's design-decisions table first (App.jsx, TopNav.jsx, RouteGuards.jsx, AuthContext.jsx, Landing.jsx, Activity.jsx, Chat.jsx, CreateRequest.jsx, RequestBoard.jsx, Suppliers.jsx, SupplierDetail.jsx, AdminSuppliers.jsx/AdminSupplierForm.jsx, Footer.jsx/Logo.jsx/Forbidden.jsx); no disagreement with the stage text, so implemented directly.
+
+Created `src/routing/views.js` as the stage's required single shared page-to-view list: `VIEWS`, `MAIN_PAGE`/`mainPageFor`, `VIEW_MODE_LABEL` (the blocked-page message text) and `NAV_LINKS` (each view's two nav pages, main page first). App.jsx's routes, TopNav's nav and the new `ViewGate` guard all read from this one file rather than duplicating the mapping.
+
+Added `ViewGate` to `RouteGuards.jsx`, alongside the existing `RequireAuth`/`RequireRole`: when `user.activeView` does not match the route's `requiredView`, it renders the blocked-page message in place (URL unchanged) with a "Switch to `<view>`" button (calls the existing `AuthContext.setActiveView`, so the optimistic update/revert/toast from Stage 16f is reused unchanged) and a "Go to `<current view's main page>`" button. Because it reads `user.activeView` straight from context on every render, toggling the view anywhere in the app (including a failed toggle's revert) re-renders any mounted `ViewGate` automatically with no extra wiring.
+
+App.jsx: replaced `Landing` at `/` with a new `Home.jsx` (redirects to the current view's main page when logged in, `/login` when not, renders nothing while `status === 'loading'`, per the stage's "Watch for" note). Wrapped `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/requests` and the three `/admin/suppliers*` routes in `RequireAuth` (they were previously soft-gated or ungated); wrapped the four requester/courier-only routes in `ViewGate` with the matching `VIEWS.*`. Removed `/activity`; added `/my-errands` and `/my-deliveries`. Added `NavigationHistoryTracker`, feeding a new `src/routing/navigationHistory.js` (a module-level counter, same pattern as `AuthContext`'s existing `pendingAuthMessage`): it records every `PUSH`/`POP` route change after the tab's first render (via `useNavigationType`), deliberately excluding `REPLACE` so the `/chat` → `/chat/:id` redirect is not mistaken for a real visited page.
+
+Deleted `Landing.jsx` (its only consumers, `groupByLocation`/`locationOpenSummary`/`SupplierCard`, are also used by `Suppliers.jsx`, so nothing else needed to change). Split `Activity.jsx` into `MyErrands.jsx` and `MyDeliveries.jsx`, extracting the shared data loading, `ActivityCard` and `Timeline` into `src/pages/activityShared.jsx` unchanged; both pages still fetch the combined `{errands, deliveries}` dataset in one call (`useActivityList`) and each renders only its own half, per the stage's "Notes for later" note to keep the existing fetch behaviour until the order-service owners decide on splitting it. `CreateRequest.jsx`'s post/edit success redirects changed from `/activity` to `/my-errands`.
+
+`TopNav.jsx`: the fixed `LINKS` array is replaced by `NAV_LINKS[user.activeView]` (plus the existing admin links for admins); logged out, this list is empty and a "Register" button (linking to `/register`) now sits next to the existing "Log in" button, both on desktop and in the mobile drawer, per the stage's "Nav bar (logged out)" row.
+
+`Chat.jsx`'s mobile back arrow is now a button that calls `navigate(-1)` when `navigationHistory.hasPreviousPage()` is true, else `navigate(mainPageFor(user.activeView))`, replacing the fixed `<Link to="/activity">`.
+
+`RequestBoard.jsx`'s empty state (both "no open errands" and "no search match", which shared one `EmptyState` block with an unconditional action button) is replaced by the stage's single fixed "No errands available" / "Check back in a bit." message with no action button, since posting is now requester-only and the button pointed at a page this courier-only page's visitor cannot reach. The removed `useNavigate`/`navigate` became unused and were deleted with it.
+
+Did not touch `AdminOnly`'s or `useApiNotice`'s now-unreachable "not logged in" branches (both pages they gate are hard-gated by the new `RequireAuth` wrappers before those branches could render) — left as the pre-existing soft-gate code, since nothing in the stage's verification bullets names that wording and removing it was not necessary for correct behaviour.
+
+**Verification run:** `npm run build` (vite): clean. `npm run lint` (oxlint): clean, only the same pre-existing `set-state-in-effect`/`only-export-components` warning patterns seen elsewhere in the codebase (three new instances in `activityShared.jsx`, same pattern as `ApiNotice.jsx`/`DemoContext.jsx`/`AuthContext.jsx` already have). `npx vitest run` (full frontend suite): 61/61 passed (the 32 pre-existing plus 29 new, across 8 new test files — see below). Not run: a real browser click-through (no browser tool available in this session) or the live `user-service`/`order-service` stack, so the actual "Find errands" API responses, the socket-driven live updates, and the mobile drawer's visual layout were not eyeballed end-to-end; the author should click through the verification list in `instructions.md` manually.
+
+Tests added, one file per concern: `routing/navigationHistory.test.js` and `routing/views.test.js` (pure logic); `components/RouteGuards.test.jsx` (`ViewGate`: renders through when the view matches, shows the blocked message naming the right mode both ways, the switch button clears the block and calls `setActiveView`, the switch button's failure path, the main-page button navigates without calling `setActiveView`); `pages/Home.test.jsx` (loading renders nothing, logged-out → `/login`, each view → its main page); `components/TopNav.test.jsx` (each view's links shown/hidden, admin links alongside, logged-out shows Register + Log in and no page links); `pages/RequestBoard.test.jsx` (empty state text and no button); `pages/MyActivitySplit.test.jsx` (each of `MyErrands`/`MyDeliveries` shows only its own half and its own empty-state copy); `pages/Chat.test.jsx` (back arrow: direct-open → requester main page, direct-open in courier view → courier main page, reached via a recorded in-app navigation → the previous page). Not covered, as needing a real browser: the mobile-drawer-specific layout bullets, the live "Reload, or log in on another browser → same view" bullet, and a true toggle-failure-reverts-the-nav integration test (the toggle's own optimistic/revert/toast behaviour is unchanged from, and was tested in, Stage 16f; this stage's tests cover `ViewGate` reacting to whatever `user.activeView` ends up being, not the toggle itself).
+
+**Files:**
+
+- `frontend/src/routing/views.js` (created)
+- `frontend/src/routing/navigationHistory.js` (created)
+- `frontend/src/components/RouteGuards.jsx` (modified — added `ViewGate`)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/pages/Home.jsx` (created)
+- `frontend/src/pages/Landing.jsx` (deleted)
+- `frontend/src/pages/activityShared.jsx` (created)
+- `frontend/src/pages/MyErrands.jsx` (created)
+- `frontend/src/pages/MyDeliveries.jsx` (created)
+- `frontend/src/pages/Activity.jsx` (deleted)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/routing/views.test.js` (created)
+- `frontend/tests/routing/navigationHistory.test.js` (created)
+- `frontend/tests/components/RouteGuards.test.jsx` (created)
+- `frontend/tests/components/TopNav.test.jsx` (created)
+- `frontend/tests/pages/Home.test.jsx` (created)
+- `frontend/tests/pages/RequestBoard.test.jsx` (created)
+- `frontend/tests/pages/MyActivitySplit.test.jsx` (created)
+- `frontend/tests/pages/Chat.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row added)
+
+**Deviations / questions raised for the team:**
+None — the stage text and its design-decisions table matched the current code with no conflicts or remaining `[DECIDE]` placeholders. One wording call made and reported here per the stage's own instruction to report choices for review: unifying `RequestBoard`'s two empty-state variants (no results vs. no search match) into the stage's one given "No errands available" / "Check back in a bit." message, since the stage gave only one heading/text pair and the page's existing distinction was itself an implementation detail, not a prior team decision.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
