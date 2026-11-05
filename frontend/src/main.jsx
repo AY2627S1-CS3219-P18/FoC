@@ -21,6 +21,11 @@
  *        both need the router, so they sit inside BrowserRouter.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: Mounted BookmarksProvider inside ToastProvider, per the 2026-11-05 supplier-bookmarking
+ *        spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import React from 'react'
@@ -30,6 +35,7 @@ import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { DemoProvider } from './context/DemoContext'
 import { ToastProvider } from './components/Toast'
+import { BookmarksProvider } from './context/BookmarksContext'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -38,7 +44,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <DemoProvider>
           <ToastProvider>
-            <App />
+            <BookmarksProvider>
+              <App />
+            </BookmarksProvider>
           </ToastProvider>
         </DemoProvider>
       </AuthProvider>
