@@ -13,6 +13,9 @@
  *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review: Congchen
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added the unavailable array for the ids filter, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export interface PhotoDto {
@@ -56,7 +59,16 @@ export interface Paginated<T> {
   data: T[];
 }
 
-export type PaginatedSuppliers = Paginated<SupplierSummary>;
+/** `id` is the value as sent when `status` is `invalid` (a malformed item), otherwise the supplier id. */
+export interface UnavailableSupplier {
+  id: number | string;
+  status: 'hidden' | 'deleted' | 'invalid';
+}
+
+/** `unavailable` is present only when the request sent `ids`. */
+export type PaginatedSuppliers = Paginated<SupplierSummary> & {
+  unavailable?: UnavailableSupplier[];
+};
 
 export interface AdminSupplierSummary extends SupplierSummary {
   isActive: boolean;

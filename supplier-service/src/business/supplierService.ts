@@ -16,6 +16,9 @@
  *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review: Congchen
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added the unavailable array for the ids filter, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type {
   AdminSupplierRow,
@@ -26,6 +29,7 @@ import type {
   PhotoRow,
   SupplierRepository,
   SupplierRow,
+  SupplierStatusRow,
 } from '../persistence/supplierRepository.js';
 import type {
   AdminSupplierDetail,
@@ -36,6 +40,7 @@ import type {
   PaginatedSuppliers,
   SupplierDetail,
   SupplierSummary,
+  UnavailableSupplier,
 } from '../types/supplier.js';
 import { AppError } from '../utils/AppError.js';
 import { computeIsOpen } from './isOpen.js';
@@ -49,6 +54,7 @@ export interface ListParams {
   categoryId?: number;
   isOpen?: boolean;
   sortOrder: 'A-Z' | 'Z-A';
+  ids?: { valid: number[]; invalid: string[] };
 }
 
 interface Assembled<R extends SupplierRow> {
@@ -72,6 +78,22 @@ function envelope<T>(page: number, total: number, data: T[]): Paginated<T> {
     },
     data,
   };
+}
+
+// Hidden = inactive; deleted = soft-deleted or no such supplier. Soft-deleted wins when both flags
+// are set (spec B18). Visible ids are not listed. Order follows the request.
+function toUnavailable(ids: number[], statuses: SupplierStatusRow[]): UnavailableSupplier[] {
+  const byId = new Map(statuses.map((status) => [status.supplierId, status]));
+  const unavailable: UnavailableSupplier[] = [];
+  for (const id of ids) {
+    const status = byId.get(id);
+    if (status === undefined || status.isDeleted) {
+      unavailable.push({ id, status: 'deleted' });
+    } else if (!status.isActive) {
+      unavailable.push({ id, status: 'hidden' });
+    }
+  }
+  return unavailable;
 }
 
 export function createSupplierService(
@@ -125,6 +147,7 @@ export function createSupplierService(
       search: params.search,
       locationId: params.locationId,
       categoryId: params.categoryId,
+      supplierIds: params.ids?.valid,
       sortOrder: params.sortOrder,
     };
     const offset = (params.page - 1) * PAGE_SIZE;
@@ -152,15 +175,28 @@ export function createSupplierService(
   }
 
   return {
-    listSuppliers(params: ListParams): Promise<PaginatedSuppliers> {
-      return listPage(
-        params,
-        {
-          page: (filter) => repo.findVisiblePage(filter),
-          all: (criteria) => repo.findAllVisible(criteria),
-        },
-        (item) => item.summary,
-      );
+    async listSuppliers(params: ListParams): Promise<PaginatedSuppliers> {
+      const source = {
+        page: (filter: ListFilter) => repo.findVisiblePage(filter),
+        all: (criteria: ListCriteria) => repo.findAllVisible(criteria),
+      };
+      const decorate = (item: Assembled<SupplierRow>) => item.summary;
+
+      if (params.ids === undefined) return listPage(params, source, decorate);
+
+      const { valid, invalid } = params.ids;
+      const invalidEntries: UnavailableSupplier[] = invalid.map((id) => ({ id, status: 'invalid' }));
+
+      // Nothing well-formed to look up (spec B20): an empty page, without touching the database.
+      if (valid.length === 0) {
+        return { ...envelope<SupplierSummary>(params.page, 0, []), unavailable: invalidEntries };
+      }
+
+      const [page, statuses] = await Promise.all([
+        listPage(params, source, decorate),
+        repo.findStatusesByIds(valid),
+      ]);
+      return { ...page, unavailable: [...toUnavailable(valid, statuses), ...invalidEntries] };
     },
 
     async getSupplier(supplierId: number): Promise<SupplierDetail> {
