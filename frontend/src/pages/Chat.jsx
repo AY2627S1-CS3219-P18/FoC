@@ -18,20 +18,38 @@
  *        `currentUser`/`requests` stay on DemoContext (mocked chat data, unrelated to auth).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Per instructions.md Stage 22's "Chat back arrow (mobile)" row: the mobile back arrow
+ *        now goes back to the previous in-app page (navigate(-1)) instead of the fixed
+ *        /activity link, or to the current view's main page when there is no previous in-app
+ *        page (opened directly by URL or in a new tab), using the new
+ *        routing/navigationHistory.js tracker.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Languages, Paperclip, Phone, Send, Video } from 'lucide-react'
 import { threads, LANG_NAMES, SYSTEM_USER, threadHref, findThread } from '../data/messages'
 import { getUser, firstName } from '../data/users'
 import { getSupplier, qualifiedName } from '../data/suppliers'
 import { useDemo } from '../context/DemoContext'
+import { useAuth } from '../context/AuthContext'
+import { hasPreviousPage } from '../routing/navigationHistory'
+import { mainPageFor } from '../routing/views'
 
 // Nice-to-have: real-time chat and translation. Translations are hardcoded in messages.js.
 export default function Chat() {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const { currentUser, requests } = useDemo()
+  const goBack = () => {
+    if (hasPreviousPage()) navigate(-1)
+    else navigate(mainPageFor(user?.activeView))
+  }
   const [autoTranslate, setAutoTranslate] = useState(false)
   const [translated, setTranslated] = useState({})
 
@@ -90,13 +108,14 @@ export default function Chat() {
         {/* Thread */}
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden md:rounded-card md:border md:border-line">
           <header className="flex items-center gap-3 border-b border-line px-1 py-3 md:px-4">
-            <Link
-              to="/activity"
-              aria-label="Back to activity"
+            <button
+              type="button"
+              onClick={goBack}
+              aria-label="Go back"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn text-ink md:hidden"
             >
               <ArrowLeft size={20} aria-hidden="true" />
-            </Link>
+            </button>
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
               {other.initials}
             </span>

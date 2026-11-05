@@ -13,6 +13,10 @@
  *        Wen Xi's authenticate middleware (George, 2026-10-20: keep hers).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Codex (model: GPT-6), date: 2026-11-05
+ * Scope: Implemented the team-specified admin user order listing contract from chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import express, { type Express } from 'express';
@@ -50,7 +54,7 @@ export function createApp({
   app.use(
     '/orders',
     authenticate ?? createAuthenticate(userServiceUrl),
-    ordersRouter(prisma, { events }),
+    ordersRouter(prisma, { events, userServiceUrl }),
   );
 
   app.use(notFound);

@@ -1,7 +1,8 @@
 /*
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
- * Scope: Tests for the landing page's Bookmarked chip, per the 2026-11-05 supplier-bookmarking spec.
+ * Scope: Tests for the suppliers page's Bookmarked filter, per the 2026-11-05 supplier-bookmarking
+ *        spec. They replace the tests that covered the removed Landing page's Bookmarked chip.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -9,7 +10,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import Landing from '../../src/pages/Landing'
+import Suppliers from '../../src/pages/Suppliers'
 import { listSuppliers } from '../../src/api/suppliers'
 
 const pruneDeleted = vi.fn()
@@ -69,12 +70,14 @@ const card = (id, name) => ({
   isOpen: true,
 })
 
-const renderLanding = () =>
+const renderPage = () =>
   render(
     <MemoryRouter>
-      <Landing />
+      <Suppliers />
     </MemoryRouter>,
   )
+
+const bookmarkedBox = () => screen.getByRole('checkbox', { name: 'Bookmarked' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -88,17 +91,24 @@ beforeEach(() => {
   listSuppliers.mockResolvedValue(page([card(1, 'Everything Store')]))
 })
 
-describe('Landing Bookmarked chip', () => {
-  it('sends the bookmarked ids when Bookmarked is chosen', async () => {
+describe('Suppliers page Bookmarked filter', () => {
+  it('sends the bookmarked ids when Bookmarked is ticked', async () => {
     listSuppliers.mockResolvedValueOnce(page([card(1, 'Everything Store')]))
     listSuppliers.mockResolvedValueOnce(page([card(3, 'Bookmarked Stall')], []))
-    renderLanding()
+    renderPage()
     await screen.findByRole('link', { name: 'Everything Store' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmarked' }))
+    fireEvent.click(bookmarkedBox())
 
     await screen.findByRole('link', { name: 'Bookmarked Stall' })
     expect(listSuppliers).toHaveBeenLastCalledWith(expect.objectContaining({ ids: '3,7' }))
+  })
+
+  it('does not send ids until Bookmarked is ticked', async () => {
+    renderPage()
+    await screen.findByRole('link', { name: 'Everything Store' })
+
+    expect(listSuppliers).toHaveBeenCalledWith(expect.objectContaining({ ids: undefined }))
   })
 
   it('asks the bookmarks context to clear deleted entries, and ignores hidden ones on screen', async () => {
@@ -108,21 +118,21 @@ describe('Landing Bookmarked chip', () => {
     ]
     listSuppliers.mockResolvedValueOnce(page([card(1, 'Everything Store')]))
     listSuppliers.mockResolvedValueOnce(page([card(3, 'Bookmarked Stall')], unavailable))
-    renderLanding()
+    renderPage()
     await screen.findByRole('link', { name: 'Everything Store' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmarked' }))
+    fireEvent.click(bookmarkedBox())
 
     await waitFor(() => expect(pruneDeleted).toHaveBeenCalledWith(unavailable))
   })
 
   it('shows an empty state and sends no ids when the user has no bookmarks', async () => {
     bookmarks = { ...bookmarks, ids: [] }
-    renderLanding()
+    renderPage()
     await screen.findByRole('link', { name: 'Everything Store' })
     listSuppliers.mockClear()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmarked' }))
+    fireEvent.click(bookmarkedBox())
 
     await screen.findByText('No bookmarked suppliers.')
     expect(listSuppliers).not.toHaveBeenCalled()

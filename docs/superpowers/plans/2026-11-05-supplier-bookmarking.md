@@ -1808,6 +1808,8 @@ git commit -m "feat(frontend): supplier card bookmark icon uses real bookmarks"
 
 ### Task C4: "Bookmarked" filter on the landing page
 
+> **Superseded (spec B26):** `main` removed the landing page, so this chip was dropped when `main` was merged in; its tests now live in `frontend/tests/pages/Suppliers.test.jsx`. Kept below as written for the record.
+
 **Files:**
 - Modify: `frontend/src/pages/Landing.jsx`
 - Test: `frontend/tests/pages/Landing.test.jsx`

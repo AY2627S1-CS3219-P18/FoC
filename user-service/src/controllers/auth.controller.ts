@@ -27,6 +27,10 @@
 // 2026-10-17: Stage 13b - removed the verify controller (GET /auth/verify); added jwks
 //   (GET /auth/.well-known/jwks.json). Governing decision: instructions.md Stage 13b.
 // Author review:
+// 2026-11-05: Stage 23b - login and refresh responses include sessionTimeLeftSeconds, taken
+//   from authService. Governing decision: instructions.md Stage 23b. No requirements,
+//   architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -92,7 +96,7 @@ const loginSchema = z
 export const login = asyncHandler(async (req, res) => {
   const { identifier, password } = loginSchema.parse(req.body);
 
-  const { accessToken, refreshToken, user } = await authService.login(
+  const { accessToken, refreshToken, user, sessionTimeLeftSeconds } = await authService.login(
     { identifier, password },
     req.headers['user-agent'] ?? null,
     req.ip ?? null,
@@ -103,7 +107,7 @@ export const login = asyncHandler(async (req, res) => {
     maxAge: config.jwt.refreshTokenTtlDays * 24 * 60 * 60 * 1000,
   });
 
-  res.status(200).json({ accessToken, user });
+  res.status(200).json({ accessToken, user, sessionTimeLeftSeconds });
 });
 
 export const logout = asyncHandler(async (req, res) => {
@@ -120,9 +124,9 @@ export const refresh = asyncHandler(async (req, res) => {
   const refreshToken: string =
     typeof req.cookies.refreshToken === 'string' ? req.cookies.refreshToken : '';
 
-  const { accessToken } = await authService.refresh(refreshToken);
+  const { accessToken, sessionTimeLeftSeconds } = await authService.refresh(refreshToken);
 
-  res.status(200).json({ accessToken });
+  res.status(200).json({ accessToken, sessionTimeLeftSeconds });
 });
 
 export const jwks = asyncHandler(async (_req, res) => {

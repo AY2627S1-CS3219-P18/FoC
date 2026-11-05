@@ -15,6 +15,12 @@
 //   escalation wording. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-05: Stage 23b - updated login()'s response-shape assertion and refresh()'s
+//   "returns only" test for the new sessionTimeLeftSeconds field; added coverage for its value
+//   on login, after a real refresh, and for a token backdated to 5 minutes left. Governing
+//   decision: instructions.md Stage 23b. No requirements, architecture, schema, or API
+//   decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
@@ -35,6 +41,7 @@ import {
   seedRefreshToken,
   setLoginLockState,
   setOtpSendBlock,
+  setRefreshTokenExpiresInMinutes,
   setUserRole,
   setUserStatus,
   truncateAll,
@@ -153,7 +160,7 @@ describe('register', () => {
 });
 
 describe('login', () => {
-  it('returns { accessToken, refreshToken, user } where user has exactly id, username, email, role', async () => {
+  it('returns { accessToken, refreshToken, user, sessionTimeLeftSeconds } where user has exactly id, username, email, role', async () => {
     const u = await createActiveUser(1);
     const result = await authService.login(
       { identifier: u.email, password: PASSWORD },
@@ -161,7 +168,12 @@ describe('login', () => {
       '127.0.0.1',
     );
 
-    expect(Object.keys(result).sort()).toEqual(['accessToken', 'refreshToken', 'user']);
+    expect(Object.keys(result).sort()).toEqual([
+      'accessToken',
+      'refreshToken',
+      'sessionTimeLeftSeconds',
+      'user',
+    ]);
     expect(result.user).toEqual({
       id: u.id,
       username: 'user1',
@@ -170,6 +182,13 @@ describe('login', () => {
       activeView: 'requester',
     });
     expect(result.refreshToken).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('returns sessionTimeLeftSeconds close to the 30-day session lifetime', async () => {
+    const u = await createActiveUser(1);
+    const result = await authService.login({ identifier: u.email, password: PASSWORD }, null, null);
+    expect(result.sessionTimeLeftSeconds).toBeGreaterThanOrEqual(30 * 24 * 60 * 60 - 5);
+    expect(result.sessionTimeLeftSeconds).toBeLessThanOrEqual(30 * 24 * 60 * 60);
   });
 
   it('stores the hash, user agent and IP of the request', async () => {
@@ -410,11 +429,38 @@ describe('logout', () => {
 });
 
 describe('refresh', () => {
-  it('returns only { accessToken }', async () => {
+  it('returns only { accessToken, sessionTimeLeftSeconds }', async () => {
     const u = await createActiveUser(1);
     await seedRefreshToken(u.id, 'tok');
     const result = await authService.refresh('tok');
-    expect(Object.keys(result)).toEqual(['accessToken']);
+    expect(Object.keys(result).sort()).toEqual(['accessToken', 'sessionTimeLeftSeconds']);
+  });
+
+  it('right after login, returns sessionTimeLeftSeconds close to the login value', async () => {
+    const u = await createActiveUser(1);
+    const loginResult = await authService.login(
+      { identifier: u.email, password: PASSWORD },
+      null,
+      null,
+    );
+    const result = await authService.refresh(loginResult.refreshToken);
+    expect(result.sessionTimeLeftSeconds).toBeLessThanOrEqual(loginResult.sessionTimeLeftSeconds);
+    expect(result.sessionTimeLeftSeconds).toBeGreaterThanOrEqual(
+      loginResult.sessionTimeLeftSeconds - 5,
+    );
+  });
+
+  it('does not change expires_at, and returns sessionTimeLeftSeconds ~ 300 for a token backdated to 5 minutes left', async () => {
+    const u = await createActiveUser(1);
+    await seedRefreshToken(u.id, 'tok');
+    await setRefreshTokenExpiresInMinutes('tok', 5);
+    const before = (await getRefreshTokenByPlain('tok'))!.expires_at.getTime();
+
+    const result = await authService.refresh('tok');
+
+    expect(result.sessionTimeLeftSeconds).toBeGreaterThanOrEqual(300 - 5);
+    expect(result.sessionTimeLeftSeconds).toBeLessThanOrEqual(300);
+    expect((await getRefreshTokenByPlain('tok'))!.expires_at.getTime()).toBe(before);
   });
 
   it('throws 401 for unknown, revoked and expired tokens, and 403 for a suspended user', async () => {

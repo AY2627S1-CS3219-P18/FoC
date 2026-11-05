@@ -48,7 +48,8 @@ Source for every row: the team's chat answers, 2026-11-05. IDs are local to this
 | B21 | The filter's label is "Bookmarked". |
 | B22 | The `user_bookmarks` key is the pair `(user_id, supplier_id)`. `GET /users/me/bookmarks` returns ids oldest first. |
 | B23 | A malformed supplier id never blocks a call. On the supplier-service it is returned as `invalid` (B17); on the user-service `DELETE` it is a no-op that answers `200`, so the frontend can drop the record without an error. |
-| B24 | The Bookmarked control sits as a chip on the landing page and as a checkbox under a "Bookmarks" heading in the suppliers page filter panel, for now; the team may amend the UI later. The empty state reads "No bookmarked suppliers.". `unavailable` lists well-formed ids first, then malformed ones. |
+| B24 | The Bookmarked control is a checkbox under a "Bookmarks" heading in the suppliers page filter panel; the team may amend the UI later. The empty state reads "No bookmarked suppliers.". `unavailable` lists well-formed ids first, then malformed ones. |
+| B26 | The landing page was removed on `main` because the suppliers page serves the same purpose (stage 22), so the Bookmarked chip that was planned for it is dropped; the filter lives on the suppliers page only (team, chat, 2026-11-05). |
 | B25 | `PUT /users/me/bookmarks/:supplierId` with a malformed id returns `400 VALIDATION_ERROR`. |
 | B13 | Hidden bookmarks count toward the 20 cap. Deleted ones count until the next Bookmarked-filter load clears them. |
 | B14 | No pinned section; the Bookmarked filter is enough. Ordering is the existing per-location grouping the supplier page already applies. |
@@ -109,7 +110,7 @@ Roles: unchanged (`user`, `admin`, `super admin`).
 - `SupplierCard`'s existing bookmark icon (top-right of the image, filled when bookmarked, outline
   when not; `MockupBlueprint.md` §7.2) reads its state from the provider and calls `PUT` or
   `DELETE` according to the current state (B6). A failed add shows the server's message in a toast.
-- A "Bookmarked" filter on the landing page and on the suppliers page sends `ids` (B8, B21). When
+- A "Bookmarked" filter on the suppliers page sends `ids` (B8, B21, B26). When
   the response has `unavailable` entries with status `deleted` or `invalid`, the frontend calls
   `DELETE` for each id it actually holds (B12, B17). `hidden` entries are ignored and show nothing
   (B9, B11).

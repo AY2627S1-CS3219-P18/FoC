@@ -6770,6 +6770,218 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+## 2026-11-05 — F5.3.2: Admin user order history
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Refactor/Docs
+**Governing decision:** Team decisions supplied in the exact chat prompts below; existing order schema in `order-service/prisma/schema.prisma`; existing authentication/role handling; existing User Service `GET /users/:id` in `user-service/src/routes/users.routes.ts`. No schema changes.
+
+**Prompts (exact):**
+
+> hi bro this is what user-service sent me:
+>
+> I'm working on F5.3.2: admins being able to view an individual user's transaction history. The plan is an admin page reached from /admin/users. Clicking a user shows their orders (both ones they requested and ones they delivered as courier), and each order has a small section showing its status and the credit transactions linked to it. Admins and super admins both get access (view only).
+>
+> Right now order-service can't give an admin one specific user's orders. GET /orders, /orders/mine and /orders/active only return the caller's own orders. Admins can open any single order by ID, but can't list another user's orders.
+>
+> Could you add a way for an admin or super admin to fetch a given user's orders, covering both requester and courier? You know the service best, so please decide how it should look (path, params, response).
+>
+> If possible, I'd like the list to work like the /admin/users page: paginated, ideally with a total count, plus search, filters and sorting where it makes sense. If that doesn't fit, just let me know what you can support and I'll work around it.
+>
+> Once you've decided, could you send me the endpoint details (path, params, response fields, error codes)? Then I can build the frontend side. Thanks!
+
+> ah ok
+>
+> `/orders/admin/users/:userId` GET
+> returned in the order of time (descending, most recent first). the user can only either be a requester or a courier, so he wont have both roles. just need to have a field saying `"role": "requester"` or `"role": "courier"`.
+>
+> pagination: 10 per page first, but implement it as a constant that is easy to change. what do u mean by total-count behavior?
+
+> oh yes please. and sorting by the order's completion time if it's possible, else creation time
+
+> - page
+
+> starts at 1!
+>
+> skip the search and filters for now. will do that in frontend.
+>
+> invalid user ID: add another enum to errorcode for invalid user id and malformed user id (not uuid). if not uuid, then return 400 for invaid request param. if is uuid but no such user, return 404 not found.
+> also do check that the actor is an admin. if not, return 403 forbidden (already in ErrorCode enum).
+> if actor is unauthenticated return 401
+> user with no orders: empty array []
+
+> return all the order fields. so an array
+> [
+>
+> > {order: <order obj>
+> > role: <requester/courier>
+> > }
+> > ]
+
+> oh thnen maybe {
+> total count: <count>,
+> orders: [array i described earlier]
+> pagination details
+> }
+
+> yes i thinnk u can use`/users/:id` for that! but user service is calling this endpoint so logiucally it wont be down no?
+
+> - **`503 Service Unavailable`** – User Service is temporarily unavailable.
+
+> caller is user service tho
+
+> from user service:
+>
+> Ah sorry, I should have been clearer! User-service won't call order-service at all. The frontend calls order-service directly with the admin's own bearer token (same as every other call it makes), so you can authenticate the admin with your existing JWKS auth and check role >= admin.
+>
+> What I need is an endpoint where an admin can fetch a given user's orders, both as requester and as courier.
+>
+> Also, what did you need GET /users/:id for? If it's to check the user exists or to get usernames, let me know and we can work out how to handle it.
+
+> ah yes use that existence check!
+
+> ya i think nd to forward the admin's bearer token, and pagination details shd have:
+>
+> - totalCount
+> - currentPage
+> - pageSize
+> - totalPages
+
+**Key responses:**
+Initially declined to select the API contract under the repository course policy. Asked the team for the route, pagination, sorting, response fields, access rules, user existence lookup, token forwarding and unavailable-service response; implemented after those decisions were supplied. Implemented `GET /orders/admin/users/:userId?page=1`, with all order fields inside `{ order, role }` entries and top-level `totalCount`, `currentPage`, `pageSize`, `totalPages`, and `orders`. Used creation-time descending because the existing schema has no completion timestamp; ID is the existing listing tie-breaker. The page-size constant is 10. Both requester and courier orders and all statuses are included. The existing JWKS middleware authenticates callers; the handler checks admin/super-admin before querying User Service. The lookup forwards the admin bearer token, maps missing users to 404, and connection/unavailable responses to 503. Existing error message envelope retained. Documented the endpoint in the service README. Added local HTTP tests with synthetic authentication data, a real fetch call to a local user-service stand-in, and mocked Prisma access. No live user data or credentials used.
+
+**Verification actually run:**
+
+- Initial typecheck failed because the local generated Prisma client was stale and Socket.IO dependencies were missing. Regenerated Prisma from the existing unchanged schema.
+- Initial `npm run typecheck` was accidentally invoked at repository root (no package.json), then rerun in order-service.
+- Initial sandboxed `npm test` failed because local HTTP listening was denied; reran with local-port permission. That run passed 625 tests using the original installed dependencies.
+- Restored dependencies with `npm ci` against the existing lockfile. The first sandboxed install stalled; a concurrent install failed at postinstall while dependency files were being removed. After the original process exited, a sequential install completed successfully. Its install audit reported 13 existing dependency vulnerabilities; no dependency versions or lockfiles were changed.
+- `npm run typecheck`: passed after dependency restoration, including the new test file.
+- `npm run build`: passed.
+- `npm run lint`: passed.
+- Final `npm test`: **634/634 tests passed in 15 files**, including **21 new admin-history endpoint cases** using a local HTTP user-service stand-in. This covers forwarding the synthetic bearer token, both admin roles, requester/courier mapping, uppercase UUID normalization, default/second/out-of-range pages, empty results, malformed parameters, authentication/authorization rejection, upstream 401/403/404/503, and connection failure. Prisma access was mocked; no live database/User Service test was run.
+- Prettier applied to all changed TypeScript files; `git diff --check`: passed.
+- `postman --version`: 1.73.0; `postman status` failed (unknown command), including the final setup check. No Postman simulation was run or claimed.
+
+**Files:**
+
+- `order-service/src/app.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/admin-user-orders.spec.ts` (created)
+- `order-service/README.md` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (appended: this entry)
+- `order-service/src/generated/prisma/` (regenerated, ignored generated files; no headers)
+- `order-service/node_modules/` (local locked dependency installation, ignored generated files; no headers)
+
+**Deviations / questions raised for the team:**
+The interface and security decisions above were requested before implementation. Search and filters were explicitly deferred by the team. No completion timestamp was added. Real User Service and database integration have not been exercised. Postman CLI 1.73.0 is installed but `postman status` is unsupported; no external workspace or publication was used. Local HTTP stand-in tests exercised the dependency without uploading project content. Runtime fetch uses existing platform defaults; no new timeout/retry policy was selected.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-05 — Docker: Fix order-service postinstall script copy
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** Existing dependency/build stages in `order-service/Dockerfile`, existing `postinstall` in `order-service/package.json`, and schema-absent skip behavior in `order-service/scripts/prisma-generate.mjs`.
+
+**Prompts (exact):**
+
+> ## => ERROR [order-service deps 2/2] RUN npm ci 13.5s
+>
+> > [order-service deps 2/2] RUN npm ci:
+> > 12.71
+> > 12.71 > order-service@0.0.1 postinstall
+> > 12.71 > node scripts/prisma-generate.mjs
+> > 12.71
+> > 12.73 node:internal/modules/cjs/loader:1568
+> > 12.73 throw err;
+> > 12.73 ^
+> > 12.73
+> > 12.73 Error: Cannot find module '/app/scripts/prisma-generate.mjs'
+> > 12.73 at Module.\_resolveFilename (node:internal/modules/cjs/loader:1564:15)
+> > 12.73 at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)
+> > 12.73 at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)
+> > 12.73 at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)
+> > 12.73 at Module.\_load (node:internal/modules/cjs/loader:1341:5)
+> > 12.73 at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+> > 12.73 at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+> > 12.73 at node:internal/main/run_main_module:33:47 {
+> > 12.73 code: 'MODULE_NOT_FOUND',
+> > 12.73 requireStack: []
+> > 12.73 }
+> > 12.73
+> > 12.73 Node.js v24.22.2
+> > 12.74 npm error code 1
+> > 12.74 npm error path /app
+> > 12.74 npm error command failed
+> > 12.74 npm error command sh -c node scripts/prisma-generate.mjs
+> > 12.74 npm notice
+> > 12.74 npm notice New major version of npm available! 11.19.1 -> 12.2.1
+> > 12.74 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+> > 12.74 npm notice To update run: npm install -g npm@12.2.1
+> > 12.74 npm notice
+>
+> ## 12.74 npm error A complete log of this run can be found in: /root/.npm/\_logs/2026-11-04T17_44_48_017Z-debug-0.log
+>
+> [+] up 0/8
+> ⠙ Image foc-frontend Building 40.4s
+> ⠙ Image foc-supplier-worker Building 40.4s
+> ⠙ Image foc-supplier-service Building 40.4s
+> ⠙ Image foc-user-service Building 40.4s
+> ⠙ Image foc-credit-service Building 40.4s
+> ⠙ Image foc-credit-worker Building 40.4s
+> ⠙ Image foc-order-worker Building 40.4s
+> ⠙ Image foc-order-service Building 40.4s
+> Dockerfile:26
+>
+> ---
+>
+> 24 | FROM base AS deps
+>
+> 25 | COPY package.json package-lock.json ./
+>
+> 26 | >>> RUN npm ci
+>
+> 27 |
+>
+> 28 | # ---- dev: source is synced in by `docker compose watch` ---------------------
+>
+> ---
+>
+> target order-worker: failed to solve: process "/bin/sh -c npm ci" did not complete successfully: exit code: 1
+>
+> What's next:
+> Debug this Compose error with Gordon → docker ai "help me fix this compose error"
+
+**Key responses:**
+Diagnosed that `npm ci` invokes the existing script before the Docker dependency stage copies it. Added `COPY scripts/prisma-generate.mjs ./scripts/prisma-generate.mjs` before `RUN npm ci`; the script already skips generation until the schema arrives. Added the Dockerfile disclosure and README log-index row. No application or package changes.
+
+**Verification:** `docker build --target deps -t foc-order-deps-check ./order-service` passed: npm ci found the script and correctly skipped schema generation. `docker build --target production -t foc-order-build-check ./order-service` passed, including Prisma generation and TypeScript compilation. `git diff --check` passed. Full Compose startup was not run.
+
+**Files:**
+
+- `order-service/Dockerfile` (modified)
+- `README.md` (modified: disclosure and log index)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:** None. Initial Docker verification required permission to access the Docker socket.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
 ## 2026-11-04 — Stage 18: Account Lockout and OTP Send Escalation (NFR1.1)
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -7227,12 +7439,14 @@ Accepted all changes.
 **Governing decision:** `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 1; `supplier-service/SupplierServiceSpec.md` Phase 5; existing JWKS authentication.
 
 **Prompts (exact):**
+
 > pull main into supplier-phase-5 branch and continue with phase 5 task
 
 **Key responses:**
 Fetched and merged origin/main; resolved README and usage-log conflicts, retaining both branches' indexed entries. Added tests for missing credentials, invalid tokens and an authenticated user on all 12 mutating endpoints, asserting no MySQL or Redis stub calls. Adapted authentication to signed tokens and a stubbed JWKS because main changed token verification. Temporarily removed the lookup role guard: nine cases failed; restored it afterward. The first full suite found five existing integration tests using obsolete placeholder tokens; updated those tests for JWKS. Final verification: `npx vitest run` passed 39 files and 381 tests; `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. The separate MinIO and seed suites were not run.
 
 **Files:**
+
 - `supplier-service/test/security/mutatingEndpoints.test.ts` (created)
 - `supplier-service/test/app.integration.test.ts` (modified)
 - `supplier-service/SupplierServiceSpec.md` (modified)
@@ -7253,6 +7467,7 @@ Fetched and merged origin/main; resolved README and usage-log conflicts, retaini
 **Governing decision:** `supplier-service/SupplierServiceArchitecture.md` §7.4, `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 2–5 and the team's chat instruction below.
 
 **Prompts (exact):**
+
 > 1. In that case, just give me all the messages the code returns and I will decide on the exact phrasing myself, mapping to each.
 > 2. The testing is mainly for latency of pagination when the load increases. Let's run at p50 - representative of typical load and p95 - representative of the general experience during load, as defined by microsoft. according to the NFR, we are aiming for near instant loads. Concretizing that, the time to load should ideally not exceed 1s. The plan already lists some test conditions
 > 3. A test plan should also be created that lists the exact API calls to make for the tests
@@ -7261,6 +7476,7 @@ Fetched and merged origin/main; resolved README and usage-log conflicts, retaini
 Inventoried current response messages and locations, including generated Zod details, for team review. Documented the existing Phase 5 pagination and API lifecycle calls. Recorded the team's p50/p95 and ideal one-second objective, and its preceding instruction to demonstrate on the live app. Flagged the existing per-IP rate limit and outstanding test parameters; no load test or live demonstration was run. Verified documentation against source and checked the diff for whitespace errors.
 
 **Files:**
+
 - `supplier-service/docs/phase-5-response-inventory.md` (created)
 - `supplier-service/docs/phase-5-api-test-plan.md` (created)
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
@@ -7281,13 +7497,15 @@ Inventoried current response messages and locations, including generated Zod det
 **Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Tasks 3–5.
 
 **Prompts (exact):**
-> Task 3: Let's break the NFR even further - during typical load, the target is to keep to within 300ms. This is the p50 target. Under heavy load, the target is within 600ms, for p95. These criteria will be evaluated with an aggregated percentile compliance over 1 minute. Since a single user probably only toggles a page every 5-10s after reading the contents, the baseline rate for normal usage will be 50 requests per second (emulating a few hundred ~400 concurrent users), while the peak load will be 200 requests per second  (emulating ~1600 concurrent users). These numbers are estimates for the number of users of this application in the early phases. For the database, we can use a mock db populated with 4000 records (actual suppliers is expected to be 100+, but to prevent artificial caching as the tests will not be repeatedly calling the same 20-record chunks). Writes are extremely rare and concurrent read writes will be negligible, so we can ignore that in the tests. For the tool, lets use k6 by Grafana, an industry standard for concurrent API load tests, which can also be easily integrated into existing CI/CD pipelines with its JS tests
+
+> Task 3: Let's break the NFR even further - during typical load, the target is to keep to within 300ms. This is the p50 target. Under heavy load, the target is within 600ms, for p95. These criteria will be evaluated with an aggregated percentile compliance over 1 minute. Since a single user probably only toggles a page every 5-10s after reading the contents, the baseline rate for normal usage will be 50 requests per second (emulating a few hundred ~400 concurrent users), while the peak load will be 200 requests per second (emulating ~1600 concurrent users). These numbers are estimates for the number of users of this application in the early phases. For the database, we can use a mock db populated with 4000 records (actual suppliers is expected to be 100+, but to prevent artificial caching as the tests will not be repeatedly calling the same 20-record chunks). Writes are extremely rare and concurrent read writes will be negligible, so we can ignore that in the tests. For the tool, lets use k6 by Grafana, an industry standard for concurrent API load tests, which can also be easily integrated into existing CI/CD pipelines with its JS tests
 > Task 4-5: Yes, the no UI test is still required. I plan to use this as part of CI/CD test to ensure nothing on the logic side broke
 
 **Key responses:**
 Recorded the team's percentile targets, request rates, duration, record count, load tool and no-UI CI intent in the decision record and API test plan. The current limiter allows 30 requests per minute per IP. Asked for clarification about the meaning of mock database, handling that limiter and the association between targets and load levels. No performance or live API tests were run.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
 - `supplier-service/docs/phase-5-api-test-plan.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -7307,15 +7525,17 @@ Recorded the team's percentile targets, request rates, duration, record count, l
 **Governing decision:** Team answers below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
 
 **Prompts (exact):**
+
 > separate mysql test database for now. eventually i will also add in cloud mysql db so the target env can just be swapped over
 
 > the rate limit is controlled by an env vir. in staging and local, that limit is disabled (some very high number)
-> Both p50 and p95 metrics should be applied. p50 Measures what the typical user experiences (the 50th percentile mark). p95 Measures worst-case behavior under that specific traffic pattern. a framework could be under typical load, p50 target is <=300ms,  p95 target is <=500ms. For peak load, p50 target is <=400ms, p95 target is <=600ms
+> Both p50 and p95 metrics should be applied. p50 Measures what the typical user experiences (the 50th percentile mark). p95 Measures worst-case behavior under that specific traffic pattern. a framework could be under typical load, p50 target is <=300ms, p95 target is <=500ms. For peak load, p50 target is <=400ms, p95 target is <=600ms
 
 **Key responses:**
 Recorded separate MySQL test database and the four supplied percentile targets. Inspected the existing limiter and config: the limiter is hard-coded at 30 requests/minute/IP and there is no rate-limit environment variable in Supplier Service. Asked the team for the variable name and exact local/staging and production/unset behavior, and for the distribution of request variants across each load level. No load tests were run.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
 - `supplier-service/docs/phase-5-api-test-plan.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -7335,13 +7555,14 @@ Recorded separate MySQL test database and the four supplied percentile targets. 
 **Governing decision:** Team instructions below; `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Task 3.
 
 **Prompts (exact):**
+
 > **Supplier Service currently hard-codes 30 requests/minute/IP; it has no rate-limit environment variable. What variable name and exact local/staging limit should be used, and should production retain 30 when it is unset?**
 >
 > PER_IP_RATE_LIMIT. Local and staging can be 10000. production is 30
 >
 > **Should each listed pagination request be tested separately at the full 50 and 200 requests/s, or should the requests share those rates in a mixed workload? If mixed, what proportions should each receive?**
 >
-> Testing each paginated route separately at 200 RPS would simulate an unrealistic scenario where the entire user base simultaneously spams a single endpoint. A mixed workload represents true production traffic, testing how the backend handles concurrent execution of different offset depths, filters, and cache hits.  We should use a combined workflow with
+> Testing each paginated route separately at 200 RPS would simulate an unrealistic scenario where the entire user base simultaneously spams a single endpoint. A mixed workload represents true production traffic, testing how the backend handles concurrent execution of different offset depths, filters, and cache hits. We should use a combined workflow with
 > [ Total Target: 50 / 200 RPS ]:
 > 70% ── Page 1 (Shallow Offset / Default View)
 > 20% ── Pages 2–5 (Next / Previous Toggles)
@@ -7361,6 +7582,7 @@ Recorded separate MySQL test database and the four supplied percentile targets. 
 Added positive-integer `PER_IP_RATE_LIMIT` configuration with default 30, used it in the per-IP limiter, set local Compose and the service environment example to 20,000, and documented the team's staging value of 10,000. Staging must supply that setting; there is no staging configuration in this checkout. Recorded the mixed workload and asked how category and location names should map to the existing numeric ID filters. A 200 requests/s test for one minute from one IP exceeds the staging limit. TDD: the two new tests initially failed before implementation and then passed. The first full run had 382 passes and one failure in the existing incorrect-signature authentication test; it changes a Base64 final character, which can decode to the same bytes. A subsequent full run passed 39 files and 383 tests. `npx tsc --noEmit`, `npm run lint`, and `npm run build` passed. No k6 load test was run.
 
 **Files:**
+
 - `supplier-service/src/config.ts` (modified)
 - `supplier-service/src/middleware/rateLimit.ts` (modified)
 - `supplier-service/test/middleware/rateLimit.test.ts` (modified)
@@ -7388,12 +7610,14 @@ Added positive-integer `PER_IP_RATE_LIMIT` configuration with default 30, used i
 **Governing decision:** Team's mixed-workload decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md`, Task 3.
 
 **Prompts (exact):**
+
 > The test should emulate how the real requests are sent. On the fe the dropdown is loaded with the categories that maps to ids, so the test can just use ids instead
 
 **Key responses:**
 Recorded the team's numeric ID clarification and added a k6 script with the specified mixed load, separate one-minute typical and peak scenarios and latency thresholds. Used Grafana's [constant-arrival-rate executor documentation](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/constant-arrival-rate/) and [metric documentation](https://grafana.com/docs/k6/latest/using-k6/metrics/reference/); `http_req_duration` excludes initial connection setup. The script validates its required environment inputs, checks HTTP responses, and fails on dropped iterations or HTTP failures. The 100,000-iteration local mocked-request simulation gave 4,985 admin, 69,830 page-one, 19,945 pages 2–5, 4,096 deep, and 1,564/1,510/1,512/1,543 search/open/category/location requests; `node --check` and lint passed. This was not a k6 or live-database run. The 4,000-record seeding script and no-UI CI test remain to be implemented; Docker access was denied and k6 was not installed in the environment.
 
 **Files:**
+
 - `supplier-service/test/load/pagination.k6.js` (created)
 - `supplier-service/docs/phase-5-api-test-plan.md` (modified)
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
@@ -7414,6 +7638,7 @@ Recorded the team's numeric ID clarification and added a k6 script with the spec
 **Governing decision:** Team instruction below and Phase 5 implementation plan.
 
 **Prompts (exact):**
+
 > staging env limit is also updated to local's 20000. Where did the 100,000 request simulation come from?
 > what other blockers are there for this phase
 
@@ -7421,6 +7646,7 @@ Recorded the team's numeric ID clarification and added a k6 script with the spec
 Recorded the staging limit correction and updated the current Phase 5 status. The 100,000 iterations were an agent-chosen local Node simulation of the k6 script's randomized selection logic with HTTP calls mocked; they did not make real requests or measure latency. Identified the outstanding implementation, environment and team-decision items. No staging deployment configuration is present in the checkout; no live load test was run.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/docs/phase-5-api-test-plan.md` (modified)
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
@@ -7441,12 +7667,14 @@ Recorded the staging limit correction and updated the current Phase 5 status. Th
 **Governing decision:** Team instruction below; Phase 5 plan Task 2 and existing response inventory.
 
 **Prompts (exact):**
+
 > accept current messages and optional details. Does this unblock the rest of the implementation
 
 **Key responses:**
 Recorded the team's acceptance of the current response messages and optional details. The wording decision is unblocked; verification remains. Pagination data setup and live k6 verification, plus the no-UI and cross-role tests, still remain. The earlier Docker access and k6 availability limitations still apply; demonstration format, token source and transcript location were not selected. This decision does not specify changes to malformed-JSON or unknown-route handling.
 
 **Files:**
+
 - `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` (modified)
 - `README.md` (modified)
 - `ai/usage-log.md` (modified)
@@ -7465,12 +7693,14 @@ Recorded the team's acceptance of the current response messages and optional det
 **Governing decision:** Phase 5 plan Task 2 (team accepted current messages, response inventory) and Task 3 (team load targets, 4,000-record separate MySQL database, k6, `PER_IP_RATE_LIMIT`), both recorded in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` Decision record.
 
 **Prompts (exact):**
+
 > you should be in the supplier-phase-5 branch. Continue with implementing the plans so we can move on
 
 **Key responses:**
 Task 2: added `test/routes/responseMessages.test.ts` (6 tests for the shared 401, 403, idempotency-key 400, and 422 validation messages and details from the inventory); all passed against current code, so no message strings were changed. The inventory rows that need database state (404, duplicate/referenced 422, stale-version 409, 500 save/upload failures) were not covered by new tests. Task 3: added `scripts/seedLoadTestData.ts` (schema from `src/db/init.sql`, 4,000 synthetic suppliers) and `scripts/loadTestAuth.ts` (local JWKS stub and test tokens), then ran `test/load/pagination.k6.js` once against a throwaway MySQL 8 container, with k6 in Docker, all on one laptop. The targets were not met: typical p50 8.7 s, p95 11.03 s; peak p50 15.21 s, p95 17.09 s; 11,672 dropped iterations; no 429s. Per plan Task 3 step 4, no index or query was changed. Raw output and caveats are in `supplier-service/docs/phase-5-load-test-results.md`. Tasks 4 and 5 were not started (format, token source and location undecided).
 
 **Files:**
+
 - `supplier-service/test/routes/responseMessages.test.ts` (created)
 - `supplier-service/scripts/seedLoadTestData.ts` (created)
 - `supplier-service/scripts/loadTestAuth.ts` (created)
@@ -7494,12 +7724,14 @@ Task 2: added `test/routes/responseMessages.test.ts` (6 tests for the shared 401
 **Governing decision:** Phase 5 plan Tasks 4 and 5, with the team's chat answers below (Vitest suite, local JWKS stub for tokens, evidence under `test/`); Arch §7.4 for the calls.
 
 **Prompts (exact):**
+
 > use a vitest suite. For the token source, use the local stub as the whole test deals with supplier side logic. whether login path works will be a separate test
 
 **Key responses:**
 Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-demo/*.apidemo.test.ts` against an already-running service (`API_BASE_URL`, default `http://localhost:3002`). `globalSetup.ts` serves a JWKS stub and provides user, admin and super admin tokens; the service must be started with `USER_SERVICE_URL` pointing at it and a high `PER_IP_RATE_LIMIT`. `lifecycle` covers reference lookups, create with Idempotency-Key, replay, list/detail, update, stale-version 409, delete, repeated-delete 404. `roles` runs the same operations as each role and asserts 200/201 versus 403. Each file saves a generated transcript to `test/api-demo/transcripts/`. Ran live against a throwaway MySQL/Redis and a local service: 17 of 17 passed. Two corrections along the way: the replayed Idempotency-Key returns the stored 201, not 200 as I first assumed; and a reused JWKS key id was cached by a long-running service, so the stub now uses a per-run key id. One default-suite run showed 1 failed test (not identified) and the rerun passed 389/389. The default `vitest run` excludes these suites.
 
 **Files:**
+
 - `supplier-service/test/api-demo/globalSetup.ts` (created)
 - `supplier-service/test/api-demo/client.ts` (created)
 - `supplier-service/test/api-demo/lifecycle.apidemo.test.ts` (created)
@@ -7524,6 +7756,7 @@ Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-d
 **Governing decision:** Team-supplied Phase 5 decisions in `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` and the 2026-11-04 no-UI suite entry in this log.
 
 **Prompts (exact):**
+
 > I have finished the changes in another session. I see that the project state still shows W6 - phase 5 as blocked, and that tasks 2-5 are stopped. Is that up to date?
 > Also i want to record the decisions made into the [SupplierServiceArchitecture.md](supplier-service/SupplierServiceArchitecture.md) , particularly those related to the test arrangements so i can see everything in one place
 
@@ -7531,6 +7764,7 @@ Added a separate Vitest config and `npm run test:api-demo` that runs `test/api-d
 Compared project-state statements with the plan, source files, recorded k6 result and subsequent no-UI suite log. Updated the W6 status, current questions and plan task statuses; documented the team's accepted response wording, load targets, data and workload mix, rate limits, and no-UI/cross-role suite and transcript arrangements in the architecture document. The recorded local k6 run missed the targets and dropped 11,672 iterations on a shared development machine. The log reports 17/17 no-UI and role tests passed; this session did not rerun them. DB-dependent response-message cases remain uncovered by the new response suite. Checked the documentation diff and links; no application tests were run in this documentation task.
 
 **Files:**
+
 - `supplier-service/SupplierServiceArchitecture.md` (modified)
 - `supplier-service/PROJECT_STATE.md` (modified)
 - `supplier-service/docs/phase-5-api-test-plan.md` (modified)
@@ -7552,12 +7786,14 @@ Compared project-state statements with the plan, source files, recorded k6 resul
 **Governing decision:** Existing PR and main branch changes; root AGENTS.md disclosure requirements.
 
 **Prompts (exact):**
+
 > i created a PR at [https://github.com/AY2627S1-CS3219-P18/FoC/pull/144](https://github.com/AY2627S1-CS3219-P18/FoC/pull/144). resolve conflict
 
 **Key responses:**
 Resolved conflicts by preserving both branches' disclosure entries and using main's existing JWKS integration fixture. Supplier build passed; the first test run had one rate-limit test timeout while the build ran, and the rerun passed all 389 tests in 40 files.
 
 **Files:**
+
 - `README.md` (modified)
 - `ai/usage-log.md` (modified)
 - `supplier-service/test/app.integration.test.ts` (modified)
@@ -7688,6 +7924,7 @@ Accepted all changes.
 **Governing decision:** `instructions.md`, "Stage 21b: Show/hide password toggle (frontend)" and its "Tests" section (on branch `feat/stage-21a-row-actions-menu` at the time of writing, since this stage's text had not yet reached `main`).
 
 **Prompts (exact):**
+
 > yes pls finish up 21b
 
 **Key responses:**
@@ -7720,6 +7957,7 @@ form, the field value surviving a toggle, two instances toggling independently, 
 and pass-through of arbitrary props alongside the fixed autocomplete-hardening attributes.
 
 **Verification run (this session):**
+
 - `npx vitest run` (frontend, full suite): **14/14 passed** (7 new for `PasswordInput`, 7
   pre-existing from Stage 20b).
 - `npx oxlint` (frontend): same 14 pre-existing warnings as before this stage's changes, no new
@@ -7731,6 +7969,7 @@ and pass-through of arbitrary props alongside the fixed autocomplete-hardening a
   Space reachability in a real browser) still need a human pass.
 
 **Files:**
+
 - `frontend/src/components/PasswordInput.jsx` (created)
 - `frontend/tests/components/PasswordInput.test.jsx` (created)
 - `frontend/src/pages/Login.jsx` (modified)
@@ -7746,6 +7985,214 @@ None this session.
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-05 — Stage 23a: TTL Env Var Bounds (NFR4.1.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23a: 30-Day Lifetime and TTL Bounds".
+
+**Prompts (exact):**
+
+> i completelyt changed stage 23, read thru it and let me know if you have any questions
+
+> go for it. don't forget hte git workfow
+
+> run the tests again
+
+> yea sure, help me wrap up this stage.
+
+**Key responses:**
+Before the first prompt, read the new Stage 23 text against the working tree and found it disagreed with already-present uncommitted changes: `user-service/src/config.ts` and `user-service/tests/config.test.ts` had been edited against an earlier, now-superseded draft of Stage 23 (bounding `REFRESH_TOKEN_TTL_DAYS` to 1-7 and citing a since-removed "Open decisions 1-2" section), and `README.md`'s Log index already had a row for a "Stage 23a" entry that was never actually written to `ai/usage-log.md`. Reported both to the user instead of implementing anything, and asked whether to redo that work against the final Stage 23a text.
+
+On confirmation, branched `feat/stage-23a-ttl-bounds` from `main` and redid Stage 23a per the final table: changed `REFRESH_TOKEN_TTL_DAYS`'s bound in `config.ts` from 1-7 to 1-30 (`ACCESS_TOKEN_TTL_MINUTES`'s 1-15 bound was already correct), corrected the stale file-header comment and date, set `REFRESH_TOKEN_TTL_DAYS=30` in `.env` and `.env.test`, and in `.env.example` set it to 30 and added `# 1-15`/`# 1-30` range comments to both TTL lines. Verified with `node -e` using the `dotenv` package directly that those inline comments parse cleanly and that `.env.example`'s lines coerce to `"15"`/`"30"` with no comment text in the value, satisfying the stage's "check that config.ts still parses these lines" step. Updated the boundary test cases in `tests/config.test.ts` (0/31 rejected, 1/30 accepted, replacing the stale 0/8 and 1/7 cases).
+
+Checks before finishing (report only, no changes), per the stage's "Check before finishing" table: the refresh cookie's `Max-Age` is derived from `config.jwt.refreshTokenTtlDays` (`auth.controller.ts:103`), not hardcoded — confirmed clean, also confirmed in the test run below (`Max-Age=2592000`). Searched `user-service/` and `frontend/` for other hardcoded 7-day assumptions: found two in `tests/controllers/auth.controller.test.ts` (lines 404 and 421) that assert the refresh cookie's exact `Max-Age` and the `refresh_tokens` row's `expires_at - created_at` equal `7 * 24 * 60 * 60 (* 1000)` — these now fail and were left unchanged, as instructed. Also found `tests/helpers/db.ts:254` (`seedRefreshToken`, inserts with `NOW() + INTERVAL '7 days'`) — listed per the same instruction, but it is an arbitrary future expiry for test setup, not an assertion about session length, so it needs no change either way. No 7-day session-lifetime mentions found in `user-service/docs/` or the root `README.md`.
+
+**Verification run (first pass):** `npx vitest run` (user-service, full suite): 798/801 passed. The 2 failures are exactly the two hardcoded-7-day assertions reported above (left unchanged per instructions, pending the team's decision on them). A 3rd failure on the first run (`users.controller.test.ts`, `ECONNRESET`/"socket hang up") did not reproduce when that file was rerun alone (77/77 passed) — flaky under parallel load, unrelated to this change.
+
+On "run the tests again," reran the full suite and found the two previously-failing assertions in `tests/controllers/auth.controller.test.ts` (lines 404, 421) now passing: the user had edited their hardcoded `7 * 24 * 60 * 60` values to `30 * 24 * 60 * 60` directly (not by this tool), which is the team's call to make per the stage's "do not change them" instruction. Flagged that those two tests' `it(...)` descriptions still read "7 day"/"7 days out" even though the asserted values were now 30. On confirmation, reworded both descriptions to say 30 and added a disclosure header entry to that file for the wording-only edit.
+
+**Verification run (final):** `npx vitest run` (full suite): 801/801 passed (two more flaky `ECONNRESET` failures appeared on separate full-suite runs, in `users.controller.test.ts` and `tests/concurrency/me.concurrency.test.ts`; each passed when its file was rerun alone, confirming parallel-run flakiness unrelated to this change, not a regression). `npx tsc --noEmit`: clean. `npm run lint`: clean.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/tests/config.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified — two test descriptions reworded from "7 day(s)" to "30 day(s)"; values were already changed by the author)
+- `user-service/.env` (modified — gitignored, not committed)
+- `user-service/.env.example` (modified)
+- `user-service/.env.test` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row corrected)
+
+**Deviations / questions raised for the team:**
+The two hardcoded-7-day tests in `auth.controller.test.ts` needed a team decision on whether to update them; the author updated the asserted values directly, and this tool only reworded the now-stale test descriptions to match on request.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-05 — Stage 23b: sessionTimeLeftSeconds on Login and Refresh
+
+**Tool:** Claude Code (claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23b: `sessionTimeLeftSeconds` on Login and Refresh".
+
+**Prompts (exact):**
+
+> let's start with 23b
+
+**Key responses:**
+Read the Stage 23b table against the current code first: `auth.service.ts`'s `login()` returns `{ accessToken, refreshToken, user }` and `refresh()` returns `{ accessToken }`, matching what the stage expects to extend; `tokens.queries.ts` had `createRefreshToken` (INSERT ... RETURNING \*) and `lockRefreshToken` (SELECT ... FOR UPDATE, already returning `db_now`) as the two queries the stage names for adding the seconds-left column. No disagreement with the stage text, so implemented directly.
+
+Added a shared SQL expression, `GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (expires_at - clock_timestamp()))))::int`, as `seconds_left` to both queries' existing `RETURNING`/`SELECT` lists (no separate query), per the stage's instruction to prefer that and report the choice. `createRefreshToken`'s return type became `RefreshTokenRowWithSecondsLeft`; `lockRefreshToken`'s became `RefreshTokenRowWithNowAndSecondsLeft` (keeps the existing `db_now` field `logout()` and `refresh()`'s early checks already rely on). `findRefreshToken` (used only for `refresh()`'s pre-transaction early-exit check, not for the response) was left unchanged.
+
+In `auth.service.ts`: `login()` captures `createRefreshToken`'s row inside the existing transaction, threads `seconds_left` through the `{ kind: 'success' }` outcome, and returns it as `sessionTimeLeftSeconds` alongside the unchanged `user` object. `refresh()` takes it from the already-locked token row (`lockedToken.seconds_left`) after all existing checks pass, and returns `{ accessToken, sessionTimeLeftSeconds }`. No check, check order, locking or error code was touched in either function.
+
+In `auth.controller.ts`: both handlers destructure the new field from the service result and add it to `res.json(...)`; nothing else in either handler changed.
+
+Updated tests for the new response shapes, per the stage's "update only those response-shape assertions" instruction: `tests/services/auth.service.test.ts`'s `Object.keys(result)` checks for `login` and `refresh`, and `tests/controllers/auth.controller.test.ts`'s refresh `Object.keys(res.body)` check and its title (both AI-written tests this tool is allowed to touch). Added new test cases for the Verification bullets that weren't already covered: `tokens.queries.test.ts` (seconds_left close to ttlDays out on insert, from `lockRefreshToken`, and floored to 0 for an already-expired token); `auth.service.test.ts` and `auth.controller.test.ts` (login value ≈ 2,592,000; a real refresh right after login ≈ the login value minus elapsed time; a token backdated to 5 minutes left ≈ 300; refresh never changes `expires_at`). Added `setRefreshTokenExpiresInMinutes` to `tests/helpers/db.ts` (same pattern as the existing `expireRefreshToken`) so those backdating tests don't need raw SQL inline.
+
+**Verification run:** `npx tsc --noEmit`: clean. `npm run lint`: clean. `npx vitest run` on the three touched test files: 259/259 passed. Full suite (`npx vitest run`): 809/809 passed, no flakiness this run.
+
+**Files:**
+
+- `user-service/src/db/queries/tokens.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/tests/db/queries/tokens.queries.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified — added `setRefreshTokenExpiresInMinutes`)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row added)
+
+**Deviations / questions raised for the team:**
+None — the stage text matched the current code with no conflicts.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-05 — Stage 23c: Expiry Warning Banner — Frontend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 23: Session Lifetime and Expiry Warning (NFR4)" and "Stage 23c: Expiry Warning Banner — Frontend".
+
+**Prompts (exact):**
+
+> let's branch off for 23c
+
+> okay, let's continue with 23c then
+
+**Key responses:**
+Read the current code against the Stage 23c table first: `AuthContext.jsx` already held `user`/`status`/`login`/`logout`/`forceReauth`; `http.js` already had the single-callback `setOnSessionExpired` pattern (used for the existing session-expiry redirect) and `refreshAccessToken()`, which every one of the stage's four read points except login funnels through (session restore, the proactive refresh, and the refresh-after-401 retry in `send()` all call it); `auth.js`'s `login()` makes its own `POST /auth/login` call instead. No disagreement with the stage text, so implemented directly, choosing (and reporting, per the stage's "put the text in your summary" instruction) how to wire the four read points and where the lead-time constant and banner component live.
+
+Added `setOnSessionTimeLeft`/`recordSessionTimeLeft` to `http.js`, mirroring the existing `setOnSessionExpired` single-callback pattern: `refreshAccessToken()` now also calls it with the response's `sessionTimeLeftSeconds` (covers session restore, proactive refresh, refresh-after-401 in one place), and `auth.js`'s `login()` calls `recordSessionTimeLeft` directly with its own response's value (the one read point that bypasses `refreshAccessToken`).
+
+In `AuthContext.jsx`: added `LEAD_TIME_MS` (the named 10-minute constant the stage asked for) and `sessionDeadline` (a `performance.now()`-based monotonic timestamp, set from the new callback) plus `sessionExpiringSoon`, exposed on the context. `sessionExpiringSoon` is recomputed by an effect keyed on `[isLoggedIn, sessionDeadline]` rather than polled. That effect originally scheduled one `setTimeout` for the remaining delay; testing caught that a fresh 30-day deadline's delay (~2.59×10⁹ ms) overflows `setTimeout`'s 32-bit signed delay ceiling (~2.147×10⁹ ms) and fires almost immediately instead of ~30 days later, which would have shown the banner right after every login. Fixed by chunking the wait into steps of at most `MAX_TIMEOUT_MS` and rescheduling until the real deadline is reached — this was not something I flagged as a design question since it is purely a `setTimeout` platform limit, not a product decision. The deadline is cleared (set to `null`) in `logout()`, `forceReauth()`, and the `onSessionExpired` handler, so it never carries over to the next login, per the stage's "On logout" bullet.
+
+Created `SessionExpiryBanner.jsx`: visually reuses `FormBanner`'s `info` tone classes (`border-line`/`bg-surface-alt`/`text-ink-70`) rather than rendering `FormBanner` itself, since `FormBanner` only accepts a message string and this banner needs a non-dismissible "Log in again" button (calling `AuthContext.logout()`, same as `TopNav`'s existing control) and spans the full page width rather than sitting inside a form — reported here per the stage's instruction to put the choice in the summary for review. Mounted it in `App.jsx` directly above `TopNav`, outside the `<Routes>`, so it shows at the top of every page regardless of route.
+
+**Banner text (for review):** "Your session will end soon. Log in again to keep working." — does not promise an exact sign-out time, per the stage's requirement.
+
+**Verification run:** `npm run lint` (oxlint): clean, same pre-existing `set-state-in-effect`/`only-export-components` warning patterns as elsewhere in the codebase, no new warnings in the changed files beyond that same pattern. `npm run build` (vite): clean. `npx vitest run` (full frontend suite): 32/32 passed, including the 7 new tests below. Manually confirmed against the live `user-service` (already running locally) via curl that `POST /auth/login` and `POST /auth/refresh` both return `sessionTimeLeftSeconds` matching what the frontend code reads. Could not visually verify the banner in an actual browser — no browser tool was available in this session (built-in browser cannot reach a container-local `localhost`; Claude in Chrome was not connected) — so the UI was not eyeballed end-to-end; the author should click through it manually (`docker compose -f compose.yaml -f compose.dev.yaml up -d user-db user-service frontend` is already running).
+
+Tests added in `frontend/tests/context/AuthContext.test.jsx`, mocking the network layer (`fetch`) directly rather than the `api/*` modules, per the stage's "mock the network layer" instruction, with a fresh module registry (`vi.resetModules`) per test so `http.js`'s module-level state can't leak between tests: no banner after a 30-day restore; a 15-minute restore shows no banner, then one after 5 fake-timer minutes pass; a 5-minute restore shows the banner immediately; the banner has no dismiss control; "Log in again" logs out and the banner disappears; the deadline does not carry over to a fresh login after logout (the test that caught the `setTimeout` overflow above); a refresh-after-401 response also updates the deadline. Not covered, as needing a real browser or multiple tabs rather than fake-timer simulation: the device-clock-change bullet (true by construction, since the deadline is `performance.now()`-based, not `Date`-based) and the two-open-tabs bullet (true by construction, since each tab owns its own module registry); the proactive-refresh trigger specifically was not separately tested since it shares the exact `refreshAccessToken()` code path already exercised by the session-restore and refresh-after-401 tests.
+
+**Files:**
+
+- `frontend/src/api/http.js` (modified)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/components/SessionExpiryBanner.jsx` (created)
+- `frontend/src/App.jsx` (modified)
+- `frontend/tests/context/AuthContext.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row added)
+
+**Deviations / questions raised for the team:**
+None — the stage text matched the current code with no conflicts. The banner text above and the `setTimeout`-overflow fix are reported for review per the stage's own instructions, not raised as open questions.
+
+**What I kept/changed/rejected:**
+Acceepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-05 — Stage 22: Active View Controls Navigation (frontend)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md`, "Stage 22: Active View Controls Navigation (frontend)" and "Stage 22b: Implementation".
+
+**Prompts (exact):**
+
+> let's start on 22. pls follow the git workflow too
+
+**Key responses:**
+Read the current routing, nav, and auth code against the stage's design-decisions table first (App.jsx, TopNav.jsx, RouteGuards.jsx, AuthContext.jsx, Landing.jsx, Activity.jsx, Chat.jsx, CreateRequest.jsx, RequestBoard.jsx, Suppliers.jsx, SupplierDetail.jsx, AdminSuppliers.jsx/AdminSupplierForm.jsx, Footer.jsx/Logo.jsx/Forbidden.jsx); no disagreement with the stage text, so implemented directly.
+
+Created `src/routing/views.js` as the stage's required single shared page-to-view list: `VIEWS`, `MAIN_PAGE`/`mainPageFor`, `VIEW_MODE_LABEL` (the blocked-page message text) and `NAV_LINKS` (each view's two nav pages, main page first). App.jsx's routes, TopNav's nav and the new `ViewGate` guard all read from this one file rather than duplicating the mapping.
+
+Added `ViewGate` to `RouteGuards.jsx`, alongside the existing `RequireAuth`/`RequireRole`: when `user.activeView` does not match the route's `requiredView`, it renders the blocked-page message in place (URL unchanged) with a "Switch to `<view>`" button (calls the existing `AuthContext.setActiveView`, so the optimistic update/revert/toast from Stage 16f is reused unchanged) and a "Go to `<current view's main page>`" button. Because it reads `user.activeView` straight from context on every render, toggling the view anywhere in the app (including a failed toggle's revert) re-renders any mounted `ViewGate` automatically with no extra wiring.
+
+App.jsx: replaced `Landing` at `/` with a new `Home.jsx` (redirects to the current view's main page when logged in, `/login` when not, renders nothing while `status === 'loading'`, per the stage's "Watch for" note). Wrapped `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/requests` and the three `/admin/suppliers*` routes in `RequireAuth` (they were previously soft-gated or ungated); wrapped the four requester/courier-only routes in `ViewGate` with the matching `VIEWS.*`. Removed `/activity`; added `/my-errands` and `/my-deliveries`. Added `NavigationHistoryTracker`, feeding a new `src/routing/navigationHistory.js` (a module-level counter, same pattern as `AuthContext`'s existing `pendingAuthMessage`): it records every `PUSH`/`POP` route change after the tab's first render (via `useNavigationType`), deliberately excluding `REPLACE` so the `/chat` → `/chat/:id` redirect is not mistaken for a real visited page.
+
+Deleted `Landing.jsx` (its only consumers, `groupByLocation`/`locationOpenSummary`/`SupplierCard`, are also used by `Suppliers.jsx`, so nothing else needed to change). Split `Activity.jsx` into `MyErrands.jsx` and `MyDeliveries.jsx`, extracting the shared data loading, `ActivityCard` and `Timeline` into `src/pages/activityShared.jsx` unchanged; both pages still fetch the combined `{errands, deliveries}` dataset in one call (`useActivityList`) and each renders only its own half, per the stage's "Notes for later" note to keep the existing fetch behaviour until the order-service owners decide on splitting it. `CreateRequest.jsx`'s post/edit success redirects changed from `/activity` to `/my-errands`.
+
+`TopNav.jsx`: the fixed `LINKS` array is replaced by `NAV_LINKS[user.activeView]` (plus the existing admin links for admins); logged out, this list is empty and a "Register" button (linking to `/register`) now sits next to the existing "Log in" button, both on desktop and in the mobile drawer, per the stage's "Nav bar (logged out)" row.
+
+`Chat.jsx`'s mobile back arrow is now a button that calls `navigate(-1)` when `navigationHistory.hasPreviousPage()` is true, else `navigate(mainPageFor(user.activeView))`, replacing the fixed `<Link to="/activity">`.
+
+`RequestBoard.jsx`'s empty state (both "no open errands" and "no search match", which shared one `EmptyState` block with an unconditional action button) is replaced by the stage's single fixed "No errands available" / "Check back in a bit." message with no action button, since posting is now requester-only and the button pointed at a page this courier-only page's visitor cannot reach. The removed `useNavigate`/`navigate` became unused and were deleted with it.
+
+Did not touch `AdminOnly`'s or `useApiNotice`'s now-unreachable "not logged in" branches (both pages they gate are hard-gated by the new `RequireAuth` wrappers before those branches could render) — left as the pre-existing soft-gate code, since nothing in the stage's verification bullets names that wording and removing it was not necessary for correct behaviour.
+
+**Verification run:** `npm run build` (vite): clean. `npm run lint` (oxlint): clean, only the same pre-existing `set-state-in-effect`/`only-export-components` warning patterns seen elsewhere in the codebase (three new instances in `activityShared.jsx`, same pattern as `ApiNotice.jsx`/`DemoContext.jsx`/`AuthContext.jsx` already have). `npx vitest run` (full frontend suite): 61/61 passed (the 32 pre-existing plus 29 new, across 8 new test files — see below). Not run: a real browser click-through (no browser tool available in this session) or the live `user-service`/`order-service` stack, so the actual "Find errands" API responses, the socket-driven live updates, and the mobile drawer's visual layout were not eyeballed end-to-end; the author should click through the verification list in `instructions.md` manually.
+
+Tests added, one file per concern: `routing/navigationHistory.test.js` and `routing/views.test.js` (pure logic); `components/RouteGuards.test.jsx` (`ViewGate`: renders through when the view matches, shows the blocked message naming the right mode both ways, the switch button clears the block and calls `setActiveView`, the switch button's failure path, the main-page button navigates without calling `setActiveView`); `pages/Home.test.jsx` (loading renders nothing, logged-out → `/login`, each view → its main page); `components/TopNav.test.jsx` (each view's links shown/hidden, admin links alongside, logged-out shows Register + Log in and no page links); `pages/RequestBoard.test.jsx` (empty state text and no button); `pages/MyActivitySplit.test.jsx` (each of `MyErrands`/`MyDeliveries` shows only its own half and its own empty-state copy); `pages/Chat.test.jsx` (back arrow: direct-open → requester main page, direct-open in courier view → courier main page, reached via a recorded in-app navigation → the previous page). Not covered, as needing a real browser: the mobile-drawer-specific layout bullets, the live "Reload, or log in on another browser → same view" bullet, and a true toggle-failure-reverts-the-nav integration test (the toggle's own optimistic/revert/toast behaviour is unchanged from, and was tested in, Stage 16f; this stage's tests cover `ViewGate` reacting to whatever `user.activeView` ends up being, not the toggle itself).
+
+**Files:**
+
+- `frontend/src/routing/views.js` (created)
+- `frontend/src/routing/navigationHistory.js` (created)
+- `frontend/src/components/RouteGuards.jsx` (modified — added `ViewGate`)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/pages/Home.jsx` (created)
+- `frontend/src/pages/Landing.jsx` (deleted)
+- `frontend/src/pages/activityShared.jsx` (created)
+- `frontend/src/pages/MyErrands.jsx` (created)
+- `frontend/src/pages/MyDeliveries.jsx` (created)
+- `frontend/src/pages/Activity.jsx` (deleted)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/routing/views.test.js` (created)
+- `frontend/tests/routing/navigationHistory.test.js` (created)
+- `frontend/tests/components/RouteGuards.test.jsx` (created)
+- `frontend/tests/components/TopNav.test.jsx` (created)
+- `frontend/tests/pages/Home.test.jsx` (created)
+- `frontend/tests/pages/RequestBoard.test.jsx` (created)
+- `frontend/tests/pages/MyActivitySplit.test.jsx` (created)
+- `frontend/tests/pages/Chat.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row added)
+
+**Deviations / questions raised for the team:**
+None — the stage text and its design-decisions table matched the current code with no conflicts or remaining `[DECIDE]` placeholders. One wording call made and reported here per the stage's own instruction to report choices for review: unifying `RequestBoard`'s two empty-state variants (no results vs. no search match) into the stage's one given "No errands available" / "Check back in a bit." message, since the stage gave only one heading/text pair and the page's existing distinction was itself an implementation detail, not a prior team decision.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-11-05 — Supplier bookmarking: design spec and implementation plan
 
@@ -7993,6 +8440,42 @@ The browser check (D1) has not been run. The frontend's no-bookmarks empty state
 
 **Deviations / questions raised for the team:**
 The dev `user-service/.env` lacks variables that `config.ts` now requires; the team may want to update it or `.env.example`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-05 — Supplier bookmarking: merge of main and landing page removal
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** The team's chat answer below; recorded as B26 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> push and open pr for this new feature
+
+> merge main into this branch and resolve issues. The landing page was deleted as it is serving the same purpose as the supplier page, so the filters and chips can move there
+
+**Key responses:**
+- Pushed the branch and opened a pull request against `AY2627S1-CS3219-P18/FoC` (`gh` defaulted to a different repository until `--repo` was given). GitHub reported conflicts with `main`.
+- Merged `origin/main` into the branch. Conflicts and how they were resolved: `ai/usage-log.md` and the README Log index (took `main`'s content and appended this branch's six entries and rows after it, renumbered 173–178, nothing reworded); `user-service/tests/helpers/db.ts` (kept both header notes); `frontend/src/pages/Landing.jsx` (deleted on `main`, so deleted here, along with `frontend/tests/pages/Landing.test.jsx`).
+- The Bookmarked checkbox already existed on the suppliers page, so no new UI was added; the Landing tests were replaced by `frontend/tests/pages/Suppliers.test.jsx` (4 tests: ids sent when ticked, no ids otherwise, deleted entries cleared, empty state). Spec B24 and §5 were updated and B26 added to record the team's decision; the plan's Task C4 got a note that it is superseded.
+- Verification run after the merge: frontend 17 files / 77 tests pass and `vite build` is clean (`oxlint` now reports 21 warnings; most come from `main`); user-service bookmarks tests 39 passed and `tsc --noEmit` clean; supplier-service 40 files / 419 tests passed and `tsc --noEmit` clean. The full user-service suite was not re-run.
+- The earlier browser check (the Bookmarked chip on the landing page) predates this merge; the suppliers page filter was exercised in that check, but nothing was re-run in a browser after the merge.
+
+**Files:**
+- `frontend/src/pages/Landing.jsx` (deleted, as on `main`)
+- `frontend/tests/pages/Landing.test.jsx` (deleted)
+- `frontend/tests/pages/Suppliers.test.jsx` (created)
+- `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
+- `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
+- `ai/usage-log.md` (this entry; merge conflict resolved)
+- `README.md` (log index row; merge conflict resolved)
+- `user-service/tests/helpers/db.ts` (merge conflict resolved)
+
+**Deviations / questions raised for the team:**
+The earlier entries in this log and the PR description mention a landing-page chip and README rows 167–172; those are now rows 173–178 and the chip no longer exists.
 
 **What I kept/changed/rejected:**
 

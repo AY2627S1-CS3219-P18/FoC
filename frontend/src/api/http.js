@@ -27,18 +27,37 @@
  *        moved here from api/auth.js as decodeAccessTokenClaims so this file can reuse it too.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 23c of instructions.md - refreshAccessToken now also hands the response's
+ *        sessionTimeLeftSeconds (added to POST /auth/refresh in stage 23b) to a registered
+ *        onSessionTimeLeft callback, the same single-callback pattern already used by
+ *        onSessionExpired. This covers session restore, the proactive refresh below, and the
+ *        refresh-after-401 retry in send(), since all three call refreshAccessToken(). Added
+ *        recordSessionTimeLeft so login() in api/auth.js (which gets its own
+ *        sessionTimeLeftSeconds directly from POST /auth/login, not via refreshAccessToken) can
+ *        feed the same callback.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.
 let accessToken = null
 let refreshing = null
 let onSessionExpired = () => {}
+let onSessionTimeLeft = () => {}
 let refreshTimer = null
 
 export const getAccessToken = () => accessToken
 export const setOnSessionExpired = (callback) => {
   onSessionExpired = callback
 }
+export const setOnSessionTimeLeft = (callback) => {
+  onSessionTimeLeft = callback
+}
+// For callers that get sessionTimeLeftSeconds from a response that didn't go through
+// refreshAccessToken (login()'s own POST /auth/login).
+export const recordSessionTimeLeft = (secondsLeft) => onSessionTimeLeft(secondsLeft)
 
 // Error envelope from the services: { status_code, error, message, timestamp, details? } (supplier
 // service) or { message, code } (user service).
@@ -113,6 +132,7 @@ export function refreshAccessToken() {
         const body = await readBody(response)
         if (!response.ok) throw new ApiError(response.status, body)
         setAccessToken(body.accessToken)
+        onSessionTimeLeft(body.sessionTimeLeftSeconds)
         return body.accessToken
       })
       .finally(() => {
