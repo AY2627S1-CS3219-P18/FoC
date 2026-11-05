@@ -12,7 +12,7 @@ Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added workstream W8 (
        updated the Branch and Last updated lines. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
-Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Recorded decision C53 and moved W8 to Building.
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Recorded decision C53; W8 moved to Building, then In review.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
 Scope (2026-11-04, Codex, model: GPT-6): Updated Phase 5 status from the recorded tests and decisions.
@@ -129,7 +129,7 @@ priority (C47).
 | W5 | Phase 4 — Soft delete, transactional outbox, BullMQ worker, reactivation rework | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md) | 17/17 tasks; live check passed except in-flight shutdown (D11, D18) | — |
 | W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) | Authorization tests and no-UI/cross-role suites run; response tests partial; local load targets missed (Q1) | — |
 | W7 | OpenAPI description, seed-as-test, response ids (`location_id`, `faculty_id`, category ids) | In review | [architecture §7.3, §9 item 23](SupplierServiceArchitecture.md) | — | Ids committed (`05a0386`); openapi/seed uncommitted: Q5 | — |
-| W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | Building | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | user-service A1–A3 and supplier-service B1–B5 done; frontend C1–C5 next | — |
+| W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | In review | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | Tasks A1–C5 done; D1 browser check not run | — |
 
 Cross-project (not a supplier workstream): the **frontend** project's supplier screens call this
 API — see D15 for what it exposed.

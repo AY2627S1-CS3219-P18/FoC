@@ -7903,3 +7903,67 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-05 — Supplier bookmarking: bookmarks table, endpoints, ids filter, Bookmarked filter
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (team decisions B1–B25, from the 2026-11-05 chat; earlier entries above quote those answers) and the plan `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md`.
+
+**Prompts (exact):**
+> commit docs and start implementation
+
+**Key responses:**
+- Committed the spec, plan and earlier log entries, then implemented the plan task by task on branch `supplier-bookmarking`, one commit per task (A1, A2+A3, B1, B2, B3, B4, B5, C1+C2, C3, C4, C5).
+- user-service: `user_bookmarks` table in `init.sql`; `bookmarks.queries.ts`; `bookmarks.service.ts` (cap of 20 enforced in a transaction that locks the user row; repeat-safe add and remove); `bookmarks.controller.ts`; `GET`, `PUT`, `DELETE /users/me/bookmarks` routes. `DELETE` with a malformed id is a `200` no-op (B23); `PUT` with a malformed id is `400` (B25).
+- supplier-service: `ids` query parameter on `GET /api/v1/suppliers` (at most 20 values, malformed items reported as `invalid`), `supplierIds` repository criterion, `findStatusesByIds`, and the `unavailable` array; OpenAPI, README and `PROJECT_STATE.md` (decision C53, W8) updated.
+- frontend: `api/bookmarks.js`, `EMPTY_PAGE`, `BookmarksContext`, the card icon now driven by the real bookmarks, a Bookmarked chip on the landing page and a Bookmarked checkbox on the suppliers page.
+- Changes to the plan's code, made during implementation: the plan's Landing test mocked `useAuth` without `isLoggedIn`/`sessionReady`, so the page showed its logged-out notice; the mock now supplies them. The test also looks cards up by link role because a supplier name appears twice (image fallback and title link). Task A1/A2/A3 files were written together with their tests, so the "see it fail" runs in the plan were not performed for those tasks. Task C5 has no dedicated test (the plan specified none).
+- Verification actually run: user-service bookmarks queries, service and controller tests, 39 passed (3 files), against the real test database; `tsc --noEmit` clean. A full user-service `vitest run` was started but its summary was not captured, so it is not claimed as passing. supplier-service: full default suite 40 files / 419 tests passed, `tsc --noEmit` clean, `npm run lint` clean; `openapi.yaml` parses. frontend: full suite 8 files / 40 tests passed, `vite build` clean, `oxlint` reports 17 warnings (2 are in the new `BookmarksContext.jsx`: setState in an effect, and a fast-refresh export warning; the plan recorded 14 before this change).
+- Not run: the end-to-end browser check (plan task D1). `docker compose up` for the whole stack failed on missing credit-service variables in `.env`, and no seeded suppliers or users were prepared, so nothing was exercised against the real supplier-service or in a browser. The soft-delete clean-up, the 21st-bookmark toast and the Bookmarked views are covered only by unit and HTTP tests.
+
+**Files:**
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/bookmarks.queries.ts` (created)
+- `user-service/src/services/bookmarks.service.ts` (created)
+- `user-service/src/controllers/bookmarks.controller.ts` (created)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/db/queries/bookmarks.queries.test.ts` (created)
+- `user-service/tests/services/bookmarks.service.test.ts` (created)
+- `user-service/tests/controllers/bookmarks.controller.test.ts` (created)
+- `supplier-service/src/validation/supplierQuery.ts` (modified)
+- `supplier-service/src/persistence/supplierRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierRepository.ts` (modified)
+- `supplier-service/src/types/supplier.ts` (modified)
+- `supplier-service/src/business/supplierService.ts` (modified)
+- `supplier-service/src/controllers/supplier.controller.ts` (modified)
+- `supplier-service/test/validation/supplierQuery.test.ts` (modified)
+- `supplier-service/test/persistence/mysqlSupplierRepository.test.ts` (modified)
+- `supplier-service/test/business/supplierService.test.ts` (modified)
+- `supplier-service/test/routes/supplier.routes.test.ts` (modified)
+- `supplier-service/openapi.yaml` (modified)
+- `supplier-service/README.md` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `supplier-service/docs/project-state/done-ledger.md` (modified)
+- `frontend/src/api/bookmarks.js` (created)
+- `frontend/src/api/suppliers.js` (modified)
+- `frontend/src/context/BookmarksContext.jsx` (created)
+- `frontend/src/main.jsx` (modified)
+- `frontend/src/components/SupplierCard.jsx` (modified)
+- `frontend/src/pages/Landing.jsx` (modified)
+- `frontend/src/pages/Suppliers.jsx` (modified)
+- `frontend/tests/api/bookmarks.test.js` (created)
+- `frontend/tests/context/BookmarksContext.test.jsx` (created)
+- `frontend/tests/components/SupplierCard.test.jsx` (created)
+- `frontend/tests/pages/Landing.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+The browser check (D1) has not been run. The frontend's no-bookmarks empty state on the suppliers page shows the title only, with no body text; the team may want body wording.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

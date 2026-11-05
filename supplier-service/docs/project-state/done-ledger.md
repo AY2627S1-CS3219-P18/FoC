@@ -5,6 +5,9 @@ Scope: Backfilled this ledger at phase granularity from git history and ai/usage
        maintaining-project-state skill. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
 Author review: Congchen
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added the W8 supplier bookmarking line.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Done Ledger — Supplier Service
@@ -16,6 +19,7 @@ why, with a commit, plan or artifact as the reference. Not a copy of `git log`. 
 
 | Date | What changed | Workstream | Ref |
 |---|---|---|---|
+| 2026-11-05 | Supplier bookmarking built: `ids` filter and `unavailable` array on `GET /api/v1/suppliers` (40 files / 419 tests), plus user-service bookmarks and the frontend Bookmarked filter; browser check not run | W8 | `d02f3b0`…, spec/plan 2026-11-05, C53 |
 | 2026-10-01 | Bootstrapped `PROJECT_STATE.md` and this ledger; copied the `maintaining-project-state` skill into `../.claude/skills/` with a monorepo note | — | uncommitted (A1, D19) |
 | 2026-09-30 | Supplier responses now carry `location_id`, `faculty_id` and `categories: [{category, category_id}]` (team decision) | W7 | `05a0386`, Arch §9 item 23 |
 | 2026-09-30 | OpenAPI 3.0.3 description of all endpoints and `npm run seed` seed-as-test; frontend wired to the service and two frontend bugs fixed | W7 | uncommitted (Q5, D15, D17) |
