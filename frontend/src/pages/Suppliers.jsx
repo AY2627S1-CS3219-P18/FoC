@@ -48,7 +48,8 @@ export default function Suppliers() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const { locations, categories } = useReferenceData()
   const { ids, ready, pruneDeleted } = useBookmarks()
-  const idsKey = ids.join(',')
+  // Only the Bookmarked view depends on the ids, so bookmarking from the full list does not refetch it.
+  const idsParam = bookmarkedOnly ? ids.join(',') : undefined
 
   // Wait for the typing to pause before asking the service.
   useEffect(() => {
@@ -69,14 +70,14 @@ export default function Suppliers() {
       category_id: categoryId,
       isOpen: openNow ? 'true' : undefined,
       sortOrder: sort,
-      ids: bookmarkedOnly ? idsKey : undefined,
+      ids: idsParam,
     }),
-    [page, search, locationId, categoryId, openNow, sort, bookmarkedOnly, idsKey],
+    [page, search, locationId, categoryId, openNow, sort, idsParam],
   )
   // No bookmarks: show the empty page here. The request helper drops empty query values, so an empty
   // ids would never reach the service and the call would list every supplier.
   const { data, loading, error } = useApi(
-    () => (bookmarkedOnly && idsKey === '' ? Promise.resolve(EMPTY_PAGE) : listSuppliers(params)),
+    () => (idsParam === '' ? Promise.resolve(EMPTY_PAGE) : listSuppliers(params)),
     [params],
   )
   const notice = useApiNotice({ loading: loading && !data, error })

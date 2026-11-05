@@ -111,6 +111,21 @@ describe('Suppliers page Bookmarked filter', () => {
     expect(listSuppliers).toHaveBeenCalledWith(expect.objectContaining({ ids: undefined }))
   })
 
+  it('does not refetch the list when a bookmark changes outside the Bookmarked view', async () => {
+    const view = renderPage()
+    await screen.findByRole('link', { name: 'Everything Store' })
+    listSuppliers.mockClear()
+
+    bookmarks = { ...bookmarks, ids: [3, 7, 11] }
+    view.rerender(
+      <MemoryRouter>
+        <Suppliers />
+      </MemoryRouter>,
+    )
+
+    expect(listSuppliers).not.toHaveBeenCalled()
+  })
+
   it('asks the bookmarks context to clear deleted entries, and ignores hidden ones on screen', async () => {
     const unavailable = [
       { id: 7, status: 'deleted' },
