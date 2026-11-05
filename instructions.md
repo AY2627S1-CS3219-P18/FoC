@@ -4165,3 +4165,104 @@ Same as earlier stages: header comment on every file created or modified, and a 
 - **NFR4.1.1** (30-minute inactivity timeout): dropped. Note it as a deliberate scope change.
 - **NFR4.1.2**: change "7 days" to "30 days", and note that the lifetime is fixed from login (not from last activity) and that an access token can outlive it by up to `ACCESS_TOKEN_TTL_MINUTES`.
 - **NFR4.2.1**: reword from "notify the user 1 minute before their session expires due to inactivity and provide an option to extend it" to a non-dismissible banner 10 minutes before the 30-day session expiry, with an option to log in again (the session cannot be extended).
+
+# Stage 24: Admin User History Page (F5.3.2)
+
+> **Scope**: Frontend only (`frontend/`). An admin or super admin opens a user from
+> `/admin/users`, sees that user's profile and a paginated list of their orders, and opens
+> any order to see its full details and credit transactions. No user-service, order-service,
+> credit-service or supplier-service changes.
+>
+> Backlog refs: F5.3.2.
+>
+> **Before starting:** if any `[DECIDE]` placeholder remains anywhere in this stage, stop and
+> ask me. Do not pick a value yourself. Read the current code first. Where it disagrees with
+> this file, follow the code and tell me.
+>
+> **Ground rules:** same as Stage 16 (work in `frontend/` only, never `foc-mockup/`; do not
+> modify `src/realtime/orderSocket.js`, `src/data/users.js`, `src/components/DemoControls.jsx`
+> or `AI-NOTES.md`; React 18, JSX, react-router-dom, Context API, Tailwind, lucide-react,
+> native `fetch` via `src/api/http.js`; no new state or form libraries). List every file
+> outside this page's own files that you touched.
+
+### Backend contracts (already built and merged on main; do not change)
+
+**Credit service** — `GET /credits/transactions/all?requestId=<uuid>`
+
+- Admin and super admin only (bearer token).
+- Params are camelCase (`userId`, `requestId`, `cursor`). Unknown keys are silently ignored, so use the names exactly. A dropped or misspelt `requestId` returns everyone's transactions with no error.
+- Response: `{ transactions: [...], nextCursor: string | null }`. Envelope is camelCase; **rows are snake_case**: `transaction_id`, `transaction_type`, `originating_user_id`, `destination_user_id`, `amount`, `created_at`, `request_id`.
+- Types: `allocation`, `reservation`, `transfer`, `release`. Row layout by type: reservation and release have `originating_user_id` only (the requester); transfer has originator (requester) and destination (courier); allocation has destination only and no `request_id` (allocations never appear on this page).
+- 20 per page, newest first. Stop paging when `nextCursor` is `null`. Never construct a cursor. An unknown `requestId` returns `200` with an empty array.
+- Errors use `{ error: { code, message } }`: `400 INVALID_CURSOR`, `400 INVALID_REQUEST_BODY`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `503 IDENTITY_PROVIDER_UNAVAILABLE`. Note this differs from user-service's `{ message, code }`; check how `http.js` and `errorMessages.js` read error codes.
+
+**Order service**
+
+- `GET /orders/admin/users/:userId?page=N` — admin and super admin only. `page` defaults to 1. Unknown query params return `400`. Response: `{ totalCount, currentPage, pageSize: 10, totalPages, orders: [{ order, role }] }`. `order` has every persisted field (`id`, `requesterId`, `supplierId`, `description`, `deliveryLocationId`, `credits`, `completeBy`, `additionalDetails`, `courierId`, `status`, `createdAt`, `updatedAt`, `acceptedAt`, `deliveredAt`, `creditReleasedAt`, `version`). `role` is `requester` or `courier` relative to `:userId`. All statuses (`pending`, `open`, `accepted`, `picked_up`, `delivered`, `completed`, `cancelled`, `expired`, `failed`), newest first. A page past the end returns an empty array with the real count. The endpoint calls user-service itself to check the user exists.
+- Errors are `{ message }` only, with no `code`, so tell them apart by HTTP status: `400` bad id/page/param, `401`, `403`, `404` user not found, `503` user-service unavailable.
+- `GET /orders/:id` — returns the bare order object. Admins can fetch any order. A missing order and a non-viewable one both return `404 { message: 'Order not found.' }`.
+
+**User service** — `GET /users/:id` (admin) → `{ id, username, email, status, role, activeView, createdAt, updatedAt }`, any status; `404 USER_NOT_FOUND`. `GET /users/public?ids=a,b,c` (1–50 ids) → `{ users: [{ id, username }] }`; unknown ids are omitted.
+
+**Supplier service** — `GET /api/v1/suppliers/:id` (numeric id, any authenticated role); no batch form. Location names come from the full list at `GET /api/v1/suppliers/reference/location`, looked up client-side.
+
+Existing frontend helpers to reuse (read them first; do not rewrite): `useUserName`, `useSupplier`, `useLocationNames` in `src/api/lookups.js`; `resolveUserNames` in `src/api/credits.js`; `Pager` and `useApiNotice` in `src/components/ApiNotice.jsx`; `EmptyState`, `Forbidden`, and the toast and banner components from Stage 16.
+
+### Design decisions (already made, do not change)
+
+| Rule                         | Value                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access                       | Admin and super admin see the same pages. Both can view any user. Routes use `RequireAuth` + `RequireRole minimum="admin"`.                                                                                                                                                                                                |
+| Routes                       | User page `/admin/user-transactions/:userId`. Order page `/admin/user-transactions/:userId/:requestId`. Both load fully on a direct URL or reload.                                                                                                                                                                         |
+| Entry point                  | In `/admin/users`, clicking a user's row opens that user's page. The existing three-dot row menu keeps working and must not trigger the row click.                                                                                                                                                                         |
+| Back links                   | "← Back to users" on the user page. "← Back to user" on the order page.                                                                                                                                                                                                                                                    |
+| User page layout             | Profile at the top, then a paginated list of order summaries.                                                                                                                                                                                                                                                              |
+| Profile fields               | `id`, `username`, `email`, `status`, `role`, `createdAt`, `updatedAt`.                                                                                                                                                                                                                                                     |
+| Profile actions              | Suspend/unsuspend and promote/demote buttons, with the same behaviour as `/admin/users`: same allowed-actions table, same confirmation dialog, same toasts, refetch on a stale-state error. The profile updates from the action's response.                                                                                |
+| Unknown user                 | If the profile call returns `404`, the whole page shows "user not found" (not just the profile section).                                                                                                                                                                                                                   |
+| Order summaries              | Truncated: no description and no transactions. Shows the order's credits. Shows the viewed user's role (`requester` / `courier`) as a label beside the username. All statuses are shown.                                                                                                                                   |
+| Summary fields               | user summary - email (masked), status, role, credits; order summary - request ID, requestor, supplier, credits for the transaction, courier, status                                                                                                                                                                        |
+| Pagination                   | Page-number, 10 per page, via `Pager`, using `totalPages`. The current page number is kept in the URL, so a reload keeps the page. `page` — the query param name.                                                                                                                                                          |
+| Filtering                    | Role (requester/courier) and status. The backend has no such params, so filtering is **client-side, within the current page of 10 only**. A page can therefore show fewer than 10 orders, or none, while other pages still match. The UI must say the filter applies to the current page. No search and no sorting.        |
+| Click an order               | Navigates to the order page.                                                                                                                                                                                                                                                                                               |
+| Order page                   | Loads the order with `GET /orders/:id`. Shows every field: order id (the request id), requester, supplier, delivery location, credits, completeBy, description, additionalDetails, courier, status, and all datetimes (`createdAt`, `updatedAt`, `acceptedAt`, `deliveredAt`, `creditReleasedAt`). `version` is not shown. |
+| Order not involving the user | If the order's requester and courier are both not `:userId`, show "Order not found" (also shown when `GET /orders/:id` returns `404`).                                                                                                                                                                                     |
+| Transactions                 | Fetched once per order page load via `?requestId=<order id>`. Fields shown: transaction id, type, originating user, destination user, amount, created at. Paged with `nextCursor`; stop when it is `null`. No allocations.                                                                                                 |
+| Credits colour and sign      | Red/green with a `+` or `−`. For reservation and release, don't put it as `+` or `-` or red or green - just put the amount held. only for transfer then have colour and sign.                                                                                                                                              |
+| Names                        | Usernames for requester, courier and transaction parties; supplier name; delivery location name, via the existing helpers.                                                                                                                                                                                                 |
+| Name fallbacks               | Existing ones: shortened UUID for a missing username, "Location <id>" for a missing location. `[DECIDE]` — fallback for a missing supplier name.                                                                                                                                                                           |
+| Dates                        | Whatever the frontend already uses.                                                                                                                                                                                                                                                                                        |
+| Empty states                 | An order with no transactions shows "no transactions". A user with no orders shows an empty-state message.                                                                                                                                                                                                                 |
+| Section failures             | Only the failed section shows an error and a retry button; the rest of the page still renders.                                                                                                                                                                                                                             |
+
+### Sub-stages
+
+**18a — API modules.** Add the admin calls to the existing API modules, following their style: user orders (`/orders/admin/users/:userId`) in `src/api/orders.js`; transactions by `requestId` in `src/api/credits.js`; the profile call (`GET /users/:id`) in `src/api/users.js` if it isn't there. Confirm how each service's error shape reaches the pages, and report any mismatch before building pages on top.
+
+**18b — User page.** Profile, action buttons, order summaries, pagination and filters, per the table above.
+
+**18c — Order page.** The order, and its transactions, per the table above.
+
+**18d — Entry point and routes.** Add both routes behind the guards. Make rows in `/admin/users` open the user page.
+
+### Verification
+
+- Click a row in `/admin/users` → the user page opens; the three-dot menu still opens without navigating.
+- A direct URL or reload of either page works, and the page number survives a reload.
+- Non-admin → the 403 view (URL unchanged). Logged out → `/login`, then back.
+- A nonexistent user id → whole page "user not found". A malformed user id → the same view.
+- A user with no orders → empty state. A page past the last page → empty state, with "Page X of Y" still correct.
+- Role and status filters change which of the current page's orders show; the UI says it applies to this page only.
+- The order page shows all listed fields and the transactions; an order with no transactions shows the empty message.
+- An order that doesn't involve the user in the URL → "Order not found". A nonexistent order id → "Order not found".
+- Credits show with the colour and sign you decided.
+- Stop credit-service → only the transactions section errors, with a retry button that works. Stop order-service → only the orders section errors. Stop supplier-service or user-service → names fall back, the page doesn't break.
+- Suspend, unsuspend, promote and demote from the user page behave as on `/admin/users`, and the profile updates without a reload.
+
+### Tests (Vitest)
+
+Write the tests in this stage, with the existing Vitest + `@testing-library/react`, `jest-dom` and `user-event` setup. Mocking the API modules or `fetch` is allowed. Every Verification bullet that doesn't need a running backend is a required test case. Do not modify application code to make a test pass. Report any failure that isn't a test problem.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
