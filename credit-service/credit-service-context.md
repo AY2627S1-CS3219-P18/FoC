@@ -267,6 +267,20 @@ These are unresolved in the backlog. Flag them; do not fill them in.
 9. **RESOLVED on creation — team decision, 2026-10-19: counterparty ids are resolved by
    the frontend** against User Service. Credit Service returns UUIDs only and stores no
    user display data.
+10. **No FR covers the administrator transaction filters.** `GET
+   /credits/transactions/all` gained optional `?userId=` and `?requestId=` parameters on
+   2026-11-04. F19.5.2 covers a user's **own** transactions and F20.2 covers **all**
+   transactions; filtering the administrator view by user or by order is neither, and no
+   F19 or F20 requirement describes it.
+
+   The `userId` half is driven by a requirement belonging to **another service** —
+   User Service's **F5.3.2**, *"The system shall allow administrators to view transaction
+   details of individual users"* (`docs/FoC-ProductBacklog.md` line 103) — which needs a
+   credit-service endpoint but does not itself specify one. The **`requestId` half has no
+   requirement at all**, in this backlog or user-service's; it was requested directly.
+
+   Recorded as a gap, not resolved. Nothing here should be read as a requirement, and the
+   parameters are listed under "What was invented" in `API.md`.
 
 ## 11. Working rules
 

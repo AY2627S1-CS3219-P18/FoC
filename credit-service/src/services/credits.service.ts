@@ -9,6 +9,11 @@
 //  2026-10-19: Week 9 - transaction history for F19.5.2 and F20.2, keyset-paginated.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-04: Admin filters - getAllTransactions accepts optional userId / requestId
+//    filters. No new route, no new fields; see credit-service-context.md §10 item 10 for
+//    the missing requirement behind this surface.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { INITIAL_ALLOCATION_CREDITS } from '../domain/constants.js';
 import { withTransaction } from '../db/transaction.js';
@@ -33,6 +38,7 @@ import {
   TRANSACTION_PAGE_SIZE,
   type BalanceRow,
   type TransactionCursor,
+  type TransactionFilters,
   type TransactionRow,
 } from '../db/queries/credits.queries.js';
 
@@ -361,8 +367,11 @@ function decodeCursor(cursor: string | undefined): TransactionCursor | null {
   return { createdAt, transactionId };
 }
 
-async function page(userId: string | null, cursor: string | undefined): Promise<TransactionPage> {
-  const rows = await listTransactions(pool, userId, decodeCursor(cursor));
+async function page(
+  filters: TransactionFilters,
+  cursor: string | undefined,
+): Promise<TransactionPage> {
+  const rows = await listTransactions(pool, filters, decodeCursor(cursor));
   // listTransactions fetches one extra row purely to answer "is there more?".
   const hasMore = rows.length > TRANSACTION_PAGE_SIZE;
   const transactions = hasMore ? rows.slice(0, TRANSACTION_PAGE_SIZE) : rows;
@@ -381,7 +390,9 @@ export function getTransactionsForUser(
   userId: string,
   cursor?: string,
 ): Promise<TransactionPage> {
-  return page(userId, cursor);
+  // userId here is the caller's own scope, taken from the verified token, not a filter
+  // the caller can choose. The route has no user parameter for exactly that reason.
+  return page({ userId }, cursor);
 }
 
 /**
@@ -389,7 +400,18 @@ export function getTransactionsForUser(
  *
  * Same field set as the user view; only the row scope differs (team decision
  * 2026-10-19). Access is gated by middleware, not here.
+ *
+ * Optionally narrowed by user and/or order. Both are plain filters over the same rows
+ * this endpoint already returns, so they inherit its auth gate, page size, ordering and
+ * row shape rather than duplicating them. No filter means the unchanged behaviour.
+ *
+ * An unmatched filter yields an empty page, not a 404: Credit Service holds no list of
+ * users or orders, and an order with no credit activity yet is an ordinary state rather
+ * than a missing resource.
  */
-export function getAllTransactions(cursor?: string): Promise<TransactionPage> {
-  return page(null, cursor);
+export function getAllTransactions(
+  filters: TransactionFilters = {},
+  cursor?: string,
+): Promise<TransactionPage> {
+  return page(filters, cursor);
 }

@@ -9,6 +9,10 @@
 //    and balance read (F19.5.1), following the write-path table in context §5.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-04: Admin filters - listTransactions takes a TransactionFilters object so the
+//    administrator view can narrow by user or by order. No schema change.
+//    No requirements, architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import type pg from 'pg';
 import type { Queryable } from '../transaction.js';
@@ -298,6 +302,21 @@ export interface TransactionCursor {
 }
 
 /**
+ * Which rows a page covers.
+ *
+ * `userId` does double duty: for F19.5.2 it is the caller's own scope, and for the
+ * administrator view it is an optional filter. The predicate is identical either way —
+ * rows where that user is the originating OR the destination party — so both go through
+ * one code path rather than two that could drift.
+ *
+ * `requestId` narrows to a single order. Null or undefined means "no constraint".
+ */
+export interface TransactionFilters {
+  userId?: string | null;
+  requestId?: string | null;
+}
+
+/**
  * One page of the log, newest first.
  *
  * Keyset pagination on (created_at, transaction_id): the cursor names the last row of
@@ -306,24 +325,34 @@ export interface TransactionCursor {
  * paging backwards through history would see duplicates. The tie-break on
  * transaction_id keeps the order total when two rows share a timestamp.
  *
- * `userId` null means every user's rows (F20.2); otherwise rows where that user is the
- * originating or destination party (F19.5.2).
+ * With no filters this returns every user's rows (F20.2). `filters.userId` restricts to
+ * rows where that user is the originating or destination party — the caller's own scope
+ * for F19.5.2, an administrator's filter on the all-transactions view. `filters.requestId`
+ * restricts to one order. Supplying both ANDs them.
+ *
+ * Filters are not encoded in the cursor: the caller re-sends them alongside ?cursor= on
+ * each request, so the cursor stays a pure position token and cannot disagree with the
+ * filter it was issued under.
  *
  * Fetches one row more than the page size so the caller can tell whether another page
  * exists without a second COUNT query.
  */
 export async function listTransactions(
   client: Queryable,
-  userId: string | null,
+  filters: TransactionFilters,
   cursor: TransactionCursor | null,
   limit: number = TRANSACTION_PAGE_SIZE,
 ): Promise<TransactionRow[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (userId !== null) {
-    params.push(userId);
+  if (filters.userId) {
+    params.push(filters.userId);
     conditions.push(`(originating_user_id = $${params.length} OR destination_user_id = $${params.length})`);
+  }
+  if (filters.requestId) {
+    params.push(filters.requestId);
+    conditions.push(`request_id = $${params.length}`);
   }
   if (cursor) {
     params.push(cursor.createdAt, cursor.transactionId);

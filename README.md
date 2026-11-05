@@ -498,6 +498,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 152 | 2026-11-04 | frontend | Stage 20b: Frontend Email Eye Icon and Unmask Flow (NFR3.1.1) | Per-row eye icon reveals the real email, re-masks on click or after 60s |
 | 153 | 2026-11-04 | frontend | Stage 21a: Fix Clipped Row-Actions Menu (frontend) | Row-actions menu now portals out of the table wrapper, flips to fit the viewport |
 | 154 | 2026-11-04 | frontend | Stage 21b: Show/hide password toggle | New PasswordInput component with eye-icon toggle, wired into every password field |
+| 155 | 2026-11-04 | credit-service | Credit Service: administrator transaction filters by user and order | Optional ?userId= and ?requestId= on the existing admin endpoint; no new route, no FR behind it |
 | 155 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
 | 156 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
 | 157 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
