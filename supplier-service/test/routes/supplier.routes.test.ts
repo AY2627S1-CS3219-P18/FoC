@@ -13,6 +13,9 @@
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added GET /api/v1/suppliers ids tests, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import request from 'supertest';
@@ -109,6 +112,45 @@ describe('GET /api/v1/suppliers', () => {
     const { app } = buildApp();
     const res = await request(app).get('/api/v1/suppliers');
     expect(res.status).toBe(403);
+  });
+
+  it('passes ids to the service split into well-formed numbers (de-duplicated) and malformed items', async () => {
+    const { app, service } = buildApp();
+    const res = await request(app).get('/api/v1/suppliers?ids=3,7,3,abc').set('x-test-role', 'user');
+    expect(res.status).toBe(200);
+    expect(service.listSuppliers).toHaveBeenCalledWith(
+      expect.objectContaining({ ids: { valid: [3, 7], invalid: ['abc'] } }),
+    );
+  });
+
+  it('accepts an empty ids value and passes an empty list', async () => {
+    const { app, service } = buildApp();
+    const res = await request(app).get('/api/v1/suppliers?ids=').set('x-test-role', 'user');
+    expect(res.status).toBe(200);
+    expect(service.listSuppliers).toHaveBeenCalledWith(
+      expect.objectContaining({ ids: { valid: [], invalid: [] } }),
+    );
+  });
+
+  it('combines ids with the other filters', async () => {
+    const { app, service } = buildApp();
+    await request(app).get('/api/v1/suppliers?ids=3,7&search=store&isOpen=true').set('x-test-role', 'user');
+    expect(service.listSuppliers).toHaveBeenCalledWith(
+      expect.objectContaining({ ids: { valid: [3, 7], invalid: [] }, search: 'store', isOpen: true }),
+    );
+  });
+
+  it.each([
+    ['more than 20 values', 'ids=' + Array.from({ length: 21 }, (_, i) => i + 1).join(',')],
+    ['a repeated parameter', 'ids=1&ids=2'],
+  ])('returns 422 for %s', async (_label, queryString) => {
+    const { app, service } = buildApp();
+    const res = await request(app).get('/api/v1/suppliers?' + queryString).set('x-test-role', 'user');
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ status_code: 422, error: 'Unprocessable Entity' });
+    expect(res.body.details[0]).toMatchObject({ location: 'query' });
+    expect(res.body.details[0].field).toMatch(/^ids/);
+    expect(service.listSuppliers).not.toHaveBeenCalled();
   });
 });
 

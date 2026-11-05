@@ -45,6 +45,15 @@
  *        Minimal placement only — Gabriel may adjust the layout.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Per instructions.md Stage 22's "Nav bar" rows: the fixed LINKS list is replaced by
+ *        routing/views.js's NAV_LINKS, keyed by the signed-in user's active view, so the nav
+ *        shows only the current view's two pages (plus the admin links for admins) and the
+ *        other view's are hidden. Logged out, the nav shows no page links and a Register
+ *        button alongside the existing Log in button (both desktop and the mobile drawer).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -55,12 +64,7 @@ import Button from './Button'
 import CreditPill from './CreditPill'
 import ActiveViewToggle from './ActiveViewToggle'
 import { useAuth } from '../context/AuthContext'
-
-const LINKS = [
-  { to: '/suppliers', label: 'Suppliers' },
-  { to: '/requests', label: 'Find errands' },
-  { to: '/activity', label: 'My activity' },
-]
+import { NAV_LINKS } from '../routing/views'
 
 const ADMIN_LINKS = [
   { to: '/admin/suppliers', label: 'Manage suppliers' },
@@ -69,7 +73,8 @@ const ADMIN_LINKS = [
 
 export default function TopNav() {
   const { isLoggedIn, user, credits, requireAuth, logout, isAdmin } = useAuth()
-  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS
+  const links = isLoggedIn ? NAV_LINKS[user.activeView] : []
+  const linksWithAdmin = isAdmin ? [...links, ...ADMIN_LINKS] : links
   const displayName = user?.username ?? ''
   const initials = displayName.slice(0, 2).toUpperCase()
   const [scrolled, setScrolled] = useState(false)
@@ -103,7 +108,7 @@ export default function TopNav() {
           <Logo />
 
           <nav className="hidden items-center gap-8 lg:flex" aria-label="Main">
-            {links.map((link) => (
+            {linksWithAdmin.map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.label}
               </NavLink>
@@ -144,9 +149,14 @@ export default function TopNav() {
                 </button>
               </>
             ) : (
-              <Button size="sm" onClick={() => requireAuth('Log in to post and accept errands.')}>
-                Log in
-              </Button>
+              <>
+                <Button variant="secondary" size="sm" as={Link} to="/register">
+                  Register
+                </Button>
+                <Button size="sm" onClick={() => requireAuth('Log in to post and accept errands.')}>
+                  Log in
+                </Button>
+              </>
             )}
           </div>
 
@@ -194,7 +204,7 @@ export default function TopNav() {
             )}
 
             <nav className="flex flex-col" aria-label="Mobile">
-              {links.map((link) => (
+              {linksWithAdmin.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
@@ -223,16 +233,28 @@ export default function TopNav() {
                   </button>
                 </div>
               ) : (
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={() => {
-                    setDrawerOpen(false)
-                    requireAuth('Log in to post and accept errands.')
-                  }}
-                >
-                  Log in
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() => {
+                      setDrawerOpen(false)
+                      requireAuth('Log in to post and accept errands.')
+                    }}
+                  >
+                    Log in
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    className="w-full"
+                    as={Link}
+                    to="/register"
+                    onClick={() => setDrawerOpen(false)}
+                  >
+                    Register
+                  </Button>
+                </div>
               )}
             </div>
           </div>

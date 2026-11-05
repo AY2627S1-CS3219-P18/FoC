@@ -14,6 +14,10 @@
 --    send-escalation columns on users_otps. No requirements, architecture, schema, or API
 --    decisions were made by the AI tool — see instructions.md Stage 18 for the governing decision.
 --    Author review:
+--  2026-11-05: Added the user_bookmarks table for supplier bookmarking (spec
+--    docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md). Tool: Claude Code (model:
+--    claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the AI tool.
+--    Author review:
 
 DO $$ BEGIN
   CREATE TYPE status_enum AS ENUM ('pending', 'active', 'suspended');
@@ -105,4 +109,13 @@ CREATE TABLE IF NOT EXISTS credit_allocation_outbox (
   last_error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Supplier bookmarking (spec 2026-11-05): one row per (user, supplier). supplier_id is the Supplier
+-- Service's id, kept as a plain integer because that table lives in another service.
+CREATE TABLE IF NOT EXISTS user_bookmarks (
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  supplier_id INTEGER NOT NULL CHECK (supplier_id > 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, supplier_id)
 );

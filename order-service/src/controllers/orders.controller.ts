@@ -51,6 +51,10 @@
  *        other handlers.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Codex (model: GPT-6), date: 2026-11-05
+ * Scope: Implemented the team-specified admin user order listing contract from chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import type { RequestHandler } from 'express';
@@ -59,6 +63,8 @@ import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import * as ordersService from '../services/orders.service.js';
 import { isUuid } from '../utils/validation.js';
 import {
+  ADMIN_USER_ORDERS_PAGE_SIZE,
+  listAdminUserOrders,
   listActiveDeliveries,
   listMyOrders,
   listOrders,
@@ -261,3 +267,77 @@ function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.ORDER_NOT_EDITABLE)) return 409;
   return 400;
 }
+
+// AI-generated (edited by <name>).
+export const getAdminUserOrders =
+  (prisma: PrismaClient, userServiceUrl: string): RequestHandler =>
+  async (req, res) => {
+    const fail = (status: number, code: ErrorCode) => {
+      res.status(status).json({ message: ErrorMessage[code] });
+    };
+    if (!req.user || !isUuid(req.user.user_id)) {
+      fail(401, ErrorCode.UNAUTHENTICATED);
+      return;
+    }
+    if (req.user.role !== 'admin' && req.user.role !== 'super admin') {
+      fail(403, ErrorCode.FORBIDDEN);
+      return;
+    }
+    const rawUserId = req.params.userId;
+    if (!isUuid(rawUserId)) {
+      fail(400, ErrorCode.MALFORMED_USER_ID);
+      return;
+    }
+    const userId = rawUserId.toLowerCase();
+    const rawPage = req.query.page ?? '1';
+    const page =
+      typeof rawPage === 'string' && /^[1-9]\d*$/.test(rawPage)
+        ? Number(rawPage)
+        : NaN;
+    const unknown = Object.keys(req.query).find((key) => key !== 'page');
+    if (
+      unknown ||
+      !Number.isSafeInteger(page) ||
+      !Number.isSafeInteger((page - 1) * ADMIN_USER_ORDERS_PAGE_SIZE)
+    ) {
+      const code = unknown
+        ? ErrorCode.UNKNOWN_QUERY_PARAMETER
+        : ErrorCode.INVALID_QUERY_PARAMETER;
+      res
+        .status(400)
+        .json({ message: `${ErrorMessage[code]} (${unknown ?? 'page'})` });
+      return;
+    }
+    const authorization = req.get('authorization');
+    if (!authorization) {
+      fail(401, ErrorCode.UNAUTHENTICATED);
+      return;
+    }
+    let lookup: Response;
+    try {
+      lookup = await fetch(new URL(`/users/${userId}`, userServiceUrl), {
+        headers: { authorization },
+      });
+      // Only existence is needed; do not retain the user's profile.
+      await lookup.body?.cancel();
+    } catch {
+      fail(503, ErrorCode.USER_SERVICE_UNAVAILABLE);
+      return;
+    }
+    if (lookup.status === 404) {
+      fail(404, ErrorCode.INVALID_USER_ID);
+      return;
+    }
+    if (lookup.status === 401 || lookup.status === 403) {
+      fail(
+        lookup.status,
+        lookup.status === 401 ? ErrorCode.UNAUTHENTICATED : ErrorCode.FORBIDDEN,
+      );
+      return;
+    }
+    if (!lookup.ok) {
+      fail(503, ErrorCode.USER_SERVICE_UNAVAILABLE);
+      return;
+    }
+    res.status(200).json(await listAdminUserOrders(prisma, userId, page));
+  };

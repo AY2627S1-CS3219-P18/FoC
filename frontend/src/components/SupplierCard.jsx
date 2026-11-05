@@ -16,9 +16,14 @@
  * Scope: requireLogin replaced with AuthContext's requireAuth, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: The bookmark icon now reads its state from BookmarksContext and toggles through it,
+ *        replacing the mock local state, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bookmark } from 'lucide-react'
 import SupplierImage from './SupplierImage'
@@ -26,6 +31,7 @@ import CategoryPills from './CategoryPills'
 import Button from './Button'
 import { qualifiedName } from '../data/suppliers'
 import { useAuth } from '../context/AuthContext'
+import { useBookmarks } from '../context/BookmarksContext'
 
 // Supplier F1.1 listing, F1.2.1 open/closed indicator, plus the bookmarking nice-to-have.
 // showLocation: false inside a location group (the heading already names it), true everywhere else.
@@ -36,8 +42,12 @@ export default function SupplierCard({
   showLocation = false,
 }) {
   const { requireAuth } = useAuth()
+  const { isBookmarked, toggle } = useBookmarks()
   const navigate = useNavigate()
-  const [bookmarked, setBookmarked] = useState(supplier.id === 1 || supplier.id === 5)
+  const bookmarked = isBookmarked(supplier.id)
+
+  const toggleBookmark = () =>
+    requireAuth('You need an account to bookmark a supplier.', () => toggle(supplier.id))
 
   const requestFromHere = () =>
     requireAuth('You need an account to post an errand.', () =>
@@ -52,7 +62,7 @@ export default function SupplierCard({
         </Link>
         <button
           type="button"
-          onClick={() => setBookmarked((v) => !v)}
+          onClick={toggleBookmark}
           aria-pressed={bookmarked}
           aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this place'}
           className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-pill"

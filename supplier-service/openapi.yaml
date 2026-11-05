@@ -12,6 +12,10 @@
 #
 # This file describes the Supplier Service only. Other services get their own file when their endpoints
 # are recorded.
+#
+# Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Documented the ids filter and unavailable array, and recorded workstream W8, per the 2026-11-05 supplier-bookmarking spec.
+# No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 
 openapi: 3.0.3
 info:
@@ -23,7 +27,7 @@ info:
     Source of truth for the contract is `SupplierServiceArchitecture.md` (§6.2, §7, §8). Every route
     requires a User Service bearer token. The service fetches the User Service JWKS from
     `/auth/.well-known/jwks.json` and verifies the RS256 signature locally.
-    All endpoints are rate-limited to 30 requests per minute per client IP.
+    All endpoints are rate-limited per client IP per minute using PER_IP_RATE_LIMIT (default 30).
 
     `isOpen` is computed, not stored, in Singapore time (UTC+8).
 servers:
@@ -58,6 +62,7 @@ paths:
         - $ref: "#/components/parameters/CategoryId"
         - $ref: "#/components/parameters/IsOpen"
         - $ref: "#/components/parameters/SortOrder"
+        - $ref: "#/components/parameters/Ids"
       responses:
         "200":
           description: One page of suppliers.
@@ -520,6 +525,16 @@ components:
       in: query
       description: Alphabetical by supplier name.
       schema: { type: string, enum: [A-Z, Z-A], default: A-Z }
+    Ids:
+      name: ids
+      in: query
+      description: |
+        Comma-separated supplier ids, at most 20, e.g. `3,7,12`; duplicates and empty items are
+        ignored. Restricts `data` to those suppliers (the other filters still apply) and adds an
+        `unavailable` array to the response. An item that is not a positive whole number is reported
+        as `invalid` and does not block the others. An empty value returns an empty page. More than
+        20 values, or the parameter sent twice, returns `422`.
+      schema: { type: string, example: "3,7,12" }
     SupplierId:
       name: id
       in: path
@@ -736,6 +751,20 @@ components:
         data:
           type: array
           items: { $ref: "#/components/schemas/SupplierSummary" }
+        unavailable:
+          type: array
+          description: |
+            Present only when `ids` was sent. Every requested id that is hidden (inactive), deleted
+            (soft-deleted, or no such supplier) or malformed. Well-formed ids come first, in the order
+            sent, then malformed ones. It ignores the other filters.
+          items:
+            type: object
+            required: [id, status]
+            properties:
+              id:
+                description: The supplier id, or the value as sent when `status` is `invalid`.
+                oneOf: [{ type: integer }, { type: string }]
+              status: { type: string, enum: [hidden, deleted, invalid] }
 
     AdminSupplierPage:
       type: object

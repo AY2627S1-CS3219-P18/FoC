@@ -37,6 +37,14 @@ Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #1
        user-service docs-rename record and Stage 17 (local setup script). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the admin user order history disclosure and log-index entry.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the Docker postinstall fix log-index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
        (OTP email retry and delivery logging). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
@@ -48,6 +56,38 @@ Author review:
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #152 for Stage 20b
        (frontend email eye icon). No requirements, architecture, schema, or API decisions were
        made by the AI tool.
+Author review:
+Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-03, Codex, model: GPT-6): Added the Phase 5 documentation log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the clarified Phase 5 decisions log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the configurable rate-limit log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the pagination load-test log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the staging-limit correction log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the response-message acceptance log index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrangements index row.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
+Author review:
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5): Added the Stage 22 log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
 -->
 
@@ -97,6 +137,65 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 - Files for agentic coding tools (e.g. agent configs, prompts, skills)
   may be added as needed, but must still **respect the
   one-service-per-folder skeleton** for core implementation.
+
+---
+
+## Running the stack
+
+```bash
+cp .env.example .env          # then fill in any blanks
+docker compose up --build     # production targets, frontend on http://localhost:5173
+```
+
+For hot reload, add the dev override, which swaps the frontend and order-service to
+their `dev` targets and enables Compose Watch:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+```
+
+> The dev override uses `ports: !override`, which needs **Docker Compose 2.24.4 or
+> newer**. On older versions the tag is *silently ignored* and the merged config
+> publishes the same host port twice, so `up` fails with "port is already allocated".
+> Check with `docker compose version`.
+
+### ⚠️ After pulling a schema change, recreate that service's database volume
+
+`user-service`, `credit-service` and `supplier-service` load their schema from
+`src/db/init.sql`, mounted into the Postgres/MySQL image's
+`docker-entrypoint-initdb.d`. **Those scripts run only on an empty volume.** Pulling a
+change to an `init.sql` therefore does nothing to a database you already have, and the
+service fails at runtime on the missing table or column rather than at startup — this
+has caught the team out four times now (`credit_allocation_outbox`, `dead_letter_jobs`,
+`users.login_failed_attempts`, and balances keyed to a recreated `user-db`).
+
+```bash
+docker compose down -v user-db        # or credit-db / supplier-db
+docker compose up -d
+```
+
+This destroys that database's contents. Recreate `user-db` and `credit-db` **together**:
+credit balances are keyed to user UUIDs, so recreating one and not the other leaves
+orphaned rows.
+
+`order-service` is the exception — it uses Prisma migrations (`npx prisma migrate
+deploy`, run by `order-worker` at startup), so it upgrades in place and needs none of
+this.
+
+---
+
+### ⚠️ Known gap: no TLS
+
+The `frontend` container serves the built app and proxies every API path
+(`/api/v1`, `/auth`, `/users`, `/credits`, `/orders`, `/socket.io`) through nginx, so
+the browser talks to one origin. **That nginx listens on plain HTTP, port 80 — there is
+no TLS anywhere in this stack.**
+
+Fine for local development. Not fine once it is deployed: the planned single-EC2
+deployment makes this nginx the production edge, and every access token, refresh cookie
+and password would cross the network in clear text. Before any public deployment,
+certificates need terminating either in this container (certbot) or in front of it (an
+ALB). Nobody owns this yet.
 
 ---
 
@@ -400,3 +499,28 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 153 | 2026-11-04 | frontend | Stage 21a: Fix Clipped Row-Actions Menu (frontend) | Row-actions menu now portals out of the table wrapper, flips to fit the viewport |
 | 154 | 2026-11-04 | frontend | Stage 21b: Show/hide password toggle | New PasswordInput component with eye-icon toggle, wired into every password field |
 | 155 | 2026-11-04 | credit-service | Credit Service: administrator transaction filters by user and order | Optional ?userId= and ?requestId= on the existing admin endpoint; no new route, no FR behind it |
+| 155 | 2026-11-02 | supplier-service | Phase 5: Authorization verification | Tested mutating endpoint authorization and updated JWKS integration tests. |
+| 156 | 2026-11-03 | supplier-service | Phase 5: Response inventory and API test plan | Documented existing messages and API calls; recorded supplied latency objective. |
+| 157 | 2026-11-04 | supplier-service | Phase 5: Performance and no-UI test decisions | Recorded supplied load targets and no-UI CI test intent. |
+| 158 | 2026-11-04 | supplier-service | Phase 5: Clarified load-test decisions | Recorded MySQL choice and four percentile targets. |
+| 159 | 2026-11-04 | supplier-service | Phase 5: Configurable rate limit and workload | Configured rate limit and recorded supplied workload distribution. |
+| 160 | 2026-11-04 | supplier-service | Phase 5: Pagination k6 workload | Added the mixed pagination load-test script. |
+| 161 | 2026-11-04 | supplier-service | Phase 5: Staging limit correction | Recorded the revised staging limit and current task status. |
+| 162 | 2026-11-04 | supplier-service | Phase 5: Accepted existing response messages | Recorded acceptance of existing messages and optional details. |
+| 163 | 2026-11-04 | supplier-service | Phase 5: Response-message tests and local pagination load run | Added message tests, load-test seed scripts; local k6 run missed targets. |
+| 164 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
+| 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
+| 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
+| 167 | 2026-11-05 | user-service | Stage 23a: TTL Env Var Bounds (NFR4.1.2) | Bounded `ACCESS_TOKEN_TTL_MINUTES` (1-15) and `REFRESH_TOKEN_TTL_DAYS` (1-30); set the latter to 30 days. |
+| 168 | 2026-11-05 | order-service          | F5.3.2: Admin user order history                                                                                 | Implemented admin order history, user existence checks, pagination, tests and documentation.                                                    |
+| 169 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |
+| 170 | 2026-11-05 | user-service | Stage 23b: sessionTimeLeftSeconds on Login and Refresh | Added `sessionTimeLeftSeconds`, computed in SQL, to the login and refresh responses. |
+| 171 | 2026-11-05 | frontend | Stage 23c: Expiry Warning Banner — Frontend | Added the non-dismissible 10-minute session-expiry banner and its deadline tracking. |
+| 172 | 2026-11-05 | frontend | Stage 22: Active View Controls Navigation (frontend) | Gated pages by requester/courier view, split My activity, removed Landing, added Register to nav. |
+| 173 | 2026-11-05 | supplier-service | Supplier bookmarking: design spec and implementation plan | Wrote the bookmarking spec and plan from the team's recorded decisions. |
+| 174 | 2026-11-05 | supplier-service | Supplier bookmarking: spec and plan updated for the team's gap answers | Recorded invalid-id, empty-list and label decisions in the spec and plan. |
+| 175 | 2026-11-05 | supplier-service | Supplier bookmarking: remaining spec gaps closed | Recorded UI placement, ordering and malformed-id handling decisions. |
+| 176 | 2026-11-05 | supplier-service | Supplier bookmarking: last spec gap closed | Recorded approval of 400 for a malformed id on bookmark add. |
+| 177 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: bookmarks table, endpoints, ids filter, Bookmarked filter | Added per-user supplier bookmarks and a Bookmarked filter across three services. |
+| 178 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: end-to-end browser check (D1) | Walked the bookmark flow in a browser against local services; admin UI path not run. |
+| 179 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: merge of main and landing page removal | Merged main, dropped the removed landing page's chip, moved its tests to the suppliers page. |

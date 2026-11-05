@@ -6,6 +6,11 @@
 #     chosen here. Node 24 matches every service Dockerfile.
 #     No requirements, architecture, schema, or API decisions were made by the AI tool.
 #   Author review:
+#   2026-11-04: Added the docker-build matrix job. Builds each service's deploy target so
+#     an image break cannot pass CI, as order-service's deps stage did. Target names are
+#     read from the existing Dockerfiles, not chosen here.
+#     No requirements, architecture, schema, or API decisions were made by the AI tool.
+#   Author review:
 
 name: CI
 
@@ -219,3 +224,70 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  # ---------------------------------------------------------------------------------
+  # docker-build
+  #
+  # Why this job exists: every job above runs `npm ci` and `npm test` on the host and
+  # never touches a Dockerfile, so a break in an image build passed CI untouched. That
+  # is not hypothetical — order-service's `deps` stage ran `npm ci` before `scripts/`
+  # was copied, so npm could not execute the postinstall file. It merged in PR #137,
+  # survived CI and a merge, and only surfaced days later on the first rebuild. Building
+  # `deps` here would have caught it on the PR.
+  #
+  # Only the deploy target is built. The shared `base`/`deps`/`build` stages are
+  # ancestors of it, so a break anywhere in that chain fails this job too.
+  #
+  # WHAT THIS DOES NOT COVER — the `dev` targets are never built:
+  #   * order-service `dev` and frontend `dev` are real stages with their own COPY and
+  #     CMD layers. A break in either would still reach main unnoticed.
+  #   * user-service, credit-service and supplier-service `dev` add nothing but a CMD on
+  #     top of `base`, which prod also builds, so for those three the gap is negligible.
+  #   * Nothing here RUNS a container: a build-time pass says the image assembles, not
+  #     that it boots, connects or serves. No image is pushed anywhere either.
+  #   * compose.yaml's base stack still runs `target: dev` for user-service,
+  #     credit-service and supplier-service, so the images this job validates are not
+  #     the ones `docker compose up` starts for those three. Flagged, not changed —
+  #     which target the deployed stack should use is the team's call.
+  # ---------------------------------------------------------------------------------
+  docker-build:
+    name: docker build (${{ matrix.service }}:${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One broken image must not hide the state of the other four.
+      fail-fast: false
+      matrix:
+        include:
+          - service: user-service
+            target: prod
+          - service: credit-service
+            target: prod
+          - service: supplier-service
+            target: prod
+          - service: frontend
+            target: prod
+          # `production`, not `prod`. This is the real stage name in
+          # order-service/Dockerfile and is spelled out rather than normalised here:
+          # renaming another service's stage would also mean editing compose.yaml and
+          # compose.dev.yaml, which is not this change's business. See the PR note.
+          - service: order-service
+            target: production
+    steps:
+      - uses: actions/checkout@v4
+      # buildx is what makes the GitHub Actions cache backend available; the default
+      # docker driver cannot export cache.
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.service }} (${{ matrix.target }})
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service }}
+          target: ${{ matrix.target }}
+          # Validate only. Nothing is pushed, and nothing is loaded into the runner's
+          # docker daemon — the exit status is the whole result we want.
+          push: false
+          load: false
+          # Scoped per service+target so the five legs do not evict each other from the
+          # 10 GB per-repository cache. mode=max keeps intermediate stages, which is
+          # what makes an unchanged lockfile skip `npm ci` on the next run.
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.target }}

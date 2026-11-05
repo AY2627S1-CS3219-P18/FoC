@@ -22,6 +22,13 @@
 //   instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-05: Stage 23b - added setRefreshTokenExpiresInMinutes, so tests can backdate a
+//   refresh token's expires_at to an arbitrary point for sessionTimeLeftSeconds coverage.
+//   Governing decision: instructions.md Stage 23b.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// 2026-11-05: Added getBookmarkRows for supplier bookmarking tests (Tool: Claude Code, model:
+//   claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -228,6 +235,13 @@ export async function expireRefreshToken(plain: string): Promise<void> {
   );
 }
 
+export async function setRefreshTokenExpiresInMinutes(plain: string, minutes: number): Promise<void> {
+  await pool.query(
+    `UPDATE refresh_tokens SET expires_at = NOW() + make_interval(mins => $2) WHERE token_hash = $1`,
+    [sha256(plain), minutes],
+  );
+}
+
 // Inserts an OTP with a known plaintext, for tests that skip the email step.
 export async function seedOtp(
   userId: string,
@@ -289,4 +303,14 @@ export async function waitForLockWaiters(count = 1, timeoutMs = 5000): Promise<v
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error('Timed out waiting for a query to block on a lock');
+}
+
+export async function getBookmarkRows(
+  userId: string,
+): Promise<{ supplier_id: number; created_at: Date }[]> {
+  const r = await pool.query<{ supplier_id: number; created_at: Date }>(
+    'SELECT supplier_id, created_at FROM user_bookmarks WHERE user_id = $1 ORDER BY created_at, supplier_id',
+    [userId],
+  );
+  return r.rows;
 }

@@ -5,6 +5,11 @@
  *        supplier-service/openapi.yaml (SupplierServiceArchitecture.md §7). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: Documented the ids parameter and added EMPTY_PAGE, per the 2026-11-05 supplier-bookmarking
+ *        spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -12,8 +17,17 @@ import { request } from './http'
 const BASE = '/api/v1'
 
 // --- user reads -------------------------------------------------------------------------
-// params: { page, search, location_id, category_id, isOpen, sortOrder } (limit is fixed at 50)
+// params: { page, search, location_id, category_id, isOpen, sortOrder, ids } (limit is fixed at 50).
+// `ids` is a comma-separated string of 1 to 20 supplier ids (the "Bookmarked" filter); the response then
+// also carries `unavailable: [{ id, status: 'hidden' | 'deleted' | 'invalid' }]`.
 export const listSuppliers = (params) => request(BASE + '/suppliers', { query: params })
+
+// What the Bookmarked filter shows without a request when the user has no bookmarks.
+export const EMPTY_PAGE = {
+  metadata: { totalRecords: 0, currPage: 1, limit: 50, totalPages: 0 },
+  data: [],
+  unavailable: [],
+}
 export const getSupplier = (id) => request(BASE + '/suppliers/' + id)
 export const listLocationOptions = () => request(BASE + '/suppliers/reference/location')
 export const listCategoryOptions = () => request(BASE + '/suppliers/reference/categories')

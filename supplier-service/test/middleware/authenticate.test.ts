@@ -14,6 +14,10 @@
  *        coverage for the authenticate middleware. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-04, Claude Code, model: claude-sonnet-5-5): added a non-null assertion on one indexed access to fix a
+ *        strict-typing error; no test logic changed. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review: Congchen
  * Scope (2026-11-02, Codex, model: GPT-6): made signature corruption deterministic.
  * Author review: Congchen
  */
@@ -159,7 +163,7 @@ describe("authenticate", () => {
     // AI-generated (edited by Congchen).
     const [header, payload, signature] = token({}, kid).split(".");
     const signatureBytes = Buffer.from(signature!, "base64url");
-    signatureBytes[0] ^= 1;
+    signatureBytes[0]! ^= 1;
     const invalid = `${header}.${payload}.${signatureBytes.toString("base64url")}`;
     const invalidResponse = await request(app)
       .get("/whoami")

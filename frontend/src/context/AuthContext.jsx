@@ -31,6 +31,22 @@
  *        doesn't matter any more which navigate call's router state wins.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 23c of instructions.md - tracks the 30-day session deadline for the expiry
+ *        warning banner. Subscribes to http.js's onSessionTimeLeft (fed by every login and
+ *        refresh) and stores the deadline as a performance.now()-based monotonic timestamp, so
+ *        a changed device clock has no effect. sessionExpiringSoon flips true once the deadline
+ *        is LEAD_TIME_MS or less away, via a scheduled timer chain recomputed whenever the
+ *        deadline or login status changes, not by polling. Chained rather than one setTimeout
+ *        because a fresh 30-day deadline's delay (~2.59e9 ms) overflows setTimeout's 32-bit
+ *        signed delay ceiling (~2.147e9 ms, MAX_TIMEOUT_MS below) and would otherwise fire
+ *        almost immediately instead of ~30 days later, showing the banner right after login;
+ *        caught by the "no carryover" test in tests/context/AuthContext.test.jsx, not by
+ *        inspection. The deadline is cleared on logout, forceReauth and session-expiry, so the
+ *        banner never carries over to the next login.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -38,10 +54,17 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as authApi from '../api/auth'
 import * as profileApi from '../api/profile'
 import { getBalance } from '../api/credits'
-import { setAccessToken, setOnSessionExpired } from '../api/http'
+import { setAccessToken, setOnSessionExpired, setOnSessionTimeLeft } from '../api/http'
 import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 
 const AuthContext = createContext(null)
+
+// NFR4.2.1: warn 10 minutes before the 30-day session expires.
+const LEAD_TIME_MS = 10 * 60 * 1000
+// setTimeout's delay is a 32-bit signed int (~24.8 days); a fresh 30-day deadline overflows
+// that in one call, firing almost immediately instead of ~30 days later. Chunk any longer wait
+// into steps of at most this size and reschedule.
+const MAX_TIMEOUT_MS = 2_147_483_647
 
 /** Logged out, or the balance could not be read. Module-scoped so its identity is stable. */
 const NO_CREDITS = { available: 0, reserved: 0, total: 0 }
@@ -66,6 +89,11 @@ export function AuthProvider({ children }) {
   // Alias kept for the pre-split naming (`sessionReady`): true once restore has resolved either way.
   const sessionReady = status !== 'loading'
   const isAdmin = user?.role === 'admin' || user?.role === 'super admin'
+
+  // See LEAD_TIME_MS above. Set from every login and refresh (setOnSessionTimeLeft, fed by
+  // http.js); null while logged out.
+  const [sessionDeadline, setSessionDeadline] = useState(null)
+  const [sessionExpiringSoon, setSessionExpiringSoon] = useState(false)
 
   const navigate = useNavigate()
   const location = useLocation()
@@ -97,9 +125,37 @@ export function AuthProvider({ children }) {
     setOnSessionExpired(() => {
       setUser(null)
       setStatus('anonymous')
+      setSessionDeadline(null)
       goToLogin('Your session has expired. Please log in again.')
     })
   }, [goToLogin])
+
+  useEffect(() => {
+    setOnSessionTimeLeft((secondsLeft) => {
+      setSessionDeadline(performance.now() + secondsLeft * 1000)
+    })
+  }, [])
+
+  // Recomputed (not polled) whenever the deadline or login status changes: a timer chain
+  // scheduled for the moment the lead time is crossed, cleared on the next change.
+  useEffect(() => {
+    if (!isLoggedIn || sessionDeadline == null) {
+      setSessionExpiringSoon(false)
+      return undefined
+    }
+    let timer
+    const tick = () => {
+      const msUntilWarning = sessionDeadline - LEAD_TIME_MS - performance.now()
+      if (msUntilWarning <= 0) {
+        setSessionExpiringSoon(true)
+        return
+      }
+      setSessionExpiringSoon(false)
+      timer = setTimeout(tick, Math.min(msUntilWarning, MAX_TIMEOUT_MS))
+    }
+    tick()
+    return () => clearTimeout(timer)
+  }, [isLoggedIn, sessionDeadline])
 
   // Order events need a signed-in user: one connection for the whole app.
   useEffect(() => {
@@ -121,6 +177,7 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null)
       setStatus('anonymous')
+      setSessionDeadline(null)
       // Explicit logout never remembers a "from" page.
       navigate('/login')
     }
@@ -138,6 +195,7 @@ export function AuthProvider({ children }) {
       setAccessToken(null)
       setUser(null)
       setStatus('anonymous')
+      setSessionDeadline(null)
       navigate('/login')
     },
     [navigate],
@@ -216,6 +274,7 @@ export function AuthProvider({ children }) {
       isLoggedIn,
       sessionReady,
       isAdmin,
+      sessionExpiringSoon,
       login,
       logout,
       forceReauth,
@@ -231,6 +290,7 @@ export function AuthProvider({ children }) {
       isLoggedIn,
       sessionReady,
       isAdmin,
+      sessionExpiringSoon,
       login,
       logout,
       forceReauth,

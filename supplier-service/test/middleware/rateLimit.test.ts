@@ -7,11 +7,14 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5): moved from src/middleware/rateLimit.test.ts to test/middleware/rateLimit.test.ts and updated
  *        the relative imports; no test logic changed. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-04, Codex, model: GPT-6): Tested the configured per-IP rate limit and default.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { errorHandler } from '../../src/middleware/errorHandler.js';
 import { createRateLimiter } from '../../src/middleware/rateLimit.js';
 
@@ -62,5 +65,32 @@ describe('rateLimit', () => {
 
     expect(blocked.status).toBe(429);
     expect(otherIp.status).toBe(200);
+  });
+});
+
+
+describe('configured rate limit', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+
+  it('uses the configured limit for requests from one IP', async () => {
+    vi.stubEnv('PER_IP_RATE_LIMIT', '2');
+    vi.resetModules();
+    const { createRateLimiter: configuredLimiter } = await import('../../src/middleware/rateLimit.js');
+    const { errorHandler: configuredErrorHandler } = await import('../../src/middleware/errorHandler.js');
+    const app = express();
+    app.use(configuredLimiter());
+    app.get('/ping', (_req, res) => res.sendStatus(200));
+    app.use(configuredErrorHandler);
+    expect((await request(app).get('/ping')).status).toBe(200);
+    expect((await request(app).get('/ping')).status).toBe(200);
+    expect((await request(app).get('/ping')).status).toBe(429);
+  });
+
+  it('defaults to 30 when unset', async () => {
+    vi.stubEnv('PER_IP_RATE_LIMIT', undefined);
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.resetModules();
+    const { config } = await import('../../src/config.js');
+    expect(config.perIpRateLimit).toBe(30);
   });
 });

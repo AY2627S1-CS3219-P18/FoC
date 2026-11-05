@@ -46,16 +46,36 @@
  *        instructions.md Stage 16g.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Mounted SessionExpiryBanner above TopNav, per instructions.md Stage 23c, so the
+ *        non-dismissible expiry warning shows at the top of every page regardless of route.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Per instructions.md Stage 22: replaced Landing with Home (redirects by login/view
+ *        state); split /activity into /my-errands and /my-deliveries; wrapped Suppliers,
+ *        SupplierDetail, RequestBoard and the admin supplier routes in RequireAuth (logged-out
+ *        visitors may now open only /login, /register and /forgot-password); wrapped the
+ *        requester-only and courier-only routes in the new ViewGate, reading VIEWS from the
+ *        shared routing/views.js list. Added NavigationHistoryTracker, which Chat.jsx's back
+ *        arrow reads to tell a direct/new-tab visit from in-app navigation.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { useEffect } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
+import SessionExpiryBanner from "./components/SessionExpiryBanner";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
 import DemoControls from "./components/DemoControls";
 import ChatBubble from "./components/ChatBubble";
-import { RequireAuth, RequireRole } from "./components/RouteGuards";
-import Landing from "./pages/Landing";
+import { RequireAuth, RequireRole, ViewGate } from "./components/RouteGuards";
+import { VIEWS } from "./routing/views";
+import { recordNavigation } from "./routing/navigationHistory";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -64,7 +84,8 @@ import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
 import CreateRequest from "./pages/CreateRequest";
 import RequestBoard from "./pages/RequestBoard";
-import Activity from "./pages/Activity";
+import MyErrands from "./pages/MyErrands";
+import MyDeliveries from "./pages/MyDeliveries";
 import Chat from "./pages/Chat";
 import Wallet from "./pages/Wallet";
 import AdminSuppliers from "./pages/AdminSuppliers";
@@ -80,6 +101,25 @@ function ScrollToTop() {
   return null;
 }
 
+// Feeds routing/navigationHistory.js: records every real in-app route change (PUSH from a
+// Link/navigate, POP from browser back/forward) after the tab's first render, so Chat's back
+// arrow can tell a direct URL/new-tab visit (no recorded navigation yet) from one reached via
+// the app. REPLACE (e.g. the /chat -> /chat/:id redirect below) is deliberately not recorded:
+// it is not a page the visitor actually saw.
+function NavigationHistoryTracker() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (navigationType === "PUSH" || navigationType === "POP") recordNavigation();
+  }, [pathname, navigationType]);
+  return null;
+}
+
 export default function App() {
   const { pathname } = useLocation();
   // The chat thread fills the viewport, so it does not carry the marketing footer.
@@ -88,10 +128,12 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollToTop />
+      <NavigationHistoryTracker />
+      <SessionExpiryBanner />
       <TopNav />
       <main className="flex-1">
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -103,13 +145,33 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/suppliers" element={<Suppliers />} />
-          <Route path="/suppliers/:id" element={<SupplierDetail />} />
+          <Route
+            path="/suppliers"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <Suppliers />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/suppliers/:id"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <SupplierDetail />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
           <Route
             path="/requests/new"
             element={
               <RequireAuth>
-                <CreateRequest />
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <CreateRequest />
+                </ViewGate>
               </RequireAuth>
             }
           />
@@ -117,16 +179,39 @@ export default function App() {
             path="/requests/:id/edit"
             element={
               <RequireAuth>
-                <CreateRequest />
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <CreateRequest />
+                </ViewGate>
               </RequireAuth>
             }
           />
-          <Route path="/requests" element={<RequestBoard />} />
           <Route
-            path="/activity"
+            path="/my-errands"
             element={
               <RequireAuth>
-                <Activity />
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <MyErrands />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/requests"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.COURIER}>
+                  <RequestBoard />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/my-deliveries"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.COURIER}>
+                  <MyDeliveries />
+                </ViewGate>
               </RequireAuth>
             }
           />
@@ -147,11 +232,29 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/admin/suppliers" element={<AdminSuppliers />} />
-          <Route path="/admin/suppliers/new" element={<AdminSupplierForm />} />
+          <Route
+            path="/admin/suppliers"
+            element={
+              <RequireAuth>
+                <AdminSuppliers />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/suppliers/new"
+            element={
+              <RequireAuth>
+                <AdminSupplierForm />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/admin/suppliers/:id/edit"
-            element={<AdminSupplierForm />}
+            element={
+              <RequireAuth>
+                <AdminSupplierForm />
+              </RequireAuth>
+            }
           />
           <Route
             path="/admin/users"

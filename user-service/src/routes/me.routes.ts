@@ -31,9 +31,16 @@
  *        instructions.md Stage 12e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: Added GET /bookmarks, PUT /bookmarks/:supplierId and DELETE /bookmarks/:supplierId, per
+ *        the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
+import * as bookmarksController from '../controllers/bookmarks.controller.js';
 import * as meController from '../controllers/me.controller.js';
 import { authenticate } from '../middleware/authenticate.js';
 
@@ -47,5 +54,8 @@ router.post('/verify-otp', authenticate, meController.verifyOtp);
 router.post('/resend-otp', authenticate, meController.resendOtp);
 router.put('/password', authenticate, meController.changePassword);
 router.post('/confirm-password-change', authenticate, meController.confirmPasswordChange);
+router.get('/bookmarks', authenticate, bookmarksController.list);
+router.put('/bookmarks/:supplierId', authenticate, bookmarksController.add);
+router.delete('/bookmarks/:supplierId', authenticate, bookmarksController.remove);
 
 export default router;

@@ -13,6 +13,12 @@
  *        filters are single-choice. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
+ * Scope: Added a Bookmarked filter that sends the user's bookmark ids and clears deleted bookmarks,
+ *        per the 2026-11-05 supplier-bookmarking spec. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -22,8 +28,9 @@ import Button from '../components/Button'
 import EmptyState from '../components/EmptyState'
 import { Pager, useApiNotice } from '../components/ApiNotice'
 import { useApi, useReferenceData } from '../api/useApi'
-import { listSuppliers } from '../api/suppliers'
+import { EMPTY_PAGE, listSuppliers } from '../api/suppliers'
 import { groupByLocation, locationOpenSummary } from '../data/suppliers'
+import { useBookmarks } from '../context/BookmarksContext'
 
 // §7.2: sorting is fixed to alphabetical supplier-name order, A-Z or Z-A.
 const SORTS = ['A-Z', 'Z-A']
@@ -35,10 +42,13 @@ export default function Suppliers() {
   const [categoryId, setCategoryId] = useState('')
   const [locationId, setLocationId] = useState('')
   const [openNow, setOpenNow] = useState(false)
+  const [bookmarkedOnly, setBookmarkedOnly] = useState(false)
   const [sort, setSort] = useState(SORTS[0])
   const [page, setPage] = useState(1)
   const [sheetOpen, setSheetOpen] = useState(false)
   const { locations, categories } = useReferenceData()
+  const { ids, ready, pruneDeleted } = useBookmarks()
+  const idsKey = ids.join(',')
 
   // Wait for the typing to pause before asking the service.
   useEffect(() => {
@@ -49,7 +59,7 @@ export default function Suppliers() {
   // Any filter change goes back to page 1.
   useEffect(() => {
     setPage(1)
-  }, [search, categoryId, locationId, openNow, sort])
+  }, [search, categoryId, locationId, openNow, bookmarkedOnly, sort])
 
   const params = useMemo(
     () => ({
@@ -59,21 +69,34 @@ export default function Suppliers() {
       category_id: categoryId,
       isOpen: openNow ? 'true' : undefined,
       sortOrder: sort,
+      ids: bookmarkedOnly ? idsKey : undefined,
     }),
-    [page, search, locationId, categoryId, openNow, sort],
+    [page, search, locationId, categoryId, openNow, sort, bookmarkedOnly, idsKey],
   )
-  const { data, loading, error } = useApi(() => listSuppliers(params), [params])
+  // No bookmarks: show the empty page here. The request helper drops empty query values, so an empty
+  // ids would never reach the service and the call would list every supplier.
+  const { data, loading, error } = useApi(
+    () => (bookmarkedOnly && idsKey === '' ? Promise.resolve(EMPTY_PAGE) : listSuppliers(params)),
+    [params],
+  )
   const notice = useApiNotice({ loading: loading && !data, error })
+
+  // Ids the service reports as deleted are cleared from the user's bookmarks.
+  useEffect(() => {
+    if (bookmarkedOnly && data?.unavailable?.length) pruneDeleted(data.unavailable)
+  }, [bookmarkedOnly, data, pruneDeleted])
 
   const results = data?.data ?? []
   const total = data?.metadata.totalRecords ?? 0
   const grouped = groupByLocation(results)
+  const noBookmarks = bookmarkedOnly && ready && ids.length === 0
 
   const clearFilters = () => {
     setQuery('')
     setCategoryId('')
     setLocationId('')
     setOpenNow(false)
+    setBookmarkedOnly(false)
   }
 
   const radio = (name, label, checked, onChange) => (
@@ -112,6 +135,18 @@ export default function Suppliers() {
             className="h-4 w-4 shrink-0 rounded-[4px] border-line text-ink focus:ring-blue"
           />
           <span>Open now</span>
+        </label>
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Bookmarks</h3>
+        <label className="mt-1 flex min-h-[44px] cursor-pointer items-center gap-2.5 text-sm text-ink-70">
+          <input
+            type="checkbox"
+            checked={bookmarkedOnly}
+            onChange={() => setBookmarkedOnly((v) => !v)}
+            className="h-4 w-4 shrink-0 rounded-[4px] border-line text-ink focus:ring-blue"
+          />
+          <span>Bookmarked</span>
         </label>
       </div>
       <div>
@@ -209,8 +244,8 @@ export default function Suppliers() {
           {!notice && results.length === 0 && (
             <div className="mt-5">
               <EmptyState
-                title="No suppliers match those filters"
-                body="Try clearing a filter, or search for a location like The Deck."
+                title={noBookmarks ? 'No bookmarked suppliers.' : 'No suppliers match those filters'}
+                body={noBookmarks ? undefined : 'Try clearing a filter, or search for a location like The Deck.'}
                 action={
                   <Button variant="secondary" size="sm" onClick={clearFilters}>
                     Clear filters
