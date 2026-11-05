@@ -24,6 +24,10 @@
  *        /active and /mine paths so they are not captured as ids.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Codex (model: GPT-6), date: 2026-11-05
+ * Scope: Implemented the team-specified admin user order listing contract from chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import { Router } from 'express';
@@ -36,11 +40,12 @@ import { isUuid } from '../utils/validation.js';
 
 export interface OrdersRouterDeps {
   events?: OrderEventPublisher;
+  userServiceUrl?: string;
 }
 
 export function ordersRouter(
   prisma: PrismaClient,
-  { events }: OrdersRouterDeps = {},
+  { events, userServiceUrl = 'http://localhost:3001' }: OrdersRouterDeps = {},
 ): Router {
   const router = Router();
   router.param('id', (_req, res, next, id) => {
@@ -53,6 +58,11 @@ export function ordersRouter(
   router.get('/', ordersController.getOrders(prisma));
   router.get('/active', ordersController.getActiveDeliveries(prisma));
   router.get('/mine', ordersController.getMyOrders(prisma));
+  // AI-generated (edited by <name>).
+  router.get(
+    '/admin/users/:userId',
+    ordersController.getAdminUserOrders(prisma, userServiceUrl),
+  );
   router.get('/:id', ordersController.getOrderById(prisma));
   router.post('/', ordersController.createOrder(prisma));
   router.post('/:id/accept', transition('accepted'));

@@ -3841,12 +3841,15 @@ Same as earlier stages: header comment on every file created or modified, and a 
 
 > **Scope**: `frontend/` only. The requester/courier toggle (Stages 11 and 16f) decides which
 > pages the user sees. In requester view the main page is the Suppliers page; in courier view it
-> is the Find errands page.
+> is the Find errands page. The Landing page is removed.
 >
 > No backend changes. This stage reuses the existing `active_view` column,
 > `PUT /users/me/active-view`, and `activeView` on `POST /auth/login` and `GET /users/me`.
 >
 > Backlog refs: F5.2.2.
+>
+> The read-and-report step for this stage (22a) is done; the decisions below incorporate your
+> report.
 >
 > **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
 > remains, or anything below disagrees with the code, stop and ask me.
@@ -3858,52 +3861,48 @@ Same as earlier stages: header comment on every file created or modified, and a 
 >   `src/components/DemoControls.jsx` or `AI-NOTES.md`.
 > - List every file outside user-service screens that you touched.
 >
-> This stage changes the My activity and Find errands pages. Confirm the owners of those pages
-> have agreed before starting.
+> This stage changes the Landing, Suppliers, My activity, Find errands, Chat and admin supplier
+> pages, and puts Suppliers, supplier detail, Find errands and the admin supplier pages behind
+> login. Confirm the owners of
+> those pages have agreed before starting.
 
 ### Design decisions
 
-#### Which pages each view shows
+#### Which pages each view shows (logged-in users)
 
-| View           | Pages                                                                        |
-| -------------- | ---------------------------------------------------------------------------- |
-| Requester only | Suppliers (main page), supplier detail, request form, My errands             |
-| Courier only   | Find errands (main page), My deliveries                                      |
-| Both views     | Chat, Credits, Account, and the admin pages (Manage suppliers, Manage users) |
+| View           | Pages                                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Requester only | Suppliers (`/suppliers`, main page), supplier detail (`/suppliers/:id`), request form (`/requests/new` and `/requests/:id/edit`), My errands (`/my-errands`) |
+| Courier only   | Find errands (`/requests`, main page), My deliveries (`/my-deliveries`)                                                                                      |
+| Both views     | Chat, Credits (`/wallet`), Account, and the admin pages (`/admin/suppliers*`, `/admin/users`)                                                                |
 
-Any page found in Stage 22a that is not in this table → stop and ask me which view it belongs to.
+Any page found that is not in this table → stop and ask me which view it belongs to.
 
 #### Behaviour
 
-| Rule                        | Value                                                                                                                                                                                                                                                                                                           |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend                     | No changes                                                                                                                                                                                                                                                                                                      |
-| Source of the current view  | `AuthContext.user.activeView` (unchanged from 16f)                                                                                                                                                                                                                                                              |
-| Page-to-view list           | One shared list in code. Every route, the nav bar and the blocked-page check all read from it.                                                                                                                                                                                                                  |
-| My activity                 | Split into two pages: My errands at `/my-errands` (requester only) and My deliveries at `/my-deliveries` (courier only). The old My activity route is removed. If existing frontend paths use underscores rather than hyphens, report it in 22a before choosing.                                                |
-| Nav bar                     | Shows only the pages of the current view, plus the pages shown in both views. The other view's links are hidden. In requester view the nav shows "My errands"; in courier view it shows "My deliveries".                                                                                                        |
-| Opening another view's page | Shown in place; the URL is unchanged. Message: "This is only available in `<view>` mode", where `<view>` is the view that page belongs to. Two buttons: one switches to that view (staying on the page, which then renders normally), and one goes to the current view's main page (Suppliers or Find errands). |
-| Toggling the view           | Optimistic, revert and toast on failure (unchanged from 16f). The user stays on the current page. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                         |
-| What `/` (home) shows       | The main page of the current view                                                                                                                                                                                                                                                                               |
-| New users                   | Start in requester view (the existing schema default, unchanged). The saved view persists across sessions as before (F5.2.2).                                                                                                                                                                                   |
-| Landing after login         | Unchanged from Stage 16: the page the user was sent away from, else home. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                                                 |
-| Find errands empty state    | Remove the "Post an errand" button. Heading: "No errands available". Text: "Check back in a bit."                                                                                                                                                                                                               |
-| Notifications               | Not implemented yet; out of scope for this stage. See "Notes for later".                                                                                                                                                                                                                                        |
+| Rule                        | Value                                                                                                                                                                                                                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend                     | No changes                                                                                                                                                                                                                                                                                                                  |
+| Source of the current view  | `AuthContext.user.activeView` (unchanged from 16f)                                                                                                                                                                                                                                                                          |
+| Page-to-view list           | One shared list in code. Every route, the nav bar and the blocked-page check all read from it.                                                                                                                                                                                                                              |
+| Landing page                | Removed. Delete `Landing.jsx` and anything only it uses (components, styles, tests).                                                                                                                                                                                                                                        |
+| `/` (home)                  | Redirects: logged in → the current view's main page (`/suppliers` or `/requests`); logged out → `/login`. The FoC logo, the post-login fallback and the Forbidden page's home link all keep pointing at `/`.                                                                                                                |
+| My activity                 | Split into two pages: My errands at `/my-errands` (requester only) and My deliveries at `/my-deliveries` (courier only). The `/activity` route is removed. Links that went to `/activity` from the request form (after posting or editing) go to `/my-errands`.                                                             |
+| Nav bar (logged in)         | Shows only the pages of the current view, plus the pages shown in both views. The other view's links are hidden. In requester view the nav shows "My errands"; in courier view it shows "My deliveries".                                                                                                                    |
+| Nav bar (logged out)        | No page links. Only Log in and Register.                                                                                                                                                                                                                                                                                    |
+| Logged-out visitors         | Can open only `/login`, `/register` and `/forgot-password`. Every other page, including Suppliers, supplier detail, Find errands and the admin supplier pages, is behind `RequireAuth`, which sends them to `/login` and remembers the page (existing Stage 16 behaviour). The blocked-page message is never shown to them. |
+| Opening another view's page | Shown in place; the URL is unchanged. Message: "This is only available in `<view>` mode", where `<view>` is the view that page belongs to. Two buttons: one switches to that view (staying on the page, which then renders normally), and one goes to the current view's main page (Suppliers or Find errands).             |
+| Toggling the view           | Optimistic, revert and toast on failure (unchanged from 16f). The user stays on the current page. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                                     |
+| New users                   | Start in requester view (the existing schema default, unchanged). The saved view persists across sessions as before (F5.2.2).                                                                                                                                                                                               |
+| Landing after login         | Unchanged from Stage 16: the page the user was sent away from, else `/`. If that page belongs only to the other view, the blocked-page message above is shown.                                                                                                                                                              |
+| Find errands empty state    | Remove the "Post an errand" button. Heading: "No errands available". Text: "Check back in a bit."                                                                                                                                                                                                                           |
+| Chat back arrow (mobile)    | Goes back to the previous page instead of the fixed `/activity` link. When there is no previous in-app page (e.g. the chat was opened directly by URL or in a new tab), it goes to the current view's main page (Suppliers or Find errands).                                                                                |
+| Notifications               | Not implemented yet; out of scope for this stage. See "Notes for later".                                                                                                                                                                                                                                                    |
 
----
+### Watch for
 
-## Stage 22a: Read and Report (no code changes)
-
-Read `frontend/` and report the following. Then **stop and wait for my answers**.
-
-1. **Routes**: every route in `App.jsx`, with its path, page component and existing guards (`RequireAuth`, `RequireRole`). Mark any page not in the table above.
-2. **Path convention**: whether existing multi-word paths use hyphens or underscores.
-3. **Nav**: every nav link and where it is defined (`TopNav.jsx` and any mobile menu).
-4. **Cross-page navigation**: every in-page link, button or `navigate()` call that leads from a page in one view to a page that belongs only to the other view.
-5. **Home**: what `/` currently renders or redirects to.
-6. **Login redirect**: how `RequireAuth`'s `from` state and the post-login redirect currently work.
-7. **`activeView` consumers**: every file that currently reads `activeView` or calls `setActiveView`.
-8. **My activity**: how it currently splits My errands and My deliveries (tabs, components, data fetching), and every link to its path.
+- `/` must not redirect until session restore has finished (`AuthContext` status is no longer `loading`). Otherwise a logged-in courier is briefly sent to `/suppliers`.
+- The blocked-page check runs only when the status is `authenticated`.
 
 ---
 
@@ -3913,22 +3912,41 @@ Implement the design decisions above exactly as written. Do not choose behaviour
 
 ### Verification
 
+Logged in:
+
 - Requester view: the nav shows Suppliers and My errands (plus the shared pages), not Find errands or My deliveries
 - Courier view: the nav shows Find errands and My deliveries (plus the shared pages), not Suppliers or My errands
-- `/` shows Suppliers in requester view and Find errands in courier view
+- `/` redirects to `/suppliers` in requester view and `/requests` in courier view, with no flash of the wrong page during session restore
+- The FoC logo goes to the current view's main page
 - Chat, Credits, Account and the admin pages open normally in both views
 - Admin pages stay visible in both views (for admins)
 - Opening a courier-only page in requester view (typed URL, back button) → blocked-page message, URL unchanged, saying "courier mode"; and the reverse for requester-only pages
+- `/requests/:id/edit` in courier view → blocked-page message
 - Blocked page, switch button → the view switches, the user stays on the page, and the page renders
 - Blocked page, main-page button → goes to the current view's main page without changing the view
 - Toggle on a page in both views → the user stays on that page
 - Toggle on a page belonging only to the old view → the user stays on it and sees the blocked-page message
 - Toggle failure (user-service stopped) → the view reverts, a toast is shown, and the nav matches the reverted view
-- `/my-errands` and `/my-deliveries` each show their half of the old My activity page; the old My activity path no longer exists
+- `/my-errands` and `/my-deliveries` each show their half of the old My activity page; `/activity` no longer exists
+- Posting or editing an errand → lands on `/my-errands`
 - Find errands' empty state has no "Post an errand" button and reads "No errands available" / "Check back in a bit."
-- Logged out on a courier-only page, logged in with a saved requester view → after login, back on that page with the blocked-page message saying "courier mode"
+- Chat back arrow → returns to the page the chat was opened from
+- Chat opened directly by URL or in a new tab → back arrow goes to the current view's main page
 - New user → starts in requester view and sees Suppliers
+- Logged out on a courier-only page, logged in with a saved requester view → after login, back on that page with the blocked-page message saying "courier mode"
 - Reload, or log in on another browser → same view and same set of pages as before
+
+Logged out:
+
+- `/` redirects to `/login`
+- `/login`, `/register` and `/forgot-password` open normally
+- Every other page (Suppliers, supplier detail, Find errands, request form, My errands, My deliveries, Chat, Credits, Account, admin pages) redirects to `/login`; after logging in, the user lands back on that page (or sees the blocked-page message if it belongs to the other view)
+- The nav shows no page links, only Log in and Register
+- No blocked-page message appears anywhere
+
+General:
+
+- `Landing.jsx` and anything only it used are gone; nothing imports them
 - No files under `user-service/` changed
 
 ### Tests (Vitest)
@@ -3942,7 +3960,208 @@ Same as earlier stages: header comment on every file created or modified, and a 
 ### Notes for later (do not implement now)
 
 - **Notifications**: when they are implemented, decide what a notification linking to a page in the other view does (e.g. a "your errand was accepted" notification received while in courier view). Add its page to the page-to-view list.
+- **My errands / My deliveries data fetching**: My activity loads both halves in one fetch. Whether each new page fetches only its own half is pending the order-service owners' reply. Until then, keep the existing fetch behaviour.
 
 ### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
 
 - **F5.2.2**: TODO (team): wording describing what the active view now controls. Not needed to implement this stage.
+
+# Stage 23: Session Lifetime and Expiry Warning (NFR4)
+
+> **Scope**: `user-service` and `frontend`.
+>
+> - 23a: sessions get a fixed absolute lifetime of 30 days from login, and both token TTL env vars get bounds
+> - 23b: login and refresh responses tell the frontend how long the session has left
+> - 23c: the frontend shows a banner 10 minutes before the 30-day expiry
+>
+> There is no idle timeout.
+>
+> Backlog refs: NFR4.1.2 (changed), NFR4.2.1 (reworded), NFR4.1.1 (dropped).
+>
+> This supersedes the 7-day refresh token lifetime in Stage 1 (stack) and Stage 4c (login).
+>
+> **Before starting:** read the current code, not just this file. If anything below disagrees
+> with the code, stop and ask me. Implement one sub-stage at a time and wait for my
+> confirmation before the next.
+
+### Design decisions (already made, do not change)
+
+**Session lifetime**
+
+| Rule                                | Value                                                                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Session lifetime                    | 30 days, fixed from login. Not a sliding window: no activity or `POST /auth/refresh` call extends it. Refresh tokens are still not rotated.                                          |
+| `REFRESH_TOKEN_TTL_DAYS`            | `30` in `.env`, `.env.example` and `.env.test`. Bounds 1–30 inclusive.                                                                                                               |
+| `ACCESS_TOKEN_TTL_MINUTES`          | Unchanged at `15`. Bounds 1–15 inclusive.                                                                                                                                            |
+| Access-token tail                   | Accepted. An access token issued just before the refresh token expires stays valid for up to `ACCESS_TOKEN_TTL_MINUTES` after it, so the real maximum is about 30 days + 15 minutes. |
+| Idle timeout (NFR4.1.1)             | Not implemented. Dropped from scope.                                                                                                                                                 |
+| Out-of-bounds values                | The app exits at startup with a clear error naming the variable and the allowed range, through the existing env-validation error path                                                |
+| Existing tests that hardcode 7 days | Report them and stop. Do not change them.                                                                                                                                            |
+
+**Expiry warning**
+
+| Rule                  | Value                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| What it warns about   | The 30-day absolute expiry only                                                                                                                        |
+| Data from the server  | Seconds left until the refresh token's `expires_at`, in a field named `sessionTimeLeftSeconds`                                                         |
+| Responses carrying it | `POST /auth/login` and `POST /auth/refresh` (session restore on page load already goes through refresh)                                                |
+| Lead time             | 10 minutes before expiry                                                                                                                               |
+| Display               | A banner, not dismissible. It stays until the user is signed out.                                                                                      |
+| Banner action         | A "Log in again" button: logs out now and goes to `/login`, so the user starts a fresh 30-day session                                                  |
+| At expiry             | No special handling. The user is signed out at the next refresh, as today (up to ~15 minutes after the 30-day mark, because of the access-token tail). |
+| Extend option         | None. The 30 days cannot be extended.                                                                                                                  |
+
+---
+
+## Stage 23a: 30-Day Lifetime and TTL Bounds
+
+### Changes to already-implemented code
+
+| #   | File                             | Change                                                                              |
+| --- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | `user-service/src/config.ts`     | Add bounds to `REFRESH_TOKEN_TTL_DAYS` (1–30) and `ACCESS_TOKEN_TTL_MINUTES` (1–15) |
+| 2   | `user-service/.env`, `.env.test` | `REFRESH_TOKEN_TTL_DAYS=30`                                                         |
+| 3   | `user-service/.env.example`      | `REFRESH_TOKEN_TTL_DAYS=30`, and a range comment on both TTL lines                  |
+
+### Update `user-service/src/config.ts`
+
+- `REFRESH_TOKEN_TTL_DAYS`: keep `z.coerce.number().int().positive()` and add the bound 1–30 inclusive
+- `ACCESS_TOKEN_TTL_MINUTES`: same, with the bound 1–15 inclusive
+- Reuse the existing error-reporting path for out-of-bounds values. Do not add a new one.
+- Change nothing else in `config.ts`.
+
+### Update the env files
+
+`.env` and `.env.test`: set `REFRESH_TOKEN_TTL_DAYS=30`. Change nothing else.
+
+`.env.example`: set `REFRESH_TOKEN_TTL_DAYS=30` and add the allowed range as a comment on each TTL line. Change nothing else.
+
+```env
+ACCESS_TOKEN_TTL_MINUTES=15   # 1–15
+REFRESH_TOKEN_TTL_DAYS=30     # 1–30
+```
+
+Check that `config.ts` still parses these lines with the comments on them (no comment text in the value). If it does not, stop and tell me.
+
+### Check before finishing (report only, do not change)
+
+- **Refresh cookie `Max-Age`:** confirm it is derived from `config.jwt.refreshTokenTtlDays`, not a hardcoded 7 days. If it is hardcoded, stop and tell me.
+- **Other hardcoded 7-day values:** search `user-service/` and `frontend/` for any other place that assumes a 7-day session (code, comments, user-facing text). List them; do not change them.
+- **Docs:** list any place in `user-service/docs/` or the root `README.md` that states the 7-day lifetime. Do not edit them; I will decide.
+- **Tests:** run the full suite after the change. List every test that fails because it hardcodes 7 days, with file and line, and stop. If a test fails for any other reason, also stop and report it.
+
+### Verification
+
+- `REFRESH_TOKEN_TTL_DAYS=0` and `=31` → app exits with a clear error naming the variable and the 1–30 range
+- `ACCESS_TOKEN_TTL_MINUTES=0` and `=16` → app exits with a clear error naming the variable and the 1–15 range
+- `REFRESH_TOKEN_TTL_DAYS=1` and `=30`, `ACCESS_TOKEN_TTL_MINUTES=1` and `=15` → accepted
+- A non-integer value for either → still rejected
+- The new `.env`, `.env.example` and `.env.test` values → accepted, and a `.env` copied from `.env.example` starts the service cleanly
+- A new login → the `refresh_tokens` row has `expires_at - created_at` = 30 days, and the refresh cookie's `Max-Age` is 30 days
+- `POST /auth/refresh` does not change `expires_at`
+- A refresh token with `expires_at` backdated to the past → `POST /auth/refresh` returns `401 INVALID_REFRESH_TOKEN`
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules.
+
+- For the config bounds, follow the existing config-validation tests (child process, assert exit code and stderr). Every bound and boundary bullet above is a required test case.
+- The remaining bullets are likely already covered by existing tests once `.env.test` is 30. Where they are, do not duplicate them. Where they aren't, add them.
+- Do not modify application code to make a test pass, and do not change tests that hardcode 7 days (see "Check before finishing").
+
+---
+
+## Stage 23b: `sessionTimeLeftSeconds` on Login and Refresh
+
+### Changes to already-implemented code
+
+| #   | File                                                      | Change                                                                        |
+| --- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 1   | `src/services/auth.service.ts` (`login`, `refresh`)       | Return `sessionTimeLeftSeconds` alongside the existing return values          |
+| 2   | `src/controllers/auth.controller.ts` (`login`, `refresh`) | Include it in the response body                                               |
+| 3   | `src/db/queries/tokens.queries.ts`                        | Return the seconds left, computed in SQL, where `login` and `refresh` need it |
+| 4   | Existing tests                                            | Update assertions on the exact login and refresh response shape (see Tests)   |
+
+### Response shapes
+
+- `POST /auth/login` → `200` with `{ accessToken, user: { id, username, email, role, activeView }, sessionTimeLeftSeconds }`. The `user` object is unchanged.
+- `POST /auth/refresh` → `200` with `{ accessToken, sessionTimeLeftSeconds }`
+
+`sessionTimeLeftSeconds` is a top-level field, not inside `user`.
+
+### How it is computed
+
+- Seconds from now until the refresh token's `expires_at`, whole seconds, rounded down, never negative
+- Computed in SQL against the database clock (convention 5), e.g. from `expires_at - clock_timestamp()`. Never `Date.now()`.
+- In `login`: from the refresh token row just created by `createRefreshToken` (inside the existing transaction)
+- In `refresh`: from the locked token row, after all existing checks pass
+- Add the value to the existing queries' `RETURNING` / `SELECT` lists rather than adding a separate query, where that is possible. Tell me what you chose.
+
+Nothing else about `login` or `refresh` changes: checks, check order, locking and error codes stay as they are.
+
+### Verification
+
+- `POST /auth/login` → body includes `sessionTimeLeftSeconds` ≈ 30 days in seconds (2,592,000), and the `user` object is unchanged
+- `POST /auth/refresh` right after login → `sessionTimeLeftSeconds` ≈ the login value minus the elapsed time
+- Backdate `expires_at` to 5 minutes from now → `POST /auth/refresh` returns `sessionTimeLeftSeconds` ≈ 300
+- `POST /auth/refresh` does not change `expires_at`
+- Every existing login and refresh error case returns exactly as before (no `sessionTimeLeftSeconds` on errors)
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules. Every Verification bullet above is a required test case.
+
+Existing tests that assert the exact login or refresh response body (e.g. `toEqual({ accessToken })`) will need the new field: update only those response-shape assertions, as in Stage 15c. If a test fails for any other reason, stop and report it. Do not modify application code to make a test pass.
+
+---
+
+## Stage 23c: Expiry Warning Banner — Frontend
+
+### Ground rules
+
+Same as Stage 16:
+
+- Work in `frontend/` only; never touch `foc-mockup/`
+- Do not modify `src/realtime/orderSocket.js`, `src/data/users.js`, `src/components/DemoControls.jsx` or `AI-NOTES.md`
+- Auth state stays in `AuthContext`; network calls go through `src/api/http.js`
+- Reuse the existing banner component (`FormBanner` or whatever 16b settled on) and the existing text conventions
+- React 18, JSX, no new libraries
+- List every file you touched outside the files named below
+
+### What to build
+
+- **Read the value:** whenever a login or refresh response arrives (login, session restore, the proactive refresh, refresh-after-401), read `sessionTimeLeftSeconds` and store a local deadline in `AuthContext`, measured with a monotonic clock (`performance.now()`) so a wrong or changed device clock has no effect.
+- **Show the banner:** while authenticated, once the deadline is 10 minutes or less away, show a banner at the top of every page. It cannot be dismissed. Each tab works this out from its own refresh responses; no cross-tab coordination is needed.
+- **Lead time:** a named constant (10 minutes) at the top of the file that uses it. No new env var.
+- **Banner text:** add it in the same place and style as the existing user-facing text. It must not promise an exact sign-out time, since the actual sign-out happens at the next refresh (see "At expiry"). Put the text in your summary so I can review it.
+- **"Log in again" button:** calls the existing `AuthContext.logout()`, i.e. the same as the TopNav logout (explicit logout: no return to `from`).
+- **At expiry:** nothing new. The existing refresh-failure path handles it.
+- **On logout:** clear the deadline and any timer, so the banner never appears while logged out or carries over to the next login.
+
+### Verification
+
+- After login, no banner
+- Backdate `expires_at` (backend) to 15 minutes from now, then reload → no banner; after 5 minutes → banner appears
+- Backdate to 5 minutes from now, then reload → banner appears immediately
+- The banner has no dismiss control and stays across page navigation
+- "Log in again" → logged out and on `/login`; logging in → no banner (fresh 30 days)
+- Changing the device clock does not make the banner appear or disappear
+- Two tabs open → both show the banner when their deadline is reached
+- Logged out → no banner, no timers left running
+- When the session actually expires, the existing refresh-failure path signs the user out as before
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules. Mock the network layer and use Vitest fake timers. Every Verification bullet above that does not need a real browser or backend is a required test case. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it. Do not modify application code to make a test pass.
+
+---
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry per sub-stage.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR4.1.1** (30-minute inactivity timeout): dropped. Note it as a deliberate scope change.
+- **NFR4.1.2**: change "7 days" to "30 days", and note that the lifetime is fixed from login (not from last activity) and that an access token can outlive it by up to `ACCESS_TOKEN_TTL_MINUTES`.
+- **NFR4.2.1**: reword from "notify the user 1 minute before their session expires due to inactivity and provide an option to extend it" to a non-dismissible banner 10 minutes before the 30-day session expiry, with an option to log in again (the session cannot be extended).

@@ -37,6 +37,14 @@ Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #1
        user-service docs-rename record and Stage 17 (local setup script). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the admin user order history disclosure and log-index entry.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Tool: Codex (model: GPT-6), date: 2026-11-05
+Scope: Added the Docker postinstall fix log-index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
        (OTP email retry and delivery logging). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
@@ -77,6 +85,9 @@ Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrang
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
+Author review:
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5): Added the Stage 22 log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
 -->
 
@@ -499,3 +510,9 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 164 | 2026-11-04 | supplier-service | Phase 5: No-UI API suite and cross-role suite | Added Vitest live-stack lifecycle and role suites using a local token stub. |
 | 165 | 2026-11-04 | supplier-service | PR 144: Merge conflict resolution | Preserved disclosure entries and reconciled the integration test fixture. |
 | 166 | 2026-11-04 | supplier-service | Phase 5: Current state and test arrangements | Updated Phase 5 status and recorded team-supplied test arrangements. |
+| 167 | 2026-11-05 | user-service | Stage 23a: TTL Env Var Bounds (NFR4.1.2) | Bounded `ACCESS_TOKEN_TTL_MINUTES` (1-15) and `REFRESH_TOKEN_TTL_DAYS` (1-30); set the latter to 30 days. |
+| 168 | 2026-11-05 | order-service          | F5.3.2: Admin user order history                                                                                 | Implemented admin order history, user existence checks, pagination, tests and documentation.                                                    |
+| 169 | 2026-11-05 | order-service          | Docker: Fix order-service postinstall script copy                                                                | Copied the existing install hook before npm ci.                                                                                                 |
+| 170 | 2026-11-05 | user-service | Stage 23b: sessionTimeLeftSeconds on Login and Refresh | Added `sessionTimeLeftSeconds`, computed in SQL, to the login and refresh responses. |
+| 171 | 2026-11-05 | frontend | Stage 23c: Expiry Warning Banner — Frontend | Added the non-dismissible 10-minute session-expiry banner and its deadline tracking. |
+| 172 | 2026-11-05 | frontend | Stage 22: Active View Controls Navigation (frontend) | Gated pages by requester/courier view, split My activity, removed Landing, added Register to nav. |

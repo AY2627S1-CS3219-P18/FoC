@@ -68,6 +68,13 @@
  *        DemoContext, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Posting or editing an errand now lands on /my-errands instead of the removed
+ *        /activity, per instructions.md Stage 22 ("Links that went to /activity from the
+ *        request form ... go to /my-errands").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
@@ -207,7 +214,7 @@ function RequestForm({ order }) {
         completeBy: deadline ? deadline.toISOString() : null,
         additionalDetails: extra.trim() || null,
       })
-      navigate('/activity')
+      navigate('/my-errands')
     } catch (e) {
       setPostError(e.message)
     } finally {
@@ -232,7 +239,7 @@ function RequestForm({ order }) {
       if (outcome.status === 'failed') {
         setPostError(reserveFailureMessage(outcome.reason))
       } else {
-        navigate('/activity')
+        navigate('/my-errands')
       }
     } catch (e) {
       setPostError(e.message)

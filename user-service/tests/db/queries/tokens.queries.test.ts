@@ -2,6 +2,9 @@
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - integration tests for tokens.queries.ts against the real test DB
 // Author review:
+// 2026-11-05: Stage 23b - test cases for the seconds_left column on createRefreshToken and
+//   lockRefreshToken. Governing decision: instructions.md Stage 23b.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -63,6 +66,12 @@ describe('createRefreshToken', () => {
     expect(row.expires_at.getTime() - row.created_at.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
+  it('returns seconds_left computed in SQL, close to ttlDays out', async () => {
+    const row = await create(userId, 'tok', { ttlDays: 1 });
+    expect(row.seconds_left).toBeGreaterThanOrEqual(1 * 24 * 60 * 60 - 5);
+    expect(row.seconds_left).toBeLessThanOrEqual(1 * 24 * 60 * 60);
+  });
+
   it('rejects a duplicate token hash', async () => {
     await create(userId, 'tok');
     await expect(create(otherUserId, 'tok')).rejects.toMatchObject({ code: '23505' });
@@ -105,6 +114,20 @@ describe('lockRefreshToken', () => {
     const row = await withTransaction((c) => tokens.lockRefreshToken(sha256('tok'), c));
     expect(row?.db_now).toBeInstanceOf(Date);
     expect(await withTransaction((c) => tokens.lockRefreshToken(sha256('nope'), c))).toBeNull();
+  });
+
+  it('returns seconds_left computed from expires_at and the database clock', async () => {
+    await create(userId, 'tok', { ttlDays: 1 });
+    const row = await withTransaction((c) => tokens.lockRefreshToken(sha256('tok'), c));
+    expect(row!.seconds_left).toBeGreaterThanOrEqual(1 * 24 * 60 * 60 - 5);
+    expect(row!.seconds_left).toBeLessThanOrEqual(1 * 24 * 60 * 60);
+  });
+
+  it('floors seconds_left at 0 for an already-expired token, never negative', async () => {
+    await create(userId, 'tok');
+    await pool.query(`UPDATE refresh_tokens SET expires_at = NOW() - INTERVAL '1 second'`);
+    const row = await withTransaction((c) => tokens.lockRefreshToken(sha256('tok'), c));
+    expect(row!.seconds_left).toBe(0);
   });
 
   it('blocks a second locker until the first transaction ends', async () => {
