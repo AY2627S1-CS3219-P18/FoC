@@ -12,6 +12,9 @@ Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added workstream W8 (
        updated the Branch and Last updated lines. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Recorded decision C53 and moved W8 to Building.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Scope (2026-11-04, Codex, model: GPT-6): Updated Phase 5 status from the recorded tests and decisions.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Scope (2026-11-02, Codex, model: GPT-6): Updated current authentication descriptions to match
@@ -126,7 +129,7 @@ priority (C47).
 | W5 | Phase 4 — Soft delete, transactional outbox, BullMQ worker, reactivation rework | Done | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-4.md) | 17/17 tasks; live check passed except in-flight shutdown (D11, D18) | — |
 | W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) | Authorization tests and no-UI/cross-role suites run; response tests partial; local load targets missed (Q1) | — |
 | W7 | OpenAPI description, seed-as-test, response ids (`location_id`, `faculty_id`, category ids) | In review | [architecture §7.3, §9 item 23](SupplierServiceArchitecture.md) | — | Ids committed (`05a0386`); openapi/seed uncommitted: Q5 | — |
-| W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | Planned | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | Spec and plan written; no code yet; no open gaps | — |
+| W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | Building | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | user-service A1–A3 and supplier-service B1–B5 done; frontend C1–C5 next | — |
 
 Cross-project (not a supplier workstream): the **frontend** project's supplier screens call this
 API — see D15 for what it exposed.
@@ -370,6 +373,7 @@ Decisions that do **not** shape the architecture — process, priorities, scope,
 | C50 | 2026-09-28 | Where a design question is unrecorded the agent stops and asks (root `AGENTS.md` §2.1); the team answered these as multiple-choice or free-text chat answers, which are the "sources" cited above | Course AI policy | `../AGENTS.md` |
 | C51 | 2026-09-30 | Build the real frontend as a copy of `foc-mockup/` named `frontend/`, wired to services through their APIs; supplier data first from the compose `supplier-db`; seed by replaying the creation process as a test | The team wanted the frontend to reference real supplier data; frontend auth = real login, access token in memory, refresh cookie carries the session | Chat (frontend); Log |
 | C52 | 2026-10-01 | Treat each service as its own project with its own `PROJECT_STATE.md` under the `maintaining-project-state` skill copied from the SnoozeShare repo | Team instruction (this session) | This bootstrap |
+| C53 | 2026-11-05 | `GET /api/v1/suppliers` accepts `ids` (up to 20 comma-separated ids) and then also returns `unavailable: [{id, status: hidden\|deleted\|invalid}]`; the service never calls the user-service | Asked by the team in chat (2026-11-05); reason not recorded | Chat (supplier bookmarking); spec B8–B12, B15 |
 
 ---
 
