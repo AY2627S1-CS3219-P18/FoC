@@ -445,3 +445,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 169 | 2026-11-05 | supplier-service | Supplier bookmarking: remaining spec gaps closed | Recorded UI placement, ordering and malformed-id handling decisions. |
 | 170 | 2026-11-05 | supplier-service | Supplier bookmarking: last spec gap closed | Recorded approval of 400 for a malformed id on bookmark add. |
 | 171 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: bookmarks table, endpoints, ids filter, Bookmarked filter | Added per-user supplier bookmarks and a Bookmarked filter across three services. |
+| 172 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: end-to-end browser check (D1) | Walked the bookmark flow in a browser against local services; admin UI path not run. |

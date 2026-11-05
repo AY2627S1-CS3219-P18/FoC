@@ -7967,3 +7967,33 @@ The browser check (D1) has not been run. The frontend's no-bookmarks empty state
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-05 — Supplier bookmarking: end-to-end browser check (D1)
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Task D1 of `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md`; spec `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
+
+**Prompts (exact):**
+> Run D1 check
+
+**Key responses:**
+- Ran the services on the host against the local Docker databases: user-service (port 3001), supplier-service (port 3004) and the Vite dev server (5173). Each service's `.env` was loaded into the shell; the dev `.env` is missing several variables the current config requires (`JWT_KEY_ID`, `CREDIT_SERVICE_URL`, the login-lockout settings), so those were supplied inline for this run and no `.env` file was changed. Redis was a scratch container on port 6390.
+- Applied `user-service/src/db/init.sql` to the dev user database (it had not been updated since the earlier stages), which created `user_bookmarks`. Created two throwaway users (`d1user`, `d1admin`) directly in that database with a password generated for this run.
+- Walked the flow in the built-in browser as `d1user`. Passed: bookmark two suppliers from the landing page (rows appear in `user_bookmarks`, icons fill); reload keeps the icons filled; the Bookmarked chip sends `ids=36,18` and shows only those two; the suppliers page Bookmarked checkbox shows the same two; unbookmarking one removes it from the view and the table; with 20 saved, a 21st add shows the toast "You can bookmark up to 20 suppliers. Remove one before adding another."; with no bookmarks the chip shows "No bookmarked suppliers." and sends no new list request.
+- Hidden and deleted suppliers: bookmarked supplier 5 and supplier 2, then set supplier 5 to soft-deleted and supplier 2 to inactive directly in the supplier database (not through the admin screen). Loading the Bookmarked chip sent `ids=18,5,2`; the bookmark for 5 was removed from `user_bookmarks`, the one for 2 was kept, and only supplier 18 was shown. Both supplier rows were restored afterwards.
+- Not run: the admin soft-delete and deactivate actions through the admin UI (`d1admin` was created but not used); a hand-edited malformed `ids` value in the browser (covered by unit and HTTP tests only); the Bookmarked checkbox on a narrow screen.
+- Cleanup: servers and the scratch Redis stopped, the two test users deleted (their bookmarks cascade). The `foc-user-db`, `foc-supplier-db` and `foc-supplier-redis` containers were started for this check and left running. The `user_bookmarks` table remains in the dev user database.
+
+**Files:**
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+- `supplier-service/PROJECT_STATE.md` (modified)
+
+**Deviations / questions raised for the team:**
+The dev `user-service/.env` lacks variables that `config.ts` now requires; the team may want to update it or `.env.example`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
