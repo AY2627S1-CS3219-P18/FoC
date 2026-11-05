@@ -5,6 +5,9 @@
  *        validates the request, calls the business service, returns 200 with its result. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Pass the ids query value to the list service, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { SupplierService } from '../business/supplierService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -21,6 +24,7 @@ export function createSupplierController(service: SupplierService) {
         categoryId: query.category_id,
         isOpen: query.isOpen,
         sortOrder: query.sortOrder,
+        ids: query.ids,
       });
       res.status(200).json(result);
     }),
