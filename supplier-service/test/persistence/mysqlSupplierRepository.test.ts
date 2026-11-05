@@ -16,6 +16,9 @@
   * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): updated rows for location_id, faculty_id and
  *        category_id in supplier reads, per the team's decision in chat.
  * Author review:
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added supplierIds and findStatusesByIds tests, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -281,5 +284,66 @@ describe('admin reads', () => {
     const rows = await createMysqlSupplierRepository(pool).findAllAdmin({ sortOrder: 'Z-A' });
     expect(rows).toHaveLength(1);
     expect(String(query.mock.calls[0]?.[0])).not.toContain('LIMIT');
+  });
+});
+
+describe('supplierIds criterion', () => {
+  it('filters the visible page and its count by the given ids', async () => {
+    const { pool, query } = fakePool([{ total: 0 }], []);
+
+    await createMysqlSupplierRepository(pool).findVisiblePage({ ...baseFilter, supplierIds: [3, 7] });
+
+    const [countSql, countParams] = query.mock.calls[0] as [string, unknown[]];
+    const [pageSql, pageParams] = query.mock.calls[1] as [string, unknown[]];
+    for (const sql of [countSql, pageSql]) {
+      expect(sql).toContain('s.supplier_id IN (?)');
+      expect(sql).toContain('s.is_deleted = FALSE');
+    }
+    expect(countParams).toEqual([[3, 7]]);
+    expect(pageParams).toEqual([[3, 7], 50, 0]);
+  });
+
+  it('applies to the unpaged read used by the isOpen filter', async () => {
+    const { pool, query } = fakePool([]);
+
+    await createMysqlSupplierRepository(pool).findAllVisible({ sortOrder: 'A-Z', supplierIds: [3, 7] });
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('s.supplier_id IN (?)');
+    expect(params).toEqual([[3, 7]]);
+  });
+
+  it('adds no id condition when the criterion is absent', async () => {
+    const { pool, query } = fakePool([{ total: 0 }], []);
+
+    await createMysqlSupplierRepository(pool).findVisiblePage(baseFilter);
+
+    expect((query.mock.calls[1] as [string, unknown[]])[0]).not.toContain('s.supplier_id IN');
+  });
+});
+
+describe('findStatusesByIds', () => {
+  it('returns the visibility flags of the rows that exist, from the supplier table', async () => {
+    const { pool, query } = fakePool([
+      { supplier_id: 3, is_active: 1, is_deleted: 0 },
+      { supplier_id: 7, is_active: 0, is_deleted: 0 },
+    ]);
+
+    const result = await createMysqlSupplierRepository(pool).findStatusesByIds([3, 7, 99]);
+
+    expect(result).toEqual([
+      { supplierId: 3, isActive: true, isDeleted: false },
+      { supplierId: 7, isActive: false, isDeleted: false },
+    ]);
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('FROM supplier WHERE supplier_id IN (?)');
+    expect(params).toEqual([[3, 7, 99]]);
+  });
+
+  it('does not query when given no ids', async () => {
+    const { pool, query } = fakePool();
+
+    expect(await createMysqlSupplierRepository(pool).findStatusesByIds([])).toEqual([]);
+    expect(query).not.toHaveBeenCalled();
   });
 });

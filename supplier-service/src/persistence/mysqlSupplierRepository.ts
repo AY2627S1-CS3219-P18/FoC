@@ -15,6 +15,9 @@
  *        decision in chat; no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review: Congchen
+ * Scope (2026-11-05, Claude Code, model: claude-sonnet-5-5): Added the supplierIds criterion and findStatusesByIds, per the 2026-11-05 supplier-bookmarking spec.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 import type {
@@ -27,6 +30,7 @@ import type {
   PhotoRow,
   SupplierRepository,
   SupplierRow,
+  SupplierStatusRow,
 } from './supplierRepository.js';
 
 interface SupplierDbRow extends RowDataPacket {
@@ -50,6 +54,12 @@ const SUPPLIER_FROM = `
   JOIN supplier_locations l ON l.location_id = s.location_id
   JOIN faculties f ON f.faculty_id = l.faculty_id`;
 
+interface StatusDbRow extends RowDataPacket {
+  supplier_id: number;
+  is_active: number;
+  is_deleted: number;
+}
+
 interface AdminDbRow extends SupplierDbRow {
   is_active: number;
   is_deleted: number;
@@ -72,11 +82,16 @@ function escapeLike(text: string): string {
 }
 
 function buildWhere(
-  filter: Pick<ListFilter, 'search' | 'locationId' | 'categoryId'>,
+  filter: Pick<ListFilter, 'search' | 'locationId' | 'categoryId' | 'supplierIds'>,
   visibleOnly = true,
-): { where: string; params: Array<string | number> } {
+): { where: string; params: Array<string | number | number[]> } {
   const conditions = visibleOnly ? [VISIBLE] : ['1 = 1'];
-  const params: Array<string | number> = [];
+  const params: Array<string | number | number[]> = [];
+
+  if (filter.supplierIds !== undefined) {
+    conditions.push('s.supplier_id IN (?)');
+    params.push(filter.supplierIds);
+  }
 
   if (filter.locationId !== undefined) {
     conditions.push('s.location_id = ?');
@@ -209,6 +224,21 @@ export function createMysqlSupplierRepository(pool: Pool): SupplierRepository {
       );
       const row = rows[0];
       return row === undefined ? null : toAdminRow(row);
+    },
+
+    async findStatusesByIds(supplierIds) {
+      if (supplierIds.length === 0) return [];
+      const [rows] = await pool.query<StatusDbRow[]>(
+        `SELECT supplier_id, is_active, is_deleted FROM supplier WHERE supplier_id IN (?)`,
+        [supplierIds],
+      );
+      return rows.map(
+        (row): SupplierStatusRow => ({
+          supplierId: Number(row.supplier_id),
+          isActive: Boolean(row.is_active),
+          isDeleted: Boolean(row.is_deleted),
+        }),
+      );
     },
 
     async findCategoryLinks(supplierIds): Promise<CategoryLinkRow[]> {
