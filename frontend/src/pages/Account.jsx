@@ -17,6 +17,15 @@
  *        and new fields) with PasswordInput (Stage 21b) for a show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 25b of instructions.md - EmailSection and PasswordSection: on
+ *        OTP_ATTEMPTS_EXCEEDED the boxes clear, disable (otpDead) and start the resend
+ *        countdown via the new ResendButton.startCooldown; on OTP_EXPIRED the boxes
+ *        clear/refocus but stay enabled, same as INVALID_OTP. A successful resend re-enables
+ *        and clears the boxes and the error.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -136,7 +145,9 @@ function EmailSection({ email, updateUser }) {
   const [otpError, setOtpError] = useState('')
   const [otpBanner, setOtpBanner] = useState('')
   const [otpBusy, setOtpBusy] = useState(false)
+  const [otpDead, setOtpDead] = useState(false)
   const otpRef = useRef(null)
+  const resendRef = useRef(null)
 
   const onSubmitForm = async (e) => {
     e.preventDefault()
@@ -179,8 +190,14 @@ function EmailSection({ email, updateUser }) {
       if (err.code === 'INVALID_OTP') {
         otpRef.current?.reset()
         setOtpError(errorMessages.INVALID_OTP.message)
-      } else if (err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
-        setOtpError(errorMessages[err.code].message + ' Use resend below.')
+      } else if (err.code === 'OTP_EXPIRED') {
+        otpRef.current?.reset()
+        setOtpError(errorMessages.OTP_EXPIRED.message)
+      } else if (err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+        otpRef.current?.reset()
+        setOtpDead(true)
+        setOtpError(errorMessages.OTP_ATTEMPTS_EXCEEDED.message)
+        resendRef.current?.startCooldown(err.retryAfterSeconds ?? 0)
       } else {
         setOtpBanner(describeError(err).message)
       }
@@ -189,7 +206,13 @@ function EmailSection({ email, updateUser }) {
     }
   }
 
-  const onResend = () => profileApi.resendMeOtp('change_email')
+  const onResend = async () => {
+    await profileApi.resendMeOtp('change_email')
+    setOtpDead(false)
+    setOtpError('')
+    setOtpBanner('')
+    otpRef.current?.reset()
+  }
   const onResendError = (err) => setOtpBanner(describeError(err).message)
 
   if (stage === 'otp') {
@@ -197,10 +220,10 @@ function EmailSection({ email, updateUser }) {
       <Section title="Change email">
         <p className="mb-3 text-sm text-ink-70">Enter the 6-digit code we sent to {newEmail}.</p>
         <FormBanner type="error" message={otpBanner} />
-        <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy} />
+        <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy || otpDead} />
         <FieldError message={otpError} />
         <div className="mt-4">
-          <ResendButton onResend={onResend} onError={onResendError} disabled={otpBusy} />
+          <ResendButton ref={resendRef} onResend={onResend} onError={onResendError} disabled={otpBusy} />
         </div>
       </Section>
     )
@@ -258,7 +281,9 @@ function PasswordSection({ forceReauth }) {
   const [otpError, setOtpError] = useState('')
   const [otpBanner, setOtpBanner] = useState('')
   const [otpBusy, setOtpBusy] = useState(false)
+  const [otpDead, setOtpDead] = useState(false)
   const otpRef = useRef(null)
+  const resendRef = useRef(null)
 
   const onSubmitForm = async (e) => {
     e.preventDefault()
@@ -297,8 +322,14 @@ function PasswordSection({ forceReauth }) {
       if (err.code === 'INVALID_OTP') {
         otpRef.current?.reset()
         setOtpError(errorMessages.INVALID_OTP.message)
-      } else if (err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
-        setOtpError(errorMessages[err.code].message + ' Use resend below.')
+      } else if (err.code === 'OTP_EXPIRED') {
+        otpRef.current?.reset()
+        setOtpError(errorMessages.OTP_EXPIRED.message)
+      } else if (err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+        otpRef.current?.reset()
+        setOtpDead(true)
+        setOtpError(errorMessages.OTP_ATTEMPTS_EXCEEDED.message)
+        resendRef.current?.startCooldown(err.retryAfterSeconds ?? 0)
       } else {
         setOtpBanner(describeError(err).message)
       }
@@ -307,7 +338,13 @@ function PasswordSection({ forceReauth }) {
     }
   }
 
-  const onResend = () => profileApi.resendMeOtp('change_password')
+  const onResend = async () => {
+    await profileApi.resendMeOtp('change_password')
+    setOtpDead(false)
+    setOtpError('')
+    setOtpBanner('')
+    otpRef.current?.reset()
+  }
   const onResendError = (err) => setOtpBanner(describeError(err).message)
 
   if (stage === 'otp') {
@@ -315,10 +352,10 @@ function PasswordSection({ forceReauth }) {
       <Section title="Change password">
         <p className="mb-3 text-sm text-ink-70">Enter the 6-digit code we sent to your email.</p>
         <FormBanner type="error" message={otpBanner} />
-        <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy} />
+        <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy || otpDead} />
         <FieldError message={otpError} />
         <div className="mt-4">
-          <ResendButton onResend={onResend} onError={onResendError} disabled={otpBusy} />
+          <ResendButton ref={resendRef} onResend={onResend} onError={onResendError} disabled={otpBusy} />
         </div>
       </Section>
     )

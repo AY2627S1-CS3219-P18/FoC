@@ -14,6 +14,14 @@
  * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 25b of instructions.md - on OTP_ATTEMPTS_EXCEEDED the boxes now clear, disable
+ *        (otpDead) and start the resend countdown from err.retryAfterSeconds via the new
+ *        resendRef.startCooldown; on OTP_EXPIRED the boxes clear/refocus but stay enabled, same
+ *        as INVALID_OTP. A successful resend re-enables and clears the boxes and the error.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -62,7 +70,9 @@ export default function Register() {
   const [otpError, setOtpError] = useState('')
   const [otpBannerError, setOtpBannerError] = useState('')
   const [otpBusy, setOtpBusy] = useState(false)
+  const [otpDead, setOtpDead] = useState(false)
   const otpRef = useRef(null)
+  const resendRef = useRef(null)
 
   const canVerify = isValidEmail(email)
 
@@ -120,8 +130,14 @@ export default function Register() {
       if (err.code === 'INVALID_OTP') {
         otpRef.current?.reset()
         setOtpError(errorMessages.INVALID_OTP.message)
-      } else if (err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
-        setOtpError(errorMessages[err.code].message + ' Use resend below.')
+      } else if (err.code === 'OTP_EXPIRED') {
+        otpRef.current?.reset()
+        setOtpError(errorMessages.OTP_EXPIRED.message)
+      } else if (err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+        otpRef.current?.reset()
+        setOtpDead(true)
+        setOtpError(errorMessages.OTP_ATTEMPTS_EXCEEDED.message)
+        resendRef.current?.startCooldown(err.retryAfterSeconds ?? 0)
       } else {
         setOtpBannerError(describeError(err).message)
       }
@@ -130,7 +146,13 @@ export default function Register() {
     }
   }
 
-  const onResend = () => authApi.resendOtp({ email, purpose: 'registration' })
+  const onResend = async () => {
+    await authApi.resendOtp({ email, purpose: 'registration' })
+    setOtpDead(false)
+    setOtpError('')
+    setOtpBannerError('')
+    otpRef.current?.reset()
+  }
   const onResendError = (err) => setOtpBannerError(describeError(err).message)
 
   if (step === 'otp') {
@@ -148,6 +170,7 @@ export default function Register() {
               </p>
               <div className="mt-2">
                 <ResendButton
+                  ref={resendRef}
                   label="Send a new code"
                   onResend={onResend}
                   onError={onResendError}
@@ -175,12 +198,21 @@ export default function Register() {
             </label>
           )}
 
-          <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy || !canVerify} />
+          <OtpInput
+            ref={otpRef}
+            onComplete={onOtpComplete}
+            disabled={otpBusy || !canVerify || otpDead}
+          />
           <FieldError message={otpError} />
 
           {!arrivedFromLogin && (
             <div className="mt-4">
-              <ResendButton onResend={onResend} onError={onResendError} disabled={otpBusy || !canVerify} />
+              <ResendButton
+                ref={resendRef}
+                onResend={onResend}
+                onError={onResendError}
+                disabled={otpBusy || !canVerify}
+              />
             </div>
           )}
         </div>

@@ -30,6 +30,15 @@
  *        fallback for the email/password-change forms instead.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 25b of instructions.md - reworded OTP_ATTEMPTS_EXCEEDED. Old text ("Too many
+ *        incorrect attempts. Request a new code.") implied the resend button could be used
+ *        immediately, which Stage 25's backend fix shows is false until the Retry-After
+ *        countdown ends; the new text says the code is dead and points at the button's own
+ *        availability instead of promising an action that would still fail.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -52,7 +61,7 @@ export const errorMessages = {
   INVALID_OTP: { message: 'That code is incorrect.', display: 'field' },
   OTP_EXPIRED: { message: 'That code has expired. Request a new one.', display: 'field' },
   OTP_ATTEMPTS_EXCEEDED: {
-    message: 'Too many incorrect attempts. Request a new code.',
+    message: 'That code is no longer valid. You can request a new one once the button below is available.',
     display: 'field',
   },
   OTP_RESEND_COOLDOWN: { message: 'Please wait before requesting another code.', display: 'field' },
