@@ -4378,3 +4378,339 @@ Keep each assertion as strict as it was. Change the expected values, not the str
 ## AI logging
 
 Same as earlier stages: header comment on every file created **or modified**, and a usage-log entry per sub-stage (25a, 25b, 25c) in the existing format.
+
+# Stage 26: Admin Audit Log (NFR3.2.2)
+
+> **Scope**: `user-service`, `frontend`, and one line each in `frontend/vite.config.js` and `frontend/nginx/default.conf`.
+>
+> - 26a: audit table, append-only trigger, config of reason presets
+> - 26b: reason required on every high-risk admin action; audit row written in the same transaction as the change
+> - 26c: unmask becomes a `POST` with a reason; the `[UNMASK EMAIL]` console lines are removed
+> - 26d: `GET /admin/audit-logs`
+> - 26e: frontend (reason dialogs, audit log page, nav link, proxy entry)
+>
+> Backlog refs: NFR3.2.2. NFR3.2.1 (OTP before high-risk actions) is dropped.
+>
+> This supersedes the console logging of unmask attempts in Stage 20 (including its denied-attempt lines and the "log failure fails the unmask" rule, which now applies to the audit insert).
+>
+> **Before starting:** read the current code, not just this file. If anything below disagrees with the code, stop and ask me. Implement one sub-stage at a time and wait for my confirmation before the next.
+>
+> **Verify first (report only, do not change anything):**
+>
+> 1. What `POST /users/:id/unlock` currently does when the target is not login-locked.
+> 2. Whether any production proxy or reverse-proxy config (nginx, Caddy, compose) has its own path rules. List the prefixes it forwards.
+> 3. Every existing test that asserts on the `[UNMASK EMAIL]` console lines or on `GET /users/:id/full-email`.
+
+### Design decisions (already made, do not change)
+
+**What is audited**
+
+| Rule                  | Value                                                                                                                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audited actions       | Suspend, unsuspend, promote, demote, unmask email, unlock                                                                                                                                 |
+| Actions not audited   | Viewing the log, `GET /users`, `GET /users/:id`, every other read                                                                                                                         |
+| Credit adjustment     | Not in this stage. See "Notes for later".                                                                                                                                                 |
+| When a row is written | Only when the action actually succeeds. A suspend that changes status writes a row; an unmask that returns the email writes a row.                                                        |
+| No-op requests        | No row. Same as today: `200`, unchanged user.                                                                                                                                             |
+| Rejected requests     | No row and no console line: `authenticate` / `authorize` failures, business-rule rejections (`SUPER_ADMIN_IMMUTABLE`, `FORBIDDEN`, `422`s, `404`, `400`).                                 |
+| Same transaction      | The audit insert runs with the same `client` inside the same `withTransaction` as the change. If the insert fails, the change rolls back and the request fails with `500 INTERNAL_ERROR`. |
+| Unmask                | There is no state change. The audit insert is done first; the email is returned only after the insert succeeds. If the insert throws, `500 INTERNAL_ERROR` and the email is not returned. |
+| Timestamp             | Database clock (`clock_timestamp()` written in SQL), never `Date.now()`                                                                                                                   |
+| Retention             | Rows are kept indefinitely                                                                                                                                                                |
+
+**Table**
+
+| Rule              | Value                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name              | `admin_audit_log`                                                                                                                                                   |
+| Enum              | `audit_action_enum`: `USER_PROMOTE`, `USER_DEMOTE`, `USER_SUSPEND`, `USER_UNSUSPEND`, `EMAIL_UNMASK`, `USER_UNLOCK` (same safe-creation pattern as the other enums) |
+| `id`              | UUID, primary key, `gen_random_uuid()`                                                                                                                              |
+| `created_at`      | TIMESTAMPTZ NOT NULL, `DEFAULT clock_timestamp()`                                                                                                                   |
+| `actor_id`        | UUID NOT NULL. **No foreign key.**                                                                                                                                  |
+| `action`          | `audit_action_enum` NOT NULL                                                                                                                                        |
+| `target_id`       | UUID NOT NULL. **No foreign key.**                                                                                                                                  |
+| `before`          | JSONB, nullable                                                                                                                                                     |
+| `after`           | JSONB, nullable                                                                                                                                                     |
+| `reason`          | TEXT NOT NULL                                                                                                                                                       |
+| `user_agent`      | TEXT, nullable (`-` is not stored; a missing header is NULL)                                                                                                        |
+| `request_id`      | Not included                                                                                                                                                        |
+| No FK, no cascade | Deleting a user (e.g. `deleteStalePendingUsers`) never touches audit rows                                                                                           |
+| Indexes           | `(created_at DESC)`, `(actor_id)`, `(target_id)`, `(action)`                                                                                                        |
+
+**Append-only (enforced in the database)**
+
+- A `BEFORE UPDATE OR DELETE` row trigger on `admin_audit_log` that raises an exception.
+- A `BEFORE TRUNCATE` statement trigger that raises an exception.
+- Trigger only. The app keeps connecting as `postgres`; no new DB role. Accepted: a superuser or the table owner can disable the triggers.
+- The application has no update or delete query for this table.
+
+**`before` / `after`** (only changed fields, JSONB)
+
+| Action           | `before`                  | `after`                   |
+| ---------------- | ------------------------- | ------------------------- |
+| `USER_SUSPEND`   | `{"status": "active"}`    | `{"status": "suspended"}` |
+| `USER_UNSUSPEND` | `{"status": "suspended"}` | `{"status": "active"}`    |
+| `USER_PROMOTE`   | `{"role": "user"}`        | `{"role": "admin"}`       |
+| `USER_DEMOTE`    | `{"role": "admin"}`       | `{"role": "user"}`        |
+| `USER_UNLOCK`    | `{"isLocked": true}`      | `{"isLocked": false}`     |
+| `EMAIL_UNMASK`   | `NULL`                    | `NULL`                    |
+
+The email (masked or full) is never stored anywhere in the audit row.
+
+**Unlock behaviour (option A)**
+
+- Unlock acts only on a user who is currently login-locked, using the same definition of `isLocked` as `GET /users` (Stage 18).
+- If the target is not login-locked, it is a no-op: `200`, unchanged user, no audit row, and nothing is cleared (including OTP send blocks).
+- When it does unlock, it clears the login lock, resets login escalation, and clears OTP send blocks and escalation for all three purposes, as in Stage 18. Only the login lock appears in `before`/`after`.
+- Permission rules unchanged from Stage 18.
+
+**Reasons**
+
+| Rule                 | Value                                                                                                                                                                                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Required             | Every audited endpoint requires a reason in the request body                                                                                                                                                                                                    |
+| Request body         | `{ "reason": "<CODE>" }`, or `{ "reason": "OTHER", "otherReason": "<free text>" }`                                                                                                                                                                              |
+| `otherReason`        | Required when `reason` is `OTHER`, rejected (unexpected field) otherwise. Trimmed. Length 10–500 after trimming.                                                                                                                                                |
+| Allowed codes        | Per action, from the table below. A code that is valid for a different action is rejected.                                                                                                                                                                      |
+| Stored value         | The code alone (e.g. `FRAUD_OR_SCAM`), or `OTHER: <trimmed free text>`                                                                                                                                                                                          |
+| Validation timing    | At the controller (Zod `.strict()`), before any DB call, so an invalid or missing reason is `400 VALIDATION_ERROR` even if the request would have been a no-op                                                                                                  |
+| Action chosen from   | Status endpoint: target status `suspended` → `USER_SUSPEND`, `active` → `USER_UNSUSPEND`. Role endpoint: `admin` → `USER_PROMOTE`, `user` → `USER_DEMOTE`. The reason codes validated are those for that action.                                                |
+| Zod messages         | Existing style: required → `"Reason is required"`, type → `"Reason must be a string"`, invalid code → `"Invalid reason"`, `otherReason` missing → `"Details are required when the reason is Other"`, length → `"Details must be between 10 and 500 characters"` |
+| Where the lists live | One constant in the backend (authoritative) and one in the frontend. They must match; note this in the usage log.                                                                                                                                               |
+
+Preset codes:
+
+| Action           | Codes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `USER_SUSPEND`   | `FRAUD_OR_SCAM` (fake errands, payment fraud, scamming other users), `HARASSMENT` (abusive messages or behaviour toward other users), `REPEATED_NO_SHOW` (accepting errands and not completing them, repeatedly), `POLICY_VIOLATION` (prohibited items or services, terms of use breach), `SUSPECTED_COMPROMISE` (account appears hijacked; protective suspension), `USER_REQUEST` (user asked to deactivate temporarily), `OTHER`                                                     |
+| `USER_UNSUSPEND` | `APPEAL_ACCEPTED` (user appealed and the review found in their favour), `SUSPENSION_PERIOD_ENDED` (a time-boxed suspension is complete), `ISSUE_RESOLVED` (e.g. a compromised account is secured, or a dispute is settled), `SUSPENDED_IN_ERROR` (wrong user or mistaken report), `USER_REQUEST` (user asked to reactivate after a self-requested suspension), `OTHER`                                                                                                                 |
+| `USER_PROMOTE`   | `APPOINTED_MODERATOR` (approved addition to the admin or moderation team), `TEAM_MEMBER_ONBOARDING` (project or ops team member needs admin access), `TEMPORARY_COVERAGE` (covering for another admin; pair with a planned demote), `OTHER`                                                                                                                                                                                                                                            |
+| `USER_DEMOTE`    | `ROLE_ENDED` (left the team or term finished), `TEMPORARY_ACCESS_EXPIRED` (the coverage period is over), `MISCONDUCT` (misuse of admin privileges), `SUSPECTED_COMPROMISE` (admin account may be compromised), `LEAST_PRIVILEGE_REVIEW` (access review found admin isn't needed), `OTHER`                                                                                                                                                                                              |
+| `EMAIL_UNMASK`   | `DISPUTE_INVESTIGATION` (resolving a dispute between requester and runner), `SAFETY_INCIDENT` (a user reported a safety concern and contact is needed), `FRAUD_INVESTIGATION` (verifying identity in a fraud case), `SUPPORT_REQUEST` (the user themself asked for help needing their contact details), `LEGAL_OR_UNIVERSITY_REQUEST` (formal request from NUS or the authorities), `OTHER`                                                                                            |
+| `USER_UNLOCK`    | `IDENTITY_VERIFIED` (the user contacted support and proved who they are, e.g. via their NUS email or in person), `USER_FORGOT_CREDENTIALS` (genuine user locked themselves out; the user should reset their password next), `FALSE_LOCKOUT` (a system or OTP delivery issue caused the failures, e.g. an email delay or a clock or expiry bug), `ATTACK_MITIGATED` (lockout came from a brute-force attempt and the account is now secured: password reset, sessions revoked), `OTHER` |
+
+**Viewing the log**
+
+| Rule                | Value                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint            | `GET /admin/audit-logs`, behind `authenticate` + `authorize('admin')`                                                                                                                                                                                                                                                                                   |
+| Who sees what       | Admin and super admin see the same rows. No masking.                                                                                                                                                                                                                                                                                                    |
+| Pagination          | Same as `GET /users`: offset, `page` 1-based, fixed page size 50 (a constant), no `pageSize` param, page past the end → `200` with empty `logs` and a correct `total`                                                                                                                                                                                   |
+| Response            | `{ logs, page, pageSize, total, totalPages }`                                                                                                                                                                                                                                                                                                           |
+| Log entry fields    | `id`, `createdAt`, `actorId`, `actorUsername`, `action`, `targetId`, `targetUsername`, `before`, `after`, `reason`, `userAgent`                                                                                                                                                                                                                         |
+| Usernames           | Joined from `users` on `actor_id` / `target_id` (LEFT JOIN). If the user no longer exists, the username is `null`; the frontend shows "user deleted".                                                                                                                                                                                                   |
+| Filters             | `actor` (username substring), `target` (username substring), `action` (repeatable param: `?action=USER_SUSPEND&action=USER_UNLOCK`), `reasonCode`, `from`, `to`                                                                                                                                                                                         |
+| `actor` / `target`  | Lowercased, substring match on the joined username, escaped like Stage 15b. A deleted user has no username, so cannot match.                                                                                                                                                                                                                            |
+| `reasonCode`        | Matches the code part of the stored reason: `reason = $code`, or for `OTHER`, `reason LIKE 'OTHER: %'` (escaped). One value.                                                                                                                                                                                                                            |
+| `from` / `to`       | ISO 8601 timestamps, inclusive, compared to `created_at`. `from` after `to` → `400 VALIDATION_ERROR`.                                                                                                                                                                                                                                                   |
+| Sort                | `sortDir` only (`asc` / `desc`), always on `created_at`, default `desc`, with `id` as tie-breaker. No `sortBy` param.                                                                                                                                                                                                                                   |
+| Validation          | Zod `.strict()` on `req.query`, existing message style, unknown param → `"Request contains unexpected fields"`. Invalid `action` value → `"Action must be one of ..."`. Invalid `reasonCode` → `"Invalid reason code"`. Invalid dates → `"From must be a valid date"` / `"To must be a valid date"`. A repeated param on a single-value filter → `400`. |
+| SQL safety          | All values are bound parameters. `sortDir` goes through a fixed whitelist.                                                                                                                                                                                                                                                                              |
+| Auditing the viewer | None                                                                                                                                                                                                                                                                                                                                                    |
+| Frontend path       | The API is `/admin/audit-logs`; the page is `/admin/logs`. They must stay different.                                                                                                                                                                                                                                                                    |
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                                                                | Change                                                                                                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/db/init.sql`                                                                                                   | `audit_action_enum`, `admin_audit_log` table, indexes, the three triggers. Existing dev volumes need `docker compose down -v`.                                                                                                         |
+| 2   | `src/db/queries/auditLog.queries.ts` (new)                                                                          | `insertAuditLog`, `listAuditLogsPage`                                                                                                                                                                                                  |
+| 3   | `src/services/users.service.ts`                                                                                     | `changeUserStatus`, `changeUserRole`, unlock and `getFullEmail` take `reason` and `userAgent` and write the audit row (see 26b, 26c)                                                                                                   |
+| 4   | `src/controllers/users.controller.ts`                                                                               | Validate `reason` / `otherReason` on the status, role, unlock and full-email handlers                                                                                                                                                  |
+| 5   | `src/routes/users.routes.ts`                                                                                        | `GET /:id/full-email` → `POST /:id/full-email`                                                                                                                                                                                         |
+| 6   | `src/services/users.service.ts` (`getFullEmail`)                                                                    | Remove all `[UNMASK EMAIL]` `console.log` / `console.error` lines and the code that existed only to produce them (actor lookup for the log line, DB-clock read for the log line)                                                       |
+| 7   | `src/routes/auditLog.routes.ts`, `src/controllers/auditLog.controller.ts`, `src/services/auditLog.service.ts` (new) | `GET /admin/audit-logs`                                                                                                                                                                                                                |
+| 8   | `src/app.ts`                                                                                                        | Mount the audit log router at `/admin/audit-logs`                                                                                                                                                                                      |
+| 9   | Existing tests                                                                                                      | Update tests for the new request bodies and the `POST` unmask route, and delete tests that assert on `[UNMASK EMAIL]` console lines. Do not change what they otherwise assert. If a test fails for another reason, stop and report it. |
+| 10  | `frontend/vite.config.js`, `frontend/nginx/default.conf`                                                            | Add `"/admin/audit-logs"` to both the dev proxy and the prod nginx config, pointing at the user service (same target as `/auth` and `/users` in each). Add nothing for `/admin` as a whole. Done in 26e.                              |
+| 11  | `frontend/src/api/users.js`, `frontend/src/api/auditLog.js` (new), `frontend/src/api/errorMessages.js`              | New request bodies, `POST` unmask, `listAuditLogs`; text for any new codes                                                                                                                                                             |
+| 12  | `frontend/src/pages/AdminUsers.jsx`                                                                                 | Reason dialog on every audited action; unmask asks for a reason on every eye click                                                                                                                                                     |
+| 13  | `frontend/src/pages/AdminLogs.jsx` (new), `App.jsx`, nav bar                                                        | `/admin/logs` page, linked from the nav bar                                                                                                                                                                                            |
+
+---
+
+## Stage 26a: Schema
+
+### Update `src/db/init.sql`
+
+- Add the enum, table, indexes and triggers from the decisions above.
+- Trigger function raises an exception with a clear message (e.g. `admin_audit_log is append-only`).
+- `init.sql` only runs on a fresh volume. Remind me to reset with `docker compose down -v`, and note that `globalSetup.ts` rebuilds the test database from `init.sql`.
+
+### Create `src/db/queries/auditLog.queries.ts`
+
+- `insertAuditLog({ actorId, action, targetId, before, after, reason, userAgent }, db)`: `db` required (transaction-only). `created_at` from `clock_timestamp()`.
+- `listAuditLogsPage(...)` is added in 26d.
+
+### Verification
+
+- `\d admin_audit_log` shows the columns, no foreign keys, and the indexes
+- `\dT+ audit_action_enum` shows the six values
+- `UPDATE`, `DELETE` and `TRUNCATE` on the table each fail with the trigger's message
+- Deleting a user who appears as `actor_id` or `target_id` succeeds and leaves the audit rows unchanged
+
+---
+
+## Stage 26b: Reasons and Audit Rows for Status, Role and Unlock
+
+### Backend
+
+- Add the reason validation (controller) and the preset lists (one backend constant) as specified above.
+- In `changeUserStatus`, `changeUserRole` and the unlock service function, after the change succeeds and **inside the same `withTransaction`**, call `insertAuditLog` with the same `client`:
+  - `actorId` from `req.user.user_id`, `userAgent` from `req.get('user-agent')` (NULL if missing)
+  - `before` / `after` per the table above
+  - `reason` as the stored value
+- No-op paths return before the insert (no row).
+- Rejections happen before the insert (no row).
+- Unlock follows "Unlock behaviour (option A)" above. If your Verify-first report shows unlock currently acts on non-locked users, change it to the no-op and tell me.
+- Nothing else about these functions changes: locking, lock order, token revocation and error codes stay as they are.
+
+### Verification
+
+- Suspend / unsuspend / promote / demote / unlock each succeed with a valid reason → one audit row with the right `action`, `actor_id`, `target_id`, `before`, `after`, `reason`, `user_agent`
+- `OTHER` with `otherReason` → `reason` stored as `OTHER: <trimmed text>`; `otherReason` of 9 characters or 501 characters → `400`, and exactly 10 and 500 are accepted
+- Missing `reason`, non-string `reason`, a code from a different action, `OTHER` without `otherReason`, `otherReason` with a non-`OTHER` code, and an extra field → `400 VALIDATION_ERROR` with the right message, no change, no row
+- Invalid reason on a request that would have been a no-op → still `400`
+- No-op (already suspended, already active, already that role, unlock on a user who is not login-locked) → `200`, unchanged user, no row, nothing cleared
+- Each existing rejection (`SUPER_ADMIN_IMMUTABLE`, admin vs admin `FORBIDDEN`, pending target `422`, suspended/pending role `422`, `404`, `401`, `403`) → no row
+- Unlock of a locked user → login lock cleared, OTP send blocks cleared, one row with `{"isLocked": true}` → `{"isLocked": false}`
+- Force `insertAuditLog` to throw → `500 INTERNAL_ERROR`, and the status / role / lock change and any token revocation are rolled back
+- The audit row is committed in the same transaction as the change (a failed change leaves no row)
+- Two concurrent status changes on the same user with different statuses → no deadlock, no `500`, exactly one row per change that actually changed state
+- `created_at` comes from the database clock
+
+---
+
+## Stage 26c: Unmask as `POST` with a Reason
+
+### Backend
+
+- `POST /users/:id/full-email` replaces `GET /users/:id/full-email`. Body: `{ reason, otherReason? }` per the reason rules. The route stays behind `authenticate` + `authorize('admin')` and must not be shadowed by `/:id` routes.
+- Stage 20 rules still apply: `:id` Zod `.uuid()` check, `404 USER_NOT_FOUND`, `403 FORBIDDEN` for a super admin target (including a super admin targeting themself), an admin may unmask themself, pending and suspended targets can be unmasked.
+- On success: `insertAuditLog` (`EMAIL_UNMASK`, `before` and `after` NULL, the reason, the user agent) in a transaction, then return `200 { email }`. If the insert throws → `500 INTERNAL_ERROR`, no email.
+- Remove every `[UNMASK EMAIL]` console line. Rejected unmask attempts write nothing.
+
+### Verification
+
+- Valid reason, admin on a user, a pending user, a suspended user, another admin → `200 { email }` with the real email, and one `EMAIL_UNMASK` row each, `before` and `after` NULL
+- Super admin unmasking a user and an admin → `200` and a row
+- Any caller targeting the super admin → `403 FORBIDDEN`, no row; unknown UUID → `404`, no row; non-UUID → `400`, no row
+- Missing or invalid reason → `400`, no row, no email
+- Regular user → `403`; no token → `401`; no rows
+- Admin unmasking their own ID → `200` and a row; super admin on their own ID → `403`, no row
+- Force `insertAuditLog` to throw → `500 INTERNAL_ERROR`, email not returned
+- `GET /users/:id/full-email` no longer exists (`404`)
+- No audit row, response or console line contains the email, masked or full
+- No `[UNMASK EMAIL]` console output is produced in any case
+
+---
+
+## Stage 26d: `GET /admin/audit-logs`
+
+### Backend
+
+- `listAuditLogsPage({ actor, target, actions, reasonCode, from, to, sortDir, limit, offset }, db = pool)` in `auditLog.queries.ts`: returns `{ rows, total }`, same `WHERE` for the count as for the rows, LEFT JOINs to `users` for both usernames.
+- `listAuditLogs(query)` in `auditLog.service.ts`: `PAGE_SIZE = 50`, offset from `page`, returns `{ logs, page, pageSize, total, totalPages }` with the entry fields from the decisions table.
+- Controller: Zod `.strict()` on `req.query` per the decisions table. `page` follows Stage 15b (`"Page must be a positive integer"`).
+- Route behind `authenticate` + `authorize('admin')`, mounted at `/admin/audit-logs`.
+
+### Verification
+
+- No params → `200`, `{ logs, page: 1, pageSize: 50, total, totalPages }`, newest first
+- More than 50 rows: `page=2` continues with no overlap or gap; a page past the end → `200`, `logs: []`, correct `total`
+- `page=0`, `-1`, `abc`, `1.5` → `400`, `"Page must be a positive integer"`
+- `actor` and `target` substring matches on usernames (case-insensitive input); `%` and `_` are matched literally
+- `action` with one and with several values; an invalid value → `400`
+- `reasonCode=FRAUD_OR_SCAM` matches that code; `reasonCode=OTHER` matches rows stored as `OTHER: ...`; an invalid code → `400`
+- `from` / `to` inclusive on both ends; `from` after `to` → `400`; invalid dates → `400`
+- All filters combined → only rows matching every one
+- `sortDir=asc` → oldest first; `sortBy=anything` → `400` (unexpected field)
+- A row whose actor or target has been deleted → still listed, username `null`
+- Unknown param → `400`, `"Request contains unexpected fields"`
+- Admin and super admin both `200` with the same rows; regular user → `403`; no token → `401`
+- No row is written by viewing the log
+- Entries contain no email (masked or full) and no password hash
+
+---
+
+## Stage 26e: Frontend
+
+### Ground rules
+
+Same as Stage 16: work in `frontend/` only (plus nothing under `foc-mockup/`), do not modify `src/realtime/orderSocket.js`, `src/data/users.js`, `src/components/DemoControls.jsx` or `AI-NOTES.md`, reuse existing components (toast, `FormBanner`, `FieldError`, confirmation dialog, `ActionMenu`), no new libraries. List every file you touched outside the files named in the changes table.
+
+### Reason dialog (`AdminUsers.jsx`)
+
+- Every audited action (Suspend, Unsuspend, Promote, Demote, Unlock) opens a dialog that combines the existing confirmation with a reason picker: a dropdown of that action's preset codes (display text from the descriptions in the table above) and, when `OTHER` is selected, a text area for details (10–500 characters, with a live character count and an inline error).
+- Confirm is disabled until a code is chosen and, for `OTHER`, the details are valid.
+- The dialog names the user and the action, as the existing confirmation does.
+- The request sends `{ reason }` or `{ reason: 'OTHER', otherReason }`.
+- The frontend still collects the reason when the action turns out to be a no-op; the response is `200` as before and nothing else changes in the UI.
+- The preset lists are a frontend constant that must match the backend's.
+
+### Unmask
+
+- Every eye click that would unmask opens the same reason dialog (with the unmask presets). Confirming calls `POST /users/:id/full-email`. Cancelling does nothing.
+- Re-masking (click again, or after 60 seconds) is unchanged and sends no request.
+- The rest of the Stage 20b behaviour is unchanged (own row and super admin rows have no eye, refetch re-masks every row, failure toast).
+
+### `src/pages/AdminLogs.jsx` at `/admin/logs`
+
+- Behind `RequireAuth` + `RequireRole minimum="admin"`. Linked from the nav bar for admins in both views (same visibility as the other admin pages). Label: "Audit log".
+- Table columns: time, actor, action, target, reason, before → after, user agent.
+- Actor and target show the username; `null` shows "user deleted".
+- Filters: actor (username substring box, 300 ms debounce), target (same), action (multi-select), reason code (single select), from/to date-time pickers. Empty filters are omitted from the request.
+- Sort: click the time header to flip direction. Default newest first.
+- Pagination: prev/next and "Page X of Y" from `totalPages`; changing a filter or sort resets to page 1. Empty state when there are no rows.
+- Read-only: no row actions, no edit, no delete.
+- Failure → toast via `errorMessages.js`.
+- Works at phone width.
+
+### `vite.config.js` and `nginx/default.conf`
+
+Add `"/admin/audit-logs"` to both the dev proxy (`vite.config.js`) and the prod nginx config (`frontend/nginx/default.conf`), each with the same target as `/auth` and `/users` in that file. Do not add `/admin`, and do not add anything that would catch `/admin/logs`, `/admin/users` or `/admin/suppliers*`.
+
+### Verification
+
+- Each action's dialog shows only its own preset codes; Confirm stays disabled until valid; `OTHER` shows the details box with a live count and enforces 10–500
+- Cancelling any dialog sends no request
+- Suspend, unsuspend, promote, demote, unlock and unmask each send the right body
+- No-op action still collects a reason and returns normally, with the row unchanged
+- Unmask asks for a reason on every click, including a second unmask of the same row
+- Reloading `/admin/users`, `/admin/suppliers` and `/admin/logs` all load the React app; the audit log page's data loads through the proxy
+- Admin and super admin see "Audit log" in the nav in both views; a regular user does not and gets the 403 view at `/admin/logs`
+- Each filter and sort changes the request params; combinations AND together; page past the end shows the empty state
+- A deleted user shows "user deleted"
+- Failure (user-service stopped) → toast
+- Phone-width viewport works
+
+---
+
+### Tests (Vitest)
+
+Write the tests in this stage, following the Stage 7 ground rules and layout (real Postgres, query/service/controller tests mirroring `src/`, concurrency cases in `tests/concurrency/`). Stage 7's exclusions do not apply here. Every Verification bullet in 26a–26e that does not need a real browser is a required test case:
+
+- Include the trigger tests (`UPDATE`, `DELETE`, `TRUNCATE` each rejected) and the "user deleted, rows survive" test.
+- Include rollback tests that force the audit insert to fail.
+- Include the concurrent status-change case.
+- Frontend tests: dialog validation, request bodies, unmask asks every click, audit log page filters and sort params, "user deleted" rendering, nav visibility. Mock the network layer. If `frontend/` has no test setup yet, stop and tell me what you would add before adding it.
+- List the visual and phone-width checks in your summary for manual verification.
+
+Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry per sub-stage. Note in the usage log that the backend and frontend preset lists must match.
+
+### Notes for later (do not implement now)
+
+- **Credit adjustment** is a high-risk action but there is no endpoint yet, and credit-service is Wee Jean's. When it is implemented, add an `action` value for it and decide how credit-service writes to this table (it cannot reach `user-db` today).
+- Nothing in this stage logs rejected attempts. If that is needed later, it needs a design of its own.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR3.2.1** (secondary OTP before high-risk admin actions): dropped. Note it as a deliberate scope change.
+- **NFR3.2.2**: reword to: successful high-risk admin actions (suspend, unsuspend, promote, demote, unlock, email unmask) are recorded in an append-only audit table with actor, target, before/after, a required reason and the user agent, and are viewable by admins at `/admin/logs`. Rejected attempts and no-ops are not recorded.
+- **NFR3.1.2** / **NFR3.1.3**: as noted in Stage 20, plus: unmasking now requires a reason, on every click.

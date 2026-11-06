@@ -41,8 +41,28 @@
  *        `[UNMASK EMAIL]` console log shared by both. Per instructions.md Stage 20.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: changeUserStatus, changeUserRole and unlockUser now take a `reason` and `userAgent`
+ *        and write an admin_audit_log row, in the same transaction as the change, when (and
+ *        only when) the change actually happens. unlockUser now only acts on a target that is
+ *        currently login-locked (per the Verify-first report: it previously had no such check
+ *        and unconditionally cleared the lock state); a non-locked target is now a no-op.
+ *        Per instructions.md Stage 26b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: getFullEmail now backs POST /users/:id/full-email (was GET): takes `reason` instead
+ *        of logging, and writes an EMAIL_UNMASK audit row (before/after NULL) instead of the
+ *        `[UNMASK EMAIL]` console lines, which are removed along with logUnmaskAttempt,
+ *        formatUserAgent and logUnmaskValidationFailure (nothing else uses them). Per
+ *        instructions.md Stage 26c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
+import * as auditLogQueries from '../db/queries/auditLog.queries.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
@@ -143,7 +163,11 @@ export async function changeUserStatus(
   requestorRole: string,
   targetId: string,
   status: 'active' | 'suspended',
+  reason: string,
+  userAgent: string | null,
 ): Promise<UserResponse> {
+  const action = status === 'suspended' ? 'USER_SUSPEND' : 'USER_UNSUSPEND';
+
   return withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(targetId, client);
     if (!locked) {
@@ -162,7 +186,7 @@ export async function changeUserStatus(
       throw new AppError(422, 'Cannot change the status of a pending user', 'CANNOT_CHANGE_STATUS_PENDING_USER');
     }
 
-    // Already in the requested status: success, no write and no token revocation.
+    // Already in the requested status: success, no write, no token revocation, no audit row.
     if (locked.status === status) {
       return toUserResponse(locked, requesterId);
     }
@@ -174,6 +198,19 @@ export async function changeUserStatus(
       await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
     }
 
+    await auditLogQueries.insertAuditLog(
+      {
+        actorId: requesterId,
+        action,
+        targetId: locked.id,
+        before: { status: locked.status },
+        after: { status },
+        reason,
+        userAgent,
+      },
+      client,
+    );
+
     return toUserResponse(updated, requesterId);
   });
 }
@@ -182,10 +219,14 @@ export async function changeUserRole(
   requesterId: string,
   targetId: string,
   newRole: 'admin' | 'user',
+  reason: string,
+  userAgent: string | null,
 ): Promise<UserResponse> {
   if (targetId === requesterId) {
     throw new AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE');
   }
+
+  const action = newRole === 'admin' ? 'USER_PROMOTE' : 'USER_DEMOTE';
 
   return withTransaction(async (client) => {
     const locked = await userQueries.lockUserById(targetId, client);
@@ -213,7 +254,7 @@ export async function changeUserRole(
       );
     }
 
-    // Already has the requested role: success, no write and no token revocation.
+    // Already has the requested role: success, no write, no token revocation, no audit row.
     if (locked.role === newRole) {
       return toUserResponse(locked, requesterId);
     }
@@ -223,19 +264,39 @@ export async function changeUserRole(
     // Same transaction as the role change, so the old role cannot be extended by refreshing.
     await tokenQueries.revokeAllRefreshTokensForUser(locked.id, client);
 
+    await auditLogQueries.insertAuditLog(
+      {
+        actorId: requesterId,
+        action,
+        targetId: locked.id,
+        before: { role: locked.role },
+        after: { role: newRole },
+        reason,
+        userAgent,
+      },
+      client,
+    );
+
     return toUserResponse(updated, requesterId);
   });
 }
 
 // POST /users/:id/unlock. Permission rules mirror changeUserStatus's: SUPER_ADMIN_IMMUTABLE on
 // a super-admin target, FORBIDDEN when an admin targets another admin (Stage 18d).
+//
+// Stage 26b: only acts on a target that is currently login-locked (same `login_locked_until >
+// NOW()` definition the `locked` filter on listUsersPage uses, read against the database clock
+// rather than the app server's). A non-locked target is a no-op: no clearing, no audit row. The
+// Verify-first report for this stage found the previous version had no such check at all.
 export async function unlockUser(
   requesterId: string,
   requestorRole: string,
   targetId: string,
+  reason: string,
+  userAgent: string | null,
 ): Promise<UserResponse> {
   return withTransaction(async (client) => {
-    const locked = await userQueries.lockUserById(targetId, client);
+    const locked = await userQueries.lockUserByIdWithNow(targetId, client);
     if (!locked) {
       throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
     }
@@ -247,10 +308,28 @@ export async function unlockUser(
       throw new AppError(403, 'Only a super admin may unlock an admin', 'FORBIDDEN');
     }
 
+    const isLocked = locked.login_locked_until !== null && locked.login_locked_until.getTime() > locked.db_now.getTime();
+    if (!isLocked) {
+      return toUserResponse(locked, requesterId);
+    }
+
     // Clears the login lock and its escalation, and the OTP send blocks and their escalation
     // for all three purposes.
     await userQueries.resetLoginLock(locked.id, client);
     await otpQueries.clearSendBlocksForUser(locked.id, client);
+
+    await auditLogQueries.insertAuditLog(
+      {
+        actorId: requesterId,
+        action: 'USER_UNLOCK',
+        targetId: locked.id,
+        before: { isLocked: true },
+        after: { isLocked: false },
+        reason,
+        userAgent,
+      },
+      client,
+    );
 
     return toUserResponse(
       {
@@ -265,114 +344,40 @@ export async function unlockUser(
   });
 }
 
-function formatUserAgent(userAgent: string | null | undefined): string {
-  return userAgent ? JSON.stringify(userAgent) : '-';
-}
-
-// Shared by getFullEmail and logUnmaskValidationFailure. Never logs an email, masked or full.
-function logUnmaskAttempt({
-  actorId,
-  actorUsername,
-  targetId,
-  targetUsername,
-  timestamp,
-  userAgent,
-  outcome,
-  reason,
-}: {
-  actorId: string;
-  actorUsername: string;
-  targetId: string;
-  // null means the target row could not be identified: not found, or :id failed validation.
-  targetUsername: string | null;
-  timestamp: Date;
-  userAgent: string | null | undefined;
-  outcome: 'granted' | 'denied';
-  reason?: string;
-}): void {
-  const targetIdPart = targetUsername === null ? JSON.stringify(targetId) : targetId;
-  const base =
-    `[UNMASK EMAIL] actorId=${actorId} actorUsername=${actorUsername} ` +
-    `targetId=${targetIdPart} targetUsername=${targetUsername ?? '-'} ` +
-    `timestamp=${timestamp.toISOString()} userAgent=${formatUserAgent(userAgent)} outcome=${outcome}`;
-  const line = reason ? `${base} reason=${reason}` : base;
-
-  if (outcome === 'granted') {
-    console.log(line);
-  } else {
-    console.error(line);
-  }
-}
-
-// GET /users/:id/full-email. No transaction or lock: a read with no state change. The granted
-// log line is written before returning; if it throws, the email is not returned (propagates to
-// the global handler as 500 INTERNAL_ERROR).
+// POST /users/:id/full-email. No lock: unmask makes no state change to the target. The audit
+// insert runs first, in the same transaction as nothing else - it is the only write - so a
+// failed insert never returns an email. Replaces the Stage 20 GET route and its
+// `[UNMASK EMAIL]` console lines entirely (Stage 26c): rejected attempts write nothing, same as
+// before, but there is no longer a console line for them either.
 export async function getFullEmail(
   actorId: string,
   targetId: string,
-  userAgent: string | null | undefined,
+  reason: string,
+  userAgent: string | null,
 ): Promise<{ email: string }> {
-  const actor = await userQueries.findByIdWithNow(actorId);
-  const actorUsername = actor!.username;
-  const timestamp = actor!.db_now;
+  return withTransaction(async (client) => {
+    const target = await userQueries.findById(targetId, client);
+    if (!target) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
 
-  const target = await userQueries.findById(targetId);
-  if (!target) {
-    logUnmaskAttempt({
-      actorId,
-      actorUsername,
-      targetId,
-      targetUsername: null,
-      timestamp,
-      userAgent,
-      outcome: 'denied',
-      reason: 'USER_NOT_FOUND',
-    });
-    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
-  }
+    if (target.role === 'super admin') {
+      throw new AppError(403, "Cannot unmask a super administrator's email", 'FORBIDDEN');
+    }
 
-  if (target.role === 'super admin') {
-    logUnmaskAttempt({
-      actorId,
-      actorUsername,
-      targetId,
-      targetUsername: target.username,
-      timestamp,
-      userAgent,
-      outcome: 'denied',
-      reason: 'FORBIDDEN',
-    });
-    throw new AppError(403, "Cannot unmask a super administrator's email", 'FORBIDDEN');
-  }
+    await auditLogQueries.insertAuditLog(
+      {
+        actorId,
+        action: 'EMAIL_UNMASK',
+        targetId: target.id,
+        before: null,
+        after: null,
+        reason,
+        userAgent,
+      },
+      client,
+    );
 
-  logUnmaskAttempt({
-    actorId,
-    actorUsername,
-    targetId,
-    targetUsername: target.username,
-    timestamp,
-    userAgent,
-    outcome: 'granted',
-  });
-  return { email: target.email };
-}
-
-// For the controller's VALIDATION_ERROR case: :id fails .uuid() before getFullEmail is ever
-// called, but the attempt is still logged.
-export async function logUnmaskValidationFailure(
-  actorId: string,
-  rawTargetId: string,
-  userAgent: string | null | undefined,
-): Promise<void> {
-  const actor = await userQueries.findByIdWithNow(actorId);
-  logUnmaskAttempt({
-    actorId,
-    actorUsername: actor!.username,
-    targetId: rawTargetId,
-    targetUsername: null,
-    timestamp: actor!.db_now,
-    userAgent,
-    outcome: 'denied',
-    reason: 'VALIDATION_ERROR',
+    return { email: target.email };
   });
 }

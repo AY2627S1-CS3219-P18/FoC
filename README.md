@@ -537,3 +537,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 181 | 2026-11-05 | frontend | Stage 24 follow-up: Credits column on /admin/users | Added a Credits column to the admin users list, per the stage's "Summary fields" row. |
 | 182 | 2026-11-06 | user-service | Stage 25a/25c: Retry-After on OTP_ATTEMPTS_EXCEEDED and counting guesses against an expired code | Reordered checkOtp's checks; the 5th failed attempt (wrong or expired) now returns 429 with Retry-After. |
 | 183 | 2026-11-06 | frontend | Stage 25b: OTP attempts-exceeded UI fix | OTP boxes clear/disable and the resend countdown starts on OTP_ATTEMPTS_EXCEEDED; reworded its message. |
+| 184 | 2026-11-06 | user-service | Stage 26a: Admin Audit Log schema | Added admin_audit_log table, audit_action_enum, indexes and append-only triggers; insertAuditLog query. |
+| 185 | 2026-11-06 | user-service | Stage 26b: Reasons and audit rows for status, role and unlock | Suspend/unsuspend/promote/demote/unlock now require a reason and write an audit row; unlock is now a no-op if not locked. |
+| 186 | 2026-11-06 | user-service | Stage 26c: Unmask as POST with a reason | GET /users/:id/full-email replaced by POST with a reason; writes an EMAIL_UNMASK audit row instead of console logging. |
+| 187 | 2026-11-06 | user-service | Stage 26d: GET /admin/audit-logs | New paginated, filterable audit log listing endpoint (actor/target/action/reasonCode/from/to/sortDir), joined to usernames. |
+| 188 | 2026-11-06 | frontend | Stage 26e: Reason dialogs, audit log page, unmask, proxy entries | Reason dialog on every audited action and unmask; new /admin/logs page; nav link; proxy/nginx entries. |

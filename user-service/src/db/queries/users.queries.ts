@@ -36,6 +36,10 @@
 //   instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Stage 26d - exported escapeLikePattern so auditLog.queries.ts's actor/target
+//   filters can reuse it. No requirements, architecture, schema, or API decisions were made by
+//   the AI tool.
+// Author review:
 
 import pool from "../pool.js";
 import type { Queryable } from "../transaction.js";
@@ -290,8 +294,9 @@ const SORT_DIRECTIONS = {
 } as const;
 
 // Escapes \, % and _ so a LIKE pattern built from user input matches those characters
-// literally instead of as wildcards or the escape character itself.
-function escapeLikePattern(input: string): string {
+// literally instead of as wildcards or the escape character itself. Exported for
+// auditLog.queries.ts's actor/target filters (Stage 26d), which use the same technique.
+export function escapeLikePattern(input: string): string {
   return input.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 

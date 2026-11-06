@@ -17,6 +17,15 @@
  *        test for it, per the stage's "Summary fields" row for this table.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 26e of instructions.md - revealing an email now opens a reason dialog before
+ *        getFullEmail is called; every eye-icon test that reveals now selects a reason and
+ *        clicks the dialog's Confirm ("Reveal") button first, and asserts getFullEmail is
+ *        called with that reason. Re-masking (already-unmasked click, or the 60s timer) still
+ *        sends no request and needed no test change.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -24,7 +33,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../src/components/Toast'
 import AdminUsers from '../../src/pages/AdminUsers'
-import { getFullEmail, listUsers } from '../../src/api/users'
+import { getFullEmail, listUsers, updateUserStatus } from '../../src/api/users'
 import { useBalance } from '../../src/api/lookups'
 
 vi.mock('../../src/api/users', () => ({
@@ -106,6 +115,14 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+// Stage 26e: an eye click on a masked row opens the reason dialog; Confirm ("Reveal") then
+// calls getFullEmail with the chosen reason.
+function startReveal(username) {
+  fireEvent.click(screen.getByRole('button', { name: 'Show email for ' + username }))
+  fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'SUPPORT_REQUEST' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Reveal' }))
+}
+
 describe('AdminUsers email eye icon (Stage 20b)', () => {
   it('shows the eye icon only on other users\' rows, not on the caller\'s own row or a super admin row', async () => {
     listUsers.mockResolvedValue(usersPage([ALICE, SELF_ROW, SUPER_ADMIN_ROW]))
@@ -123,14 +140,14 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     getFullEmail.mockReturnValueOnce(emailPromise)
     renderPage()
 
-    const eyeButton = await screen.findByRole('button', { name: 'Show email for alice' })
-    fireEvent.click(eyeButton)
+    await screen.findByRole('button', { name: 'Show email for alice' })
+    startReveal('alice')
     await act(async () => {
       await emailPromise
     })
 
     expect(screen.getByText('alice@example.com')).toBeInTheDocument()
-    expect(getFullEmail).toHaveBeenCalledWith('user-1')
+    expect(getFullEmail).toHaveBeenCalledWith('user-1', { reason: 'SUPPORT_REQUEST' })
     expect(getFullEmail).toHaveBeenCalledTimes(1)
 
     const hideButton = screen.getByRole('button', { name: 'Hide email for alice' })
@@ -146,10 +163,10 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     getFullEmail.mockReturnValueOnce(emailPromise)
     renderPage()
 
-    const eyeButton = await screen.findByRole('button', { name: 'Show email for alice' })
+    await screen.findByRole('button', { name: 'Show email for alice' })
 
     vi.useFakeTimers()
-    fireEvent.click(eyeButton)
+    startReveal('alice')
     await act(async () => {
       await emailPromise
     })
@@ -173,10 +190,10 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     getFullEmail.mockImplementation((id) => (id === 'user-1' ? aliceEmail : bobEmail))
     renderPage()
 
-    const aliceEye = await screen.findByRole('button', { name: 'Show email for alice' })
+    await screen.findByRole('button', { name: 'Show email for alice' })
 
     vi.useFakeTimers()
-    fireEvent.click(aliceEye)
+    startReveal('alice')
     await act(async () => {
       await aliceEmail
     })
@@ -186,8 +203,7 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
       vi.advanceTimersByTime(30_000)
     })
 
-    const bobEye = screen.getByRole('button', { name: 'Show email for bob' })
-    fireEvent.click(bobEye)
+    startReveal('bob')
     await act(async () => {
       await bobEmail
     })
@@ -212,8 +228,8 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     getFullEmail.mockRejectedValueOnce({ code: 'USER_NOT_FOUND' })
     renderPage()
 
-    const eyeButton = await screen.findByRole('button', { name: 'Show email for alice' })
-    fireEvent.click(eyeButton)
+    await screen.findByRole('button', { name: 'Show email for alice' })
+    startReveal('alice')
 
     expect(await screen.findByRole('status')).toHaveTextContent('That user could not be found.')
     expect(screen.getByText('a***@example.com')).toBeInTheDocument()
@@ -229,8 +245,8 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     getFullEmail.mockReturnValueOnce(emailPromise)
     renderPage()
 
-    const eyeButton = await screen.findByRole('button', { name: 'Show email for alice' })
-    fireEvent.click(eyeButton)
+    await screen.findByRole('button', { name: 'Show email for alice' })
+    startReveal('alice')
     await act(async () => {
       await emailPromise
     })
@@ -265,6 +281,123 @@ describe('AdminUsers row click (Stage 24 entry point)', () => {
 
     expect(await screen.findByRole('menuitem', { name: 'Suspend' })).toBeInTheDocument()
     expect(screen.queryByText('User history page')).not.toBeInTheDocument()
+  })
+})
+
+describe('AdminUsers reason dialog (Stage 26e)', () => {
+  function openSuspendDialog() {
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for alice' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Suspend' }))
+  }
+
+  it('shows only the Suspend action\'s preset codes, and Confirm is disabled until one is chosen', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    renderPage()
+    await screen.findByText('alice')
+
+    openSuspendDialog()
+    const select = screen.getByLabelText('Reason')
+    const optionValues = Array.from(select.options, (o) => o.value).filter(Boolean)
+    expect(optionValues).toEqual([
+      'FRAUD_OR_SCAM',
+      'HARASSMENT',
+      'REPEATED_NO_SHOW',
+      'POLICY_VIOLATION',
+      'SUSPECTED_COMPROMISE',
+      'USER_REQUEST',
+      'OTHER',
+    ])
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeDisabled()
+
+    fireEvent.change(select, { target: { value: 'FRAUD_OR_SCAM' } })
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeEnabled()
+  })
+
+  it('OTHER shows a details box with a live count; Confirm stays disabled until 10-500 characters', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    renderPage()
+    await screen.findByText('alice')
+
+    openSuspendDialog()
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'OTHER' } })
+    const confirmButton = screen.getByRole('button', { name: 'Suspend' })
+    expect(confirmButton).toBeDisabled()
+
+    const details = screen.getByLabelText('Details')
+    fireEvent.change(details, { target: { value: 'too short' } })
+    expect(screen.getByText('9/500')).toBeInTheDocument()
+    expect(screen.getByText('Details must be between 10 and 500 characters')).toBeInTheDocument()
+    expect(confirmButton).toBeDisabled()
+
+    fireEvent.change(details, { target: { value: 'exactly 10' } })
+    expect(screen.getByText('10/500')).toBeInTheDocument()
+    expect(screen.queryByText('Details must be between 10 and 500 characters')).not.toBeInTheDocument()
+    expect(confirmButton).toBeEnabled()
+  })
+
+  it('sends { reason } for a preset code, and { reason: "OTHER", otherReason } for OTHER', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    // Resolves to the unchanged row both times, so the menu still offers "Suspend" on the
+    // second open (this test only checks the request bodies, not the resulting row state).
+    updateUserStatus.mockResolvedValue(ALICE)
+    renderPage()
+    await screen.findByText('alice')
+
+    openSuspendDialog()
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
+
+    await waitFor(() =>
+      expect(updateUserStatus).toHaveBeenCalledWith('user-1', 'suspended', { reason: 'FRAUD_OR_SCAM' }),
+    )
+
+    updateUserStatus.mockClear()
+    openSuspendDialog()
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'OTHER' } })
+    fireEvent.change(screen.getByLabelText('Details'), { target: { value: '  a good long reason here  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
+
+    await waitFor(() =>
+      expect(updateUserStatus).toHaveBeenCalledWith('user-1', 'suspended', {
+        reason: 'OTHER',
+        otherReason: 'a good long reason here',
+      }),
+    )
+  })
+
+  it('cancelling the dialog sends no request', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    renderPage()
+    await screen.findByText('alice')
+
+    openSuspendDialog()
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    // Two elements share the "Cancel" accessible name: the dialog's own Cancel button and the
+    // backdrop button (also labelled "Cancel" for screen readers). Either closes the dialog;
+    // this clicks the visible button, which is listed last.
+    const cancelButtons = screen.getAllByRole('button', { name: 'Cancel' })
+    fireEvent.click(cancelButtons[cancelButtons.length - 1])
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(updateUserStatus).not.toHaveBeenCalled()
+  })
+
+  it('a no-op action still collects a reason and sends it, returning 200 unchanged', async () => {
+    const suspendedAlice = userRow({ id: 'user-1', username: 'alice', email: 'a***@example.com', status: 'suspended' })
+    listUsers.mockResolvedValue(usersPage([suspendedAlice]))
+    updateUserStatus.mockResolvedValue(suspendedAlice) // already active -> unsuspend is a no-op
+    renderPage()
+    await screen.findByText('alice')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for alice' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unsuspend' }))
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'ISSUE_RESOLVED' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Unsuspend' }))
+
+    await waitFor(() =>
+      expect(updateUserStatus).toHaveBeenCalledWith('user-1', 'active', { reason: 'ISSUE_RESOLVED' }),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent('alice was unsuspended.')
   })
 })
 

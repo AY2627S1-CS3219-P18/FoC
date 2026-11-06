@@ -49,6 +49,14 @@
  *        own `body.error` (a string code, not an object) is unaffected.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 26e - withQuery now sends an array value as a repeated param (one `.append`
+ *        per entry) instead of stringifying it, for the audit log page's `action` filter
+ *        (GET /admin/audit-logs?action=X&action=Y). Every other caller still passes scalars,
+ *        so this is additive.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.
@@ -158,7 +166,12 @@ const withQuery = (path, query) => {
   if (!query) return path
   const params = new URLSearchParams()
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') params.set(key, String(value))
+    if (value === undefined || value === null || value === '') return
+    if (Array.isArray(value)) {
+      value.forEach((v) => params.append(key, String(v)))
+    } else {
+      params.set(key, String(value))
+    }
   })
   const text = params.toString()
   return text ? path + '?' + text : path
