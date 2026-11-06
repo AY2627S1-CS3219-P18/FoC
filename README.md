@@ -98,19 +98,19 @@ Scope (2026-11-06, Claude Code, model: claude-sonnet-5): Added Log index row #18
        25b (frontend OTP attempts-exceeded UI fix). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
 Author review:
-Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #184 for ECS Fargate
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #190 for ECS Fargate
        Phase 1 (repo changes for deployment). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
-Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #185 for copying the
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #191 for copying the
        ECS Fargate plan into docs/. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
 Author review:
-Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #186 for recording
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #192 for recording
        the team repo and CD trigger decisions in the ECS Fargate plan. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
-Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #187 for the ECS
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #193 for the ECS
        Fargate CD workflow. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
 Author review:
@@ -553,7 +553,13 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 181 | 2026-11-05 | frontend | Stage 24 follow-up: Credits column on /admin/users | Added a Credits column to the admin users list, per the stage's "Summary fields" row. |
 | 182 | 2026-11-06 | user-service | Stage 25a/25c: Retry-After on OTP_ATTEMPTS_EXCEEDED and counting guesses against an expired code | Reordered checkOtp's checks; the 5th failed attempt (wrong or expired) now returns 429 with Retry-After. |
 | 183 | 2026-11-06 | frontend | Stage 25b: OTP attempts-exceeded UI fix | OTP boxes clear/disable and the resend countdown starts on OTP_ATTEMPTS_EXCEEDED; reworded its message. |
-| 184 | 2026-11-06 | user-service, credit-service, supplier-service, order-service | ECS Fargate Phase 1: repo changes for deployment | Added default-off TLS, S3 region, supplier /health, keep-alive and a seed image; boot-tested images locally. |
-| 185 | 2026-11-06 | docs | ECS Fargate plan: add to docs | Copied the ECS Fargate plan into docs/ verbatim with a disclosure header. |
-| 186 | 2026-11-06 | docs | ECS Fargate plan: record team repo and CD trigger decisions | Reworded the plan for the team repo, deploy on every main merge and skipped budget alert. |
-| 187 | 2026-11-06 | CI/CD | ECS Fargate Phase 3: CD workflow | Added a workflow and script that build images and deploy to ECS on every main merge. |
+| 184 | 2026-11-06 | user-service | Stage 26a: Admin Audit Log schema | Added admin_audit_log table, audit_action_enum, indexes and append-only triggers; insertAuditLog query. |
+| 185 | 2026-11-06 | user-service | Stage 26b: Reasons and audit rows for status, role and unlock | Suspend/unsuspend/promote/demote/unlock now require a reason and write an audit row; unlock is now a no-op if not locked. |
+| 186 | 2026-11-06 | user-service | Stage 26c: Unmask as POST with a reason | GET /users/:id/full-email replaced by POST with a reason; writes an EMAIL_UNMASK audit row instead of console logging. |
+| 187 | 2026-11-06 | user-service | Stage 26d: GET /admin/audit-logs | New paginated, filterable audit log listing endpoint (actor/target/action/reasonCode/from/to/sortDir), joined to usernames. |
+| 188 | 2026-11-06 | frontend | Stage 26e: Reason dialogs, audit log page, unmask, proxy entries | Reason dialog on every audited action and unmask; new /admin/logs page; nav link; proxy/nginx entries. |
+| 189 | 2026-11-06 | user-service, frontend | Stage 26 amendment: unlock and unmask no longer require a reason | Dropped the reason requirement/dialog for unlock and email unmask; audit rows now store a fixed reason. |
+| 190 | 2026-11-06 | user-service, credit-service, supplier-service, order-service | ECS Fargate Phase 1: repo changes for deployment | Added default-off TLS, S3 region, supplier /health, keep-alive and a seed image; boot-tested images locally. |
+| 191 | 2026-11-06 | docs | ECS Fargate plan: add to docs | Copied the ECS Fargate plan into docs/ verbatim with a disclosure header. |
+| 192 | 2026-11-06 | docs | ECS Fargate plan: record team repo and CD trigger decisions | Reworded the plan for the team repo, deploy on every main merge and skipped budget alert. |
+| 193 | 2026-11-06 | CI/CD | ECS Fargate Phase 3: CD workflow | Added a workflow and script that build images and deploy to ECS on every main merge. |

@@ -5,6 +5,12 @@
  *        "Nav bar (logged out)" rows.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 26e - asserted the new "Audit log" admin link shows for an admin and not for a
+ *        non-admin.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { render, screen } from '@testing-library/react'
@@ -81,6 +87,21 @@ describe('TopNav', () => {
     expect(screen.getAllByRole('link', { name: 'Suppliers' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: 'Manage suppliers' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: 'Manage users' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: 'Audit log' }).length).toBeGreaterThan(0)
+  })
+
+  it('does not show "Audit log" for a non-admin', () => {
+    mockUseAuth.mockReturnValue({
+      isLoggedIn: true,
+      user: { username: 'alice', activeView: 'requester' },
+      credits: NO_CREDITS,
+      requireAuth: vi.fn(),
+      logout: vi.fn(),
+      isAdmin: false,
+    })
+    renderNav()
+
+    expect(screen.queryByRole('link', { name: 'Audit log' })).not.toBeInTheDocument()
   })
 
   it('logged out: no page links, only Log in and Register', () => {

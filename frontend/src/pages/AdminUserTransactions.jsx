@@ -9,6 +9,13 @@
  *        own. The page number lives in the URL (`page`) so a reload keeps it; filters do not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 26e of instructions.md - the reused ConfirmActionDialog now requires a reason;
+ *        runAction takes it through and forwards it to updateUserStatus/updateUserRole (both
+ *        now require one, per Stage 26b).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -174,13 +181,13 @@ export default function AdminUserTransactions() {
     })
   }
 
-  async function runAction(action) {
+  async function runAction(action, reasonPayload) {
     setBusy(true)
     try {
       const updated =
         action === 'suspend' || action === 'unsuspend'
-          ? await updateUserStatus(userId, action === 'suspend' ? 'suspended' : 'active')
-          : await updateUserRole(userId, action === 'promote' ? 'admin' : 'user')
+          ? await updateUserStatus(userId, action === 'suspend' ? 'suspended' : 'active', reasonPayload)
+          : await updateUserRole(userId, action === 'promote' ? 'admin' : 'user', reasonPayload)
       setProfileOverride(updated)
       setConfirm(null)
       showToast(ACTION_SUCCESS[action](shownProfile.username), 'success')
@@ -376,7 +383,7 @@ export default function AdminUserTransactions() {
           action={confirm}
           busy={busy}
           onCancel={() => setConfirm(null)}
-          onConfirm={() => runAction(confirm)}
+          onConfirm={(reasonPayload) => runAction(confirm, reasonPayload)}
         />
       )}
     </div>

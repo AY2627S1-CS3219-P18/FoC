@@ -54,6 +54,12 @@
  *        button alongside the existing Log in button (both desktop and the mobile drawer).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Added the "Audit log" admin link (/admin/logs), per instructions.md Stage 26e. Same
+ *        visibility as the other admin links (isAdmin, both views).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -69,6 +75,7 @@ import { NAV_LINKS } from '../routing/views'
 const ADMIN_LINKS = [
   { to: '/admin/suppliers', label: 'Manage suppliers' },
   { to: '/admin/users', label: 'Manage users' },
+  { to: '/admin/logs', label: 'Audit log' },
 ]
 
 export default function TopNav() {

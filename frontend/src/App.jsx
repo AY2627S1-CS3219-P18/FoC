@@ -69,6 +69,12 @@
  *        behind RequireAuth + RequireRole(minimum="admin"), per instructions.md Stage 24.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Added /admin/logs behind RequireAuth + RequireRole(minimum="admin"), per
+ *        instructions.md Stage 26e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef } from "react";
@@ -99,6 +105,7 @@ import AdminSupplierForm from "./pages/AdminSupplierForm";
 import AdminUsers from "./pages/AdminUsers";
 import AdminUserTransactions from "./pages/AdminUserTransactions";
 import AdminOrderTransactions from "./pages/AdminOrderTransactions";
+import AdminLogs from "./pages/AdminLogs";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -290,6 +297,16 @@ export default function App() {
               <RequireAuth>
                 <RequireRole minimum="admin">
                   <AdminOrderTransactions />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/logs"
+            element={
+              <RequireAuth>
+                <RequireRole minimum="admin">
+                  <AdminLogs />
                 </RequireRole>
               </RequireAuth>
             }
