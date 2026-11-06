@@ -315,42 +315,23 @@ export const changeRole = asyncHandler(async (req, res) => {
   res.status(200).json(user);
 });
 
-const unlockBodySchema = z
-  .object({ reason: z.unknown(), otherReason: z.unknown().optional() })
-  .strict()
-  .superRefine((data, ctx) => reasonSuperRefine('USER_UNLOCK')(data, ctx));
+const unlockBodySchema = z.object({}).strict();
 
 export const unlock = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
-  const parsed = unlockBodySchema.parse(req.body);
-  const reason = toStoredReason(parsed);
+  unlockBodySchema.parse(req.body);
   // authenticate has run, so req.user is set.
-  const user = await usersService.unlockUser(
-    req.user!.user_id,
-    req.user!.role,
-    id,
-    reason,
-    req.get('user-agent') ?? null,
-  );
+  const user = await usersService.unlockUser(req.user!.user_id, req.user!.role, id, req.get('user-agent') ?? null);
   res.status(200).json(user);
 });
 
-const fullEmailBodySchema = z
-  .object({ reason: z.unknown(), otherReason: z.unknown().optional() })
-  .strict()
-  .superRefine((data, ctx) => reasonSuperRefine('EMAIL_UNMASK')(data, ctx));
+const fullEmailBodySchema = z.object({}).strict();
 
 // POST /users/:id/full-email.
 export const fullEmail = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
-  const parsed = fullEmailBodySchema.parse(req.body);
-  const reason = toStoredReason(parsed);
+  fullEmailBodySchema.parse(req.body);
   // authenticate has run, so req.user is set.
-  const { email } = await usersService.getFullEmail(
-    req.user!.user_id,
-    id,
-    reason,
-    req.get('user-agent') ?? null,
-  );
+  const { email } = await usersService.getFullEmail(req.user!.user_id, id, req.get('user-agent') ?? null);
   res.status(200).json({ email });
 });

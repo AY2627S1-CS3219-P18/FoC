@@ -32,6 +32,12 @@
  *        call removed in Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): unlockUser
+ *        and getFullEmail no longer take or send a `reason`; their request bodies are now empty.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -61,17 +67,17 @@ export async function updateUserRole(id, role, reason) {
 }
 
 // 200 the full user shape. Admin/super admin (403 FORBIDDEN otherwise). 404 USER_NOT_FOUND,
-// 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin targeting another admin), 400
-// VALIDATION_ERROR (bad reason). A target that is not login-locked is a no-op (200, unchanged).
-export async function unlockUser(id, reason) {
-  return request('/users/' + id + '/unlock', { method: 'POST', json: { ...reason } })
+// 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin targeting another admin). A target that is
+// not login-locked is a no-op (200, unchanged). No reason required.
+export async function unlockUser(id) {
+  return request('/users/' + id + '/unlock', { method: 'POST', json: {} })
 }
 
 // 200 { email } (the real, unmasked email). Admin/super admin only (403 FORBIDDEN otherwise).
-// 404 USER_NOT_FOUND, 403 FORBIDDEN (target is a super admin), 400 VALIDATION_ERROR (bad
-// reason). Stage 26c: now POST with a required reason (was GET, no body).
-export async function getFullEmail(id, reason) {
-  return request('/users/' + id + '/full-email', { method: 'POST', json: { ...reason } })
+// 404 USER_NOT_FOUND, 403 FORBIDDEN (target is a super admin). Stage 26c: POST (was GET, no
+// body); no reason required.
+export async function getFullEmail(id) {
+  return request('/users/' + id + '/full-email', { method: 'POST', json: {} })
 }
 
 // 200 { id, username, email, status, role, activeView, createdAt, updatedAt }, any status.

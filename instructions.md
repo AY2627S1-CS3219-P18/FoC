@@ -4466,6 +4466,11 @@ The email (masked or full) is never stored anywhere in the audit row.
 
 **Reasons**
 
+> **Amendment (2026-11-06):** unlock and email-unmask no longer require a reason. Only
+> `USER_SUSPEND` / `USER_UNSUSPEND` (status endpoint) and `USER_PROMOTE` / `USER_DEMOTE` (role
+> endpoint) do. `POST /users/:id/unlock` and `POST /users/:id/full-email` take no body; the
+> stored audit `reason` for these two actions is a fixed `"N/A"`.
+
 | Rule                 | Value                                                                                                                                                                                                                                                           |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Required             | Every audited endpoint requires a reason in the request body                                                                                                                                                                                                    |
@@ -4486,8 +4491,8 @@ Preset codes:
 | `USER_UNSUSPEND` | `APPEAL_ACCEPTED` (user appealed and the review found in their favour), `SUSPENSION_PERIOD_ENDED` (a time-boxed suspension is complete), `ISSUE_RESOLVED` (e.g. a compromised account is secured, or a dispute is settled), `SUSPENDED_IN_ERROR` (wrong user or mistaken report), `USER_REQUEST` (user asked to reactivate after a self-requested suspension), `OTHER`                                                                                                                 |
 | `USER_PROMOTE`   | `APPOINTED_MODERATOR` (approved addition to the admin or moderation team), `TEAM_MEMBER_ONBOARDING` (project or ops team member needs admin access), `TEMPORARY_COVERAGE` (covering for another admin; pair with a planned demote), `OTHER`                                                                                                                                                                                                                                            |
 | `USER_DEMOTE`    | `ROLE_ENDED` (left the team or term finished), `TEMPORARY_ACCESS_EXPIRED` (the coverage period is over), `MISCONDUCT` (misuse of admin privileges), `SUSPECTED_COMPROMISE` (admin account may be compromised), `LEAST_PRIVILEGE_REVIEW` (access review found admin isn't needed), `OTHER`                                                                                                                                                                                              |
-| `EMAIL_UNMASK`   | `DISPUTE_INVESTIGATION` (resolving a dispute between requester and runner), `SAFETY_INCIDENT` (a user reported a safety concern and contact is needed), `FRAUD_INVESTIGATION` (verifying identity in a fraud case), `SUPPORT_REQUEST` (the user themself asked for help needing their contact details), `LEGAL_OR_UNIVERSITY_REQUEST` (formal request from NUS or the authorities), `OTHER`                                                                                            |
-| `USER_UNLOCK`    | `IDENTITY_VERIFIED` (the user contacted support and proved who they are, e.g. via their NUS email or in person), `USER_FORGOT_CREDENTIALS` (genuine user locked themselves out; the user should reset their password next), `FALSE_LOCKOUT` (a system or OTP delivery issue caused the failures, e.g. an email delay or a clock or expiry bug), `ATTACK_MITIGATED` (lockout came from a brute-force attempt and the account is now secured: password reset, sessions revoked), `OTHER` |
+| `EMAIL_UNMASK`   | None — unmask no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `USER_UNLOCK`    | None — unlock no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Viewing the log**
 
@@ -4585,19 +4590,23 @@ Preset codes:
 
 ## Stage 26c: Unmask as `POST` with a Reason
 
+> **Amendment (2026-11-06):** unmask no longer requires a reason (see "Reasons" amendment
+> above). `POST /users/:id/full-email` takes no body; the stored audit `reason` is a fixed
+> `"N/A"`.
+
 ### Backend
 
-- `POST /users/:id/full-email` replaces `GET /users/:id/full-email`. Body: `{ reason, otherReason? }` per the reason rules. The route stays behind `authenticate` + `authorize('admin')` and must not be shadowed by `/:id` routes.
+- `POST /users/:id/full-email` replaces `GET /users/:id/full-email`. No request body. The route stays behind `authenticate` + `authorize('admin')` and must not be shadowed by `/:id` routes.
 - Stage 20 rules still apply: `:id` Zod `.uuid()` check, `404 USER_NOT_FOUND`, `403 FORBIDDEN` for a super admin target (including a super admin targeting themself), an admin may unmask themself, pending and suspended targets can be unmasked.
-- On success: `insertAuditLog` (`EMAIL_UNMASK`, `before` and `after` NULL, the reason, the user agent) in a transaction, then return `200 { email }`. If the insert throws → `500 INTERNAL_ERROR`, no email.
+- On success: `insertAuditLog` (`EMAIL_UNMASK`, `before` and `after` NULL, reason `"N/A"`, the user agent) in a transaction, then return `200 { email }`. If the insert throws → `500 INTERNAL_ERROR`, no email.
 - Remove every `[UNMASK EMAIL]` console line. Rejected unmask attempts write nothing.
 
 ### Verification
 
-- Valid reason, admin on a user, a pending user, a suspended user, another admin → `200 { email }` with the real email, and one `EMAIL_UNMASK` row each, `before` and `after` NULL
+- Admin on a user, a pending user, a suspended user, another admin → `200 { email }` with the real email, and one `EMAIL_UNMASK` row each, `before` and `after` NULL, `reason` `"N/A"`
 - Super admin unmasking a user and an admin → `200` and a row
 - Any caller targeting the super admin → `403 FORBIDDEN`, no row; unknown UUID → `404`, no row; non-UUID → `400`, no row
-- Missing or invalid reason → `400`, no row, no email
+- An unexpected field in the body → `400`, no row, no email
 - Regular user → `403`; no token → `401`; no rows
 - Admin unmasking their own ID → `200` and a row; super admin on their own ID → `403`, no row
 - Force `insertAuditLog` to throw → `500 INTERNAL_ERROR`, email not returned
@@ -4643,7 +4652,11 @@ Same as Stage 16: work in `frontend/` only (plus nothing under `foc-mockup/`), d
 
 ### Reason dialog (`AdminUsers.jsx`)
 
-- Every audited action (Suspend, Unsuspend, Promote, Demote, Unlock) opens a dialog that combines the existing confirmation with a reason picker: a dropdown of that action's preset codes (display text from the descriptions in the table above) and, when `OTHER` is selected, a text area for details (10–500 characters, with a live character count and an inline error).
+> **Amendment (2026-11-06):** Unlock keeps a plain confirmation dialog with no reason picker
+> (same as before this stage). Only Suspend, Unsuspend, Promote and Demote use the reason
+> dialog described below.
+
+- Every audited status/role action (Suspend, Unsuspend, Promote, Demote) opens a dialog that combines the existing confirmation with a reason picker: a dropdown of that action's preset codes (display text from the descriptions in the table above) and, when `OTHER` is selected, a text area for details (10–500 characters, with a live character count and an inline error).
 - Confirm is disabled until a code is chosen and, for `OTHER`, the details are valid.
 - The dialog names the user and the action, as the existing confirmation does.
 - The request sends `{ reason }` or `{ reason: 'OTHER', otherReason }`.
@@ -4652,7 +4665,10 @@ Same as Stage 16: work in `frontend/` only (plus nothing under `foc-mockup/`), d
 
 ### Unmask
 
-- Every eye click that would unmask opens the same reason dialog (with the unmask presets). Confirming calls `POST /users/:id/full-email`. Cancelling does nothing.
+> **Amendment (2026-11-06):** unmask no longer asks for a reason. The eye click calls
+> `POST /users/:id/full-email` directly, with no confirmation/reason dialog.
+
+- Every eye click that would unmask calls `POST /users/:id/full-email` directly (no dialog).
 - Re-masking (click again, or after 60 seconds) is unchanged and sends no request.
 - The rest of the Stage 20b behaviour is unchanged (own row and super admin rows have no eye, refetch re-masks every row, failure toast).
 

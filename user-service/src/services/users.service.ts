@@ -292,7 +292,6 @@ export async function unlockUser(
   requesterId: string,
   requestorRole: string,
   targetId: string,
-  reason: string,
   userAgent: string | null,
 ): Promise<UserResponse> {
   return withTransaction(async (client) => {
@@ -325,7 +324,7 @@ export async function unlockUser(
         targetId: locked.id,
         before: { isLocked: true },
         after: { isLocked: false },
-        reason,
+        reason: 'N/A',
         userAgent,
       },
       client,
@@ -352,7 +351,6 @@ export async function unlockUser(
 export async function getFullEmail(
   actorId: string,
   targetId: string,
-  reason: string,
   userAgent: string | null,
 ): Promise<{ email: string }> {
   return withTransaction(async (client) => {
@@ -372,7 +370,7 @@ export async function getFullEmail(
         targetId: target.id,
         before: null,
         after: null,
-        reason,
+        reason: 'N/A',
         userAgent,
       },
       client,

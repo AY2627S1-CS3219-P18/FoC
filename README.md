@@ -542,3 +542,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 186 | 2026-11-06 | user-service | Stage 26c: Unmask as POST with a reason | GET /users/:id/full-email replaced by POST with a reason; writes an EMAIL_UNMASK audit row instead of console logging. |
 | 187 | 2026-11-06 | user-service | Stage 26d: GET /admin/audit-logs | New paginated, filterable audit log listing endpoint (actor/target/action/reasonCode/from/to/sortDir), joined to usernames. |
 | 188 | 2026-11-06 | frontend | Stage 26e: Reason dialogs, audit log page, unmask, proxy entries | Reason dialog on every audited action and unmask; new /admin/logs page; nav link; proxy/nginx entries. |
+| 189 | 2026-11-06 | user-service, frontend | Stage 26 amendment: unlock and unmask no longer require a reason | Dropped the reason requirement/dialog for unlock and email unmask; audit rows now store a fixed reason. |

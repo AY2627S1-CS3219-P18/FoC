@@ -8,6 +8,12 @@
  *        codes" table. Flagged in the usage log that the two lists must be kept in sync.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat - emptied EMAIL_UNMASK and USER_UNLOCK's preset code
+ *        lists; those two actions no longer require a reason from the admin.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // Maps the UI's action names (used by AdminUsers.jsx/AdminUserTransactions.jsx's row actions,
@@ -53,21 +59,10 @@ export const AUDIT_REASON_CODES = {
     { code: 'LEAST_PRIVILEGE_REVIEW', label: "Least-privilege review (access review found admin isn't needed)" },
     { code: 'OTHER', label: 'Other' },
   ],
-  EMAIL_UNMASK: [
-    { code: 'DISPUTE_INVESTIGATION', label: 'Dispute investigation (resolving a dispute between requester and runner)' },
-    { code: 'SAFETY_INCIDENT', label: 'Safety incident (a user reported a safety concern and contact is needed)' },
-    { code: 'FRAUD_INVESTIGATION', label: 'Fraud investigation (verifying identity in a fraud case)' },
-    { code: 'SUPPORT_REQUEST', label: 'Support request (the user themself asked for help needing their contact details)' },
-    { code: 'LEGAL_OR_UNIVERSITY_REQUEST', label: 'Legal or university request (formal request from NUS or the authorities)' },
-    { code: 'OTHER', label: 'Other' },
-  ],
-  USER_UNLOCK: [
-    { code: 'IDENTITY_VERIFIED', label: 'Identity verified (the user contacted support and proved who they are, e.g. via their NUS email or in person)' },
-    { code: 'USER_FORGOT_CREDENTIALS', label: 'User forgot credentials (genuine user locked themselves out; the user should reset their password next)' },
-    { code: 'FALSE_LOCKOUT', label: 'False lockout (a system or OTP delivery issue caused the failures, e.g. an email delay or a clock or expiry bug)' },
-    { code: 'ATTACK_MITIGATED', label: 'Attack mitigated (lockout came from a brute-force attempt and the account is now secured: password reset, sessions revoked)' },
-    { code: 'OTHER', label: 'Other' },
-  ],
+  // Per author direction (2026-11-06, see instructions.md Stage 26 "Reasons" amendment):
+  // unlock and unmask no longer collect a reason, so these two actions have no codes left.
+  EMAIL_UNMASK: [],
+  USER_UNLOCK: [],
 }
 
 export const AUDIT_ACTIONS = [

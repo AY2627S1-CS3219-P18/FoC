@@ -12,6 +12,10 @@
 //   filter, which is not tied to a single action).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Per author direction in chat - emptied EMAIL_UNMASK and USER_UNLOCK's preset
+//   code lists; those two actions no longer require a reason from the admin.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 export type AuditAction =
   | "USER_PROMOTE"
@@ -57,21 +61,10 @@ export const AUDIT_REASON_CODES: Record<AuditAction, readonly string[]> = {
     "LEAST_PRIVILEGE_REVIEW",
     "OTHER",
   ],
-  EMAIL_UNMASK: [
-    "DISPUTE_INVESTIGATION",
-    "SAFETY_INCIDENT",
-    "FRAUD_INVESTIGATION",
-    "SUPPORT_REQUEST",
-    "LEGAL_OR_UNIVERSITY_REQUEST",
-    "OTHER",
-  ],
-  USER_UNLOCK: [
-    "IDENTITY_VERIFIED",
-    "USER_FORGOT_CREDENTIALS",
-    "FALSE_LOCKOUT",
-    "ATTACK_MITIGATED",
-    "OTHER",
-  ],
+  // Per author direction (2026-11-06, see instructions.md Stage 26 "Preset codes"): unlock and
+  // unmask no longer collect a reason from the admin, so these two actions have no codes left.
+  EMAIL_UNMASK: [],
+  USER_UNLOCK: [],
 };
 
 export const ALL_REASON_CODES: readonly string[] = [

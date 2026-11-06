@@ -26,6 +26,14 @@
  *        sends no request and needed no test change.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment):
+ *        startReveal no longer drives a reason dialog (unmask calls getFullEmail directly on
+ *        the eye click), and its one request-shape assertion now expects no reason argument.
+ *        Added a test that Unlock's dialog has no reason picker and confirms with no payload.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -33,7 +41,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../src/components/Toast'
 import AdminUsers from '../../src/pages/AdminUsers'
-import { getFullEmail, listUsers, updateUserStatus } from '../../src/api/users'
+import { getFullEmail, listUsers, unlockUser, updateUserStatus } from '../../src/api/users'
 import { useBalance } from '../../src/api/lookups'
 
 vi.mock('../../src/api/users', () => ({
@@ -115,12 +123,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-// Stage 26e: an eye click on a masked row opens the reason dialog; Confirm ("Reveal") then
-// calls getFullEmail with the chosen reason.
+// An eye click on a masked row calls getFullEmail directly - no reason dialog (instructions.md
+// Stage 26 "Reasons" amendment).
 function startReveal(username) {
   fireEvent.click(screen.getByRole('button', { name: 'Show email for ' + username }))
-  fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'SUPPORT_REQUEST' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Reveal' }))
 }
 
 describe('AdminUsers email eye icon (Stage 20b)', () => {
@@ -147,7 +153,7 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     })
 
     expect(screen.getByText('alice@example.com')).toBeInTheDocument()
-    expect(getFullEmail).toHaveBeenCalledWith('user-1', { reason: 'SUPPORT_REQUEST' })
+    expect(getFullEmail).toHaveBeenCalledWith('user-1')
     expect(getFullEmail).toHaveBeenCalledTimes(1)
 
     const hideButton = screen.getByRole('button', { name: 'Hide email for alice' })
@@ -363,6 +369,21 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
         otherReason: 'a good long reason here',
       }),
     )
+  })
+
+  it('Unlock has no reason picker and confirms with no payload', async () => {
+    const locked = userRow({ id: 'user-1', username: 'alice', email: 'a***@example.com', isLocked: true })
+    listUsers.mockResolvedValue(usersPage([locked]))
+    unlockUser.mockResolvedValue({ ...locked, isLocked: false })
+    renderPage()
+    await screen.findByText('alice')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for alice' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unlock' }))
+    expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+    await waitFor(() => expect(unlockUser).toHaveBeenCalledWith('user-1'))
   })
 
   it('cancelling the dialog sends no request', async () => {

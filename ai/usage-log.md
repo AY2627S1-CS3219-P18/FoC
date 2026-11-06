@@ -9215,3 +9215,46 @@ Accepted all changes.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26 amendment: unlock and unmask no longer require a reason
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Author instruction in chat ("wait can you remove the reason for user unlock and email unmask, that's not needed"), recorded as an amendment in `instructions.md` Stage 26's "Reasons" section and Stage 26c.
+
+**Prompts (exact):**
+
+> wait can you remove the reason for user unlock and email unmask, that's not needed.
+
+**Key responses:**
+
+- Backend: `unlockBodySchema`/`fullEmailBodySchema` in `users.controller.ts` no longer validate a `reason`/`otherReason` (now `z.object({}).strict()`, rejecting any field); `unlockUser`/`getFullEmail` in `users.service.ts` dropped their `reason` parameter and store a fixed `'N/A'` in the `admin_audit_log.reason` column (unchanged, `NOT NULL`), since the column's nullability is a schema decision not made here. Emptied `EMAIL_UNMASK`/`USER_UNLOCK`'s preset-code lists in `src/constants/auditReasons.ts` and the frontend's mirror, rather than deleting the actions (still needed for the audit-log page's filters/display).
+- Frontend: `ConfirmActionDialog` (`AdminUsers.jsx`) now skips rendering the reason picker and calls `onConfirm()` with no payload for any action with no preset codes (currently only `unlock`), so Unlock keeps its plain confirmation dialog. Unmask no longer shows a dialog at all - the email eye click calls `getFullEmail(id)` directly, matching its pre-Stage-26 behaviour. `unlockUser`/`getFullEmail` in `api/users.js` dropped their `reason` param and now send an empty JSON body.
+- Updated `instructions.md`'s Stage 26 "Reasons" table, the Stage 26c section, the preset-codes table, and the Stage 26e reason-dialog/unmask sections with dated amendment notes rather than silently rewriting the original decisions, so the change stays traceable.
+- Updated every test the change broke: backend controller tests (unlock/full-email's reason-validation cases replaced with an unexpected-field-rejection case each; audit-row assertions now expect `reason: 'N/A'`), backend service tests (dropped the `reason` arg from every `unlockUser`/`getFullEmail` call), and frontend tests (`AdminUsers.test.jsx`'s `startReveal` helper no longer drives a dialog; added a test that Unlock's dialog has no reason field and confirms with no payload; `api/users.test.js`'s `getFullEmail` test now expects an empty body).
+- Verification run: `npx tsc --noEmit` (user-service) clean; `npx vitest run` (user-service) - 909/910 passing, the one failure (`me.concurrency.test.ts`, a login-rate-limit timing flake unrelated to this change) passes on its own in isolation; `npx vitest run` (frontend) - 139/139 passing; `npx oxlint .` (frontend) - no new warnings or errors, same pre-existing categories as before.
+
+**Files:**
+
+- `instructions.md` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/constants/auditReasons.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `frontend/src/constants/auditReasons.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/api/users.test.js` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None - the author gave this instruction directly, and the only implementation choice it left open (what to store in the still-`NOT NULL` `reason` column when nothing is collected) was resolved with a fixed placeholder (`'N/A'`) rather than a schema change, since altering the column's nullability is a schema decision outside this task's scope.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

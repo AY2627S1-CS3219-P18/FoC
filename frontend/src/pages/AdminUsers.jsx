@@ -54,6 +54,14 @@
  *        only implicitly - no visibility rule changed, only the action handlers' signatures.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): Unlock
+ *        keeps its plain confirmation dialog but ConfirmActionDialog now skips the reason
+ *        picker for any action with no preset codes, calling onConfirm() with no payload.
+ *        Unmask no longer shows a dialog at all - the eye click calls getFullEmail directly.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -203,12 +211,6 @@ export const ACTION_DIALOG = {
     confirmLabel: 'Unlock',
     variant: 'primary',
   },
-  unmask: {
-    title: (name) => "Reveal " + name + "'s email?",
-    body: 'A reason is required every time, even if you unmasked this row before.',
-    confirmLabel: 'Reveal',
-    variant: 'primary',
-  },
 }
 
 const MIN_OTHER_REASON = 10
@@ -219,18 +221,25 @@ const MAX_OTHER_REASON = 500
 // OTHER is selected, a 10-500 character details box with a live count. Confirm stays disabled
 // until a code is chosen and (for OTHER) the details are valid. onConfirm is called with the
 // reason payload: { reason } or { reason: 'OTHER', otherReason }.
+// Per the Stage 26 "Reasons" amendment, an action with no preset codes (unlock) skips the
+// reason picker entirely and Confirm calls onConfirm() with no payload.
 export function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm }) {
   const spec = ACTION_DIALOG[action]
   const codes = AUDIT_REASON_CODES[ACTION_TO_AUDIT_ACTION[action]]
+  const needsReason = codes.length > 0
   const [reason, setReason] = useState('')
   const [otherReason, setOtherReason] = useState('')
 
   const trimmedOther = otherReason.trim()
   const otherValid = trimmedOther.length >= MIN_OTHER_REASON && trimmedOther.length <= MAX_OTHER_REASON
-  const valid = reason !== '' && (reason !== 'OTHER' || otherValid)
+  const valid = !needsReason || (reason !== '' && (reason !== 'OTHER' || otherValid))
 
   function handleConfirm() {
     if (!valid || busy) return
+    if (!needsReason) {
+      onConfirm()
+      return
+    }
     onConfirm(reason === 'OTHER' ? { reason: 'OTHER', otherReason: trimmedOther } : { reason })
   }
 
@@ -252,44 +261,46 @@ export function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm })
         </h2>
         <p className="mt-2 text-sm text-ink-70">{spec.body}</p>
 
-        <div className="mt-4">
-          <label htmlFor="confirm-action-reason" className="mb-1 block text-sm font-medium text-ink">
-            Reason
-          </label>
-          <select
-            id="confirm-action-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className={selectClass}
-          >
-            <option value="">Select a reason…</option>
-            {codes.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          {reason === 'OTHER' && (
-            <div className="mt-3">
-              <label htmlFor="confirm-action-other-reason" className="mb-1 block text-sm font-medium text-ink">
-                Details
-              </label>
-              <textarea
-                id="confirm-action-other-reason"
-                value={otherReason}
-                onChange={(e) => setOtherReason(e.target.value)}
-                rows={3}
-                className={inputClass + ' h-auto resize-none'}
-              />
-              <div className="mt-1 text-right text-xs text-ink-40">
-                {trimmedOther.length}/{MAX_OTHER_REASON}
+        {needsReason && (
+          <div className="mt-4">
+            <label htmlFor="confirm-action-reason" className="mb-1 block text-sm font-medium text-ink">
+              Reason
+            </label>
+            <select
+              id="confirm-action-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Select a reason…</option>
+              {codes.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            {reason === 'OTHER' && (
+              <div className="mt-3">
+                <label htmlFor="confirm-action-other-reason" className="mb-1 block text-sm font-medium text-ink">
+                  Details
+                </label>
+                <textarea
+                  id="confirm-action-other-reason"
+                  value={otherReason}
+                  onChange={(e) => setOtherReason(e.target.value)}
+                  rows={3}
+                  className={inputClass + ' h-auto resize-none'}
+                />
+                <div className="mt-1 text-right text-xs text-ink-40">
+                  {trimmedOther.length}/{MAX_OTHER_REASON}
+                </div>
+                {trimmedOther.length > 0 && !otherValid && (
+                  <FieldError message={`Details must be between ${MIN_OTHER_REASON} and ${MAX_OTHER_REASON} characters`} />
+                )}
               </div>
-              {trimmedOther.length > 0 && !otherValid && (
-                <FieldError message={`Details must be between ${MIN_OTHER_REASON} and ${MAX_OTHER_REASON} characters`} />
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={onCancel}>
@@ -373,9 +384,8 @@ export default function AdminUsers() {
   // Per-row unmasked email (Stage 20b), keyed by user id; absent = masked.
   const [unmaskedEmails, setUnmaskedEmails] = useState({})
   const unmaskTimersRef = useRef({})
-  // The row currently showing the Stage 26e unmask reason dialog (masked -> revealing).
-  const [unmaskConfirm, setUnmaskConfirm] = useState(null)
-  const [unmaskBusy, setUnmaskBusy] = useState(false)
+  // The row id currently mid-flight on an unmask request (masked -> revealing).
+  const [unmaskBusyId, setUnmaskBusyId] = useState(null)
 
   useEffect(() => {
     const t = setTimeout(() => setUsername(usernameInput.trim()), 300)
@@ -428,32 +438,25 @@ export default function AdminUsers() {
     }
   }, [])
 
-  // Re-masking (already unmasked) is unchanged and sends no request. Revealing now opens the
-  // reason dialog first (Stage 26e); confirmUnmask below makes the actual call.
-  function toggleUnmask(targetUser) {
+  // Re-masking (already unmasked) is unchanged and sends no request. Revealing calls
+  // getFullEmail directly - no confirmation/reason dialog (Stage 26 "Reasons" amendment).
+  async function toggleUnmask(targetUser) {
     if (targetUser.id in unmaskedEmails) {
       remaskRow(targetUser.id)
       return
     }
-    setUnmaskConfirm(targetUser)
-  }
-
-  async function confirmUnmask(reasonPayload) {
-    const targetUser = unmaskConfirm
-    setUnmaskBusy(true)
+    setUnmaskBusyId(targetUser.id)
     try {
-      const { email } = await getFullEmail(targetUser.id, reasonPayload)
+      const { email } = await getFullEmail(targetUser.id)
       setUnmaskedEmails((prev) => ({ ...prev, [targetUser.id]: email }))
       unmaskTimersRef.current[targetUser.id] = setTimeout(
         () => remaskRow(targetUser.id),
         UNMASK_TIMEOUT_MS,
       )
-      setUnmaskConfirm(null)
     } catch (err) {
-      setUnmaskConfirm(null)
       showToast(describeError(err).message, 'error')
     } finally {
-      setUnmaskBusy(false)
+      setUnmaskBusyId(null)
     }
   }
 
@@ -473,7 +476,7 @@ export default function AdminUsers() {
         action === 'suspend' || action === 'unsuspend'
           ? await updateUserStatus(targetUser.id, action === 'suspend' ? 'suspended' : 'active', reasonPayload)
           : action === 'unlock'
-            ? await unlockUser(targetUser.id, reasonPayload)
+            ? await unlockUser(targetUser.id)
             : await updateUserRole(targetUser.id, action === 'promote' ? 'admin' : 'user', reasonPayload)
       setRowOverrides((prev) => ({ ...prev, [updated.id]: updated }))
       setConfirm(null)
@@ -615,7 +618,7 @@ export default function AdminUsers() {
                                 e.stopPropagation()
                                 toggleUnmask(u)
                               }}
-                              disabled={unmaskConfirm?.id === u.id}
+                              disabled={unmaskBusyId === u.id}
                               className="shrink-0 text-ink-40 hover:text-ink disabled:opacity-50"
                             >
                               {u.id in unmaskedEmails ? (
@@ -674,16 +677,6 @@ export default function AdminUsers() {
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={(reasonPayload) => runAction(confirm.user, confirm.action, reasonPayload)}
-        />
-      )}
-
-      {unmaskConfirm && (
-        <ConfirmActionDialog
-          user={unmaskConfirm}
-          action="unmask"
-          busy={unmaskBusy}
-          onCancel={() => setUnmaskConfirm(null)}
-          onConfirm={confirmUnmask}
         />
       )}
     </div>

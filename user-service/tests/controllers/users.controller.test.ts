@@ -37,6 +37,14 @@
  *        and audit-row Verification bullets, plus unlock's new no-op-when-not-locked case.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): unlock
+ *        and full-email no longer require or accept a reason. Replaced their reason-validation
+ *        tests with an unexpected-field-is-rejected test each, and updated the stored-audit-row
+ *        assertions to expect reason "N/A".
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -209,12 +217,12 @@ describe('GET /users locked filter and fields (Stage 18d)', () => {
 });
 
 describe('POST /users/:id/unlock', () => {
-  // Stage 26b: unlock now requires a reason. Defaults to a valid preset code; pass `body` to
-  // override or omit it.
+  // No reason required (instructions.md Stage 26 "Reasons" amendment); pass `body` to send an
+  // unexpected field for the rejection test below.
   const unlock = (
     token: string | undefined,
     target: { id: string },
-    body: Record<string, unknown> = { reason: 'IDENTITY_VERIFIED' },
+    body: Record<string, unknown> = {},
   ) => {
     const r = request(app).post(`/users/${target.id}/unlock`);
     return (token ? r.set('Authorization', bearer(token)) : r).send(body);
@@ -290,8 +298,8 @@ describe('POST /users/:id/unlock', () => {
     expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
   });
 
-  describe('reason validation, no-op and audit rows (Stage 26b)', () => {
-    it('unlocking a locked user with a valid reason writes one USER_UNLOCK audit row', async () => {
+  describe('no-op and audit rows (Stage 26b)', () => {
+    it('unlocking a locked user writes one USER_UNLOCK audit row with reason "N/A"', async () => {
       const { token, user: actor } = await callerToken('admin');
       const target = await createActiveUser(1);
       await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
@@ -306,7 +314,7 @@ describe('POST /users/:id/unlock', () => {
         target_id: target.id,
         before: { isLocked: true },
         after: { isLocked: false },
-        reason: 'IDENTITY_VERIFIED',
+        reason: 'N/A',
       });
     });
 
@@ -324,25 +332,15 @@ describe('POST /users/:id/unlock', () => {
       expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
     });
 
-    it('rejects a missing reason with 400, no row', async () => {
+    it('rejects an unexpected field in the body with 400, no row', async () => {
       const { token } = await callerToken('admin');
       const target = await createActiveUser(1);
       await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
 
-      const res = await unlock(token, target, {});
+      const res = await unlock(token, target, { reason: 'IDENTITY_VERIFIED' });
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ message: 'Reason is required', code: 'VALIDATION_ERROR' });
+      expect(res.body).toEqual({ message: 'Request contains unexpected fields', code: 'VALIDATION_ERROR' });
       expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
-    });
-
-    it('rejects a reason code that belongs to a different action', async () => {
-      const { token } = await callerToken('admin');
-      const target = await createActiveUser(1);
-      await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
-
-      const res = await unlock(token, target, { reason: 'FRAUD_OR_SCAM' });
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ message: 'Invalid reason', code: 'VALIDATION_ERROR' });
     });
 
     it('each existing rejection writes no audit row', async () => {
@@ -424,12 +422,12 @@ describe('GET /users/:id', () => {
 });
 
 describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
-  // Stage 26c: unmask now requires a reason. Defaults to a valid preset code; pass `body` to
-  // override or omit it.
+  // No reason required (instructions.md Stage 26 "Reasons" amendment); pass `body` to send an
+  // unexpected field for the rejection test below.
   const unmask = (
     path: string,
     token: string | undefined,
-    body: Record<string, unknown> = { reason: 'SUPPORT_REQUEST' },
+    body: Record<string, unknown> = {},
     ua?: string,
   ) => {
     const r = request(app).post(path);
@@ -474,7 +472,7 @@ describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
           target_id: target.id,
           before: null,
           after: null,
-          reason: 'SUPPORT_REQUEST',
+          reason: 'N/A',
         });
       }
     },
@@ -524,7 +522,7 @@ describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
     const { token } = await callerToken('admin');
 
     const withUa = await createActiveUser(1);
-    await unmask(`/users/${withUa.id}/full-email`, token, { reason: 'SUPPORT_REQUEST' }, 'Mozilla/5.0 Test');
+    await unmask(`/users/${withUa.id}/full-email`, token, {}, 'Mozilla/5.0 Test');
     expect((await getAuditLogRowsForTarget(withUa.id))[0]!.user_agent).toBe('Mozilla/5.0 Test');
 
     const withoutUa = await createActiveUser(2);
@@ -532,18 +530,13 @@ describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
     expect((await getAuditLogRowsForTarget(withoutUa.id))[0]!.user_agent).toBeNull();
   });
 
-  it.each([
-    ['missing reason', {}, 'Reason is required'],
-    ['non-string reason', { reason: 123 }, 'Reason must be a string'],
-    ['a code from a different action', { reason: 'FRAUD_OR_SCAM' }, 'Invalid reason'],
-    ['OTHER without otherReason', { reason: 'OTHER' }, 'Details are required when the reason is Other'],
-  ])('rejects %s with 400 VALIDATION_ERROR "%s", no email, no row', async (_label, body, message) => {
+  it('rejects an unexpected field in the body with 400 VALIDATION_ERROR, no email, no row', async () => {
     const { token } = await callerToken('admin');
     const target = await createActiveUser(1);
 
-    const res = await unmask(`/users/${target.id}/full-email`, token, body);
+    const res = await unmask(`/users/${target.id}/full-email`, token, { reason: 'SUPPORT_REQUEST' });
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ message, code: 'VALIDATION_ERROR' });
+    expect(res.body).toEqual({ message: 'Request contains unexpected fields', code: 'VALIDATION_ERROR' });
     expect(res.body).not.toHaveProperty('email');
     expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
   });

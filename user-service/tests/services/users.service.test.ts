@@ -45,6 +45,13 @@
  *        instead of logging. Per instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment):
+ *        unlockUser and getFullEmail no longer take a `reason` param; dropped it from every
+ *        call site and the one assertion that checked the stored value (now "N/A").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
@@ -477,7 +484,7 @@ describe('unlockUser (Stage 18d)', () => {
       failedAttempts: 5,
     });
 
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, 'TEST_REASON', null);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, null);
     expect(result).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
 
     const row = (await getUserById(target.id))!;
@@ -493,7 +500,7 @@ describe('unlockUser (Stage 18d)', () => {
       await setOtpSendBlock(target.id, purpose, { level: 2, blockedUntilMinutesFromNow: 60 });
     }
 
-    await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, 'TEST_REASON', null);
+    await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, null);
 
     for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
       const rows = await getOtps(target.id, purpose);
@@ -505,7 +512,7 @@ describe('unlockUser (Stage 18d)', () => {
   });
 
   it('throws 404 USER_NOT_FOUND for an id that does not exist', async () => {
-    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', UNKNOWN_ID, 'TEST_REASON', null)).rejects.toMatchObject({
+    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', UNKNOWN_ID, null)).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -515,7 +522,7 @@ describe('unlockUser (Stage 18d)', () => {
     const otherSa = await createUserWithRole('sa2', 'super admin');
     await setLoginLockState(otherSa.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
     await expect(
-      usersService.unlockUser(UNKNOWN_ID, 'super admin', otherSa.id, 'TEST_REASON', null),
+      usersService.unlockUser(UNKNOWN_ID, 'super admin', otherSa.id, null),
     ).rejects.toMatchObject({
       status: 403,
       code: 'SUPER_ADMIN_IMMUTABLE',
@@ -525,26 +532,25 @@ describe('unlockUser (Stage 18d)', () => {
   it('throws 403 FORBIDDEN when an admin targets another admin, but a super admin may unlock an admin', async () => {
     const admin2 = await createUserWithRole('admin2', 'admin');
     await setLoginLockState(admin2.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
-    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', admin2.id, 'TEST_REASON', null)).rejects.toMatchObject({
+    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', admin2.id, null)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
     });
 
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', admin2.id, 'TEST_REASON', null);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', admin2.id, null);
     expect(result.isLocked).toBe(false);
   });
 
   it('an admin may unlock a plain user', async () => {
     const target = await createActiveUser(1);
     await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id, 'TEST_REASON', null);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id, null);
     expect(result.isLocked).toBe(false);
   });
 });
 
 describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
   const UA = 'Mozilla/5.0 Test Agent';
-  const REASON = 'SUPPORT_REQUEST';
 
   it('an admin may unmask a plain user, a pending user, a suspended user and another admin, each with one EMAIL_UNMASK row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
@@ -555,7 +561,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
     const admin2 = await createUserWithRole('admin2', 'admin');
 
     for (const target of [user, pending, suspended, admin2]) {
-      const result = await usersService.getFullEmail(admin.id, target.id, REASON, UA);
+      const result = await usersService.getFullEmail(admin.id, target.id, UA);
       expect(result).toEqual({ email: target.email });
       const rows = await getAuditLogRowsForTarget(target.id);
       expect(rows).toHaveLength(1);
@@ -565,7 +571,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
         target_id: target.id,
         before: null,
         after: null,
-        reason: REASON,
+        reason: 'N/A',
         user_agent: UA,
       });
     }
@@ -577,7 +583,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
     const admin = await createUserWithRole('admin', 'admin');
 
     for (const target of [user, admin]) {
-      expect(await usersService.getFullEmail(sa.id, target.id, REASON, UA)).toEqual({
+      expect(await usersService.getFullEmail(sa.id, target.id, UA)).toEqual({
         email: target.email,
       });
       expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(1);
@@ -588,7 +594,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
     const admin = await createUserWithRole('admin', 'admin');
     const sa = await createUserWithRole('sa', 'super admin');
 
-    await expect(usersService.getFullEmail(admin.id, sa.id, REASON, UA)).rejects.toMatchObject({
+    await expect(usersService.getFullEmail(admin.id, sa.id, UA)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
       message: "Cannot unmask a super administrator's email",
@@ -598,7 +604,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
 
   it('a super admin targeting their own id is also denied (no self-exception), no row', async () => {
     const sa = await createUserWithRole('sa', 'super admin');
-    await expect(usersService.getFullEmail(sa.id, sa.id, REASON, UA)).rejects.toMatchObject({
+    await expect(usersService.getFullEmail(sa.id, sa.id, UA)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
     });
@@ -607,7 +613,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
 
   it('an admin targeting their own id is granted, with one row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
-    const result = await usersService.getFullEmail(admin.id, admin.id, REASON, UA);
+    const result = await usersService.getFullEmail(admin.id, admin.id, UA);
     expect(result).toEqual({ email: admin.email });
     expect(await getAuditLogRowsForTarget(admin.id)).toHaveLength(1);
   });
@@ -615,7 +621,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
   it('an unknown target UUID is denied USER_NOT_FOUND, no row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
 
-    await expect(usersService.getFullEmail(admin.id, UNKNOWN_ID, REASON, UA)).rejects.toMatchObject({
+    await expect(usersService.getFullEmail(admin.id, UNKNOWN_ID, UA)).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -625,7 +631,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
     const admin = await createUserWithRole('admin', 'admin');
     const target = await createActiveUser(1);
 
-    await usersService.getFullEmail(admin.id, target.id, REASON, null);
+    await usersService.getFullEmail(admin.id, target.id, null);
 
     const [row] = await getAuditLogRowsForTarget(target.id);
     expect(row!.user_agent).toBeNull();
@@ -636,7 +642,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
     const target = await createActiveUser(1);
 
     const before = await dbNow();
-    await usersService.getFullEmail(admin.id, target.id, REASON, UA);
+    await usersService.getFullEmail(admin.id, target.id, UA);
     const after = await dbNow();
 
     const [row] = await getAuditLogRowsForTarget(target.id);
@@ -652,7 +658,7 @@ describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
       .spyOn(auditLogQueries, 'insertAuditLog')
       .mockRejectedValueOnce(new Error('insert failed'));
 
-    await expect(usersService.getFullEmail(admin.id, target.id, REASON, UA)).rejects.toThrow(
+    await expect(usersService.getFullEmail(admin.id, target.id, UA)).rejects.toThrow(
       'insert failed',
     );
     expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
