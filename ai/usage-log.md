@@ -8001,8 +8001,8 @@ None this session.
 >
 > Extend the existing `GET /credits/transactions/all` with two optional query parameters:
 >
->   ?userId=<uuid>     rows where that user is the originating OR the destination user
->   ?requestId=<uuid>  rows for that order
+> ?userId=<uuid> rows where that user is the originating OR the destination user
+> ?requestId=<uuid> rows for that order
 >
 > Both optional, both combinable (AND them). No parameters means the current behaviour, unchanged.
 >
@@ -8029,14 +8029,14 @@ None this session.
 >
 > ## Tests
 >
->   - filter by userId returns only rows where they are originating or destination, and nothing else
->   - filter by requestId returns only that order's rows
->   - both together
->   - no filter still returns everything, as before
->   - a non-admin is still 403 with a filter applied
->   - an unmatched filter is 200 with an empty array
->   - a malformed UUID is 400
->   - pagination still works correctly with a filter across two pages
+> - filter by userId returns only rows where they are originating or destination, and nothing else
+> - filter by requestId returns only that order's rows
+> - both together
+> - no filter still returns everything, as before
+> - a non-admin is still 403 with a filter applied
+> - an unmatched filter is 200 with an empty array
+> - a malformed UUID is 400
+> - pagination still works correctly with a filter across two pages
 >
 > Mutation-check it: break the filter so it is ignored, and confirm a test fails. If nothing fails, the tests aren't testing the filter.
 >
@@ -8073,11 +8073,12 @@ _Validation._ Both parameters are zod `z.string().uuid().optional()`, parsed thr
 **Deviations / questions raised for the team:**
 
 1. **A general index on `request_id` is measured but NOT added**, pending the team's decision. On 200 000 rows: without one, a `WHERE request_id = $1` is a Parallel Seq Scan, 2 318 shared buffers, **8.855 ms**; with `transaction_log (request_id)` it is an Index Scan, 10 buffers, **0.100 ms** — about 88× faster. The three existing partial unique indexes cannot serve it because each is `WHERE transaction_type = '…'` and this query does not filter on type. Cost: **6.2 MB per 200 000 rows** (~12% on top of a 50 MB relation), one more B-tree insert on every credit write — which is the same transaction NFR8.2.1's unmeasured 500 ms budget covers — and a `docker compose down -v` on credit-db, because `init.sql` only runs on an empty volume. My read, which is not a decision: not warranted at current scale, and cheapest folded into whichever change next forces a volume teardown.
-2. **The brief's attribution of this surface to user-service's F5.3.2 is only half right.** F5.3.2 exists and reads *"The system shall allow administrators to view transaction details of individual users"* (`docs/FoC-ProductBacklog.md` line 103), which backs the `userId` filter. It does **not** cover `?requestId=`; filtering by order has no requirement in this backlog or user-service's and was requested directly. §10 item 10 records the two halves separately rather than letting F5.3.2 appear to justify the whole surface.
+2. **The brief's attribution of this surface to user-service's F5.3.2 is only half right.** F5.3.2 exists and reads _"The system shall allow administrators to view transaction details of individual users"_ (`docs/FoC-ProductBacklog.md` line 103), which backs the `userId` filter. It does **not** cover `?requestId=`; filtering by order has no requirement in this backlog or user-service's and was requested directly. §10 item 10 records the two halves separately rather than letting F5.3.2 appear to justify the whole surface.
 3. **Invented, and listed in `API.md` under "What was invented" as item 4a:** the parameter names `userId` and `requestId`; that unknown query keys are ignored rather than rejected, matching the existing cursor handling; that an unmatched filter is an empty `200`; and that filters travel beside the cursor rather than inside it.
 4. **Nothing outside `credit-service/` needed touching**, as the brief expected — apart from this log entry and its README row, which AGENTS.md §5 and §6 require.
 
 **What I kept/changed/rejected:**
+
 ## 2026-11-04 — Frontend: production nginx image, compose service, and the order-service build fix it exposed
 
 **Tool:** Claude Code (model: claude-opus-5)
@@ -8094,25 +8095,22 @@ _Validation._ Both parameters are zod `z.string().uuid().optional()`, parsed thr
 > ## Build
 >
 > 1. Add a production stage to frontend/Dockerfile: run `vite build`, then serve the output with nginx. Match the target naming the majority of services use (dev/prod, not `production` — order-service is the odd one out).
->
 > 2. Write the nginx config. Two jobs:
->
 >    - SPA fallback: client-side routes like /wallet and /admin/suppliers must serve index.html rather than 404.
 >    - Proxy the API paths to the backend services, mirroring what vite.config.js does today. Derive the exact path-to-service mapping from that file rather than guessing it.
 >
 >    Using same-origin paths through nginx means no Vite environment variables need baking at build time. Confirm that holds — if anything in the frontend reads import.meta.env for an API base URL, say so.
 >
 > 3. Add a `frontend` service to compose. Check how compose.dev.yaml is used and follow that pattern: if dev overrides live there, the base compose should run the prod target so `docker compose up` gives a complete working system, with the Vite dev server as the override. Tell me which arrangement you chose and why.
->
 > 4. Give it a health check, consistent with the other services.
 >
 > ## Verify
 >
->   - the prod image builds
->   - `docker compose up` brings the whole stack up including the frontend, and the app loads in a browser through the container, not through a host Vite server
->   - log in, read a balance, page transaction history — all through nginx, proving the proxy paths are right
->   - a direct hit on a deep route like /wallet serves the app rather than 404
->   - the existing host workflow still works for anyone running `npm run dev`
+> - the prod image builds
+> - `docker compose up` brings the whole stack up including the frontend, and the app loads in a browser through the container, not through a host Vite server
+> - log in, read a balance, page transaction history — all through nginx, proving the proxy paths are right
+> - a direct hit on a deep route like /wallet serves the app rather than 404
+> - the existing host workflow still works for anyone running `npm run dev`
 >
 > Report the image size and anything you had to invent. Show me the Dockerfile, the nginx config and the compose diff before applying — all three are outside credit-service/.
 
@@ -8120,9 +8118,8 @@ _Validation._ Both parameters are zod `z.string().uuid().optional()`, parsed thr
 >
 > Two things:
 >
->   - `ports: !override` — what Compose version does that need, and is everyone on the team new enough? If anyone's on an older Docker Desktop, dev breaks for them and not for me, which is the worst kind of bug. Check and tell me the minimum.
->
->   - We've settled on Option A for deployment: a single EC2 instance running this compose file. Nothing to change now, but it means this nginx setup is the production routing, not a stopgap.
+> - `ports: !override` — what Compose version does that need, and is everyone on the team new enough? If anyone's on an older Docker Desktop, dev breaks for them and not for me, which is the worst kind of bug. Check and tell me the minimum.
+> - We've settled on Option A for deployment: a single EC2 instance running this compose file. Nothing to change now, but it means this nginx setup is the production routing, not a stopgap.
 >
 > Report the image size, and confirm all five checks: build, full docker compose up, login + balance + paged history through nginx in a browser, a direct hit on /wallet, and npm run dev still working on the host.
 
@@ -8133,8 +8130,9 @@ _Validation._ Both parameters are zod `z.string().uuid().optional()`, parsed thr
 > Keeping !override. I'll tell the team to check `docker compose version` for 2.24.4+.
 >
 > Two things to add while you're in there:
->   - a README line saying to run `docker compose down -v` on the affected database after pulling a schema change, since init.sql only runs on an empty volume. This has bitten four times now.
->   - note the TLS gap somewhere visible — nginx listens on :80 plaintext, and on EC2 we'll need certs terminated either here with certbot or at an ALB. Not today's work, but it shouldn't be invisible.
+>
+> - a README line saying to run `docker compose down -v` on the affected database after pulling a schema change, since init.sql only runs on an empty volume. This has bitten four times now.
+> - note the TLS gap somewhere visible — nginx listens on :80 plaintext, and on EC2 we'll need certs terminated either here with certbot or at an ALB. Not today's work, but it shouldn't be invisible.
 >
 > Then commit, write the usage-log entry and README row
 
@@ -8156,7 +8154,7 @@ All five checks confirmed, after recreating the `user-db` and `credit-db` volume
 4. **Deep route** — `GET /wallet` returns 200 `text/html`; the SPA then guards it to `/login` and returns to `/wallet` after signing in.
 5. **Host `npm run dev`** — still 200 on 5173 throughout, and the merged dev config publishes exactly one port.
 
-Every proxy path was additionally confirmed to reach a *distinct* backend by its error envelope: credit-service's `{"error":{"code":…}}`, supplier-service's `{"status_code":…}`, user-service's `{"message":…}`, and Engine.IO's own `{"code":0,"message":"Transport unknown"}` on `/socket.io`.
+Every proxy path was additionally confirmed to reach a _distinct_ backend by its error envelope: credit-service's `{"error":{"code":…}}`, supplier-service's `{"status_code":…}`, user-service's `{"message":…}`, and Engine.IO's own `{"code":0,"message":"Transport unknown"}` on `/socket.io`.
 
 **Files:**
 
@@ -8170,8 +8168,8 @@ Every proxy path was additionally confirmed to reach a *distinct* backend by its
 
 **Deviations / questions raised for the team:**
 
-1. **The postinstall hook committed in `6f3c174` had broken `docker build` for order-service, and main has been broken since that merged.** The deps stage copies only `package.json` and the lockfile before `npm ci`, so npm tried to run `scripts/prisma-generate.mjs` before that file existed. The script's existing guard covered a missing *schema*, not a missing *script*. Nobody had noticed because the running containers predate the change and nothing had rebuilt since; it surfaced on the first `docker compose up --build` after it. Fixed by copying `scripts/` before `npm ci`, in a separate commit, and verified with `docker build --target production`. **This was my own regression from the CI task, missed because I verified `npm ci` on the host but never re-ran the Docker build after adding the hook.**
-2. **`ports: !override` requires Docker Compose 2.24.4.** Established by running the real binaries, since the documentation does not state it: on 2.24.3 the tag is *silently ignored* and the port lists concatenate, so the first `docker compose -f compose.yaml -f compose.dev.yaml up` fails with "port is already allocated" — for other people and not for the author. The team is checking `docker compose version`. A version-proof alternative exists (give prod a different host port and drop the tag) and was offered.
+1. **The postinstall hook committed in `6f3c174` had broken `docker build` for order-service, and main has been broken since that merged.** The deps stage copies only `package.json` and the lockfile before `npm ci`, so npm tried to run `scripts/prisma-generate.mjs` before that file existed. The script's existing guard covered a missing _schema_, not a missing _script_. Nobody had noticed because the running containers predate the change and nothing had rebuilt since; it surfaced on the first `docker compose up --build` after it. Fixed by copying `scripts/` before `npm ci`, in a separate commit, and verified with `docker build --target production`. **This was my own regression from the CI task, missed because I verified `npm ci` on the host but never re-ran the Docker build after adding the hook.**
+2. **`ports: !override` requires Docker Compose 2.24.4.** Established by running the real binaries, since the documentation does not state it: on 2.24.3 the tag is _silently ignored_ and the port lists concatenate, so the first `docker compose -f compose.yaml -f compose.dev.yaml up` fails with "port is already allocated" — for other people and not for the author. The team is checking `docker compose version`. A version-proof alternative exists (give prod a different host port and drop the tag) and was offered.
 3. **The first healthcheck reported unhealthy for 18 minutes.** Inside the container `localhost` resolves to `::1` only, and nginx's `listen 80` binds IPv4, so `wget http://localhost/healthz` was refused while the port worked from outside. Fixed by probing `127.0.0.1` and adding `listen [::]:80`, which is right for a production edge anyway.
 4. **No TLS.** nginx listens on plain HTTP. With Option A this file becomes the production edge, so tokens, refresh cookies and passwords would cross the network in clear text. Recorded in the README and at the top of the nginx config; unowned.
 5. **Invented, none of it a team decision:** `nginx:1.27-alpine` and its pin; `/healthz` as the probe path and `wget --spider` as the command; the caching policy (immutable for `/assets/`, `no-cache` for `index.html`); request-time resolution over literal upstreams; the 3600s WebSocket timeout; `frontend/nginx/` as the config directory.
@@ -8232,18 +8230,19 @@ Every proxy path was additionally confirmed to reach a *distinct* backend by its
 > ## Then the PR
 >
 > Header and body covering everything on this branch:
->   - the frontend production image: vite build plus nginx, the
->     request-time resolver and why literal upstreams would have
->     stopped nginx starting, the $request_uri detail, the SPA
->     fallback, /assets/ deliberately 404ing
->   - the compose service, the !override ports fix and the Compose
->     v2.24.4 minimum
->   - the order-service Docker build fix — broken on main since
->     PR #137, so anyone who hit it knows why
->   - the IPv4/IPv6 healthcheck fix
->   - the two documentation additions: the volume-recreation warning
->     naming all four incidents, and the TLS gap
->   - these two fixes
+>
+> - the frontend production image: vite build plus nginx, the
+>   request-time resolver and why literal upstreams would have
+>   stopped nginx starting, the $request_uri detail, the SPA
+>   fallback, /assets/ deliberately 404ing
+> - the compose service, the !override ports fix and the Compose
+>   v2.24.4 minimum
+> - the order-service Docker build fix — broken on main since
+>   PR #137, so anyone who hit it knows why
+> - the IPv4/IPv6 healthcheck fix
+> - the two documentation additions: the volume-recreation warning
+>   naming all four incidents, and the TLS gap
+> - these two fixes
 >
 > Note in the body that the allocation flow was verified end to end
 > through nginx for the first time on this stack — fresh user, OTP,
@@ -8257,7 +8256,7 @@ _Fix 1._ One `docker-build` matrix job, five legs, `fail-fast: false` so a singl
 
 _The target-name divergence is spelled out, not normalised._ `order-service` is `production`; the other four are `prod`. Recorded as a matrix value with a comment pointing at the PR note rather than renamed, because renaming that stage would also mean editing `compose.yaml` and `compose.dev.yaml`, which belongs to order-service's owner.
 
-_Fix 2, gate check._ AGENTS.md does **not** mandate the numbering. Its §6 template is four columns — `Date | Service | Entry | High-level summary` — with no `#` column, so removing it moves the README *towards* the documented format rather than away from it. No AGENTS.md change was needed and none was made.
+_Fix 2, gate check._ AGENTS.md does **not** mandate the numbering. Its §6 template is four columns — `Date | Service | Entry | High-level summary` — with no `#` column, so removing it moves the README _towards_ the documented format rather than away from it. No AGENTS.md change was needed and none was made.
 
 _Fix 2 turned up an unrelated defect._ The README held **two** Log index tables, not one: lines 175–304 (128 rows) and 305–461 (155 rows). Almost certainly the 2026-11-03 merge-conflict resolution recorded in the entry above, which kept both sides' rows and in fact kept both sides' whole tables. Rows 1–126 were duplicates, but the stale table's last two rows existed **nowhere else** — `Order service: 404 for missing or non-UUID order ids` and `Frontend: required-field asterisks on the create-errand form`, both of which are real entries in this log (2026-10-22). Deleting the stale table outright would have silently dropped two disclosures. They were reinstated in the position `ai/usage-log.md` itself gives them, and the result is one table of 157 rows.
 
@@ -8278,7 +8277,7 @@ _Fix 2 turned up an unrelated defect._ The README held **two** Log index tables,
 **Deviations / questions raised for the team:**
 
 1. **Should the stage names be unified?** My read, which is not a decision: yes, rename order-service's `production` to `prod` so all five match, but as its owner's own change touching `order-service/Dockerfile`, `compose.yaml` and `compose.dev.yaml` together. Left alone here as instructed.
-2. **What this job does not cover, stated because the brief asked for it.** The `dev` targets are never built, so a dev-only stage break still reaches main. That matters for `order-service` `dev` and `frontend` `dev`, which are real stages with their own `COPY` and `CMD` layers; for user-service, credit-service and supplier-service, `dev` adds only a `CMD` on top of the `base` that prod also builds, so the gap there is negligible. Nothing here *runs* a container either — a green leg says the image assembles, not that it boots, connects or serves — and no image is pushed.
+2. **What this job does not cover, stated because the brief asked for it.** The `dev` targets are never built, so a dev-only stage break still reaches main. That matters for `order-service` `dev` and `frontend` `dev`, which are real stages with their own `COPY` and `CMD` layers; for user-service, credit-service and supplier-service, `dev` adds only a `CMD` on top of the `base` that prod also builds, so the gap there is negligible. Nothing here _runs_ a container either — a green leg says the image assembles, not that it boots, connects or serves — and no image is pushed.
 3. **`compose.yaml`'s base stack still runs `target: dev` for user-service, credit-service and supplier-service**, so for three of five services the image this job validates is not the one `docker compose up` starts. With Option A that is also what would run on EC2. Flagged, not changed: which target the deployed stack uses is a team decision.
 4. **The README carried two Log index tables and two disclosures existed only in the stale one** (see Key responses). Worth the team knowing because it means the 2026-11-03 conflict resolution was wrong in a way that review did not catch, and a future `ai/usage-log.md` conflict should be resolved by merging rows, never by keeping both tables.
 5. **The three previous number collisions were real but are now moot.** `feat/credit-admin-transaction-filters` is still unmerged and still carries a numbered row for 155; whoever merges it should drop the number rather than renumber.
@@ -8505,6 +8504,7 @@ Accepted all changes.
 **Governing decision:** The team's chat answers of 2026-11-05 (quoted below); recorded as B1–B16 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > In my supplier service, I want to add a functionality for users to bookmark their favorite locations. The idea is that these can appear at the top of the supplier page before the user searches for anything in particular. This will be in a new supplier-bookmarking branch.
 > Ask the necessary decision questions, if any, to design this feature with me. I see it as a very small change, likely just storing each user's bookmarked suppliers somewhere in the supplier service, so that when a specific user queries for the inital home page load, these bookmarked suppliers will be sent to facilitate the pinned display
 
@@ -8534,9 +8534,10 @@ Accepted all changes.
 > 3. hidden ids will be under the unavailable array and ignored from filters, as you suggested
 > 4. yes.
 > 5. yes
-> proceed with spec and plan
+>    proceed with spec and plan
 
 **Key responses:**
+
 - Asked the decision questions instead of choosing (this is architecture/design work under root `AGENTS.md` §2.1): which entity is bookmarked, where the data lives, the response shape, the cap, hidden/deleted handling and the base branch. Recorded the team's answers as B1–B16.
 - Created the local branch `supplier-bookmarking` from `main` (no files changed by that step).
 - Wrote the spec and a 3-part, TDD-style implementation plan (user-service, supplier-service, frontend) from those decisions only. Where the team had not decided something, the spec's "Not yet decided by the team" table (G1–G7) shows the plan's working choice: soft-deleted wins over inactive, `code` string names, `400` for a bad id, `422` for an empty `ids=`, placement of the Saved filter in the UI, a composite primary key, and oldest-first ordering of the id list.
@@ -8545,6 +8546,7 @@ Accepted all changes.
 - Verification: none run. No code was written or executed; the plan's code was written against files read in this session and has not been compiled or tested.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (created)
 - `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (created)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -8566,6 +8568,7 @@ G1–G7 in the spec's "Not yet decided by the team" table need a team answer bef
 **Governing decision:** The team's chat answers below; recorded as B17–B22 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > 1. delete take precedence. Use deleted if both are active
 > 2. Codename works
 > 3. bad supplier ids will not exist in a typical flow - only via injections. The supplier service will return a dedicated status "invalid" that follows the same logic as "deleted" and be removed. Other valid ids are not blocked
@@ -8575,6 +8578,7 @@ G1–G7 in the spec's "Not yet decided by the team" table need a team answer bef
 > 7. oldest id first works - whatever the supplier replies
 
 **Key responses:**
+
 - Recorded the answers in the spec (B17–B22) and cut the open-gaps table to what is still undecided (G3, G5, G8–G10).
 - Updated the plan: a malformed item in `ids` no longer fails the request (the parameter now parses to `{ valid, invalid }`); the service returns an `invalid` entry for each and an empty payload when nothing is well-formed or `ids` is empty; the frontend clears `deleted` and `invalid` entries; the filter is labelled "Bookmarked".
 - Found that the frontend's request helper (`frontend/src/api/http.js`) drops empty query values, so an empty `ids` would never reach the service and the call would list every supplier. The plan therefore keeps a frontend shortcut that shows the empty state itself when there are no bookmarks, alongside the service behaviour the team asked for.
@@ -8582,6 +8586,7 @@ G1–G7 in the spec's "Not yet decided by the team" table need a team answer bef
 - Verification: none run. Documents only; no code was written or executed.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
 - `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -8603,6 +8608,7 @@ Still undecided (spec §6): G3 status for a bad id on the user-service routes, G
 **Governing decision:** The team's chat answers below; recorded as B23–B24 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > G3: as decided before, if a supplier ID is invalid (from manual injection), it will not block the call. The supplier-service will just return it as invalid, and the fe calls to drop the record
 > G5: Go with this for now. I will amend the UI later on if needed
 > G8: Yes stick to this first
@@ -8610,11 +8616,13 @@ Still undecided (spec §6): G3 status for a bad id on the user-service routes, G
 > G10: does this still matter if any invalid id just returns as invalid?
 
 **Key responses:**
+
 - Recorded G5, G8 and G9 as decided (B24). Answered G10: it is an implementation detail, because an oversized id is reported as `invalid` and leads to the same bookmark removal as `deleted`.
 - Read G3 as applying to the user-service `DELETE` as well: the plan now makes `DELETE /users/me/bookmarks/:supplierId` with a malformed id a no-op that returns `200` (B23), so the frontend's clean-up call never errors. `PUT` with a malformed id is still `400` because it cannot be stored; that is the one remaining open item, working choice stated in the spec.
 - Verification: none run. Documents only.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
 - `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -8636,11 +8644,13 @@ Whether `PUT` with a malformed id should stay `400` (spec §6, G3). The `DELETE`
 **Governing decision:** The team's chat answer below; recorded as B25 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > Approve G3's 400 error in that rare case
 
 **Key responses:** Recorded B25 (`PUT` with a malformed id returns `400 VALIDATION_ERROR`) and removed the last open gap from the spec, the plan header and `supplier-service/PROJECT_STATE.md`. Verification: none run; documents only.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (modified)
 - `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md` (modified)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -8662,9 +8672,11 @@ None.
 **Governing decision:** `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md` (team decisions B1–B25, from the 2026-11-05 chat; earlier entries above quote those answers) and the plan `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md`.
 
 **Prompts (exact):**
+
 > commit docs and start implementation
 
 **Key responses:**
+
 - Committed the spec, plan and earlier log entries, then implemented the plan task by task on branch `supplier-bookmarking`, one commit per task (A1, A2+A3, B1, B2, B3, B4, B5, C1+C2, C3, C4, C5).
 - user-service: `user_bookmarks` table in `init.sql`; `bookmarks.queries.ts`; `bookmarks.service.ts` (cap of 20 enforced in a transaction that locks the user row; repeat-safe add and remove); `bookmarks.controller.ts`; `GET`, `PUT`, `DELETE /users/me/bookmarks` routes. `DELETE` with a malformed id is a `200` no-op (B23); `PUT` with a malformed id is `400` (B25).
 - supplier-service: `ids` query parameter on `GET /api/v1/suppliers` (at most 20 values, malformed items reported as `invalid`), `supplierIds` repository criterion, `findStatusesByIds`, and the `unavailable` array; OpenAPI, README and `PROJECT_STATE.md` (decision C53, W8) updated.
@@ -8674,6 +8686,7 @@ None.
 - Not run: the end-to-end browser check (plan task D1). `docker compose up` for the whole stack failed on missing credit-service variables in `.env`, and no seeded suppliers or users were prepared, so nothing was exercised against the real supplier-service or in a browser. The soft-delete clean-up, the 21st-bookmark toast and the Bookmarked views are covered only by unit and HTTP tests.
 
 **Files:**
+
 - `user-service/src/db/init.sql` (modified)
 - `user-service/src/db/queries/bookmarks.queries.ts` (created)
 - `user-service/src/services/bookmarks.service.ts` (created)
@@ -8726,9 +8739,11 @@ The browser check (D1) has not been run. The frontend's no-bookmarks empty state
 **Governing decision:** Task D1 of `docs/superpowers/plans/2026-11-05-supplier-bookmarking.md`; spec `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > Run D1 check
 
 **Key responses:**
+
 - Ran the services on the host against the local Docker databases: user-service (port 3001), supplier-service (port 3004) and the Vite dev server (5173). Each service's `.env` was loaded into the shell; the dev `.env` is missing several variables the current config requires (`JWT_KEY_ID`, `CREDIT_SERVICE_URL`, the login-lockout settings), so those were supplied inline for this run and no `.env` file was changed. Redis was a scratch container on port 6390.
 - Applied `user-service/src/db/init.sql` to the dev user database (it had not been updated since the earlier stages), which created `user_bookmarks`. Created two throwaway users (`d1user`, `d1admin`) directly in that database with a password generated for this run.
 - Walked the flow in the built-in browser as `d1user`. Passed: bookmark two suppliers from the landing page (rows appear in `user_bookmarks`, icons fill); reload keeps the icons filled; the Bookmarked chip sends `ids=36,18` and shows only those two; the suppliers page Bookmarked checkbox shows the same two; unbookmarking one removes it from the view and the table; with 20 saved, a 21st add shows the toast "You can bookmark up to 20 suppliers. Remove one before adding another."; with no bookmarks the chip shows "No bookmarked suppliers." and sends no new list request.
@@ -8737,6 +8752,7 @@ The browser check (D1) has not been run. The frontend's no-bookmarks empty state
 - Cleanup: servers and the scratch Redis stopped, the two test users deleted (their bookmarks cascade). The `foc-user-db`, `foc-supplier-db` and `foc-supplier-redis` containers were started for this check and left running. The `user_bookmarks` table remains in the dev user database.
 
 **Files:**
+
 - `ai/usage-log.md` (this entry)
 - `README.md` (log index row)
 - `supplier-service/PROJECT_STATE.md` (modified)
@@ -8756,11 +8772,13 @@ The dev `user-service/.env` lacks variables that `config.ts` now requires; the t
 **Governing decision:** The team's chat answer below; recorded as B26 in `docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md`.
 
 **Prompts (exact):**
+
 > push and open pr for this new feature
 
 > merge main into this branch and resolve issues. The landing page was deleted as it is serving the same purpose as the supplier page, so the filters and chips can move there
 
 **Key responses:**
+
 - Pushed the branch and opened a pull request against `AY2627S1-CS3219-P18/FoC` (`gh` defaulted to a different repository until `--repo` was given). GitHub reported conflicts with `main`.
 - Merged `origin/main` into the branch. Conflicts and how they were resolved: `ai/usage-log.md` and the README Log index (took `main`'s content and appended this branch's six entries and rows after it, renumbered 173–178, nothing reworded); `user-service/tests/helpers/db.ts` (kept both header notes); `frontend/src/pages/Landing.jsx` (deleted on `main`, so deleted here, along with `frontend/tests/pages/Landing.test.jsx`).
 - The Bookmarked checkbox already existed on the suppliers page, so no new UI was added; the Landing tests were replaced by `frontend/tests/pages/Suppliers.test.jsx` (4 tests: ids sent when ticked, no ids otherwise, deleted entries cleared, empty state). Spec B24 and §5 were updated and B26 added to record the team's decision; the plan's Task C4 got a note that it is superseded.
@@ -8768,6 +8786,7 @@ The dev `user-service/.env` lacks variables that `config.ts` now requires; the t
 - The earlier browser check (the Bookmarked chip on the landing page) predates this merge; the suppliers page filter was exercised in that check, but nothing was re-run in a browser after the merge.
 
 **Files:**
+
 - `frontend/src/pages/Landing.jsx` (deleted, as on `main`)
 - `frontend/tests/pages/Landing.test.jsx` (deleted)
 - `frontend/tests/pages/Suppliers.test.jsx` (created)
@@ -8783,3 +8802,84 @@ The earlier entries in this log and the PR description mention a landing-page ch
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-05 — Stage 24: Admin User History Page (F5.3.2)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 24 (frontend-only; backend contracts already merged on main).
+
+**Prompts (exact):**
+
+> can we implement stage 24? let me know if you have anything that you're unsure about first.
+
+> (AskUserQuestion) What should the order page show when the supplier name can't be resolved (supplier-service down or id not found)? → "Supplier \<id\>"
+
+**Key responses:**
+
+- Found one unresolved `[DECIDE]` placeholder in Stage 24 (fallback text for a missing supplier name); the stage's own rule says to stop and ask rather than pick a value, so asked the team before writing any code. Recorded the answer ("Supplier \<id\>", matching the existing "Location \<id\>" pattern) directly into `instructions.md`.
+- Added `getUser` (user-service `GET /users/:id`), `getOrder` and `listUserOrders` (order-service `GET /orders/:id`, `GET /orders/admin/users/:userId`), and `listOrderTransactions` (credit-service `GET /credits/transactions/all?requestId=`) to the existing `api/*.js` modules, following their established style (JSDoc-style contract comments, thin `request()` wrappers).
+- Found and reported a mismatch while checking each service's error shape (Stage 24a's own instruction): `http.js`'s `ApiError` only read `body.message`/`body.code`, which works for user/order-service but leaves both `undefined` for credit-service's documented `{ error: { code, message } }` envelope. Fixed by having `ApiError` fall back to the nested `error.message`/`error.code` only when the top-level ones are absent, which does not change order-service's own `body.error` (a string there, not an object) or any other existing caller.
+- Built `AdminUserTransactions.jsx` (route `/admin/user-transactions/:userId`) and `AdminOrderTransactions.jsx` (route `/admin/user-transactions/:userId/:requestId`), per the stage's design-decision table: profile + suspend/unsuspend/promote/demote (reusing `AdminUsers.jsx`'s exact `getRowActions`/`ACTION_SUCCESS`/`ACTION_DIALOG`/`ConfirmActionDialog`, now exported from there instead of duplicated, so the two pages can't drift from each other's allowed-actions table); a paginated, client-side-filterable (role/status) order list with the page number kept in the URL; the order page's full field list and its transactions, with credits colour/sign reusing `credits.js`'s `describe()` (held/returned, no sign, for reservation/release; signed for transfer) relative to the viewed user. A profile 404, or an order that is missing or doesn't involve the viewed user, takes over the whole page ("not found"); the orders section and the transactions section each fail and retry independently of everything else, per the stage's "Section failures" rule.
+- Wired the entry point: `/admin/users` rows now navigate to the new user page on click; the three-dot menu's cell and the email eye-icon button stop the click from bubbling so they still work without navigating. Added the two routes to `App.jsx` behind `RequireAuth` + `RequireRole(minimum="admin")`.
+- Verification run: `npm run lint` (oxlint) clean of errors (same pre-existing warning patterns as the rest of the codebase, e.g. `set-state-in-effect`); `npm run build` (vite) succeeds; `npx vitest run` — 19 files / 97 tests pass, including the two new test files and the extended `AdminUsers.test.jsx` (which needed a `MemoryRouter` wrapper added to its `renderPage()`, since `AdminUsers.jsx` now calls `useNavigate` unconditionally). Did not open a browser; no backend services were running, so this is lint/build/unit-test verification only, not the manual browser checklist.
+
+**Files:**
+
+- `frontend/src/api/http.js` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/api/credits.js` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (created)
+- `frontend/src/pages/AdminOrderTransactions.jsx` (created)
+- `frontend/src/App.jsx` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (created)
+- `frontend/tests/pages/AdminOrderTransactions.test.jsx` (created)
+- `instructions.md` (modified — recorded the `[DECIDE]` answer)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+Stage 24's sub-stages are labelled "18a–18d" in `instructions.md`, apparently copied from an earlier stage; treated as 24a–24d. Initially misread the "Summary fields" row as contradicting "Profile fields" and skipped it; corrected in the next entry below, once the team clarified it means the list views, not the detail views. The browser verification checklist (direct URL/reload behaviour, 403/login-redirect views, stopping each backend service) was not run; only lint/build/unit tests.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-05 — Stage 24 follow-up: Credits column on /admin/users
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 24's "Summary fields" row.
+
+**Prompts (exact):**
+
+> yah correct, summary fields is on the list of ALL users / ALL orders, detailed is when you click into the user / order.
+
+**Key responses:**
+
+- The previous entry's implementation treated the "Summary fields" row (`user summary - email (masked), status, role, credits; order summary - request ID, requestor, supplier, credits for the transaction, courier, status`) as redundant with "Profile fields"/"Order summaries" and skipped the credits part. The team clarified: "Summary fields" describes the _list_ views (the `/admin/users` table, and the user page's order list), while "Profile fields" and the order detail page are the _detail_ views reached by clicking in. The order list's row already matched (request ID/requestor/supplier/credits/courier/status); the one gap was `/admin/users`, which had email (masked)/status/role but no credits.
+- Added `useBalance` to `api/lookups.js` (same `cached()`/`useLookup()` pattern as `useUserName`/`useSupplier`), backed by the existing `credits.js` `getBalance`. Added a `CreditsCell` component and a "Credits" column to `AdminUsers.jsx`'s table, showing `totalBalance` or "—" while loading or for a user with no wallet yet (e.g. still pending) - same fallback style as the existing Locked column.
+- Updated `AdminUsers.test.jsx` to mock `useBalance` and added two tests for the new column (resolved value shown; dash while unresolved).
+- Verification run: `npm run lint` clean of errors, `npm run build` clean, `npx vitest run` - 19 files / 99 tests pass.
+
+**Files:**
+
+- `frontend/src/api/lookups.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

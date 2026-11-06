@@ -7,13 +7,25 @@
  *        re-masking on a table refetch. listUsers and getFullEmail are mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 24 of instructions.md - renderPage now wraps in MemoryRouter (AdminUsers.jsx
+ *        calls useNavigate unconditionally as of this stage, which throws outside a Router),
+ *        plus a dummy /admin/user-transactions/:userId route to check the new row-click entry
+ *        point: a row click navigates there, and the three-dot menu still opens without
+ *        navigating. Mocked useBalance (api/lookups) for the new Credits column, and added a
+ *        test for it, per the stage's "Summary fields" row for this table.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../src/components/Toast'
 import AdminUsers from '../../src/pages/AdminUsers'
 import { getFullEmail, listUsers } from '../../src/api/users'
+import { useBalance } from '../../src/api/lookups'
 
 vi.mock('../../src/api/users', () => ({
   listUsers: vi.fn(),
@@ -21,6 +33,10 @@ vi.mock('../../src/api/users', () => ({
   unlockUser: vi.fn(),
   updateUserRole: vi.fn(),
   updateUserStatus: vi.fn(),
+}))
+
+vi.mock('../../src/api/lookups', () => ({
+  useBalance: vi.fn(),
 }))
 
 const VIEWER = { id: 'admin-1', username: 'admin', role: 'admin' }
@@ -67,14 +83,23 @@ function usersPage(users) {
 
 function renderPage() {
   return render(
-    <ToastProvider>
-      <AdminUsers />
-    </ToastProvider>,
+    <MemoryRouter initialEntries={['/admin/users']}>
+      <ToastProvider>
+        <Routes>
+          <Route path="/admin/users" element={<AdminUsers />} />
+          <Route
+            path="/admin/user-transactions/:userId"
+            element={<p>User history page</p>}
+          />
+        </Routes>
+      </ToastProvider>
+    </MemoryRouter>,
   )
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  useBalance.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -217,5 +242,53 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
       expect(screen.getByText('a***@example.com')).toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: 'Show email for alice' })).toBeInTheDocument()
+  })
+})
+
+describe('AdminUsers row click (Stage 24 entry point)', () => {
+  it('clicking a row opens that user\'s history page', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    renderPage()
+
+    const row = (await screen.findByText('alice')).closest('tr')
+    fireEvent.click(row)
+
+    expect(await screen.findByText('User history page')).toBeInTheDocument()
+  })
+
+  it('the three-dot menu still opens on click, without navigating', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    renderPage()
+
+    await screen.findByText('alice')
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for alice' }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Suspend' })).toBeInTheDocument()
+    expect(screen.queryByText('User history page')).not.toBeInTheDocument()
+  })
+})
+
+describe('AdminUsers Credits column (Stage 24 Summary fields)', () => {
+  it('shows the balance when it resolves', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    useBalance.mockReturnValue({
+      userId: 'user-1',
+      totalBalance: 42,
+      reservedBalance: 2,
+      unreservedBalance: 40,
+    })
+    renderPage()
+
+    expect(await screen.findByText('42')).toBeInTheDocument()
+  })
+
+  it('shows a dash while the balance has not resolved', async () => {
+    listUsers.mockResolvedValue(usersPage([ALICE]))
+    useBalance.mockReturnValue(null)
+    renderPage()
+
+    await screen.findByText('alice')
+    // Both the Credits and Locked columns fall back to "—" for this row.
+    expect(screen.getAllByText('—')).toHaveLength(2)
   })
 })

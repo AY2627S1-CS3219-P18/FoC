@@ -524,3 +524,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 177 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: bookmarks table, endpoints, ids filter, Bookmarked filter | Added per-user supplier bookmarks and a Bookmarked filter across three services. |
 | 178 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: end-to-end browser check (D1) | Walked the bookmark flow in a browser against local services; admin UI path not run. |
 | 179 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: merge of main and landing page removal | Merged main, dropped the removed landing page's chip, moved its tests to the suppliers page. |
+| 180 | 2026-11-05 | frontend | Stage 24: Admin User History Page (F5.3.2) | Added admin user/order history pages with suspend/promote actions, orders list and transactions. |
+| 181 | 2026-11-05 | frontend | Stage 24 follow-up: Credits column on /admin/users | Added a Credits column to the admin users list, per the stage's "Summary fields" row. |

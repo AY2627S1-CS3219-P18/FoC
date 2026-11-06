@@ -39,6 +39,16 @@
  *        feed the same callback.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 24 of instructions.md - ApiError now also reads credit-service's documented
+ *        `{ error: { code, message } }` envelope (credit-service/API.md), which this file
+ *        previously only parsed as the user/order-service shapes (`{ message, code }` top
+ *        level), leaving `.message`/`.code` undefined for every credit-service error. Falls
+ *        back to the nested values only when the top-level ones are absent, so order-service's
+ *        own `body.error` (a string code, not an object) is unaffected.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // In memory only: a page reload loses it, and the refresh cookie gets a new one.
@@ -60,12 +70,14 @@ export const setOnSessionTimeLeft = (callback) => {
 export const recordSessionTimeLeft = (secondsLeft) => onSessionTimeLeft(secondsLeft)
 
 // Error envelope from the services: { status_code, error, message, timestamp, details? } (supplier
-// service) or { message, code } (user service).
+// service), { message, code } (user service), or { error: { code, message } } (credit service -
+// `error` is an object there, unlike order-service's string transition code of the same name).
 export class ApiError extends Error {
   constructor(status, body, retryAfterSeconds) {
-    super(body?.message || 'Request failed (' + status + ')')
+    const nested = body?.error && typeof body.error === 'object' ? body.error : null
+    super(body?.message || nested?.message || 'Request failed (' + status + ')')
     this.status = status
-    this.code = body?.code
+    this.code = body?.code || nested?.code
     this.body = body
     this.details = Array.isArray(body?.details) ? body.details : []
     this.retryAfterSeconds = retryAfterSeconds

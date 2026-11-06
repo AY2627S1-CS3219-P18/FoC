@@ -38,6 +38,15 @@
  * Author review: george-yeo
  */
 
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 24 of instructions.md - added getOrder (GET /orders/:id) and listUserOrders
+ *        (GET /orders/admin/users/:userId), for the new admin user-history pages.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ */
+
 import { request } from './http'
 
 // 202 with the `pending` order; the outcome arrives later as order:created / order:failed.
@@ -61,6 +70,17 @@ const transition = (action) => (id) =>
 // additionalDetails? } (credits are fixed). 200 with the updated order, or { message }.
 export const editOrder = (id, payload) =>
   request('/orders/' + encodeURIComponent(id) + '/edit', { method: 'PATCH', json: payload })
+
+// The bare order object. Admins can fetch any order. 404 { message } for a missing or
+// non-viewable order.
+export const getOrder = (id) => request('/orders/' + encodeURIComponent(id))
+
+// Admin/super admin only. 200 { totalCount, currentPage, pageSize: 10, totalPages, orders:
+// [{ order, role }] }, newest first, every status. 400 bad id/page, 403, 404 user not found,
+// 503 user-service unavailable. Errors here have no `code`, only `message` - tell them apart
+// by status.
+export const listUserOrders = (userId, page) =>
+  request('/orders/admin/users/' + encodeURIComponent(userId), { query: { page } })
 
 // Each answers 200 { ok: true, order } or an error { ok: false, error: <code> }.
 export const acceptOrder = transition('accept')
