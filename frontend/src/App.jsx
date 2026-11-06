@@ -63,6 +63,12 @@
  *        arrow reads to tell a direct/new-tab visit from in-app navigation.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Added /admin/user-transactions/:userId and /admin/user-transactions/:userId/:requestId
+ *        behind RequireAuth + RequireRole(minimum="admin"), per instructions.md Stage 24.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef } from "react";
@@ -91,6 +97,8 @@ import Wallet from "./pages/Wallet";
 import AdminSuppliers from "./pages/AdminSuppliers";
 import AdminSupplierForm from "./pages/AdminSupplierForm";
 import AdminUsers from "./pages/AdminUsers";
+import AdminUserTransactions from "./pages/AdminUserTransactions";
+import AdminOrderTransactions from "./pages/AdminOrderTransactions";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -262,6 +270,26 @@ export default function App() {
               <RequireAuth>
                 <RequireRole minimum="admin">
                   <AdminUsers />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/user-transactions/:userId"
+            element={
+              <RequireAuth>
+                <RequireRole minimum="admin">
+                  <AdminUserTransactions />
+                </RequireRole>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/user-transactions/:userId/:requestId"
+            element={
+              <RequireAuth>
+                <RequireRole minimum="admin">
+                  <AdminOrderTransactions />
                 </RequireRole>
               </RequireAuth>
             }

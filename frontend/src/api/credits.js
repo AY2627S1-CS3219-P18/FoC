@@ -11,6 +11,15 @@
  * Scope: Counterparty names now come from GET /users/public, so non-admins resolve them too.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 24 of instructions.md - added listOrderTransactions (GET
+ *        /credits/transactions/all?requestId=), for the new admin order-history page. Reuses
+ *        describe() to get the same colour/sign rule as listTransactions (held/returned for
+ *        reservation and release, signed for transfer), relative to the viewed user rather
+ *        than the signed-in viewer.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -115,6 +124,39 @@ export async function listTransactions(viewerId, cursor) {
     transactions: body.transactions.map((row) => toRow(row, viewerId)),
     nextCursor: body.nextCursor,
   }
+}
+
+/**
+ * All transactions for one errand, across every page (20 rows each), for the admin order
+ * page. Allocations never carry a request_id, so none appear here.
+ *
+ * `direction`/`delta` follow describe(), same as listTransactions, but relative to
+ * `viewedUserId` (the user whose history is open) rather than the signed-in admin.
+ */
+export async function listOrderTransactions(requestId, viewedUserId) {
+  const rows = []
+  let cursor
+  for (;;) {
+    const body = await request(BASE + '/transactions/all', { query: { requestId, cursor } })
+    rows.push(...body.transactions)
+    if (!body.nextCursor) break
+    cursor = body.nextCursor
+  }
+  return rows.map((row) => {
+    const isOutgoing = row.originating_user_id === viewedUserId
+    const { direction, delta } = describe(row.transaction_type, isOutgoing, row.amount)
+    return {
+      id: row.transaction_id,
+      type: row.transaction_type,
+      amount: row.amount,
+      delta,
+      direction,
+      originatingUserId: row.originating_user_id ?? null,
+      destinationUserId: row.destination_user_id ?? null,
+      createdAt: row.created_at,
+      timestamp: fullTimestamp(row.created_at),
+    }
+  })
 }
 
 /**

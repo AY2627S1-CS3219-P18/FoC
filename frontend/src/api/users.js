@@ -18,6 +18,12 @@
  * Scope: Added getFullEmail (GET /users/:id/full-email), per instructions.md Stage 20b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Added getUser (GET /users/:id), per instructions.md Stage 24, for the new admin
+ *        user-history page's profile section.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -55,4 +61,10 @@ export async function unlockUser(id) {
 // 404 USER_NOT_FOUND, 403 FORBIDDEN (target is a super admin).
 export async function getFullEmail(id) {
   return request('/users/' + id + '/full-email')
+}
+
+// 200 { id, username, email, status, role, activeView, createdAt, updatedAt }, any status.
+// Admin/super admin only (403 FORBIDDEN otherwise). 404 USER_NOT_FOUND.
+export async function getUser(id) {
+  return request('/users/' + id)
 }

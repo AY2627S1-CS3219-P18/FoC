@@ -7,10 +7,20 @@
  *        once per page load and shared between cards.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Added useBalance (GET /credits/balance/:userId via credits.js's getBalance), for the
+ *        Credits column instructions.md Stage 24 adds to /admin/users (its "Summary fields"
+ *        row: every list of users or orders shows a brief summary - email/status/role/credits
+ *        for a user row, request id/requestor/supplier/credits/courier/status for an order row
+ *        - distinct from the fuller "Profile fields" shown once you open one).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import { request } from './http'
+import { getBalance } from './credits'
 import { getSupplier } from './suppliers'
 import { useReferenceData } from './useApi'
 
@@ -54,6 +64,11 @@ function useLookup(lookup, id) {
 export const useSupplier = (id) => useLookup(supplierById, id)
 
 export const useUserName = (id) => useLookup(userById, id)?.username ?? null
+
+const balanceById = cached((id) => getBalance(id))
+// { userId, totalBalance, reservedBalance, unreservedBalance }, or null while loading/missing
+// (e.g. a pending user with no wallet yet) - the caller supplies its own fallback.
+export const useBalance = (id) => useLookup(balanceById, id)
 
 // location_id -> location name, from the same reference list the supplier screens use.
 export function useLocationNames() {

@@ -31,12 +31,25 @@
  *        `overflow-x: auto`. Row action set, handlers and visibility rules unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
+ * Scope: Stage 24 of instructions.md - exported getRowActions, ACTION_SUCCESS, ACTION_DIALOG
+ *        and ConfirmActionDialog so the new admin user-history page can reuse the exact same
+ *        allowed-actions table and confirmation dialog, rather than a second copy that could
+ *        drift from this one. Row clicks now navigate to that page (/admin/user-transactions/
+ *        :userId); the three-dot menu's cell stops the click from bubbling to the row so it
+ *        keeps opening the menu instead of navigating. Added the Credits column (useBalance),
+ *        per the stage's "Summary fields" row for this table.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
 import ActionMenu from '../components/ActionMenu'
 import Button from '../components/Button'
+import { useBalance } from '../api/lookups'
 import EmptyState from '../components/EmptyState'
 import { Pager, useApiNotice } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
@@ -85,6 +98,13 @@ function Badge({ tone, children, ...rest }) {
   )
 }
 
+// A dash while loading or for a user with no wallet yet (e.g. still pending) - same fallback
+// style as the Locked column below.
+function CreditsCell({ userId }) {
+  const balance = useBalance(userId)
+  return <span className="tnum">{balance ? balance.totalBalance : '—'}</span>
+}
+
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -107,7 +127,7 @@ function formatDateTime(iso) {
 // exactly, so the menu never offers an action the backend would reject. Returns the action each
 // control performs, or null to hide it; both null means "no menu" for that row. Unlock follows
 // the same visibility rule as suspend (Stage 18d/18e's governing decision).
-function getRowActions(viewer, row) {
+export function getRowActions(viewer, row) {
   if (row.id === viewer.id) return { suspend: null, role: null, unlock: null }
   if (row.role === 'super admin') return { suspend: null, role: null, unlock: null }
   if (row.status === 'pending') return { suspend: null, role: null, unlock: null }
@@ -130,7 +150,7 @@ function getRowActions(viewer, row) {
   return { suspend, role, unlock }
 }
 
-const ACTION_SUCCESS = {
+export const ACTION_SUCCESS = {
   suspend: (name) => name + ' was suspended.',
   unsuspend: (name) => name + ' was unsuspended.',
   promote: (name) => name + ' was promoted to admin.',
@@ -138,7 +158,7 @@ const ACTION_SUCCESS = {
   unlock: (name) => name + ' was unlocked.',
 }
 
-const ACTION_DIALOG = {
+export const ACTION_DIALOG = {
   suspend: {
     title: (name) => 'Suspend ' + name + '?',
     body: 'They will be signed out everywhere and unable to log back in until unsuspended.',
@@ -171,7 +191,7 @@ const ACTION_DIALOG = {
   },
 }
 
-function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm }) {
+export function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm }) {
   const spec = ACTION_DIALOG[action]
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -253,6 +273,7 @@ function SortHeader({ column, sortBy, sortDir, onToggle }) {
 export default function AdminUsers() {
   const { user: viewer } = useAuth()
   const { showToast } = useToast()
+  const navigate = useNavigate()
 
   const [usernameInput, setUsernameInput] = useState('')
   const [emailInput, setEmailInput] = useState('')
@@ -468,6 +489,9 @@ export default function AdminUsers() {
                       Role
                     </th>
                     <th scope="col" className="py-2 pr-2 text-left font-medium">
+                      Credits
+                    </th>
+                    <th scope="col" className="py-2 pr-2 text-left font-medium">
                       Locked
                     </th>
                     <SortHeader
@@ -483,7 +507,11 @@ export default function AdminUsers() {
                 </thead>
                 <tbody>
                   {rows.map((u) => (
-                    <tr key={u.id} className="group border-b border-line last:border-0">
+                    <tr
+                      key={u.id}
+                      onClick={() => navigate('/admin/user-transactions/' + u.id)}
+                      className="group cursor-pointer border-b border-line last:border-0 hover:bg-surface-alt"
+                    >
                       <td className="py-2.5 pr-2 font-medium text-ink">{u.username}</td>
                       <td className="py-2.5 pr-2 text-ink-70">
                         <span className="inline-flex items-center gap-1.5">
@@ -495,7 +523,10 @@ export default function AdminUsers() {
                                 (u.id in unmaskedEmails ? 'Hide email for ' : 'Show email for ') +
                                 u.username
                               }
-                              onClick={() => toggleUnmask(u)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleUnmask(u)
+                              }}
                               disabled={!!unmaskingRows[u.id]}
                               className="shrink-0 text-ink-40 hover:text-ink disabled:opacity-50"
                             >
@@ -514,6 +545,9 @@ export default function AdminUsers() {
                       <td className="py-2.5 pr-2">
                         <Badge tone={ROLE_TONES[u.role]}>{ROLE_LABELS[u.role]}</Badge>
                       </td>
+                      <td className="py-2.5 pr-2 text-ink-70">
+                        <CreditsCell userId={u.id} />
+                      </td>
                       <td className="py-2.5 pr-2">
                         {u.isLocked ? (
                           <Badge tone="border-alert text-alert" title={formatDateTime(u.lockedUntil)}>
@@ -524,7 +558,7 @@ export default function AdminUsers() {
                         )}
                       </td>
                       <td className="py-2.5 pr-2 text-ink-70">{formatDate(u.createdAt)}</td>
-                      <td className="py-2.5 pl-2 text-right">
+                      <td className="py-2.5 pl-2 text-right" onClick={(e) => e.stopPropagation()}>
                         <RowMenu
                           user={u}
                           viewer={viewer}
