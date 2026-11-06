@@ -5,6 +5,10 @@
  *        Fargate plan, Phase 1 item 6. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
  * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - checks when the S3
+ *        client gets explicit keys, per George's task role decision of 2026-11-06. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -41,5 +45,34 @@ describe('photo store region', () => {
   it('uses the configured region and keeps path-style addressing', () => {
     createConfiguredPhotoStorage({ ...settings, region: 'ap-southeast-1' });
     expect(constructed[0]).toMatchObject({ region: 'ap-southeast-1', forcePathStyle: true });
+  });
+});
+
+describe('photo store credentials', () => {
+  const png = { buffer: Buffer.from('x'), mimeType: 'image/png' as const };
+  const noKeys = { endpoint: settings.endpoint, bucket: settings.bucket };
+
+  beforeEach(() => {
+    constructed.length = 0;
+  });
+
+  it('passes both keys to the client when they are set', () => {
+    createConfiguredPhotoStorage(settings);
+    expect(constructed[0]?.credentials).toEqual({ accessKeyId: 'key', secretAccessKey: 'secret' });
+  });
+
+  it('leaves credentials to the SDK when neither key is set', () => {
+    createConfiguredPhotoStorage(noKeys);
+    expect(constructed).toHaveLength(1);
+    expect(constructed[0]).not.toHaveProperty('credentials');
+  });
+
+  it.each([
+    ['access key', { accessKey: 'key' }],
+    ['secret key', { secretKey: 'secret' }],
+  ])('counts a lone %s as not configured', async (_name, key) => {
+    const storage = createConfiguredPhotoStorage({ ...noKeys, ...key });
+    expect(constructed).toHaveLength(0);
+    await expect(storage.upload(png)).rejects.toThrow('Photo storage is not configured');
   });
 });

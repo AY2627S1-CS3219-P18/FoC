@@ -42,6 +42,10 @@ Author review: Congchen
 Scope: 2026-11-05 update (Claude Code, model: claude-sonnet-5-5) — Documented the ids filter and unavailable array, and recorded workstream W8, per the 2026-11-05 supplier-bookmarking spec.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Documented that the photo store keys are optional
+       on ECS, per George's task role decision of 2026-11-06. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # Supplier Service
@@ -69,7 +73,9 @@ key can still be used when the User Service is unavailable. The User Service mus
 its signing key pair and key ID; see [its setup guide](../user-service/docs/user-service-instructions.md).
 The optional `PHOTO_STORE_ENDPOINT`, `PHOTO_STORE_BUCKET`, `PHOTO_STORE_ACCESS_KEY` and
 `PHOTO_STORE_SECRET_KEY` point the photo storage interface at an S3-compatible store (the local
-MinIO below); without them, photo operations fail with `500`.
+MinIO below); without the endpoint and bucket, photo operations fail with `500`. On ECS, leave both
+keys unset and the AWS SDK uses the task role's credentials. Setting only one key counts as not
+configured.
 
 ## Upgrading an existing database
 

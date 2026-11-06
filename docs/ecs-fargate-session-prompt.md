@@ -11,6 +11,16 @@ Scope: Reworded the plan to record George's chat decisions (coursework deploymen
        Phase 2. The decisions are George's; no requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review:
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+Scope: Recorded George's decision to use an ECS task role for S3 after NUS's organisation policy blocked
+       creating the IAM user, and the bucket's account regional name. The decisions are George's; no
+       requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
+Scope: Recorded facts from Phase 2 steps 10-14: MySQL version, database logins, the user database name,
+       SSM parameter names and the one-off log group. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment
@@ -40,13 +50,13 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 | DB encryption | Verified SSL enforced on all four |
 | Redis | 2 ElastiCache clusters (order, supplier), cluster mode disabled, TLS on, `noeviction`, single node, no snapshots |
 | Secrets | SSM Parameter Store SecureString, injected through the task definition |
-| Photos | S3 bucket with public read, plus an IAM user limited to that bucket, with its keys in SSM |
+| Photos | S3 bucket with public read, plus an ECS task role limited to that bucket. No stored keys |
 | Email | No SMTP server. `user-service` runs with `NODE_ENV=development` and an empty `SMTP_HOST`, so it logs OTPs instead of emailing them (`user-service/src/services/email.service.ts`), and I read them in CloudWatch Logs. All other services use `NODE_ENV=production` |
 | Auth | JWT verification stays inside the services (RS256 via JWKS) |
 | Deploys | Web services: min healthy 100%, max 200%. Workers: min healthy 0%, max 100% |
 | Supplier health | New static `GET /health`, mounted ahead of the per-IP rate limiter |
 | Seeding | One-off ECS tasks |
-| CD | GitHub Actions on the team repo, deploying on every merge to `main`: build, push to ECR, update ECS, authenticated with GitHub OIDC. AWS account is a normal account, not Learner Lab |
+| CD | GitHub Actions on the team repo, deploying on every merge to `main`: build, push to ECR, update ECS, authenticated with GitHub OIDC. AWS account is not Learner Lab, but it is in NUS's organisation, whose rules apply |
 | Local dev | Docker Compose stays as is. Every new setting must default to off, so Compose and CI don't change |
 
 **CD trigger (decided):** automatic, on every merge to `main`.
@@ -59,6 +69,13 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 - **Boot test:** Phase 1 item 11 ran on throwaway plain and TLS servers rather than the Compose databases and Redis.
 - **OIDC subject:** repos created after 2026-07-15 use GitHub's ID-based `sub` format. Use the value in Phase 2 step 5.
 - **Resource names:** ECR repos are `foc/<service>` plus `foc/supplier-seed`, the ECS cluster is `foc`, and the task execution role is `foc-ecs-task-execution`.
+- **No IAM users:** a service control policy on NUS's organisation denies `iam:CreateUser` in this account. Creating roles works. My decision on 2026-11-06 is to give supplier its S3 access through a task role, `foc-supplier-task`, instead of an IAM user. The code uses the task role when `PHOTO_STORE_ACCESS_KEY` and `PHOTO_STORE_SECRET_KEY` are unset.
+- **S3 bucket name:** the bucket uses S3's account regional namespace, so its name is `foc-supplier-photos-993173880680-ap-southeast-1-an`.
+- **MySQL version:** the supplier database uses MySQL 8.4, because RDS MySQL 8.0 left standard support on 2026-07-31.
+- **Database logins:** all 4 RDS instances use the admin login `foc_admin`, each with its own password. Credit's services still connect as `credit_app`.
+- **User database name:** `foc-user-db` was created without an initial database name, so step 16 must run `CREATE DATABASE user_service;` first.
+- **SSM parameters:** `/foc/user/db-password`, `/foc/user/super-admin-password`, `/foc/user/jwt-private-key`, `/foc/user/jwt-public-key`, `/foc/credit/admin-password`, `/foc/credit/app-password`, `/foc/supplier/db-password` and `/foc/order/database-url`.
+- **One-off task logs:** steps 16 and 20 log to an extra log group, `/ecs/foc/one-off`.
 
 ## What the repo looks like (found by reading `acd4397`)
 
@@ -102,9 +119,9 @@ Check all console names against the current UI **(verify)**.
    - `foc-rds`: 5432 and 3306 from `foc-tasks` only.
    - `foc-redis`: 6379 from `foc-tasks` only.
 4. **ECR:** 5 repos (user, credit, supplier, order, frontend), plus one for the seed image. Add a lifecycle rule to keep only a few images.
-5. **GitHub OIDC:** identity provider, plus an IAM role trusted only for `repo:AY2627S1-CS3219-P18@323009622/FoC@1359250594:ref:refs/heads/main`. Limit it to pushing to those ECR repos, ECS register/describe/update, and `iam:PassRole` on the task execution role.
+5. **GitHub OIDC:** identity provider, plus an IAM role trusted only for `repo:AY2627S1-CS3219-P18@323009622/FoC@1359250594:ref:refs/heads/main`. Limit it to pushing to those ECR repos, ECS register/describe/update, and `iam:PassRole` on the task execution role and `foc-supplier-task`.
 6. **Build CD (Phase 3)** and run it in build-only mode, so images exist before ECS needs them.
-7. **S3:** one bucket, public read on objects only, and an IAM user limited to `Put`, `Get` and `Delete` on that bucket.
+7. **S3:** one bucket, public read on objects only, and a task role `foc-supplier-task`, trusted by `ecs-tasks.amazonaws.com` and limited to `Put`, `Get` and `Delete` on that bucket.
 8. **Parameter groups:** MySQL with `require_secure_transport=1`, and ElastiCache Redis 7 with `maxmemory-policy=noeviction`. Postgres needs none, because `rds.force_ssl=1` is already the default on 15+.
 9. **Subnet groups** for RDS and ElastiCache, using the private subnets.
 10. **RDS (4 instances):** `db.t4g.micro`, single-AZ, gp3 at minimum storage, not public, in `foc-rds`, automated backups off to save cost.
@@ -115,7 +132,7 @@ Check all console names against the current UI **(verify)**.
 12. **SSM parameters** under `/foc/...`, all SecureString for secrets. I enter the values. Standard tier holds up to 4 KB, which fits an RSA 2048 PEM.
 13. **Task execution role:** `AmazonECSTaskExecutionRolePolicy` plus `ssm:GetParameters` on `/foc/*`.
 14. **ECS cluster** plus a Service Connect namespace. Log groups: `/ecs/foc/<service>` with 3-day retention.
-15. **Task definitions.** Set `initProcessEnabled`. Workers get `stopTimeout: 30`, matching Compose's `stop_grace_period`. Use `NODE_ENV=production` everywhere except `user-service`, which uses `NODE_ENV=development`. In `user-service`, that setting only affects the OTP log fallback, the SMTP startup check and the refresh cookie's `Secure` flag, and it still runs the `prod` image. It still needs `SMTP_PORT=587`, because the config schema requires a port, while `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` stay empty. Set `DB_SSL=true`, `REDIS_TLS=true` and `NODE_EXTRA_CA_CERTS` on the backends.
+15. **Task definitions.** Set `initProcessEnabled`. Workers get `stopTimeout: 30`, matching Compose's `stop_grace_period`. Use `NODE_ENV=production` everywhere except `user-service`, which uses `NODE_ENV=development`. In `user-service`, that setting only affects the OTP log fallback, the SMTP startup check and the refresh cookie's `Secure` flag, and it still runs the `prod` image. It still needs `SMTP_PORT=587`, because the config schema requires a port, while `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` stay empty. Set `DB_SSL=true`, `REDIS_TLS=true` and `NODE_EXTRA_CA_CERTS` on the backends. Set the task role to `foc-supplier-task` on `supplier-service`, `supplier-worker` and the seed task, and leave `PHOTO_STORE_ACCESS_KEY` and `PHOTO_STORE_SECRET_KEY` unset on them.
 
 | Service | Image target | Port | Task size | Service Connect | Health path |
 |---|---|---|---|---|---|
@@ -190,7 +207,7 @@ Write these up as a short checklist for me once the stack works.
 
 Leaving only the tasks and RDS off still costs about $2/day (rough estimate), so stress the deletes.
 
-**Full teardown when I'm done:** ECS services and cluster, ALB and target groups, CloudFront, ElastiCache, RDS (no final snapshot unless I ask), S3, ECR, SSM parameters, log groups, IAM user, roles and OIDC provider, then the VPC last. Afterwards, confirm with Cost Explorer that nothing's still billing.
+**Full teardown when I'm done:** ECS services and cluster, ALB and target groups, CloudFront, ElastiCache, RDS (no final snapshot unless I ask), S3, ECR, SSM parameters, log groups, roles and OIDC provider, then the VPC last. Afterwards, confirm with Cost Explorer that nothing's still billing.
 
 ## Known limitations to leave alone
 

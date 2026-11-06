@@ -9503,3 +9503,88 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
+
+**Prompts (exact):**
+> shouldnt i make Account Regional namespace (recommended)
+
+> User was not created.
+> User: arn:aws:sts::993173880680:assumed-role/AWSReservedSSO_nusisb_IsbUsersPS_045e734b50045e6a/[redacted] is not authorized to perform: iam:CreateUser on resource: arn:aws:iam::993173880680:user/foc-supplier-photos with an explicit deny in a service control policy: arn:aws:organizations::864899849123:policy/o-celk1f6y0n/service_control_policy/p-j6rrqzxn. Go to https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/authorization-details/9e6c0f0xs1z1gl9j9qm3qqpm2 for complete details, or call the GetRequestAuthorizationDetails API with the following authorization id: 9e6c0f0xs1z1gl9j9qm3qqpm2
+
+> the bucket is fine, but what is the IAM user for
+
+> ok lets do task role
+
+> also explain what task role involves too
+
+The email address in the second prompt is redacted, as personal data. The prompt is otherwise exact.
+
+**Key responses:**
+
+- Told George the IAM user was blocked by an organisation rule that retrying wouldn't change, and listed two options: an ECS task role, or asking NUS to allow the user. George chose the task role.
+- `createS3PhotoStorage` now passes credentials only when both keys are set. Otherwise the AWS SDK finds its own, which on ECS means the task role. `createConfiguredPhotoStorage` treats one key without the other as not configured.
+- `vitest.seed.config.ts` no longer fills in the MinIO dev keys when ECS's container credentials variables are set, because those keys would override the role.
+- Updated the plan's photo decision, Phase 2 steps 5, 7 and 15, and the teardown list, and recorded the NUS rule and bucket name.
+
+**Verification (run):**
+
+- `supplier-service`: 434/434 tests pass, with `tsc --noEmit` and `eslint .` clean.
+- A new test runs a real upload against local stand-ins for the credentials endpoint and S3, and checks the role's key and session token signed it.
+- Seed image built and run twice against throwaway MySQL and a stub. All 10 uploads were signed with the stub role's key, none with the MinIO key, and the second run uploaded nothing new. Two earlier attempts failed because of the test setup: the stub returned no image type, and MySQL wasn't ready.
+
+**Not verified:** nothing ran on real AWS or S3. The local tests set `AWS_CONTAINER_CREDENTIALS_FULL_URI`, while Fargate sets `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, whose address can't be reached locally. `compose.yaml` wasn't rerun; it still sets both keys, and the test for that path passes.
+
+**Files:**
+
+- `supplier-service/src/storage/s3PhotoStorage.ts` (modified)
+- `supplier-service/vitest.seed.config.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageRegion.test.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageTaskRole.test.ts` (created)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/README.md` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+The plan's IAM user can't exist in this account, so the plan changed. Other AWS services may also be limited by NUS's rules. The deploy role needs `iam:PassRole` on the new role before CD can update supplier's services.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
+
+**Prompts (exact):**
+> foc namespace is added and yes 3 days for all
+
+**Key responses:**
+
+- Added these facts to the plan: MySQL 8.4 (RDS MySQL 8.0 left standard support on 2026-07-31), the `foc_admin` login on all 4 databases, `foc-user-db` needing `CREATE DATABASE user_service;` at step 16, the SSM parameter names, and the extra `/ecs/foc/one-off` log group.
+- Checked George's AWS settings through the built-in browser, read-only. No secret values were opened.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+The `foc_admin` login and the extra log group were the AI tool's small naming choices, flagged to George in chat. The login replaces Compose's `order`, `credit`, `postgres` and `root` logins on AWS only.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

@@ -10,6 +10,10 @@
  *        PHOTO_STORE_REGION through, per George's ECS Fargate plan, Phase 1 item 9. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - stopped filling in the
+ *        MinIO dev keys when a task role is available, per George's decision of 2026-11-06. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -32,6 +36,17 @@ function rootEnv(): Record<string, string> {
 
 const root = rootEnv();
 
+// ECS sets one of these when a task has a role. The MinIO dev keys would override that role.
+const hasTaskRole = Boolean(
+  process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI ?? process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI,
+);
+const minioKeys = hasTaskRole
+  ? {}
+  : {
+      PHOTO_STORE_ACCESS_KEY: process.env.PHOTO_STORE_ACCESS_KEY ?? 'photostoredev',
+      PHOTO_STORE_SECRET_KEY: process.env.PHOTO_STORE_SECRET_KEY ?? 'photostoredev-secret',
+    };
+
 // Seeds the local database and photo store. Run with `npm run seed` while the compose `supplier-db`
 // and the photo store (supplier-service/compose.photo-store.yaml) are running.
 export default defineConfig({
@@ -53,8 +68,7 @@ export default defineConfig({
       // Stored photo locations start with this string, so it must equal the API's and worker's value.
       PHOTO_STORE_ENDPOINT: process.env.PHOTO_STORE_ENDPOINT ?? 'http://host.docker.internal:9000',
       PHOTO_STORE_BUCKET: process.env.PHOTO_STORE_BUCKET ?? 'supplier-photos',
-      PHOTO_STORE_ACCESS_KEY: process.env.PHOTO_STORE_ACCESS_KEY ?? 'photostoredev',
-      PHOTO_STORE_SECRET_KEY: process.env.PHOTO_STORE_SECRET_KEY ?? 'photostoredev-secret',
+      ...minioKeys,
       PHOTO_STORE_REGION: process.env.PHOTO_STORE_REGION ?? 'us-east-1',
     },
   },
