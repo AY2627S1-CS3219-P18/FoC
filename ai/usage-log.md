@@ -9258,3 +9258,248 @@ None - the author gave this instruction directly, and the only implementation ch
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-06 — ECS Fargate Phase 1: repo changes for deployment
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** George's ECS Fargate plan, `ecs-fargate-session-prompt.md` ("Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project"), section "Phase 1: repo changes", items 1-11. The plan was supplied as a local file attachment and is not committed to this repository.
+
+**Prompts (exact):**
+> @"C:\Users\Aeodile\Downloads\ecs-fargate-session-prompt.md"
+> The attached file, ecs-fargate-session-prompt.md, is my full plan for moving this repo from Docker Compose to AWS ECS on Fargate. Treat it as my instructions, including its ground rules, and don't reopen its decisions unless a fact proves one wrong.
+>
+> Start at its "First steps" section: confirm the current main commit and that 1fad383 is still reachable, tell me in a few lines how you'll begin, then start Phase 1 one change at a time.
+>
+> Note that the course restrictions in AGENTS.md can be considered less heavily, since all big decisions are already made and trying to force tiny decision is pedantic and waste of resources and time.
+
+**Key responses:**
+
+Built, per the plan's items:
+
+- Items 1, 3: `DB_SSL` (default off) on user, credit and supplier, giving verified TLS on the connection pools.
+- Item 4: RDS CA bundle added to the deploy stage of all four backend images at `/etc/ssl/rds-ap-southeast-1-bundle.pem`. URL verified: it returns three Amazon RDS `ap-southeast-1` root CAs.
+- Item 5: `REDIS_TLS` (default off) at every Redis client. A search found no sites beyond the plan's list; `adapterPub.duplicate()` and order's queue dashboard inherit their options. Order gained one small options builder, `redisConnectionOptions`, used by its three sites.
+- Item 6: `PHOTO_STORE_REGION` (default `us-east-1`); `forcePathStyle` kept.
+- Item 7: static supplier `GET /health`, mounted ahead of the rate limiter.
+- Item 8: `keepAliveTimeout` 65000 and `headersTimeout` 66000 on all four HTTP servers.
+- Item 9: `supplier-service/Dockerfile.seed` with an allowlist `Dockerfile.seed.dockerignore`, so root `.env` files and JWT keys cannot enter the repo-root build context. `DB_SSL` and `PHOTO_STORE_REGION` passed through `vitest.seed.config.ts`.
+- Item 10: new variables added to the four `.env.example` files.
+
+Verification actually run:
+
+- Unit tests: credit 147/147, order 638/638, supplier 429/429. User 829 passed and 26 failed; the same 26 failed before any change and no new failure appeared. They are Windows-only: `tests/config.test.ts` spawns `.bin/tsx` directly (25) and `tests/scripts/setupLocalDev.test.ts` asserts a Unix file mode (1). `tests/config.test.ts` could therefore not exercise the changed config on this machine; the new settings are covered by new separate tests. CI (Linux) was not run.
+- Typecheck, lint and build passed where the services define them.
+- Boot test (item 11): user, credit, supplier and order deploy images plus all three worker commands, on throwaway plain servers and again on throwaway TLS-only servers. All stayed up, with no error-looking log lines. `/health` returned 200 with `Keep-Alive: timeout=65` on all four, and credit fetched user's JWKS. `pg_stat_ssl` showed TLS 1.3, including `credit_app` for credit, whose grants still refused `DELETE` on `transaction_log`. Order applied its migrations through the image's default command with `sslmode=require`.
+- TLS rejection tests: the credit pool, order app, supplier pool and all three Redis clients each connected with a valid certificate and were refused with an untrusted CA and with a certificate for another hostname. The user pool was tested with a valid certificate and an untrusted CA only; it uses the same `pg` options as credit.
+- Plan item 2 (order SSL) results, tested locally against a TLS-only Postgres with `sslmode=require`. The app verified the certificate: it refused an untrusted CA and a wrong-hostname certificate. `prisma migrate deploy` encrypted without verifying: it succeeded with an untrusted CA, and with `sslmode=disable` the server refused it. The real RDS behaviour still needs confirming at first boot.
+- Seed (item 9): two attempts failed because no photo store was running, after creating one supplier that has no photo in the seed data. It was then run twice in the image over verified TLS, using Adobe S3Mock as an S3 stand-in. The first created 13 suppliers and the second created 0. Rows and objects stayed at 14 suppliers, 10 photo rows and 10 objects, so it is safe to re-run with no orphaned photos. Four suppliers have no photo (one `.webp`, three files not found); the seed reports this by design. Real AWS S3 was not tested.
+- Image checks: CA bundle readable by each image's user with `NODE_EXTRA_CA_CERTS` loading cleanly. No `.env`, key or `.pem` files in the seed image outside `node_modules`.
+- JWT key command from the plan rehearsed with a throwaway keypair (1732 bytes): the service booted and no key text appeared in its logs.
+- Shutdown with an init process: workers, credit and order exited 0 on SIGTERM within about a second. Supplier and user have no SIGTERM handler and exited 143.
+- Not tested: anything on AWS, the frontend image, and `listen [::]:80` on Fargate.
+
+Facts found while testing:
+
+- `mysql2` only checks the certificate hostname when `verifyIdentity` is set; `rejectUnauthorized` alone does not, per its source. With the flag set, a wrong-hostname certificate was refused.
+- `ADD --chmod=644` also applies to a parent directory that `ADD` creates, which made the file unreadable to order's `USER node`. Node only warned and continued without the CA. Fixed by placing the file directly in `/etc/ssl`.
+- A `pg` connection to an IP address with a certificate for `localhost` was accepted in testing. A DNS host, which is what RDS endpoints are, was checked and refused on mismatch.
+- `pg` prints a `SECURITY WARNING` at startup for `sslmode=require`, because it treats `require` as `verify-full` today and says this will change in a future major version.
+- Norton Web/Mail Shield on the development PC re-signs direct TLS connections, so Redis TLS tests from the Windows host failed for every client, including a plain Node TLS client. The Redis tests were moved into a Docker network, where all three clients behaved correctly. Postgres and MySQL tests from the host were not affected, because their TLS starts inside the database protocol.
+- `quay.io/minio/minio` and `quay.io/minio/mc` returned 401 on a fresh pull during this session.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/db/pool.ts` (modified)
+- `user-service/src/server.ts` (modified)
+- `user-service/Dockerfile` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/tests/db/poolSsl.test.ts` (created)
+- `credit-service/src/config.ts` (modified)
+- `credit-service/src/db/pool.ts` (modified)
+- `credit-service/src/queue/redisConnection.ts` (modified)
+- `credit-service/src/server.ts` (modified)
+- `credit-service/src/worker/main.ts` (modified)
+- `credit-service/Dockerfile` (modified)
+- `credit-service/.env.example` (modified)
+- `credit-service/tests/db/poolSsl.test.ts` (created)
+- `credit-service/tests/queue/redisConnection.test.ts` (created)
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/app.ts` (modified)
+- `supplier-service/src/db/pool.ts` (modified)
+- `supplier-service/src/redis/client.ts` (modified)
+- `supplier-service/src/storage/s3PhotoStorage.ts` (modified)
+- `supplier-service/src/worker/main.ts` (modified)
+- `supplier-service/vitest.seed.config.ts` (modified)
+- `supplier-service/Dockerfile` (modified)
+- `supplier-service/Dockerfile.seed` (created)
+- `supplier-service/Dockerfile.seed.dockerignore` (created)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/test/app.health.test.ts` (created)
+- `supplier-service/test/db/poolSsl.test.ts` (created)
+- `supplier-service/test/redis/clientTls.test.ts` (created)
+- `supplier-service/test/storage/s3PhotoStorageRegion.test.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/config/env.spec.ts` (created)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/Dockerfile` (modified)
+- `order-service/.env.example` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+- Added `verifyIdentity: true` to the supplier pool beyond the plan's `ssl: { rejectUnauthorized: true }`, because the plan's decision is verified SSL and the plan's literal option does not check the hostname.
+- The CA file lives at `/etc/ssl/rds-ap-southeast-1-bundle.pem`; the plan left the path open. `NODE_EXTRA_CA_CERTS` in the task definitions must use this path.
+- Item 11 ran on throwaway servers instead of the local Compose databases and Redis. Compose's credentials are in the root `.env`, which the plan forbids reading, and workers on the live Compose Redis would have competed with the running dev workers for real jobs.
+- A built-in safety check blocked one test command containing container removal flags. It was re-run without removals, so test containers were left stopped for a person to remove.
+- The governing plan is not committed to the repository, so this entry cites it by file name only.
+- `quay.io/minio/*` returning 401 may affect `supplier-service/compose.photo-store.yaml` on a machine without cached images. Flagged, not changed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-06 — ECS Fargate plan: add to docs
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** George's instruction in chat, below. Supersedes the note in the entry "ECS Fargate Phase 1: repo changes for deployment" that the plan is not committed; that plan now lives at `docs/ecs-fargate-session-prompt.md`.
+
+**Prompts (exact):**
+> > The plan isn’t in the repo: the usage log cites ecs-fargate-session-prompt.md by name only. AGENTS.md expects decisions to be written down, so consider committing it to docs/.
+>
+> ok add it to docs
+
+**Key responses:**
+
+- Copied `ecs-fargate-session-prompt.md` from the local Downloads folder to `docs/`, keeping its file name so the earlier log citation still matches, with a disclosure comment added above the text.
+- Verification run: the SHA-256 of the docs copy with the header removed equals that of the original file. A pattern search of the plan for passwords, AWS keys and private keys found nothing.
+- The header covers the copy only and makes no statement about who wrote the plan.
+- Also gave the PowerShell equivalent of a cleanup command after George's terminal reported that `xargs` is not available. No repository change came from that.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-06 — ECS Fargate plan: record team repo and CD trigger decisions
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
+
+**Prompts (exact):**
+> wait wait, the repo is supposed to be the teams repo not mine
+
+> Yes, use team repo
+
+> lets skip the alerts
+
+> > Trigger: this makes the manual workflow_dispatch you suggested more important. An automatic trigger would start a deploy on every merge to main, including your teammates’ merges.
+>
+> this is intended, it should auto deploy on every main merge
+>
+> > Your team: they’d see this in their repo, including Phase 1 and the plan in docs/, which calls this a “personal AWS practice project”. If this is the coursework deployment, that wording should change, and the team should agree to the move.
+>
+> yes fix the doc now
+
+**Key responses:**
+
+- Reworded `docs/ecs-fargate-session-prompt.md`: new title (coursework deployment), Git ground rule, CD decision row, CD trigger, budget alert step, OIDC subject, public repo note and Phase 3. The entries "ECS Fargate Phase 1: repo changes for deployment" and "ECS Fargate plan: add to docs" quote or cite the earlier wording, including the old title; they are left unedited because the log is append-only.
+- Added a list to the plan of facts found during Phase 1 and Phase 2: `verifyIdentity`, the CA file path, the boot test's throwaway servers, the OIDC subject format, and resource names.
+- Read the team repo's settings through the GitHub API (read-only). It reports the OIDC prefix `repo:AY2627S1-CS3219-P18@323009622/FoC@1359250594`, a protected `main`, and Actions enabled. Nothing was changed on it.
+- Verification run: searched the plan for remaining fork-only or "personal" wording. No code changed, so no tests were run.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+Raised with George for Phase 3: how CD behaves on merges before the ECS services exist, and whether teammates should be told that merges deploy to George's AWS account.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-06 — ECS Fargate Phase 3: CD workflow
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
+
+**Prompts (exact):**
+> this is intended, it should auto deploy on every main merge
+
+The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
+
+**Key responses:**
+
+- `deploy.yml` builds and pushes 5 images on every push to the team repo's `main`, tagged with the git SHA for `linux/amd64`, then deploys 5 web services followed by 3 workers. A manual run offers build-only mode, a list of services, and an optional seed image build.
+- `ecs-deploy.sh` fetches a service's current task definition, swaps only the image, registers it, updates the service and waits for it to settle.
+- Implementation choices stated to George: a missing cluster or service skips the deploy with a notice and does not fail the run; a service at 0 tasks reports that nothing started; a rollback counts as a failed run; workers deploy after web services; the seed image builds only on manual request, tagged with the SHA and `latest`; provenance and SBOM manifests are turned off so the ECR rule counts builds.
+- Verification run: 11 scenarios of `ecs-deploy.sh` against a fake AWS CLI in a local container, plus checks that the registered task definition keeps the command, env, secrets and `stopTimeout` and drops the read-only fields. `shellcheck` and `actionlint` were clean. The inputs used were found in the `action.yml` of the configure-aws-credentials, amazon-ecr-login and build-push actions at the pinned major versions.
+- Not tested: the workflow has not run on GitHub, and nothing has run against real AWS.
+
+**Files:**
+
+- `.github/workflows/deploy.yml` (created)
+- `.github/scripts/ecs-deploy.sh` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+- The plan says to build 5 images. The seed image is a sixth, built only on manual request, because the plan creates its ECR repository but gives it no build path.
+- `deploy.yml` does not wait for CI, and the team repo's `main` has no required status checks, so a merge with failing CI still deploys. Flagged to George.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-06 — ECS Fargate plan: add audit log route
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
+
+**Prompts (exact):**
+> One PR
+
+**Key responses:**
+
+- Merged the team's `main` (`9063cdd`, Stage 26) into this branch. Only `README.md` and `ai/usage-log.md` conflicted, and both sides had only appended, so both were kept. The ECS Fargate rows in the README index were renumbered 190-193 to follow the team's rows, and the entries' content is unchanged.
+- Added `/admin/audit-logs` and `/admin/audit-logs/*` to the user-service ALB rule in Phase 2 step 18 of the plan. The 5-path limit on an ALB rule is from memory and marked to verify.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

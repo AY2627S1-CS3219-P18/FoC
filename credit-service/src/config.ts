@@ -15,6 +15,15 @@
 //    was renamed to docs/user-service-instructions.md. No requirements, architecture,
 //    schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-06: ECS Fargate migration - add DB_SSL (default off) for verified TLS to RDS.
+//    Tool: Claude Code (model: claude-opus-5-5). Implements the decision in George's ECS
+//    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
+//    were made by the AI tool.
+//    Author review:
+//  2026-11-06: ECS Fargate migration - add REDIS_TLS (default off), per George's ECS Fargate
+//    plan, Phase 1 item 5. Tool: Claude Code (model: claude-opus-5-5). No requirements,
+//    architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { z } from 'zod';
 
@@ -27,6 +36,8 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1),
   DB_USER: z.string().min(1),
   DB_PASSWORD: z.string().min(1),
+  // "true" requires TLS with a verified server certificate. Off for Compose and CI.
+  DB_SSL: z.enum(['true', 'false']).default('false'),
 
   // Origin of user-service, used only to build the JWKS URL. Same value compose already
   // gives supplier-service.
@@ -37,6 +48,8 @@ const envSchema = z.object({
   // the first job. Same env-var names the sibling workers use.
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: z.coerce.number().int().positive(),
+  // "true" connects to Redis over TLS. Off for Compose and CI.
+  REDIS_TLS: z.enum(['true', 'false']).default('false'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -59,6 +72,7 @@ export const config = {
     name: env.DB_NAME,
     user: env.DB_USER,
     password: env.DB_PASSWORD,
+    ssl: env.DB_SSL === 'true',
   },
   userServiceUrl: env.USER_SERVICE_URL,
   // Published by user-service; see user-service/docs/user-service-instructions.md (Part 2).
@@ -66,5 +80,6 @@ export const config = {
   redis: {
     host: env.REDIS_HOST,
     port: env.REDIS_PORT,
+    tls: env.REDIS_TLS === 'true',
   },
 } as const;

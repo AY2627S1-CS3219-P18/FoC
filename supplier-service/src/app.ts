@@ -34,6 +34,10 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): construct the update service before the creation service and pass it in as the creation service's update dependency (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - static GET /health ahead of
+ *        the rate limiter and longer HTTP keep-alive, per George's ECS Fargate plan, Phase 1 items 7 and 8.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
@@ -60,6 +64,10 @@ const app = express();
 
 app.set('trust proxy', true);
 app.use(express.json());
+// Ahead of the per-IP limiter, so load balancer health checks can never be rate limited.
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 app.use(createRateLimiter());
 
 const apiV1 = express.Router();
@@ -95,9 +103,12 @@ app.use('/api/v1', apiV1);
 app.use(errorHandler);
 
 if (config.env !== 'test') {
-  app.listen(config.server.port, () => {
+  const server = app.listen(config.server.port, () => {
     console.log(`supplier-service listening on port ${config.server.port}`);
   });
+  // Outlast the ALB's 60s idle timeout, so the ALB never reuses a socket Node just closed (a 502).
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
 }
 
 export default app;

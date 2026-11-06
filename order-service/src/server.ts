@@ -14,6 +14,15 @@
  *        the worker arrive over Redis pub/sub and are emitted locally.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+ * Scope (2026-11-06): ECS Fargate migration - Redis TLS through redisConnectionOptions,
+ *        per George's ECS Fargate plan, Phase 1 item 5.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-06): ECS Fargate migration - longer HTTP keep-alive, per George's ECS
+ *        Fargate plan, Phase 1 item 8.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createServer } from 'node:http';
@@ -22,7 +31,7 @@ import { config as loadDotenv } from 'dotenv';
 import { Redis } from 'ioredis';
 import { createApp } from './app.js';
 import { createTokenVerifier } from './middleware/authenticate.js';
-import { loadEnv, type Env } from './config/env.js';
+import { loadEnv, redisConnectionOptions, type Env } from './config/env.js';
 import { createPrismaClient } from './db/prisma.js';
 import { createSocketServer } from './realtime/socket-server.js';
 import { createSocketSink, relayWorkerEvents } from './realtime/socket-sink.js';
@@ -42,12 +51,15 @@ const prisma = createPrismaClient(env.DATABASE_URL);
 const verifyToken = createTokenVerifier(env.USER_SERVICE_URL);
 
 // Redis connections: adapter pub + sub, and one subscriber for the worker's events.
-const redisOptions = { host: env.REDIS_HOST, port: env.REDIS_PORT };
+const redisOptions = redisConnectionOptions(env);
 const adapterPub = new Redis(redisOptions);
 const adapterSub = adapterPub.duplicate();
 const workerEvents = new Redis(redisOptions);
 
 const httpServer = createServer();
+// Outlast the ALB's 60s idle timeout, so the ALB never reuses a socket Node just closed (a 502).
+httpServer.keepAliveTimeout = 65_000;
+httpServer.headersTimeout = 66_000;
 const io = createSocketServer(httpServer, { prisma, verifyToken });
 io.adapter(createAdapter(adapterPub, adapterSub));
 

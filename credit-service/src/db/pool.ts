@@ -3,6 +3,11 @@
 //  2026-09-26: Recess iteration - pg connection pool, following user-service/src/db/pool.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review: Wee Jean
+//  2026-11-06: ECS Fargate migration - verified TLS to RDS when DB_SSL is on.
+//    Tool: Claude Code (model: claude-opus-5-5). Implements the decision in George's ECS
+//    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
+//    were made by the AI tool.
+//    Author review:
 
 import pg from 'pg';
 import { config } from '../config.js';
@@ -15,6 +20,7 @@ const pool = new pg.Pool({
   database: config.db.name,
   user: config.db.user,
   password: config.db.password,
+  ssl: config.db.ssl ? { rejectUnauthorized: true } : undefined,
 });
 
 export default pool;

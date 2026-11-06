@@ -12,6 +12,11 @@
  * Scope: Signal handlers now log a failed shutdown and exit non-zero instead of leaving an unhandled
  *        rejection. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+ * Scope: ECS Fargate migration - optional Redis TLS for BullMQ, per George's ECS Fargate plan, Phase 1
+ *        item 5. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { config } from '../config.js';
 import { pool } from '../db/pool.js';
@@ -28,7 +33,12 @@ import { createOutboxRelay } from './outboxRelay.js';
 import { startRelay } from './startRelay.js';
 import { startWorkers } from './startWorkers.js';
 
-const connection = { host: config.redis.host, port: config.redis.port };
+// `tls: {}` keeps Node's certificate checks on.
+const connection = {
+  host: config.redis.host,
+  port: config.redis.port,
+  ...(config.redis.tls ? { tls: {} } : {}),
+};
 const deadLetters = createMysqlDeadLetterRepository(pool);
 const jobQueue = createBullJobQueue(connection);
 

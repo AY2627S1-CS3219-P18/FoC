@@ -18,6 +18,11 @@
  *        when it is set (dev compose sets it).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+ * Scope (2026-11-06): ECS Fargate migration - REDIS_TLS (default off) and one shared
+ *        builder for Redis connection options, per George's ECS Fargate plan, Phase 1 item 5.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -37,6 +42,8 @@ const EnvSchema = z.object({
     .default('http://localhost:3001'),
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
+  /** "true" connects to Redis over TLS. Off for Compose and CI. */
+  REDIS_TLS: z.enum(['true', 'false']).default('false'),
   CREDIT_SERVICE_URL: z.url().default('http://localhost:3003'),
   /** Worker only: serve the bull-board queue dashboard on this port; unset = off. */
   QUEUE_DASHBOARD_PORT: z.coerce.number().int().min(1).max(65535).optional(),
@@ -50,4 +57,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment:\n${z.prettifyError(result.error)}`);
   }
   return result.data;
+}
+
+/** Connection options for ioredis and BullMQ. `tls: {}` keeps Node's certificate checks on. */
+export function redisConnectionOptions(env: Env): {
+  host: string;
+  port: number;
+  tls?: Record<string, never>;
+} {
+  return {
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+    ...(env.REDIS_TLS === 'true' ? { tls: {} } : {}),
+  };
 }

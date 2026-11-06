@@ -14,6 +14,18 @@
  * Scope (2026-11-04, Codex, model: GPT-6): Added validation and default for the team-specified rate limit.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added DB_SSL (default
+ *        off) for verified TLS to RDS, per George's ECS Fargate plan, Phase 1 item 3. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added REDIS_TLS
+ *        (default off), per George's ECS Fargate plan, Phase 1 item 5. No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added
+ *        PHOTO_STORE_REGION (default us-east-1, which MinIO ignores), per George's ECS Fargate plan,
+ *        Phase 1 item 6. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from "zod";
@@ -29,13 +41,19 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1),
   DB_USER: z.string().min(1),
   DB_PASSWORD: z.string().min(1),
+  // "true" requires TLS with a verified server certificate. Off for Compose and CI.
+  DB_SSL: z.enum(["true", "false"]).default("false"),
   REDIS_HOST: z.string().min(1),
   REDIS_PORT: positiveInteger,
+  // "true" connects to Redis over TLS. Off for Compose and CI.
+  REDIS_TLS: z.enum(["true", "false"]).default("false"),
   USER_SERVICE_URL: z.string().min(1),
   PHOTO_STORE_ENDPOINT: z.string().min(1).optional(),
   PHOTO_STORE_BUCKET: z.string().min(1).optional(),
   PHOTO_STORE_ACCESS_KEY: z.string().min(1).optional(),
   PHOTO_STORE_SECRET_KEY: z.string().min(1).optional(),
+  // Required by the S3 SDK. MinIO ignores it, so the default keeps Compose working.
+  PHOTO_STORE_REGION: z.string().min(1).default("us-east-1"),
   MOCK_DOWNSTREAM_FAILURE: z.enum(["true", "false"]).optional(),
 });
 
@@ -61,14 +79,20 @@ export const config = Object.freeze({
     name: values.DB_NAME,
     user: values.DB_USER,
     password: values.DB_PASSWORD,
+    ssl: values.DB_SSL === "true",
   }),
-  redis: Object.freeze({ host: values.REDIS_HOST, port: values.REDIS_PORT }),
+  redis: Object.freeze({
+    host: values.REDIS_HOST,
+    port: values.REDIS_PORT,
+    tls: values.REDIS_TLS === "true",
+  }),
   userServiceUrl: values.USER_SERVICE_URL,
   photoStore: Object.freeze({
     endpoint: values.PHOTO_STORE_ENDPOINT,
     bucket: values.PHOTO_STORE_BUCKET,
     accessKey: values.PHOTO_STORE_ACCESS_KEY,
     secretKey: values.PHOTO_STORE_SECRET_KEY,
+    region: values.PHOTO_STORE_REGION,
   }),
   mockDownstreamFailure: values.MOCK_DOWNSTREAM_FAILURE === "true",
 });
