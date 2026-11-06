@@ -4230,7 +4230,7 @@ Existing frontend helpers to reuse (read them first; do not rewrite): `useUserNa
 | Transactions                 | Fetched once per order page load via `?requestId=<order id>`. Fields shown: transaction id, type, originating user, destination user, amount, created at. Paged with `nextCursor`; stop when it is `null`. No allocations.                                                                                                 |
 | Credits colour and sign      | Red/green with a `+` or `−`. For reservation and release, don't put it as `+` or `-` or red or green - just put the amount held. only for transfer then have colour and sign.                                                                                                                                              |
 | Names                        | Usernames for requester, courier and transaction parties; supplier name; delivery location name, via the existing helpers.                                                                                                                                                                                                 |
-| Name fallbacks               | Existing ones: shortened UUID for a missing username, "Location <id>" for a missing location. Missing supplier name: "Supplier <id>" (same pattern as location).                                                                                                                                                                           |
+| Name fallbacks               | Existing ones: shortened UUID for a missing username, "Location <id>" for a missing location. Missing supplier name: "Supplier <id>" (same pattern as location).                                                                                                                                                           |
 | Dates                        | Whatever the frontend already uses.                                                                                                                                                                                                                                                                                        |
 | Empty states                 | An order with no transactions shows "no transactions". A user with no orders shows an empty-state message.                                                                                                                                                                                                                 |
 | Section failures             | Only the failed section shows an error and a retry button; the rest of the page still renders.                                                                                                                                                                                                                             |
@@ -4266,3 +4266,115 @@ Write the tests in this stage, with the existing Vitest + `@testing-library/reac
 ### AI logging
 
 Same as earlier stages: header comment on every file created or modified, and a usage-log entry for this stage.
+
+# Stage 25: OTP "Attempts Exceeded" Dead-End Fix (backend + frontend)
+
+> **Scope**: `user-service` and `frontend/`. Never touch `foc-mockup/`.
+> Read the current code before writing anything. Where it disagrees with this file, follow the code and tell me.
+> Do not implement test cases before the implementation is done.
+
+## The bug
+
+A user enters 5 wrong codes and then submits a 6th. The 5th wrong guess gives no warning (plain `400 INVALID_OTP`), so the user types again, even the correct code, and the 6th submit returns `429 OTP_ATTEMPTS_EXCEEDED` ("request a new code"). Four things go wrong:
+
+0. The user is not told the code is dead when it dies (on the 5th failed attempt), only on the next submit, which is rejected even if the code is correct.
+
+1. The OTP boxes keep the old digits and stay enabled, even though that code can never work again. The frontend only clears them on `INVALID_OTP`.
+2. The resend cooldown is counted from when the current OTP was **created** (60 s), not from the wrong guesses. If the user burns 5 guesses quickly, resend is still inside the cooldown. It returns `429 OTP_RESEND_COOLDOWN` with `Retry-After` of about 30, and nothing is sent.
+3. The page does not know about the cooldown until the user clicks resend and fails, so the "request a new code" message points at a button that cannot work yet.
+
+## Design decisions (already made, do not change)
+
+| Topic                | Decision                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cooldown rule        | Unchanged. The resend cooldown still starts when the latest OTP was created. Resend limit, 5 guesses per OTP and `requestOtp` are not touched.                                                                                                                                                                                                                                                           |
+| How the UI learns it | The backend tells it. `OTP_ATTEMPTS_EXCEEDED` responses carry a `Retry-After` header: the seconds until a resend is allowed, computed on the DB clock. `0` means resend is allowed now. The frontend does not track its own send time.                                                                                                                                                                   |
+| Frontend on exceeded | Clear the boxes, disable them, show the error, and start the resend countdown straight away (or enable resend at once if the value is `0`).                                                                                                                                                                                                                                                              |
+| After a good resend  | Boxes are re-enabled, cleared and the first one is focused. The error is removed.                                                                                                                                                                                                                                                                                                                        |
+| Scope of the UI fix  | Every page with an OTP step: register, forgot password, change email, change password. Use the shared components so the behaviour is the same everywhere.                                                                                                                                                                                                                                                |
+| Expired code (UI)    | On `OTP_EXPIRED`, clear the boxes and refocus the first one, the same as `INVALID_OTP`. Resend is available at once (the 60 s cooldown always ends before the 10-minute lifetime), so no countdown is started.                                                                                                                                                                                           |
+| Expired code (count) | A guess against an expired code is treated exactly like a wrong guess: it adds 1 to that OTP's `attempts_count`. Failures 1 to 4 return `OTP_EXPIRED` (wrong codes return `INVALID_OTP`).                                                                                                                                                                                                                |
+| Tell on the 5th      | The **5th failed attempt** (wrong or expired) is the one that uses the code up, so it returns `429 OTP_ATTEMPTS_EXCEEDED` itself, with the `Retry-After` header, instead of `INVALID_OTP` / `OTP_EXPIRED`. Any later submit on that code also returns `OTP_ATTEMPTS_EXCEEDED`. The limit stays at 5 guesses per code. A **correct** code on the 5th attempt still succeeds, because only failures count. |
+| Check order          | The attempts check runs **before** the expiry check. An expired code with the count at the max returns `OTP_ATTEMPTS_EXCEEDED` with `Retry-After: 0` (the cooldown is long over), so the UI disables the boxes and enables resend at once.                                                                                                                                                               |
+
+## Stage 25a: Backend — `Retry-After` on `OTP_ATTEMPTS_EXCEEDED`
+
+Files: `src/services/otp.service.ts` (and `src/db/queries/otp.queries.ts` if the latest-OTP query needs another column).
+
+- In `checkOtp`, step 3 (`attempts_count >= max_attempts`) already has the latest OTP row and `db_now` from `findLatestOtp`. Compute
+  `retryAfterSeconds = max(0, ceil(seconds between db_now and created_at + config.otp.resendCooldownSeconds))`.
+  Do the arithmetic in SQL with `clock_timestamp()`, or from the `db_now` already returned. **Do not use `Date.now()`** (convention 5).
+- Throw `AppError(429, 'Too many incorrect attempts. Please request a new OTP.', 'OTP_ATTEMPTS_EXCEEDED', retryAfterSeconds)`, using the same optional `retryAfterSeconds` field that `OTP_RESEND_COOLDOWN` and `ACCOUNT_LOCKED` use.
+- Make sure the global error handler emits `Retry-After` for a value of `0`. If it currently checks truthiness, change it to check `!== undefined`. Check that this doesn't change the other codes: `OTP_RESEND_COOLDOWN` is always above 0 and `ACCOUNT_LOCKED` is always above 0.
+- This covers every purpose automatically because they all go through `checkOtp`. Confirm that each verify path (`verify-otp` registration/forgot-password, change email, change password, reset-password) lets the error through unchanged. Report any that catches and rewraps it.
+- Put the `retryAfterSeconds` calculation in one small helper, because 25c also needs it for the 5th failed attempt. Both paths must give the same value.
+- The body stays `{ message, code }`. The wrong-guess path still returns `{ ok: false }` and throws after the commit (see 25c for the 5th failed attempt).
+
+## Stage 25c: Backend — count guesses against an expired code
+
+Files: `src/services/otp.service.ts`, `src/db/queries/otp.queries.ts`, and every caller of `checkOtp`.
+
+- In `checkOtp`, step 2 (`expires_at` has passed) must call `incrementAttempts` and then **return** `{ ok: false, reason: 'expired' }` instead of throwing. Throwing inside `withTransaction` would roll the increment back (convention 4). The wrong-guess path returns `{ ok: false, reason: 'invalid' }`. The caller throws after the transaction commits: `INVALID_OTP` for `'invalid'`, `OTP_EXPIRED` (same 400 and message as now) for `'expired'`.
+- Do not copy the branching into each caller. Add one small shared helper (for example `throwOtpFailure(result)`) in `otp.service.ts` and use it at every call site. **Before changing anything, list every call site** (registration verify, forgot-password verify and reset, change email, change password, any admin-action use) and tell me if one of them handles the failure differently.
+- New order of checks: missing/consumed row → `INVALID_OTP`; attempts used up → `OTP_ATTEMPTS_EXCEEDED`; expired → count it and return `OTP_EXPIRED`; otherwise compare. The attempts check moves above the expiry check, so an expired code whose count is at the max returns `OTP_ATTEMPTS_EXCEEDED` (with the 25a `Retry-After`, which is `0` here). Report any caller or test that relied on the old order.
+- **Tell on the 5th failed attempt.** `incrementAttempts` already returns the new count. If the new count has reached `max_attempts`, `checkOtp` must still **return** (not throw), as `{ ok: false, reason, exhausted: true, retryAfterSeconds }`, where `retryAfterSeconds` comes from the 25a helper using the DB clock inside the same transaction. The increment commits first. The shared `throwOtpFailure` helper then throws `AppError(429, ..., 'OTP_ATTEMPTS_EXCEEDED', retryAfterSeconds)` when `exhausted` is true, and `INVALID_OTP` / `OTP_EXPIRED` otherwise. A correct code never reaches the increment, so it is not affected.
+- Existing tests and fixtures that expect `400 INVALID_OTP` on the 5th wrong guess (for example the "5 wrong OTPs" cases from Stages 5 to 12) will now see `429 OTP_ATTEMPTS_EXCEEDED` on the 5th. Update those expectations, list them in your summary, and do not change application code to make them pass.
+- `attempts_count` is a `SMALLINT`, and repeated guesses against an expired code would otherwise keep incrementing it. Make `incrementAttempts` stop at `max_attempts` (for example `LEAST(attempts_count + 1, max_attempts)`) so it cannot overflow or go past the max. This is safe for the wrong-guess path too, which never reaches the increment once the count is at the max.
+- No account-level lockout counts OTP guesses (Stage 18 locks on passwords only), so this changes only the per-OTP `attempts_count`. Do not add anything to the Stage 18 counters.
+
+## Stage 25b: Frontend
+
+Read `frontend/` first (`OtpInput.jsx`, `ResendButton.jsx`, `errorMessages.js`, `src/api/http.js`, and the pages with an OTP step) and **report how `Retry-After` currently reaches `ResendButton`** before changing anything. Then:
+
+- `src/api/http.js`: make sure the thrown error exposes `retryAfterSeconds` (parsed from the header, `undefined` if missing) for every `429`, not only the resend endpoint. If it already does, change nothing.
+- `OtpInput.jsx`: the parent must be able to (a) clear and refocus (exists), and (b) set the input to a disabled "dead" state that keeps the boxes empty. Reuse the existing `disabled` prop if it fits. Don't add a new prop for something the current props can do.
+- `ResendButton.jsx`: it must accept a way to start (or restart) the countdown from a value supplied by the parent, e.g. an `initialCooldown` / `startCooldown(seconds)` handle. `0` means enabled immediately. Keep the existing behaviour for `OTP_RESEND_COOLDOWN` and `OTP_RESEND_LIMIT`.
+- On `OTP_ATTEMPTS_EXCEEDED` (in each OTP page, including when it arrives as the response to the 5th failed attempt): clear the boxes, disable them, show the mapped error, and start the resend countdown from `err.retryAfterSeconds ?? 0`.
+- On a successful resend (`OTP_SENT`): clear the error, re-enable the boxes, clear them and focus the first.
+- On `OTP_EXPIRED` (in each OTP page): clear the boxes and refocus the first one, as for `INVALID_OTP`. Keep them enabled. Show the mapped error. Resend is available straight away, so do not start a countdown. If resend still returns `OTP_RESEND_COOLDOWN`, handle it as described below.
+- On `OTP_RESEND_LIMIT`: boxes stay disabled, show the limit text, no countdown (unchanged).
+- If resend itself returns `OTP_RESEND_COOLDOWN` (a race between the two clocks): keep the boxes disabled and restart the countdown from the new `Retry-After`.
+- `errorMessages.js`: change the text for `OTP_ATTEMPTS_EXCEEDED` so it no longer promises something that can't happen yet. It should say the code is no longer valid and that the user can request a new one when the button is available. Show me the old and new text in your summary.
+- Registration arrived-from-login flow and the forgot-password step 3 fallback ("back to step 2 with the error"): the step 2 state must also start with the boxes disabled and the countdown running when it is entered with `OTP_ATTEMPTS_EXCEEDED`.
+
+## Verification
+
+- Register, enter wrong codes: the first 4 return `400 INVALID_OTP` with the boxes cleared. The **5th** returns `429 OTP_ATTEMPTS_EXCEEDED` **with a `Retry-After` header** of roughly the time left (within the first 60 s). The boxes clear and disable, and the resend button shows the same countdown. `attempts_count` is 5 in the DB.
+- A correct code on the 5th attempt (after 4 wrong ones) succeeds.
+- After the 5th failure, submitting the correct code (e.g. through the API) still returns `429 OTP_ATTEMPTS_EXCEEDED`.
+- Same flow, but backdate the OTP `created_at` by more than 60 s first: the response has `Retry-After: 0`, boxes are disabled, and resend is enabled immediately.
+- When the countdown ends, clicking resend sends a new code, the boxes re-enable and clear, and the new code works. The old code returns `INVALID_OTP`.
+- After 5 resends the limit text shows, boxes stay disabled, no countdown (unchanged).
+- Expired code: backdate `expires_at`, submit any 6 digits. The response is `400 OTP_EXPIRED`, the OTP's `attempts_count` goes up by 1 and is persisted (check the DB), and the boxes clear with focus on the first. Resend works immediately.
+- Submit against an expired code: submits 1 to 4 return `OTP_EXPIRED` with the boxes cleared. The 5th returns `429 OTP_ATTEMPTS_EXCEEDED` with `Retry-After: 0`, the boxes disable, and resend is enabled at once. Later submits keep returning `OTP_ATTEMPTS_EXCEEDED`, `attempts_count` stays at `max_attempts`, and there is no `SMALLINT` error.
+- Mixed: 3 wrong guesses, expire the code, the next guess returns `OTP_EXPIRED` (4th failure), and the one after that returns `OTP_ATTEMPTS_EXCEEDED` (5th failure).
+- A new code issued after expiry starts at `attempts_count = 0` and accepts the correct code.
+- Forgot password step 3 with an expired code: back at step 2 with the expiry error and cleared boxes.
+- Repeat for forgot password, change email and change password.
+- Reload the page after being locked out, then enter any code. The same header is returned and the UI shows the correct remaining time.
+- Existing responses are unchanged: `OTP_RESEND_COOLDOWN`, `OTP_RESEND_LIMIT` and `ACCOUNT_LOCKED` still carry their `Retry-After`. `INVALID_OTP` still clears and refocuses the boxes.
+
+## Tests
+
+Backend (Vitest, real Postgres, following the Stage 7 ground rules) and frontend (Vitest + Testing Library). Do not modify application code to make a test pass. Report any failure that isn't a test problem.
+
+**1. Edit the existing tests first.** Search `tests/` and the frontend tests for every case that depends on the old behaviour, and update its expectations. At least look for:
+
+- Any test that submits wrong OTPs in a loop, or checks `attempts_count`, `max_attempts`, `INVALID_OTP` or `OTP_ATTEMPTS_EXCEEDED`. This covers registration `verify-otp`, forgot-password `verify-otp` and `reset-password`, change email and change password. The old pattern "5 wrong OTPs, then the correct OTP → `429 OTP_ATTEMPTS_EXCEEDED`" becomes "4 wrong OTPs → `400 INVALID_OTP` each; the 5th wrong OTP → `429 OTP_ATTEMPTS_EXCEEDED` with a `Retry-After` header; the correct OTP afterwards → `429 OTP_ATTEMPTS_EXCEEDED`; the account, email or password is unchanged".
+- Any test that submits an expired OTP and expects `OTP_EXPIRED`. It should still pass for a first or early failure. Add the new checks that `attempts_count` goes up and is persisted, and, if the test loops, that the 5th failure returns `OTP_ATTEMPTS_EXCEEDED`.
+- Any test that depends on the check order (expired before attempts used up). It now runs the other way round.
+- Frontend tests for `OtpInput`, `ResendButton`, the register, forgot-password, change-email and change-password pages, and `errorMessages.js`: the `OTP_ATTEMPTS_EXCEEDED` handling, the clearing of boxes on `INVALID_OTP`, and the changed message text. Add the `OTP_EXPIRED` clearing.
+
+Keep each assertion as strict as it was. Change the expected values, not the strength of the checks. List every test file and case you changed in your summary.
+
+**2. Then add cases** for every Verification bullet above that doesn't need a real browser. Use fake timers for the countdown.
+
+## Notes for the summary
+
+- List any place you deviated from this file and why.
+- Say which `checkOtp` call sites you changed for 25c and whether any needed more than the shared helper.
+- List the existing tests and fixtures you updated because the 5th wrong guess now returns `429 OTP_ATTEMPTS_EXCEEDED`.
+
+## AI logging
+
+Same as earlier stages: header comment on every file created **or modified**, and a usage-log entry per sub-stage (25a, 25b, 25c) in the existing format.
