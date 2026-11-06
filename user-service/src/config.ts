@@ -25,6 +25,11 @@
 //    (1-30). Bounds are the governing decision already recorded in instructions.md Stage 23a;
 //    no architecture, schema, or API decision was made by the AI tool.
 //    Author review:
+//  2026-11-06: ECS Fargate migration - add DB_SSL (default off) for verified TLS to RDS.
+//    Tool: Claude Code (model: claude-opus-5-5). Implements the decision in George's ECS
+//    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
+//    were made by the AI tool.
+//    Author review:
 
 import { z } from "zod";
 
@@ -38,6 +43,8 @@ const envSchema = z
     DB_NAME: z.string().min(1),
     DB_USER: z.string().min(1),
     DB_PASSWORD: z.string().min(1),
+    // "true" requires TLS with a verified server certificate. Off for Compose and CI.
+    DB_SSL: z.enum(["true", "false"]).default("false"),
 
     JWT_KEY_ID: z.string().min(1),
     JWT_PRIVATE_KEY_PATH: z.string().min(1),
@@ -124,6 +131,7 @@ export const config = {
     name: env.DB_NAME,
     user: env.DB_USER,
     password: env.DB_PASSWORD,
+    ssl: env.DB_SSL === "true",
   },
   jwt: {
     keyId: env.JWT_KEY_ID,

@@ -6,6 +6,10 @@
  *        an environment variable. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - pass DB_SSL and
+ *        PHOTO_STORE_REGION through, per George's ECS Fargate plan, Phase 1 item 9. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -42,6 +46,7 @@ export default defineConfig({
       DB_NAME: process.env.DB_NAME ?? 'supplier_service',
       DB_USER: process.env.DB_USER ?? 'root',
       DB_PASSWORD: process.env.DB_PASSWORD ?? root.SUPPLIER_DB_PASSWORD ?? 'supplier_root_password',
+      DB_SSL: process.env.DB_SSL ?? 'false',
       REDIS_HOST: 'localhost',
       REDIS_PORT: '6379',
       USER_SERVICE_URL: 'http://localhost:3001',
@@ -50,6 +55,7 @@ export default defineConfig({
       PHOTO_STORE_BUCKET: process.env.PHOTO_STORE_BUCKET ?? 'supplier-photos',
       PHOTO_STORE_ACCESS_KEY: process.env.PHOTO_STORE_ACCESS_KEY ?? 'photostoredev',
       PHOTO_STORE_SECRET_KEY: process.env.PHOTO_STORE_SECRET_KEY ?? 'photostoredev-secret',
+      PHOTO_STORE_REGION: process.env.PHOTO_STORE_REGION ?? 'us-east-1',
     },
   },
 });

@@ -10,6 +10,10 @@
  *        in tests does not open a Redis connection (Phase 2 plan Task 1). No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - optional TLS, per
+ *        George's ECS Fargate plan, Phase 1 item 5. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Redis } from "ioredis";
@@ -20,6 +24,8 @@ const redis = new Redis({
   host: config.redis.host,
   port: config.redis.port,
   lazyConnect: true,
+  // `tls: {}` keeps Node's certificate checks on.
+  ...(config.redis.tls ? { tls: {} } : {}),
 });
 
 export default redis;

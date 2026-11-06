@@ -34,12 +34,17 @@
  *        transfer queue.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+ * Scope (2026-11-06): ECS Fargate migration - Redis TLS through redisConnectionOptions,
+ *        per George's ECS Fargate plan, Phase 1 item 5.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
 import { config as loadDotenv } from 'dotenv';
 import { createPrismaClient } from './db/prisma.js';
-import { loadEnv } from './config/env.js';
+import { loadEnv, redisConnectionOptions } from './config/env.js';
 import { runRequestMaintenance } from './services/orders.service.js';
 import { createHttpCreditsClient } from './clients/credits.client.js';
 import { createOutboxRepository } from './db/outbox.repository.js';
@@ -71,13 +76,13 @@ import {
 loadDotenv({ quiet: true });
 
 const env = loadEnv();
-const connection = { host: env.REDIS_HOST, port: env.REDIS_PORT };
+const connection = redisConnectionOptions(env);
 const queueName = 'order-request-maintenance';
 const queue = new Queue(queueName, { connection });
 const prisma = createPrismaClient(env.DATABASE_URL);
 const credits = createHttpCreditsClient(env.CREDIT_SERVICE_URL);
 const deadLetters = createDeadLetterRepository(prisma);
-const redis = new Redis({ host: env.REDIS_HOST, port: env.REDIS_PORT });
+const redis = new Redis(redisConnectionOptions(env));
 const events = createRedisEventPublisher(redis);
 
 async function processMaintenanceJob(_job: Job): Promise<void> {

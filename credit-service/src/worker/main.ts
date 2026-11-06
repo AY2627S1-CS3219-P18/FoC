@@ -6,6 +6,10 @@
 //    same transferCredits the HTTP route calls.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-06: ECS Fargate migration - pass REDIS_TLS to the connection, per George's ECS
+//    Fargate plan, Phase 1 item 5. Tool: Claude Code (model: claude-opus-5-5). No requirements,
+//    architecture, schema, or API decisions were made by the AI tool.
+//    Author review:
 
 import { Worker } from 'bullmq';
 import { config } from '../config.js';
@@ -30,7 +34,7 @@ import {
  * ioredis as an optional peer and cannot require it itself under native ESM. The
  * reconnect behaviour and its logging live in src/queue/redisConnection.ts.
  */
-const connection = createRedisConnection(config.redis.host, config.redis.port);
+const connection = createRedisConnection(config.redis.host, config.redis.port, config.redis.tls);
 
 const processTransferJob = createTransferJobProcessor({
   insertDeadLetter: (entry) => insertDeadLetter(pool, entry),

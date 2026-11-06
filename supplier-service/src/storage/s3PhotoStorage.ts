@@ -4,6 +4,10 @@
  * Scope: Implemented the S3-client photo storage adapter from the Phase 2 plan (Task 2).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - configurable region,
+ *        per George's ECS Fargate plan, Phase 1 item 6. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 import { randomUUID } from 'node:crypto';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -14,13 +18,14 @@ export interface S3PhotoStorageOptions {
   bucket: string;
   accessKey: string;
   secretKey: string;
+  region?: string | undefined;
 }
 
 export function createS3PhotoStorage(
   options: S3PhotoStorageOptions,
   client: S3Client = new S3Client({
     endpoint: options.endpoint,
-    region: 'us-east-1', // required by the SDK; ignored by MinIO
+    region: options.region ?? 'us-east-1', // required by the SDK; ignored by MinIO
     forcePathStyle: true,
     credentials: { accessKeyId: options.accessKey, secretAccessKey: options.secretKey },
   }),
@@ -63,10 +68,11 @@ export function createConfiguredPhotoStorage(settings: {
   bucket?: string | undefined;
   accessKey?: string | undefined;
   secretKey?: string | undefined;
+  region?: string | undefined;
 }): PhotoStorage {
-  const { endpoint, bucket, accessKey, secretKey } = settings;
+  const { endpoint, bucket, accessKey, secretKey, region } = settings;
   if (endpoint && bucket && accessKey && secretKey) {
-    return createS3PhotoStorage({ endpoint, bucket, accessKey, secretKey });
+    return createS3PhotoStorage({ endpoint, bucket, accessKey, secretKey, region });
   }
   const unavailable = async (): Promise<never> => {
     throw new Error('Photo storage is not configured (set the PHOTO_STORE_* variables).');

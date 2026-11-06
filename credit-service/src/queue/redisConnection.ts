@@ -8,6 +8,10 @@
 //    that the worker survive the broker being unavailable (2026-10-22).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
 //    Author review:
+//  2026-11-06: ECS Fargate migration - optional TLS, per George's ECS Fargate plan, Phase 1
+//    item 5. Tool: Claude Code (model: claude-opus-5-5). No requirements, architecture, schema,
+//    or API decisions were made by the AI tool.
+//    Author review:
 
 import { Redis, type RedisOptions } from 'ioredis';
 
@@ -45,10 +49,12 @@ export const redisOptions: RedisOptions = {
 export function createRedisConnection(
   host: string,
   port: number,
+  tls = false,
   log: (message: string) => void = console.log,
   logError: (message: string) => void = console.error,
 ): Redis {
-  const connection = new Redis({ ...redisOptions, host, port });
+  // `tls: {}` keeps Node's certificate checks on.
+  const connection = new Redis({ ...redisOptions, host, port, ...(tls ? { tls: {} } : {}) });
 
   connection.on('ready', () => log(`redis ${host}:${port} ready`));
   connection.on('reconnecting', (delay: number) =>
