@@ -66,6 +66,14 @@
  *        not reveal which ids exist.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): createOrder / editOrder check that supplierId and deliveryLocationId
+ *        exist in supplier-service (caller's token passed through) after the shape checks;
+ *        not found -> SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND, supplier-service
+ *        unreachable -> SUPPLIER_SERVICE_UNAVAILABLE, nothing written (George, 2026-10-23).
+ *        Edit checks only the fields it changes, after the requester / open checks.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -87,6 +95,7 @@ import {
   type ActorId,
 } from '../domain/order-status.js';
 import { canViewOrder, type Viewer } from '../domain/order-access.js';
+import type { SuppliersClient } from '../clients/suppliers.client.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import {
   eventsForEdit,
@@ -142,10 +151,43 @@ const validateAdditionalDetails = (additionalDetails: string | null) => {
   return additionalDetails === null || typeof additionalDetails === 'string';
 };
 
+/** supplier-service, and the caller's own `Bearer …` header to call it with. */
+export interface ReferenceCheck {
+  suppliers: SuppliersClient;
+  authorization: string;
+}
+
+/**
+ * Checks the given ids exist in supplier-service, in parallel. Any unanswered check makes
+ * the whole result SUPPLIER_SERVICE_UNAVAILABLE, so a request is never half-validated.
+ */
+async function checkReferences(
+  { suppliers, authorization }: ReferenceCheck,
+  ids: { supplierId?: number; deliveryLocationId?: number },
+): Promise<ErrorCode[]> {
+  const [supplier, location] = await Promise.all([
+    ids.supplierId === undefined
+      ? 'found'
+      : suppliers.supplierExists(ids.supplierId, authorization),
+    ids.deliveryLocationId === undefined
+      ? 'found'
+      : suppliers.locationExists(ids.deliveryLocationId, authorization),
+  ]);
+  if (supplier === 'unavailable' || location === 'unavailable') {
+    return [ErrorCode.SUPPLIER_SERVICE_UNAVAILABLE];
+  }
+  const errors: ErrorCode[] = [];
+  if (supplier === 'not_found') errors.push(ErrorCode.SUPPLIER_NOT_FOUND);
+  if (location === 'not_found')
+    errors.push(ErrorCode.DELIVERY_LOCATION_NOT_FOUND);
+  return errors;
+}
+
 export const createOrder = async (
   prisma: PrismaClient,
   requesterId: string,
   requestPayload: CreateOrderPayload,
+  refs: ReferenceCheck,
 ): Promise<CreateOrderResult> => {
   const errors: ErrorCode[] = [];
 
@@ -188,6 +230,12 @@ export const createOrder = async (
   if (errors.length) {
     return { ok: false, errors };
   }
+
+  const missing = await checkReferences(refs, {
+    supplierId: requestPayload.supplierId,
+    deliveryLocationId: requestPayload.deliveryLocationId,
+  });
+  if (missing.length) return { ok: false, errors: missing };
 
   // Issue #4: the order starts `pending` and is hidden until credit-service confirms
   // the reservation. The reserve call itself happens in the worker; here we only
@@ -245,6 +293,7 @@ export const editOrder = async (
   actorId: ActorId,
   orderId: string,
   payload: EditOrderPayload,
+  refs: ReferenceCheck,
   events?: OrderEventPublisher,
 ): Promise<EditOrderResult> => {
   const errors: ErrorCode[] = [];
@@ -304,6 +353,13 @@ export const editOrder = async (
     if (order.status !== 'open') {
       return { ok: false, errors: [ErrorCode.ORDER_NOT_EDITABLE] };
     }
+
+    // Only the ids being changed, and only once the caller may edit at all.
+    const missing = await checkReferences(refs, {
+      supplierId: payload.supplierId,
+      deliveryLocationId: payload.deliveryLocationId,
+    });
+    if (missing.length) return { ok: false, errors: missing };
 
     // `status: 'open'` in the guard too: an accept that lands between the read and this
     // write makes the edit a version conflict instead of editing an accepted order.

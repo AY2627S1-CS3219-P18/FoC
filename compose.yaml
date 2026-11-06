@@ -34,6 +34,11 @@
 #        order-redis-data, so queued credit jobs survive container recreation.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+# Scope (2026-10-23): SUPPLIER_SERVICE_URL on order-service for the supplier / delivery-
+#        location existence check on create and edit.
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -73,6 +78,8 @@ services:
       REDIS_HOST: order-redis
       REDIS_PORT: 6379
       USER_SERVICE_URL: http://user-service:3001
+      # Create / edit check supplier and delivery-location ids here (503 if it is down).
+      SUPPLIER_SERVICE_URL: http://supplier-service:3002
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"
     depends_on:

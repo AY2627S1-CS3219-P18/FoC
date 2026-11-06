@@ -9588,3 +9588,53 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-07 — ECS Fargate: ship the order supplier check
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
+
+**Prompts (exact):**
+> Ship 1fad383 now
+
+**Key responses:**
+
+- Applied `1fad383` onto the team's `main` (`1a07f90`). Six files conflicted: `app.ts`, `config/env.ts`, `constants/errors.ts`, `orders.controller.ts`, `orders.routes.ts` and `server.ts`.
+- Kept both sides. In code, `ordersRouter` now takes both `suppliers` and `userServiceUrl`. The other conflicts were disclosure headers only.
+- Recorded in the plan that `order-service` must run a task definition with `SUPPLIER_SERVICE_URL` before this deploys, because CD only swaps the image, plus the ALB rule limit and the superadmin smoke test finding.
+
+**Verification (run):**
+
+- `order-service`: `npm run typecheck` and `npm run lint` clean, and 667/667 tests pass, run on Windows.
+
+**Not verified:** the e2e suite wasn't run, as it needs Postgres and Redis and CI doesn't run it either. Nothing has run on AWS yet. `npx prisma generate` failed locally because `DATABASE_URL` was unset, so the type check used the existing generated client.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/clients/suppliers.client.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+Creating or editing an order now returns `503` when supplier-service can't answer, including on `429`. Supplier's production `PER_IP_RATE_LIMIT` is 30, and the requests come from order-service's task, so heavy order traffic could hit it. Flagged for the team, and not changed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

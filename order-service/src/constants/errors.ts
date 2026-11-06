@@ -23,6 +23,12 @@
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): SUPPLIER_NOT_FOUND, DELIVERY_LOCATION_NOT_FOUND (422) and
+ *        SUPPLIER_SERVICE_UNAVAILABLE (503) for the supplier-service existence check
+ *        (George, 2026-10-23). Names and messages follow the existing codes' convention.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -55,6 +61,9 @@ export enum ErrorCode {
   INVALID_USER_ID = 'INVALID_USER_ID',
   USER_SERVICE_UNAVAILABLE = 'USER_SERVICE_UNAVAILABLE',
   INVALID_STATUS = 'INVALID_STATUS',
+  SUPPLIER_NOT_FOUND = 'SUPPLIER_NOT_FOUND',
+  DELIVERY_LOCATION_NOT_FOUND = 'DELIVERY_LOCATION_NOT_FOUND',
+  SUPPLIER_SERVICE_UNAVAILABLE = 'SUPPLIER_SERVICE_UNAVAILABLE',
 }
 
 export const ErrorMessage: Record<ErrorCode, string> = {
@@ -97,4 +106,10 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.USER_SERVICE_UNAVAILABLE]:
     'User Service is temporarily unavailable.',
   [ErrorCode.INVALID_STATUS]: 'Status provided is invalid.',
+  [ErrorCode.SUPPLIER_NOT_FOUND]:
+    'That supplier does not exist or is unavailable.',
+  [ErrorCode.DELIVERY_LOCATION_NOT_FOUND]:
+    'That delivery location does not exist.',
+  [ErrorCode.SUPPLIER_SERVICE_UNAVAILABLE]:
+    'Supplier details could not be checked right now. Please try again.',
 };
