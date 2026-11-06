@@ -9113,3 +9113,82 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-06 — ECS Fargate plan: record team repo and CD trigger decisions
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
+
+**Prompts (exact):**
+> wait wait, the repo is supposed to be the teams repo not mine
+
+> Yes, use team repo
+
+> lets skip the alerts
+
+> > Trigger: this makes the manual workflow_dispatch you suggested more important. An automatic trigger would start a deploy on every merge to main, including your teammates’ merges.
+>
+> this is intended, it should auto deploy on every main merge
+>
+> > Your team: they’d see this in their repo, including Phase 1 and the plan in docs/, which calls this a “personal AWS practice project”. If this is the coursework deployment, that wording should change, and the team should agree to the move.
+>
+> yes fix the doc now
+
+**Key responses:**
+
+- Reworded `docs/ecs-fargate-session-prompt.md`: new title (coursework deployment), Git ground rule, CD decision row, CD trigger, budget alert step, OIDC subject, public repo note and Phase 3. The entries "ECS Fargate Phase 1: repo changes for deployment" and "ECS Fargate plan: add to docs" quote or cite the earlier wording, including the old title; they are left unedited because the log is append-only.
+- Added a list to the plan of facts found during Phase 1 and Phase 2: `verifyIdentity`, the CA file path, the boot test's throwaway servers, the OIDC subject format, and resource names.
+- Read the team repo's settings through the GitHub API (read-only). It reports the OIDC prefix `repo:AY2627S1-CS3219-P18@323009622/FoC@1359250594`, a protected `main`, and Actions enabled. Nothing was changed on it.
+- Verification run: searched the plan for remaining fork-only or "personal" wording. No code changed, so no tests were run.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+Raised with George for Phase 3: how CD behaves on merges before the ECS services exist, and whether teammates should be told that merges deploy to George's AWS account.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-06 — ECS Fargate Phase 3: CD workflow
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
+
+**Prompts (exact):**
+> this is intended, it should auto deploy on every main merge
+
+The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
+
+**Key responses:**
+
+- `deploy.yml` builds and pushes 5 images on every push to the team repo's `main`, tagged with the git SHA for `linux/amd64`, then deploys 5 web services followed by 3 workers. A manual run offers build-only mode, a list of services, and an optional seed image build.
+- `ecs-deploy.sh` fetches a service's current task definition, swaps only the image, registers it, updates the service and waits for it to settle.
+- Implementation choices stated to George: a missing cluster or service skips the deploy with a notice and does not fail the run; a service at 0 tasks reports that nothing started; a rollback counts as a failed run; workers deploy after web services; the seed image builds only on manual request, tagged with the SHA and `latest`; provenance and SBOM manifests are turned off so the ECR rule counts builds.
+- Verification run: 11 scenarios of `ecs-deploy.sh` against a fake AWS CLI in a local container, plus checks that the registered task definition keeps the command, env, secrets and `stopTimeout` and drops the read-only fields. `shellcheck` and `actionlint` were clean. The inputs used were found in the `action.yml` of the configure-aws-credentials, amazon-ecr-login and build-push actions at the pinned major versions.
+- Not tested: the workflow has not run on GitHub, and nothing has run against real AWS.
+
+**Files:**
+
+- `.github/workflows/deploy.yml` (created)
+- `.github/scripts/ecs-deploy.sh` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+- The plan says to build 5 images. The seed image is a sixth, built only on manual request, because the plan creates its ECR repository but gives it no build path.
+- `deploy.yml` does not wait for CI, and the team repo's `main` has no required status checks, so a merge with failing CI still deploys. Flagged to George.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

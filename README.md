@@ -106,6 +106,14 @@ Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #18
        ECS Fargate plan into docs/. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
 Author review:
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #186 for recording
+       the team repo and CD trigger decisions in the ECS Fargate plan. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #187 for the ECS
+       Fargate CD workflow. No requirements, architecture, schema, or API decisions were made by
+       the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -547,3 +555,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 183 | 2026-11-06 | frontend | Stage 25b: OTP attempts-exceeded UI fix | OTP boxes clear/disable and the resend countdown starts on OTP_ATTEMPTS_EXCEEDED; reworded its message. |
 | 184 | 2026-11-06 | user-service, credit-service, supplier-service, order-service | ECS Fargate Phase 1: repo changes for deployment | Added default-off TLS, S3 region, supplier /health, keep-alive and a seed image; boot-tested images locally. |
 | 185 | 2026-11-06 | docs | ECS Fargate plan: add to docs | Copied the ECS Fargate plan into docs/ verbatim with a disclosure header. |
+| 186 | 2026-11-06 | docs | ECS Fargate plan: record team repo and CD trigger decisions | Reworded the plan for the team repo, deploy on every main merge and skipped budget alert. |
+| 187 | 2026-11-06 | CI/CD | ECS Fargate Phase 3: CD workflow | Added a workflow and script that build images and deploy to ECS on every main merge. |

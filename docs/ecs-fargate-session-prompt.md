@@ -5,16 +5,22 @@ Scope: Copied this plan into docs/ verbatim from George's local file, below this
        changed none of the plan's text in this copy and made no requirements, architecture, schema,
        or API decisions in doing so. This note covers the copy only, not who wrote the plan.
 Author review:
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
+Scope: Reworded the plan to record George's chat decisions (coursework deployment, CD on the team repo,
+       deploy on every merge to main, budget alert skipped), and listed facts found during Phase 1 and
+       Phase 2. The decisions are George's; no requirements, architecture, schema, or API decisions
+       were made by the AI tool.
+Author review:
 -->
 
-# Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project
+# Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment
 
 I'm George. Your job is to edit the FoC repo (a campus errand app: requesters post requests, couriers deliver them, settled in platform credits) to implement deployment to cloud component of the coursework. All design decisions are already made, below. Your job is to carry out this plan with me, starting with Phase 1.
 
 ## Ground rules
 
 - **Be brief, but I'm still learning AWS.** Define an AWS term in plain language the first time it comes up.
-- **Git:** `origin` is my fork (`george-yeo/FoC-Template`) and `upstream` is the team repo (`AY2627S1-CS3219-P18/FoC`). Never push to `upstream` or open PRs against it. Branch from `main` (`acd4397` when this was written; run `git rev-parse main` and tell me if it moved). Commit or push only when I ask.
+- **Git:** `origin` is my fork (`george-yeo/FoC-Template`) and `upstream` is the team repo (`AY2627S1-CS3219-P18/FoC`). CD runs from the team repo, and code reaches its protected `main` by PR. Branch from `main` (`acd4397` when this was written; run `git rev-parse main` and tell me if it moved). Commit, push or open a PR only when I ask.
 - **Secrets:** never read `.env` files or `user-service/keys/`, and never ask me to paste a secret into chat. I enter secrets directly in the AWS console. Only `.example` files are safe to read.
 - **AWS:** I provision by hand in the console. Give me one step or small group at a time, tell me what to check, and wait. No Terraform or CDK. Confirm with me before anything costly or destructive. Region is `ap-southeast-1`.
 - **Cost:** my limit is short test runs only. The stack is about $10/day while fully running (rough estimate, unverified). Warn me before anything adds cost, and remind me to tear down at the end of a session.
@@ -40,12 +46,19 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 | Deploys | Web services: min healthy 100%, max 200%. Workers: min healthy 0%, max 100% |
 | Supplier health | New static `GET /health`, mounted ahead of the per-IP rate limiter |
 | Seeding | One-off ECS tasks |
-| CD | GitHub Actions on my fork: build, push to ECR, update ECS, authenticated with GitHub OIDC. AWS account is a normal account, not Learner Lab |
+| CD | GitHub Actions on the team repo, deploying on every merge to `main`: build, push to ECR, update ECS, authenticated with GitHub OIDC. AWS account is a normal account, not Learner Lab |
 | Local dev | Docker Compose stays as is. Every new setting must default to off, so Compose and CI don't change |
 
-**Questions to ask me before building CD:**
-1. **CD trigger.** The stack is off most of the time and fork syncs push to `main`, so I'd suggest manual `workflow_dispatch`. Confirm with me.
-2. **Supplier rate limit.** `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` sets `PER_IP_RATE_LIMIT` to 30 for production and 20,000 for staging. Start at 30, and tell me if testing hits 429s.
+**CD trigger (decided):** automatic, on every merge to `main`.
+
+**Supplier rate limit:** `docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md` sets `PER_IP_RATE_LIMIT` to 30 for production and 20,000 for staging. Start at 30, and tell me if testing hits 429s.
+
+**Found while carrying this out (these replace the matching text below):**
+- **MySQL SSL:** the supplier pool also sets `verifyIdentity: true`, because `mysql2` doesn't check the certificate hostname without it.
+- **RDS CA file:** it's at `/etc/ssl/rds-ap-southeast-1-bundle.pem` in all backend images and the seed image. `NODE_EXTRA_CA_CERTS` must use that path.
+- **Boot test:** Phase 1 item 11 ran on throwaway plain and TLS servers rather than the Compose databases and Redis.
+- **OIDC subject:** repos created after 2026-07-15 use GitHub's ID-based `sub` format. Use the value in Phase 2 step 5.
+- **Resource names:** ECR repos are `foc/<service>` plus `foc/supplier-seed`, the ECS cluster is `foc`, and the task execution role is `foc-ecs-task-execution`.
 
 ## What the repo looks like (found by reading `acd4397`)
 
@@ -81,7 +94,7 @@ Branch from `main`. Keep each change small, and run each service's tests.
 
 Check all console names against the current UI **(verify)**.
 
-1. **Budget alert** in AWS Budgets, before anything else. Also check Billing → Credits and tell me what I have.
+1. **Budget alert:** skipped, my decision on 2026-11-06. Check Billing → Credits and tell me what I have.
 2. **VPC:** 2 AZs, 2 public and 2 private subnets, no NAT gateway.
 3. **Security groups:**
    - `foc-alb`: port 80 from the CloudFront origin-facing managed prefix list (`com.amazonaws.global.cloudfront.origin-facing`). It uses up much of a security group's rule quota **(verify)**. While testing before CloudFront exists, allow my IP only.
@@ -89,7 +102,7 @@ Check all console names against the current UI **(verify)**.
    - `foc-rds`: 5432 and 3306 from `foc-tasks` only.
    - `foc-redis`: 6379 from `foc-tasks` only.
 4. **ECR:** 5 repos (user, credit, supplier, order, frontend), plus one for the seed image. Add a lifecycle rule to keep only a few images.
-5. **GitHub OIDC:** identity provider, plus an IAM role trusted only for `repo:george-yeo/FoC-Template:ref:refs/heads/main`. Limit it to pushing to those ECR repos, ECS register/describe/update, and `iam:PassRole` on the task execution role.
+5. **GitHub OIDC:** identity provider, plus an IAM role trusted only for `repo:AY2627S1-CS3219-P18@323009622/FoC@1359250594:ref:refs/heads/main`. Limit it to pushing to those ECR repos, ECS register/describe/update, and `iam:PassRole` on the task execution role.
 6. **Build CD (Phase 3)** and run it in build-only mode, so images exist before ECS needs them.
 7. **S3:** one bucket, public read on objects only, and an IAM user limited to `Put`, `Get` and `Delete` on that bucket.
 8. **Parameter groups:** MySQL with `require_secure_transport=1`, and ElastiCache Redis 7 with `maxmemory-policy=noeviction`. Postgres needs none, because `rds.force_ssl=1` is already the default on 15+.
@@ -118,7 +131,7 @@ Check all console names against the current UI **(verify)**.
 Service Connect tasks are larger because AWS recommends adding [256 CPU and at least 64 MiB](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service-connect-concepts-deploy.html) for its proxy. Copy the full env list for each service from `compose.yaml` and `user-service/.env.example`; `user-service/src/config.ts` validates its variables at startup and exits if any is missing. `credit-worker` and `supplier-worker` still need `PORT` and `USER_SERVICE_URL` set, because config validation requires them even though they don't serve HTTP. Credit and its worker connect as `credit_app`, never the owner.
 
 16. **Schema bootstrap (one-off Fargate tasks, before any service starts).** `user-service` touches its database on boot, so this comes first.
-    - **User:** stock `postgres:16` image, applying `user-service/src/db/init.sql` from a pinned commit (the fork is public).
+    - **User:** stock `postgres:16` image, applying `user-service/src/db/init.sql` from a pinned commit (the team repo is public).
     - **Credit:** `credit-service/src/db/init.sql`, then create `credit_app` with its SSM password, then `grants.sql`, run as the RDS admin login. `grant-app-role.sh` shows the sequence but expects the Compose paths.
     - **Supplier:** supplier image with command `npm run migrate`, which reads `src/db/init.sql`.
     - **Order:** nothing, as Prisma migrates on boot.
@@ -133,11 +146,12 @@ Service Connect tasks are larger because AWS recommends adding [256 CPU and at l
 20. **Supplier seed:** one-off task with the seed image, once S3 and supplier's database are ready.
 21. **CloudFront distribution:** origin is the ALB DNS name, HTTP only. Viewer protocol redirects HTTP to HTTPS, all methods allowed, `CachingDisabled`, `AllViewer` origin request policy, error caching TTL 0. Then lock `foc-alb` down to the prefix list and remove my IP.
 
-## Phase 3: CD (`.github/workflows/deploy.yml`, on my fork)
+## Phase 3: CD (`.github/workflows/deploy.yml`, on the team repo)
 
+- Runs on every push to the team repo's `main`.
 - `permissions: id-token: write, contents: read`. Keep the role ARN in a repo variable. No long-lived AWS keys.
 - Build 5 images with a matrix, reusing the buildx and cache pattern from `.github/workflows/ci.yml`. Tag with the git SHA. Build for linux/amd64.
-- An input for build-only versus deploy, needed for step 6 above, plus a choice of which services to deploy.
+- Also a manual run with an input for build-only versus deploy, needed for step 6 above, plus a choice of which services to deploy.
 - One image can serve several services: order → `order-service` and `order-worker`; credit → `credit-service` and `credit-worker`; supplier → `supplier-service` and `supplier-worker`.
 - Fetch the current task definition from AWS, swap only the image, register it, update the service, and wait for stability. Secrets and env stay in AWS, not the repo.
 - Don't fail the run when a service is scaled to 0, because the stack is often off. Make clear in the output that nothing actually started.
