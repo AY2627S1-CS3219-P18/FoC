@@ -8,6 +8,11 @@
  *        per George's ECS Fargate plan, Phase 1 item 6. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - made the access key
+ *        and secret optional so the SDK can use the ECS task role, per George's decision of 2026-11-06
+ *        (ECS Fargate plan, "Found while carrying this out"). No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 import { randomUUID } from 'node:crypto';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -16,8 +21,9 @@ import type { PhotoFile, PhotoStorage } from './photoStorage.js';
 export interface S3PhotoStorageOptions {
   endpoint: string;
   bucket: string;
-  accessKey: string;
-  secretKey: string;
+  // Set both for MinIO. Leave both out on ECS, where the SDK uses the task role's credentials.
+  accessKey?: string | undefined;
+  secretKey?: string | undefined;
   region?: string | undefined;
 }
 
@@ -27,7 +33,9 @@ export function createS3PhotoStorage(
     endpoint: options.endpoint,
     region: options.region ?? 'us-east-1', // required by the SDK; ignored by MinIO
     forcePathStyle: true,
-    credentials: { accessKeyId: options.accessKey, secretAccessKey: options.secretKey },
+    ...(options.accessKey && options.secretKey
+      ? { credentials: { accessKeyId: options.accessKey, secretAccessKey: options.secretKey } }
+      : {}),
   }),
 ): PhotoStorage {
   const base = `${options.endpoint.replace(/\/+$/, '')}/${options.bucket}/`;
@@ -71,7 +79,9 @@ export function createConfiguredPhotoStorage(settings: {
   region?: string | undefined;
 }): PhotoStorage {
   const { endpoint, bucket, accessKey, secretKey, region } = settings;
-  if (endpoint && bucket && accessKey && secretKey) {
+  // One key without the other is a mistake, so it counts as not configured rather than using the task role.
+  const keysMatch = Boolean(accessKey) === Boolean(secretKey);
+  if (endpoint && bucket && keysMatch) {
     return createS3PhotoStorage({ endpoint, bucket, accessKey, secretKey, region });
   }
   const unavailable = async (): Promise<never> => {
