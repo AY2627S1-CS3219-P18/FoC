@@ -26,6 +26,10 @@ Scope: Recorded facts from Phase 2 and Phase 4: ALB rule limit, the superadmin s
        the task definition order for shipping 1fad383. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
+Scope: Linked the run checklist and recorded the deployment status. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment
@@ -83,7 +87,8 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 - **One-off task logs:** steps 16 and 20 log to an extra log group, `/ecs/foc/one-off`.
 - **ALB rules:** a rule takes at most 5 path values, so user's 6 paths use two rules.
 - **Smoke test finding:** `superadmin` has no credit balance, so a transfer to it as courier ends in `COURIER_NOT_FOUND` and a dead-letter row while the order shows `completed`. Raised for the team to decide.
-- **`SUPPLIER_SERVICE_URL`:** `order-service` must run a task definition with this variable before `1fad383` deploys, because CD only swaps the image.
+- **`SUPPLIER_SERVICE_URL`:** `order-service` must run a task definition with this variable before `1fad383` deploys, because CD only swaps the image. That was missed on the first deploy, so `order-service:3` added it afterwards.
+- **Status on 2026-11-07:** Phase 2 and Phase 4 are complete, and `1fad383` is live. The smoke test's browser steps are George's report.
 
 ## What the repo looks like (found by reading `acd4397`)
 
@@ -202,6 +207,8 @@ Debug until all of this works, and report honestly anything that doesn't.
 `1fad383` (order-service checks the supplier and delivery location exist on create and edit) isn't in `main`. It's on `claude/cs3219-ecs-fargate-migration-2b337e`, and I may have saved it as `order-supplier-check`. **First confirm it's still reachable** and tell me if it isn't, before any worktree cleanup. Then rebase it onto `main`, resolving conflicts in `order-service/src/app.ts`, `constants/errors.ts`, `controllers/orders.controller.ts` and `routes/orders.routes.ts`. Add `SUPPLIER_SERVICE_URL=http://supplier-service:3002` to order's task definition, and ship through CD as the first real change.
 
 ## Starting and ending a test run
+
+The finished checklist is `docs/ecs-fargate-run-checklist.md`.
 
 Write these up as a short checklist for me once the stack works.
 
