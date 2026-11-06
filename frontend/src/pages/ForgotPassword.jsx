@@ -13,6 +13,20 @@
  * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 25b of instructions.md - extracted the OTP box clear/disable/countdown side
+ *        effect into applyOtpBoxEffect, used both by onOtpComplete and by onSubmitPassword's
+ *        step-3-to-step-2 fallback, so step 2 starts disabled with the countdown running when
+ *        resetPassword itself returns OTP_ATTEMPTS_EXCEEDED (the 5th failed attempt), not just
+ *        when checkOtp's own verify step does. Step 3 has no OTP step, so the fallback's
+ *        ResendButton isn't mounted yet when the error arrives (resendRef is null); added a
+ *        resendCooldown state passed as ResendButton's new initialCooldown prop so the
+ *        countdown is correct the moment it (re)mounts in step 2, alongside the
+ *        startCooldown ref call for the already-mounted case (onOtpComplete). A successful
+ *        resend re-enables and clears the boxes.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -44,7 +58,12 @@ export default function ForgotPassword() {
   const [otpError, setOtpError] = useState('')
   const [otpBannerError, setOtpBannerError] = useState('')
   const [otpBusy, setOtpBusy] = useState(false)
+  const [otpDead, setOtpDead] = useState(false)
+  // ResendButton's initial cooldown on (re)mount: needed because the step-3-to-step-2
+  // fallback below unmounts/remounts it (step 3 has no OTP step, so resendRef is null there).
+  const [resendCooldown, setResendCooldown] = useState(0)
   const otpRef = useRef(null)
+  const resendRef = useRef(null)
 
   const [newPassword, setNewPassword] = useState('')
   const [passwordFieldError, setPasswordFieldError] = useState('')
@@ -86,6 +105,21 @@ export default function ForgotPassword() {
     }
   }
 
+  // Clears/refocuses or disables the OTP boxes per the code's failure reason, and (for
+  // OTP_ATTEMPTS_EXCEEDED) starts the resend countdown. Shared by onOtpComplete and
+  // onSubmitPassword's step-3-to-step-2 fallback, since resetPassword's own checkOtp call can
+  // also be the 5th failed attempt. Error text display is left to each caller, since the
+  // fallback already shows it as a banner (step 3's error channel) rather than a field error.
+  const applyOtpBoxEffect = (err) => {
+    otpRef.current?.reset()
+    if (err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+      const seconds = err.retryAfterSeconds ?? 0
+      setOtpDead(true)
+      setResendCooldown(seconds)
+      resendRef.current?.startCooldown(seconds)
+    }
+  }
+
   const onOtpComplete = async (code) => {
     setOtpError('')
     setOtpBannerError('')
@@ -95,11 +129,9 @@ export default function ForgotPassword() {
       setOtp(code)
       setStep('password')
     } catch (err) {
-      if (err.code === 'INVALID_OTP') {
-        otpRef.current?.reset()
-        setOtpError(errorMessages.INVALID_OTP.message)
-      } else if (err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
-        setOtpError(errorMessages[err.code].message + ' Use resend below.')
+      if (err.code === 'INVALID_OTP' || err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+        applyOtpBoxEffect(err)
+        setOtpError(errorMessages[err.code].message)
       } else {
         setOtpBannerError(describeError(err).message)
       }
@@ -108,7 +140,14 @@ export default function ForgotPassword() {
     }
   }
 
-  const onResendOtp = () => authApi.resendOtp({ email, purpose: 'forgot_password' })
+  const onResendOtp = async () => {
+    await authApi.resendOtp({ email, purpose: 'forgot_password' })
+    setOtpDead(false)
+    setResendCooldown(0)
+    setOtpError('')
+    setOtpBannerError('')
+    otpRef.current?.reset()
+  }
   const onResendError = (err) => setOtpBannerError(describeError(err).message)
 
   const onSubmitPassword = async (e) => {
@@ -126,6 +165,7 @@ export default function ForgotPassword() {
       })
     } catch (err) {
       if (err.code === 'INVALID_OTP' || err.code === 'OTP_EXPIRED' || err.code === 'OTP_ATTEMPTS_EXCEEDED') {
+        applyOtpBoxEffect(err)
         setOtpBannerError(errorMessages[err.code].message)
         setStep('otp')
       } else {
@@ -148,11 +188,17 @@ export default function ForgotPassword() {
             <FormBanner type="error" message={otpBannerError} />
           </div>
 
-          <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy} />
+          <OtpInput ref={otpRef} onComplete={onOtpComplete} disabled={otpBusy || otpDead} />
           <FieldError message={otpError} />
 
           <div className="mt-4">
-            <ResendButton onResend={onResendOtp} onError={onResendError} disabled={otpBusy} />
+            <ResendButton
+              ref={resendRef}
+              onResend={onResendOtp}
+              onError={onResendError}
+              disabled={otpBusy}
+              initialCooldown={resendCooldown}
+            />
           </div>
         </div>
       </div>

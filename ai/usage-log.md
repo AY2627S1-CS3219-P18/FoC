@@ -8926,3 +8926,53 @@ None of the 5 `checkOtp` call sites handled a failure differently from the other
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-06 — Stage 25b: Frontend — OTP attempts-exceeded UI fix
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 25's "Design decisions (already made, do not change)" table and the "Stage 25b: Frontend" section.
+
+**Prompts (exact):**
+
+> let's implement stage 25. remember the git workflow
+> go ahead
+> go for it
+
+**Key responses:**
+
+- Read `frontend/` first per the stage's instruction, and reported how `Retry-After` reaches `ResendButton` before changing anything: `api/http.js`'s `send()` already parses the `Retry-After` header into `ApiError.retryAfterSeconds` (`undefined` if missing) for every non-ok response, not only the resend endpoint, so `OTP_ATTEMPTS_EXCEEDED` already carried it; the gap was that nothing outside `ResendButton`'s own `onResend` catch could start its countdown, and `OtpInput`'s existing `disabled` prop already supported a "dead" state (no new prop needed).
+- `http.js`: no change, per the stage's "if it already does, change nothing."
+- `OtpInput.jsx`: no change; reused the existing `disabled` prop.
+- `ResendButton.jsx`: converted to `forwardRef` and added an imperative `startCooldown(seconds)` handle (same pattern as `OtpInput`'s `reset()`), plus a new `initialCooldown` prop that seeds the same state on mount. Existing `OTP_RESEND_COOLDOWN`/`OTP_RESEND_LIMIT` handling in `handleClick` is unchanged.
+- `errorMessages.js`: reworded `OTP_ATTEMPTS_EXCEEDED`. Old: "Too many incorrect attempts. Request a new code." New: "That code is no longer valid. You can request a new one once the button below is available."
+- `Register.jsx`, `Account.jsx` (`EmailSection`, `PasswordSection`): on `OTP_ATTEMPTS_EXCEEDED`, clear the boxes, disable them (new `otpDead` state), show the reworded message, and start the resend countdown via `resendRef.current.startCooldown(err.retryAfterSeconds ?? 0)`. On `OTP_EXPIRED`, clear/refocus but keep enabled (previously these two codes shared one branch with a " Use resend below." suffix; split them since Stage 25 gives them different box behaviour). A successful resend re-enables and clears the boxes and the error.
+- `ForgotPassword.jsx`: same for the step-2 `onOtpComplete`, extracted into a shared `applyOtpBoxEffect` helper. **Found and fixed a real bug while writing the step-3 fallback test**: when `resetPassword` (step 3) itself returns `OTP_ATTEMPTS_EXCEEDED` (the 5th failed attempt) and the page falls back from step 3 to step 2, step 2's `ResendButton` is not mounted yet at the moment the error arrives (step 3 has no OTP step), so `resendRef.current` is `null` and `startCooldown` would be a no-op — the countdown would silently fail to start. Fixed by adding a `resendCooldown` state passed as `ResendButton`'s new `initialCooldown` prop, so the countdown is correct the instant it (re)mounts in step 2, in addition to the `startCooldown` ref call used by the already-mounted case (`onOtpComplete`).
+- Registration arrived-from-login flow: re-checked against the actual code (`Login.jsx` only ever redirects to `/register` with `{ step: 'otp' }` on `ACCOUNT_NOT_VERIFIED`, never carrying an `OTP_ATTEMPTS_EXCEEDED` condition) and found no distinct "entered with `OTP_ATTEMPTS_EXCEEDED`" code path for this flow to wire up beyond the normal `onOtpComplete` handler, which already covers it uniformly since `arrivedFromLogin` only toggles which single `ResendButton` instance renders (the two are mutually exclusive), not the failure-handling logic itself.
+- **Observation, not fixed (out of scope / pre-existing, not introduced by this stage):** found via a test's focus assertion that `OtpInput`'s `reset()` call inside `onOtpComplete`'s catch block cannot actually move focus to the first box, because `otpBusy` (and therefore `OtpInput`'s `disabled` prop) is still `true` in the DOM at that point — React batches the `setOtpBusy(false)` in the `finally` block together with the catch's state updates, so the live DOM element is still disabled when `.focus()` is called, and a disabled input can't receive focus. This already affects the pre-existing `INVALID_OTP` path on all four pages (not something Stage 25 touches), so it was left alone and only asserted on value-clearing, not focus, in the new tests.
+- Added new test files (none existed for these components/pages before this stage): `tests/components/OtpInput.test.jsx`, `tests/components/ResendButton.test.jsx` (fake timers for the countdown, including the new `startCooldown`/`initialCooldown`), `tests/pages/Register.test.jsx`, `tests/pages/ForgotPassword.test.jsx` (including the step-3 fallback), `tests/pages/Account.test.jsx` (`EmailSection` and `PasswordSection`).
+- Verification run: `npx oxlint .` clean of errors/warnings on every changed file (pre-existing warnings elsewhere in the codebase are unrelated); `npm run build` (vite) succeeds; `npx vitest run` — 24 files / 124 tests pass. Did not start the dev server or open a browser; no backend services were rebuilt with the Stage 25a/25c changes in their running container, so this is lint/build/unit-test verification only, not the manual browser Verification checklist.
+
+**Files:**
+
+- `frontend/src/components/ResendButton.jsx` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/pages/Register.jsx` (modified)
+- `frontend/src/pages/ForgotPassword.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/tests/components/OtpInput.test.jsx` (created)
+- `frontend/tests/components/ResendButton.test.jsx` (created)
+- `frontend/tests/pages/Register.test.jsx` (created)
+- `frontend/tests/pages/ForgotPassword.test.jsx` (created)
+- `frontend/tests/pages/Account.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None required stopping to ask; see the "Found and fixed a real bug" and "Observation, not fixed" notes above, both reported rather than silently changed/skipped.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
