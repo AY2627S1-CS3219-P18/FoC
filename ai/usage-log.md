@@ -8883,3 +8883,46 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-06 — Stage 25a/25c: Backend — Retry-After on OTP_ATTEMPTS_EXCEEDED and counting guesses against an expired code
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 25 ("Stage 25: OTP \"Attempts Exceeded\" Dead-End Fix (backend + frontend)", including the "Design decisions (already made, do not change)" table, and sub-stages 25a and 25c).
+
+**Prompts (exact):**
+
+> let's implement stage 25. remember the git workflow
+
+**Key responses:**
+
+- Read `otp.service.ts`, `otp.queries.ts`, `app.ts`'s error handler, and every `checkOtp` call site (`auth.service.ts`: `verifyRegistrationOtp`, `verifyForgotPasswordOtp` (consume=false), `resetPassword`; `me.service.ts`: `verifyEmailChangeOtp`, `confirmPasswordChange`) before changing anything, per the file's instruction to read the current code first.
+- Confirmed the global error handler in `app.ts` already checks `err.retryAfterSeconds !== undefined` (not truthiness), so 25a needed no change there.
+- All 5 `checkOtp` call sites handled a failure identically (`if (!result.ok) throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP')`, after the transaction commits), so none needed special-case handling; added a shared `throwOtpFailure` helper in `otp.service.ts` and switched all 5 to call it instead.
+- `checkOtp` in `otp.service.ts`: reordered checks to missing/consumed (throw INVALID_OTP, unchanged) → attempts exhausted (throw 429 OTP_ATTEMPTS_EXCEEDED directly, with `Retry-After` from a new `otpRetryAfterSeconds(row)` helper computed from `row.created_at`/`row.db_now`, both already fetched by `findLatestOtp` on the same DB clock) → expired (now increments attempts and **returns** `{ ok: false, reason: 'expired', ... }` instead of throwing, so the increment survives the commit) → hash mismatch (increments and returns `{ ok: false, reason: 'invalid', ... }`) → hash match (consume as before). Added a `CheckOtpResult` type and a `failedAttempt` helper shared by the expired and wrong-guess paths; both call `incrementAttempts`, and if the new count has reached `max_attempts`, set `exhausted: true` and the same `otpRetryAfterSeconds` value, so `throwOtpFailure` throws 429 `OTP_ATTEMPTS_EXCEEDED` with `Retry-After` for the 5th failure instead of `INVALID_OTP`/`OTP_EXPIRED`.
+- `otp.queries.ts`: `incrementAttempts` now does `attempts_count = LEAST(attempts_count + 1, max_attempts)` so a guess against an already-exhausted, still-expired code (which reaches `failedAttempt` only if the attempts check above it somehow didn't fire first — not reachable in the new order, but kept as a safety cap per the file's explicit instruction) cannot push the `SMALLINT` column past `max_attempts`.
+- Updated existing tests that depended on the old order/shape: `tests/services/otp.service.test.ts` (`checkOtp` describe block — the old "OTP_EXPIRED always throws" and "429 at max_attempts" tests, plus every `{ ok: false }` assertion, which now carries a `reason`), `tests/db/queries/otp.queries.test.ts` (added a cap test for `incrementAttempts`), `tests/controllers/auth.controller.test.ts` (registration verify-otp, forgot-password verify-otp, reset-password — each "5 wrong OTPs, then correct" test rewritten as "4 wrong → 400 each; 5th wrong → 429 with Retry-After; correct afterwards → still 429"), `tests/controllers/me.controller.test.ts` (verify-otp for change-email, confirm-password-change — same rewrite). Added new test cases for: expired-code attempts counting, the check-order (expired-and-exhausted → 429 with `Retry-After: 0`), and mixed wrong/expired guesses sharing one `attempts_count`.
+- Verification run: `npx tsc --noEmit` clean; `npx eslint` on every changed file clean; `npx vitest run` — full suite, 31 files / 852 tests pass (against the real Postgres test DB on the running `foc-user-db` container).
+
+**Files:**
+
+- `user-service/src/services/otp.service.ts` (modified)
+- `user-service/src/db/queries/otp.queries.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/services/otp.service.test.ts` (modified)
+- `user-service/tests/db/queries/otp.queries.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `instructions.md` (modified — added the Stage 25 instructions, committed first on this branch)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None of the 5 `checkOtp` call sites handled a failure differently from the others, so `throwOtpFailure` covers every one without a special case (reported per the file's explicit ask in 25c).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

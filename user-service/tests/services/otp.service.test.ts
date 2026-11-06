@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as otpQueries from '../../src/db/queries/otp.queries.js';
 import * as userQueries from '../../src/db/queries/users.queries.js';
 import { withTransaction } from '../../src/db/transaction.js';
-import { checkOtp, issueOtp, requestOtp } from '../../src/services/otp.service.js';
+import { checkOtp, issueOtp, requestOtp, throwOtpFailure } from '../../src/services/otp.service.js';
 import { AppError } from '../../src/utils/AppError.js';
 import { sha256 } from '../../src/utils/hash.js';
 import {
@@ -291,29 +291,80 @@ describe('checkOtp', () => {
     await expect(check('123456')).rejects.toMatchObject({ status: 400, code: 'INVALID_OTP' });
   });
 
-  it('throws 400 OTP_EXPIRED once expires_at has passed, even for the correct code', async () => {
+  it('returns reason "expired" once expires_at has passed, even for the correct code, and counts it as an attempt (Stage 25c)', async () => {
     await seedOtp(userId, 'Forgot Password', '123456');
     await expireOtps(userId);
-    await expect(check('123456')).rejects.toMatchObject({
-      status: 400,
-      code: 'OTP_EXPIRED',
-      message: 'OTP has expired. Please request a new one.',
-    });
+    expect(await check('123456')).toEqual({ ok: false, reason: 'expired' });
+    expect((await getOtps(userId))[0]!.attempts_count).toBe(1);
+
+    expect(() => throwOtpFailure({ ok: false, reason: 'expired' })).toThrowError(
+      expect.objectContaining({
+        status: 400,
+        code: 'OTP_EXPIRED',
+        message: 'OTP has expired. Please request a new one.',
+      }),
+    );
   });
 
-  it('throws 429 OTP_ATTEMPTS_EXCEEDED at max_attempts, even for the correct code', async () => {
+  it('the 5th failed attempt (wrong code) is reported as exhausted with a Retry-After, and a later submit throws 429 directly (Stage 25a/25c)', async () => {
     await seedOtp(userId, 'Forgot Password', '123456');
-    for (let i = 0; i < 5; i++) expect(await check('000000')).toEqual({ ok: false });
+    for (let i = 0; i < 4; i++) {
+      expect(await check('000000')).toEqual({ ok: false, reason: 'invalid' });
+    }
+    const fifth = await check('000000');
+    expect(fifth).toMatchObject({ ok: false, reason: 'invalid', exhausted: true });
+    const retry = (fifth as { retryAfterSeconds: number }).retryAfterSeconds;
+    expect(retry).toBeGreaterThanOrEqual(0);
+    expect(retry).toBeLessThanOrEqual(60);
+    expect((await getOtps(userId))[0]!.attempts_count).toBe(5);
+
+    // Even a correct code throws directly now: the attempts check runs before hashing.
     await expect(check('123456')).rejects.toMatchObject({
       status: 429,
       code: 'OTP_ATTEMPTS_EXCEEDED',
+      retryAfterSeconds: retry,
+    });
+    // Repeated guesses against the exhausted code never push attempts_count past max_attempts.
+    expect((await getOtps(userId))[0]!.attempts_count).toBe(5);
+  });
+
+  it('Retry-After is 0 once the resend cooldown has already elapsed when the 5th attempt lands', async () => {
+    await seedOtp(userId, 'Forgot Password', '123456');
+    await backdateOtps(userId, 2);
+    for (let i = 0; i < 4; i++) await check('000000');
+    const fifth = await check('000000');
+    expect(fifth).toMatchObject({ ok: false, reason: 'invalid', exhausted: true, retryAfterSeconds: 0 });
+  });
+
+  it('counts a guess against an expired, already-exhausted code as OTP_ATTEMPTS_EXCEEDED with Retry-After 0 (check order, Stage 25)', async () => {
+    await seedOtp(userId, 'Forgot Password', '123456');
+    for (let i = 0; i < 5; i++) await check('000000');
+    await backdateOtps(userId, 2);
+    await expireOtps(userId);
+
+    await expect(check('123456')).rejects.toMatchObject({
+      status: 429,
+      code: 'OTP_ATTEMPTS_EXCEEDED',
+      retryAfterSeconds: 0,
     });
   });
 
-  it('returns { ok: false } for a wrong code and the attempt increment survives the commit', async () => {
+  it('mixed wrong and expired guesses both count toward the same attempts_count', async () => {
     await seedOtp(userId, 'Forgot Password', '123456');
-    expect(await check('000000')).toEqual({ ok: false });
-    expect(await check('000001')).toEqual({ ok: false });
+    expect(await check('000000')).toEqual({ ok: false, reason: 'invalid' });
+    expect(await check('000000')).toEqual({ ok: false, reason: 'invalid' });
+    expect(await check('000000')).toEqual({ ok: false, reason: 'invalid' });
+    await expireOtps(userId);
+    expect(await check('999999')).toEqual({ ok: false, reason: 'expired' }); // 4th failure
+    const fifth = await check('999999');
+    expect(fifth).toMatchObject({ ok: false, reason: 'expired', exhausted: true }); // 5th failure
+    expect((await getOtps(userId))[0]!.attempts_count).toBe(5);
+  });
+
+  it('returns { ok: false, reason: "invalid" } for a wrong code and the attempt increment survives the commit', async () => {
+    await seedOtp(userId, 'Forgot Password', '123456');
+    expect(await check('000000')).toEqual({ ok: false, reason: 'invalid' });
+    expect(await check('000001')).toEqual({ ok: false, reason: 'invalid' });
     expect((await getOtps(userId))[0]!.attempts_count).toBe(2);
   });
 
@@ -340,14 +391,14 @@ describe('checkOtp', () => {
 
   it('with consume=false a wrong guess still increments attempts', async () => {
     await seedOtp(userId, 'Forgot Password', '123456');
-    expect(await check('000000', false)).toEqual({ ok: false });
+    expect(await check('000000', false)).toEqual({ ok: false, reason: 'invalid' });
     expect((await getOtps(userId))[0]!.attempts_count).toBe(1);
   });
 
   it('only the latest OTP is checked; an older code no longer works', async () => {
     await seedOtp(userId, 'Forgot Password', '111111');
     await seedOtp(userId, 'Forgot Password', '222222');
-    expect(await check('111111')).toEqual({ ok: false });
+    expect(await check('111111')).toEqual({ ok: false, reason: 'invalid' });
     expect(await check('222222')).toEqual({ ok: true });
   });
 
@@ -382,7 +433,7 @@ describe('checkOtp', () => {
     it('a wrong guess does not reset the escalation level', async () => {
       await seedOtp(userId, 'Forgot Password', '123456');
       await setOtpSendBlock(userId, 'Forgot Password', { level: 2, blockedUntilMinutesFromNow: 60 });
-      expect(await check('000000', true)).toEqual({ ok: false });
+      expect(await check('000000', true)).toEqual({ ok: false, reason: 'invalid' });
 
       const row = (await getOtps(userId, 'Forgot Password'))[0]!;
       expect(row.send_escalation_level).toBe(2);

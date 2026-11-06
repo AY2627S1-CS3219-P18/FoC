@@ -89,6 +89,11 @@ Author review:
 Scope (2026-11-05, Claude Code, model: claude-sonnet-5): Added the Stage 22 log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-06, Claude Code, model: claude-sonnet-5): Added Log index row #182 for Stage
+       25a/25c (OTP attempts-exceeded Retry-After and counting guesses against an expired
+       code). No requirements, architecture, schema, or API decisions were made by the AI
+       tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -526,3 +531,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 179 | 2026-11-05 | user-service, supplier-service, frontend | Supplier bookmarking: merge of main and landing page removal | Merged main, dropped the removed landing page's chip, moved its tests to the suppliers page. |
 | 180 | 2026-11-05 | frontend | Stage 24: Admin User History Page (F5.3.2) | Added admin user/order history pages with suspend/promote actions, orders list and transactions. |
 | 181 | 2026-11-05 | frontend | Stage 24 follow-up: Credits column on /admin/users | Added a Credits column to the admin users list, per the stage's "Summary fields" row. |
+| 182 | 2026-11-06 | user-service | Stage 25a/25c: Retry-After on OTP_ATTEMPTS_EXCEEDED and counting guesses against an expired code | Reordered checkOtp's checks; the 5th failed attempt (wrong or expired) now returns 429 with Retry-After. |

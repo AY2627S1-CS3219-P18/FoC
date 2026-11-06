@@ -343,13 +343,19 @@ describe('POST /users/me/verify-otp', () => {
     expect(res.body.code).toBe('OTP_EXPIRED');
   });
 
-  it('5 wrong OTPs: 429 OTP_ATTEMPTS_EXCEEDED, email unchanged', async () => {
+  it('4 wrong OTPs: 400 each; the 5th: 429 OTP_ATTEMPTS_EXCEEDED; the correct one afterwards still 429, email unchanged', async () => {
     const user = await createActiveUser(1);
     const token = await accessTokenFor(user);
     const otp = await startChange(token, user);
-    for (let i = 0; i < 5; i++) {
-      await mePost(token, '/verify-otp', { otp: wrongOtp(otp), purpose: 'change_email' });
+    for (let i = 0; i < 4; i++) {
+      const r = await mePost(token, '/verify-otp', { otp: wrongOtp(otp), purpose: 'change_email' });
+      expect(r.status).toBe(400);
     }
+    const fifth = await mePost(token, '/verify-otp', { otp: wrongOtp(otp), purpose: 'change_email' });
+    expect(fifth.status).toBe(429);
+    expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
+    expect(fifth.headers['retry-after']).toBeDefined();
+
     const res = await mePost(token, '/verify-otp', { otp, purpose: 'change_email' });
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
@@ -568,14 +574,26 @@ describe('POST /users/me/confirm-password-change', () => {
     expect((await getOtps(user.id, 'Change Password'))[0]!.attempts_count).toBe(1);
   });
 
-  it('5 wrong OTPs: 429 OTP_ATTEMPTS_EXCEEDED, password unchanged', async () => {
+  it('4 wrong OTPs: 400 each; the 5th: 429 OTP_ATTEMPTS_EXCEEDED; the correct one afterwards still 429, password unchanged', async () => {
     const user = await createActiveUser(1);
     const token = await accessTokenFor(user);
     const otp = await startChange(token, user);
     const before = (await getUserByEmail(user.email))!.password_hash;
-    for (let i = 0; i < 5; i++) {
-      await mePost(token, '/confirm-password-change', { otp: wrongOtp(otp), newPassword: NEW_PASSWORD });
+    for (let i = 0; i < 4; i++) {
+      const r = await mePost(token, '/confirm-password-change', {
+        otp: wrongOtp(otp),
+        newPassword: NEW_PASSWORD,
+      });
+      expect(r.status).toBe(400);
     }
+    const fifth = await mePost(token, '/confirm-password-change', {
+      otp: wrongOtp(otp),
+      newPassword: NEW_PASSWORD,
+    });
+    expect(fifth.status).toBe(429);
+    expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
+    expect(fifth.headers['retry-after']).toBeDefined();
+
     const res = await mePost(token, '/confirm-password-change', { otp, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');

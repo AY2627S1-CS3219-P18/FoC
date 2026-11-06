@@ -9,6 +9,11 @@
 //   decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Stage 25c - incrementAttempts caps at max_attempts (LEAST) so repeated guesses
+//   against an exhausted or expired code cannot overflow the SMALLINT column. Governing
+//   decision: instructions.md Stage 25c.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import type { Queryable } from "../transaction.js";
 
@@ -148,12 +153,14 @@ export async function countOtps(
   return Number(result.rows[0]!.count);
 }
 
+// Capped at max_attempts so repeated guesses against an exhausted/expired code (Stage 25c)
+// can never push the SMALLINT column past it.
 export async function incrementAttempts(
   otpId: string,
   db: Queryable,
 ): Promise<number> {
   const result = await db.query<{ attempts_count: number }>(
-    `UPDATE users_otps SET attempts_count = attempts_count + 1
+    `UPDATE users_otps SET attempts_count = LEAST(attempts_count + 1, max_attempts)
      WHERE id = $1 RETURNING attempts_count`,
     [otpId],
   );

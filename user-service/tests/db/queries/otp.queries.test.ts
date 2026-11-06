@@ -172,6 +172,14 @@ describe('incrementAttempts', () => {
     expect(await otp.incrementAttempts(row.id, pool)).toBe(2);
     expect((await getOtps(userId))[0]!.attempts_count).toBe(2);
   });
+
+  it('caps at max_attempts instead of overflowing past it (Stage 25c)', async () => {
+    const row = await create(userId);
+    for (let i = 0; i < row.max_attempts + 3; i++) {
+      await otp.incrementAttempts(row.id, pool);
+    }
+    expect((await getOtps(userId))[0]!.attempts_count).toBe(row.max_attempts);
+  });
 });
 
 describe('consumeOtp', () => {
