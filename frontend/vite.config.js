@@ -18,6 +18,10 @@
  *        order service for its Socket.IO order events. No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Added the /admin/audit-logs proxy to the user service, per instructions.md Stage 26e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import react from "@vitejs/plugin-react";
@@ -37,6 +41,8 @@ export default defineConfig({
         process.env.VITE_SUPPLIER_SERVICE_URL ?? "http://localhost:3004",
       "/auth": process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/users": process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
+      "/admin/audit-logs":
+        process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/credits":
         process.env.VITE_CREDIT_SERVICE_URL ?? "http://localhost:3003",
       "/orders": orderServiceUrl,

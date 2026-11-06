@@ -30,11 +30,34 @@
  *        covering instructions.md Stage 20's 20a Verification bullets (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: changeUserStatus/changeUserRole/unlockUser calls pass the new reason/userAgent
+ *        params (fixture values; existing assertions are unchanged). Per instructions.md
+ *        Stage 26b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Replaced the "getFullEmail / logUnmaskValidationFailure" console-log suite with
+ *        "getFullEmail (Stage 26c)": asserts EMAIL_UNMASK audit rows instead of `[UNMASK
+ *        EMAIL]` console lines, since getFullEmail now takes a `reason` and writes a row
+ *        instead of logging. Per instructions.md Stage 26c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment):
+ *        unlockUser and getFullEmail no longer take a `reason` param; dropped it from every
+ *        call site and the one assertion that checked the stored value (now "N/A").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
 import {
   dbNow,
+  getAuditLogRowsForTarget,
   getOtps,
   getRefreshTokens,
   getUserByEmail,
@@ -128,7 +151,7 @@ describe('changeUserStatus', () => {
     await seedRefreshToken(target.id, 'tok-a');
     await seedRefreshToken(target.id, 'tok-b');
 
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended');
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended', 'TEST_REASON', null);
     expect(result.status).toBe('suspended');
     expect(result).not.toHaveProperty('password_hash');
     const tokens = await getRefreshTokens(target.id);
@@ -139,17 +162,17 @@ describe('changeUserStatus', () => {
   it('unsuspends a suspended user without touching their tokens', async () => {
     const target = await createActiveUser(1);
     await seedRefreshToken(target.id, 'tok-a');
-    await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended');
+    await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended', 'TEST_REASON', null);
     const before = await getRefreshTokens(target.id);
 
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'active');
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'active', 'TEST_REASON', null);
     expect(result.status).toBe('active');
     expect(await getRefreshTokens(target.id)).toEqual(before);
   });
 
   it('throws 404 USER_NOT_FOUND for a nonexistent target', async () => {
     await expect(
-      usersService.changeUserStatus(UNKNOWN_ID, 'admin', UNKNOWN_ID, 'suspended'),
+      usersService.changeUserStatus(UNKNOWN_ID, 'admin', UNKNOWN_ID, 'suspended', 'TEST_REASON', null),
     ).rejects.toMatchObject({ status: 404, code: 'USER_NOT_FOUND' });
   });
 
@@ -157,7 +180,7 @@ describe('changeUserStatus', () => {
     it('admin may suspend a plain user', async () => {
       const t = await createUserWithRole(1, 'user');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended')).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null)).status,
       ).toBe('suspended');
     });
 
@@ -165,7 +188,7 @@ describe('changeUserStatus', () => {
       const t = await createUserWithRole(1, 'admin');
       await seedRefreshToken(t.id, 'tok-a');
       await expect(
-        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended'),
+        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null),
       ).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
       expect((await getUserByEmail(t.email))!.status).toBe('active');
       expect((await getRefreshTokens(t.id))[0]!.is_revoked).toBe(false);
@@ -176,7 +199,7 @@ describe('changeUserStatus', () => {
       async (requestorRole) => {
         const t = await createUserWithRole(1, 'super admin');
         await expect(
-          usersService.changeUserStatus(UNKNOWN_ID, requestorRole, t.id, 'suspended'),
+          usersService.changeUserStatus(UNKNOWN_ID, requestorRole, t.id, 'suspended', 'TEST_REASON', null),
         ).rejects.toMatchObject({ status: 403, code: 'SUPER_ADMIN_IMMUTABLE' });
         expect((await getUserByEmail(t.email))!.status).toBe('active');
       },
@@ -186,10 +209,10 @@ describe('changeUserStatus', () => {
       const u = await createUserWithRole(1, 'user');
       const a = await createUserWithRole(2, 'admin');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', u.id, 'suspended')).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', u.id, 'suspended', 'TEST_REASON', null)).status,
       ).toBe('suspended');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', a.id, 'suspended')).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', a.id, 'suspended', 'TEST_REASON', null)).status,
       ).toBe('suspended');
     });
 
@@ -197,7 +220,7 @@ describe('changeUserStatus', () => {
       const t = await createUserWithRole(1, 'super admin');
       await setUserStatus(t.id, 'pending');
       await expect(
-        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended'),
+        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null),
       ).rejects.toMatchObject({ code: 'SUPER_ADMIN_IMMUTABLE' });
     });
   });
@@ -208,7 +231,7 @@ describe('changeUserStatus', () => {
       async (status) => {
         const pending = await registerPending(1);
         await expect(
-          usersService.changeUserStatus(UNKNOWN_ID, 'admin', pending.id, status),
+          usersService.changeUserStatus(UNKNOWN_ID, 'admin', pending.id, status, 'TEST_REASON', null),
         ).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the status of a pending user',
@@ -223,11 +246,11 @@ describe('changeUserStatus', () => {
     it('suspending an already-suspended user returns it unchanged: same updated_at and revoked_at', async () => {
       const t = await createActiveUser(1);
       await seedRefreshToken(t.id, 'tok-a');
-      await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended');
+      await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
       const userBefore = (await getUserByEmail(t.email))!;
       const tokensBefore = await getRefreshTokens(t.id);
 
-      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended');
+      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
       expect(result.status).toBe('suspended');
       expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
@@ -241,7 +264,7 @@ describe('changeUserStatus', () => {
       await seedRefreshToken(t.id, 'tok-a');
       const userBefore = (await getUserByEmail(t.email))!;
 
-      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'active');
+      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'active', 'TEST_REASON', null);
       expect(result.status).toBe('active');
       expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
@@ -252,7 +275,7 @@ describe('changeUserStatus', () => {
   it('does not change the target role', async () => {
     const t = await createUserWithRole(1, 'user');
     await setUserRole(t.id, 'user');
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended');
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
     expect(result.role).toBe('user');
   });
 });
@@ -268,7 +291,7 @@ describe('changeUserRole', () => {
     await seedRefreshToken(target.id, 'tok-a');
     await seedRefreshToken(target.id, 'tok-b');
 
-    const result = await usersService.changeUserRole(sa.id, target.id, 'admin');
+    const result = await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null);
     expect(result.role).toBe('admin');
     expect(result).not.toHaveProperty('password_hash');
     expect((await getUserByEmail(target.email))!.role).toBe('admin');
@@ -282,7 +305,7 @@ describe('changeUserRole', () => {
     const target = await createUserWithRole(1, 'admin');
     await seedRefreshToken(target.id, 'tok-a');
 
-    const result = await usersService.changeUserRole(sa.id, target.id, 'user');
+    const result = await usersService.changeUserRole(sa.id, target.id, 'user', 'TEST_REASON', null);
     expect(result.role).toBe('user');
     expect((await getRefreshTokens(target.id)).every((t) => t.is_revoked)).toBe(true);
   });
@@ -290,12 +313,12 @@ describe('changeUserRole', () => {
   it('does not change the target status', async () => {
     const sa = await superAdmin();
     const target = await createActiveUser(1);
-    expect((await usersService.changeUserRole(sa.id, target.id, 'admin')).status).toBe('active');
+    expect((await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null)).status).toBe('active');
   });
 
   it('rejects changing your own role: 403 SELF_ROLE_CHANGE, before touching the DB', async () => {
     const sa = await superAdmin();
-    await expect(usersService.changeUserRole(sa.id, sa.id, 'user')).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, sa.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
       status: 403,
       message: 'Cannot modify your own role',
       code: 'SELF_ROLE_CHANGE',
@@ -305,7 +328,7 @@ describe('changeUserRole', () => {
 
   it('self-targeting is rejected even for an id that does not exist', async () => {
     await expect(
-      usersService.changeUserRole(UNKNOWN_ID, UNKNOWN_ID, 'admin'),
+      usersService.changeUserRole(UNKNOWN_ID, UNKNOWN_ID, 'admin', 'TEST_REASON', null),
     ).rejects.toMatchObject({ code: 'SELF_ROLE_CHANGE' });
   });
 
@@ -313,7 +336,7 @@ describe('changeUserRole', () => {
     const sa = await superAdmin();
     const other = await createUserWithRole('sa2', 'super admin');
     await seedRefreshToken(other.id, 'tok-a');
-    await expect(usersService.changeUserRole(sa.id, other.id, 'user')).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, other.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
       status: 403,
       message: 'Cannot modify a super administrator',
       code: 'SUPER_ADMIN_IMMUTABLE',
@@ -324,7 +347,7 @@ describe('changeUserRole', () => {
 
   it('throws 404 USER_NOT_FOUND for a nonexistent target', async () => {
     const sa = await superAdmin();
-    await expect(usersService.changeUserRole(sa.id, UNKNOWN_ID, 'admin')).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, UNKNOWN_ID, 'admin', 'TEST_REASON', null)).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -336,7 +359,7 @@ describe('changeUserRole', () => {
       async (role) => {
         const sa = await superAdmin();
         const pending = await registerPending(1);
-        await expect(usersService.changeUserRole(sa.id, pending.id, role)).rejects.toMatchObject({
+        await expect(usersService.changeUserRole(sa.id, pending.id, role, 'TEST_REASON', null)).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the role of a pending user',
           code: 'CANNOT_CHANGE_ROLE_PENDING_USER',
@@ -352,7 +375,7 @@ describe('changeUserRole', () => {
         const target = await createActiveUser(1);
         await seedRefreshToken(target.id, 'tok-a');
         await setUserStatus(target.id, 'suspended');
-        await expect(usersService.changeUserRole(sa.id, target.id, role)).rejects.toMatchObject({
+        await expect(usersService.changeUserRole(sa.id, target.id, role, 'TEST_REASON', null)).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the role of a suspended user',
           code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
@@ -366,7 +389,7 @@ describe('changeUserRole', () => {
       const sa = await superAdmin();
       const target = await createUserWithRole(1, 'admin');
       await setUserStatus(target.id, 'suspended');
-      await expect(usersService.changeUserRole(sa.id, target.id, 'admin')).rejects.toMatchObject({
+      await expect(usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null)).rejects.toMatchObject({
         code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
       });
     });
@@ -375,7 +398,7 @@ describe('changeUserRole', () => {
       const sa = await superAdmin();
       const other = await createUserWithRole('sa2', 'super admin');
       await setUserStatus(other.id, 'suspended');
-      await expect(usersService.changeUserRole(sa.id, other.id, 'user')).rejects.toMatchObject({
+      await expect(usersService.changeUserRole(sa.id, other.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
         code: 'SUPER_ADMIN_IMMUTABLE',
       });
     });
@@ -388,7 +411,7 @@ describe('changeUserRole', () => {
       await seedRefreshToken(target.id, 'tok-a');
       const before = (await getUserByEmail(target.email))!;
 
-      const result = await usersService.changeUserRole(sa.id, target.id, 'admin');
+      const result = await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null);
       expect(result.role).toBe('admin');
       expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
@@ -401,7 +424,7 @@ describe('changeUserRole', () => {
       await seedRefreshToken(target.id, 'tok-a');
       const before = (await getUserByEmail(target.email))!;
 
-      const result = await usersService.changeUserRole(sa.id, target.id, 'user');
+      const result = await usersService.changeUserRole(sa.id, target.id, 'user', 'TEST_REASON', null);
       expect(result.role).toBe('user');
       expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
@@ -461,7 +484,7 @@ describe('unlockUser (Stage 18d)', () => {
       failedAttempts: 5,
     });
 
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, null);
     expect(result).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
 
     const row = (await getUserById(target.id))!;
@@ -477,7 +500,7 @@ describe('unlockUser (Stage 18d)', () => {
       await setOtpSendBlock(target.id, purpose, { level: 2, blockedUntilMinutesFromNow: 60 });
     }
 
-    await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id);
+    await usersService.unlockUser(UNKNOWN_ID, 'super admin', target.id, null);
 
     for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
       const rows = await getOtps(target.id, purpose);
@@ -489,7 +512,7 @@ describe('unlockUser (Stage 18d)', () => {
   });
 
   it('throws 404 USER_NOT_FOUND for an id that does not exist', async () => {
-    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', UNKNOWN_ID)).rejects.toMatchObject({
+    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', UNKNOWN_ID, null)).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -499,7 +522,7 @@ describe('unlockUser (Stage 18d)', () => {
     const otherSa = await createUserWithRole('sa2', 'super admin');
     await setLoginLockState(otherSa.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
     await expect(
-      usersService.unlockUser(UNKNOWN_ID, 'super admin', otherSa.id),
+      usersService.unlockUser(UNKNOWN_ID, 'super admin', otherSa.id, null),
     ).rejects.toMatchObject({
       status: 403,
       code: 'SUPER_ADMIN_IMMUTABLE',
@@ -509,27 +532,27 @@ describe('unlockUser (Stage 18d)', () => {
   it('throws 403 FORBIDDEN when an admin targets another admin, but a super admin may unlock an admin', async () => {
     const admin2 = await createUserWithRole('admin2', 'admin');
     await setLoginLockState(admin2.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
-    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', admin2.id)).rejects.toMatchObject({
+    await expect(usersService.unlockUser(UNKNOWN_ID, 'admin', admin2.id, null)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
     });
 
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', admin2.id);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'super admin', admin2.id, null);
     expect(result.isLocked).toBe(false);
   });
 
   it('an admin may unlock a plain user', async () => {
     const target = await createActiveUser(1);
     await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
-    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id);
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id, null);
     expect(result.isLocked).toBe(false);
   });
 });
 
-describe('getFullEmail / logUnmaskValidationFailure (Stage 20a, NFR3.1.1)', () => {
+describe('getFullEmail (Stage 26c, NFR3.1.1)', () => {
   const UA = 'Mozilla/5.0 Test Agent';
 
-  it('an admin may unmask a plain user, a pending user, a suspended user and another admin', async () => {
+  it('an admin may unmask a plain user, a pending user, a suspended user and another admin, each with one EMAIL_UNMASK row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const user = await createActiveUser(1);
     const pending = await registerPending(2);
@@ -538,11 +561,19 @@ describe('getFullEmail / logUnmaskValidationFailure (Stage 20a, NFR3.1.1)', () =
     const admin2 = await createUserWithRole('admin2', 'admin');
 
     for (const target of [user, pending, suspended, admin2]) {
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       const result = await usersService.getFullEmail(admin.id, target.id, UA);
       expect(result).toEqual({ email: target.email });
-      expect(log).toHaveBeenCalledTimes(1);
-      log.mockRestore();
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        actor_id: admin.id,
+        action: 'EMAIL_UNMASK',
+        target_id: target.id,
+        before: null,
+        after: null,
+        reason: 'N/A',
+        user_agent: UA,
+      });
     }
   });
 
@@ -555,127 +586,82 @@ describe('getFullEmail / logUnmaskValidationFailure (Stage 20a, NFR3.1.1)', () =
       expect(await usersService.getFullEmail(sa.id, target.id, UA)).toEqual({
         email: target.email,
       });
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(1);
     }
   });
 
-  it('any caller targeting a super admin is denied FORBIDDEN, with a denied log line', async () => {
+  it('any caller targeting a super admin is denied FORBIDDEN, with no row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const sa = await createUserWithRole('sa', 'super admin');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(usersService.getFullEmail(admin.id, sa.id, UA)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
       message: "Cannot unmask a super administrator's email",
     });
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error.mock.calls[0]![0]).toContain('outcome=denied reason=FORBIDDEN');
-    expect(error.mock.calls[0]![0]).toContain(`targetUsername=${sa.username}`);
+    expect(await getAuditLogRowsForTarget(sa.id)).toHaveLength(0);
   });
 
-  it('a super admin targeting their own id is also denied (no self-exception)', async () => {
+  it('a super admin targeting their own id is also denied (no self-exception), no row', async () => {
     const sa = await createUserWithRole('sa', 'super admin');
     await expect(usersService.getFullEmail(sa.id, sa.id, UA)).rejects.toMatchObject({
       status: 403,
       code: 'FORBIDDEN',
     });
+    expect(await getAuditLogRowsForTarget(sa.id)).toHaveLength(0);
   });
 
-  it('an admin targeting their own id is granted, with one granted log line', async () => {
+  it('an admin targeting their own id is granted, with one row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const result = await usersService.getFullEmail(admin.id, admin.id, UA);
     expect(result).toEqual({ email: admin.email });
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(await getAuditLogRowsForTarget(admin.id)).toHaveLength(1);
   });
 
-  it('an unknown target UUID is denied USER_NOT_FOUND, with targetUsername=-', async () => {
+  it('an unknown target UUID is denied USER_NOT_FOUND, no row', async () => {
     const admin = await createUserWithRole('admin', 'admin');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await expect(usersService.getFullEmail(admin.id, UNKNOWN_ID, UA)).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
-    expect(error).toHaveBeenCalledTimes(1);
-    expect(error.mock.calls[0]![0]).toContain(`targetId=${JSON.stringify(UNKNOWN_ID)}`);
-    expect(error.mock.calls[0]![0]).toContain('targetUsername=-');
-    expect(error.mock.calls[0]![0]).toContain('outcome=denied reason=USER_NOT_FOUND');
   });
 
-  it('the log line carries actor id/username, target id/username, a quoted user agent, and no email', async () => {
+  it('a NULL user agent is stored as NULL', async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await usersService.getFullEmail(admin.id, target.id, UA);
+    await usersService.getFullEmail(admin.id, target.id, null);
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const line = log.mock.calls[0]![0] as string;
-    expect(line).toContain('[UNMASK EMAIL]');
-    expect(line).toContain(`actorId=${admin.id}`);
-    expect(line).toContain(`actorUsername=${admin.username}`);
-    expect(line).toContain(`targetId=${target.id}`);
-    expect(line).toContain(`targetUsername=${target.username}`);
-    expect(line).toContain(`userAgent=${JSON.stringify(UA)}`);
-    expect(line).toContain('outcome=granted');
-    expect(line).not.toContain(target.email);
-    expect(line).not.toContain('@');
+    const [row] = await getAuditLogRowsForTarget(target.id);
+    expect(row!.user_agent).toBeNull();
   });
 
-  it('missing user agent is logged as userAgent=-', async () => {
+  it("created_at comes from the database clock, not the service's own clock", async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await usersService.getFullEmail(admin.id, target.id, undefined);
-
-    expect(log.mock.calls[0]![0]).toContain('userAgent=-');
-  });
-
-  it("the logged timestamp comes from the database clock, not the service's own clock", async () => {
-    const admin = await createUserWithRole('admin', 'admin');
-    const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const before = await dbNow();
     await usersService.getFullEmail(admin.id, target.id, UA);
     const after = await dbNow();
 
-    const line = log.mock.calls[0]![0] as string;
-    const match = /timestamp=([^\s]+)/.exec(line);
-    expect(match).not.toBeNull();
-    const logged = new Date(match![1]!);
-    expect(logged.getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect(logged.getTime()).toBeLessThanOrEqual(after.getTime());
+    const [row] = await getAuditLogRowsForTarget(target.id);
+    expect(row!.created_at.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(row!.created_at.getTime()).toBeLessThanOrEqual(after.getTime());
   });
 
-  it('logging the granted line failing propagates, so the email is not returned', async () => {
+  it('force insertAuditLog to throw: the error propagates and the email is not returned', async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const target = await createActiveUser(1);
-    vi.spyOn(console, 'log').mockImplementation(() => {
-      throw new Error('log sink down');
-    });
+    const auditLogQueries = await import('../../src/db/queries/auditLog.queries.js');
+    const spy = vi
+      .spyOn(auditLogQueries, 'insertAuditLog')
+      .mockRejectedValueOnce(new Error('insert failed'));
 
     await expect(usersService.getFullEmail(admin.id, target.id, UA)).rejects.toThrow(
-      'log sink down',
+      'insert failed',
     );
-  });
-
-  describe('logUnmaskValidationFailure', () => {
-    it('logs denied VALIDATION_ERROR with the raw, quoted id and targetUsername=-', async () => {
-      const admin = await createUserWithRole('admin', 'admin');
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      await usersService.logUnmaskValidationFailure(admin.id, 'not-a-uuid', UA);
-
-      expect(error).toHaveBeenCalledTimes(1);
-      const line = error.mock.calls[0]![0] as string;
-      expect(line).toContain(`actorId=${admin.id}`);
-      expect(line).toContain(`actorUsername=${admin.username}`);
-      expect(line).toContain(`targetId=${JSON.stringify('not-a-uuid')}`);
-      expect(line).toContain('targetUsername=-');
-      expect(line).toContain('outcome=denied reason=VALIDATION_ERROR');
-    });
+    expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    spy.mockRestore();
   });
 });

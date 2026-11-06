@@ -8976,3 +8976,285 @@ None required stopping to ask; see the "Found and fixed a real bug" and "Observa
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26a: Admin Audit Log — Schema
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Requirements formatting (sub-stage renumbering), Implementation code
+**Governing decision:** `instructions.md` Stage 26's "Design decisions (already made, do not change)" table ("Table", "Append-only", enum/column rules) and the "Stage 26a: Schema" section.
+
+**Prompts (exact):**
+
+> implement stage 26. also, i accidentally renamed everything inside to 24, help me change it to 26. look through the instructions first and let me know if you have any questions first before ipmlementing.
+
+> Proceed with Stage 26a only (schema), then stop and wait for my confirmation.
+>
+> Two additions to the stage doc:
+>
+> 1. Change #10 (proxy): add "/admin/audit-logs" to BOTH frontend/vite.config.js
+>    and frontend/nginx/default.conf, with the same target as /auth and /users.
+>    Do not add a bare /admin prefix. This is done in 26e, not 26a.
+> 2. Search the whole Stage 26 section for any remaining "24a"–"24e" or
+>    "Stage 24" references and renumber them to 26.
+>
+> Reminder: header comment on every file created or modified, and a usage-log entry for 26a.
+
+**Key responses:**
+
+- Found that the whole Stage 26 section in `instructions.md` had every internal sub-stage reference written as `24a`–`24e` instead of `26a`–`26e` (a copy/paste leftover from Stage 24). Fixed all occurrences within the Stage 26 section (the heading links, the scope bullets, the "see 26b, 26c" cross-reference, and the five sub-section headings); confirmed no other "24" references remained in that section and that Stage 24's own section (Admin User History Page, a separate real stage) was untouched.
+- Before writing any code, ran the doc's own "Verify first (report only)" checks via a read-only Explore subagent: (1) `unlockUser` in `users.service.ts` has no `isLocked` branch today — it unconditionally clears the login lock and OTP send blocks, confirming the doc's own flag that this needs to become a no-op in 26b; (2) the real prod edge is `frontend/nginx/default.conf` (mirrors `vite.config.js`'s dev proxy exactly, no `/admin` prefix exists yet); (3) all ten existing `[UNMASK EMAIL]`/`full-email` tests live in `tests/controllers/users.controller.test.ts` under one `describe` block. Reported this back and asked before proceeding.
+- Per your follow-up, updated change #10 and the Stage 26e `vite.config.js` section (plus the stage's scope line) to also cover `frontend/nginx/default.conf`, noting the actual proxy edit happens in 26e, not 26a.
+- Implemented only 26a: added `audit_action_enum` and the `admin_audit_log` table (no FK on `actor_id`/`target_id`, per the doc), its four indexes, and the two append-only triggers (`BEFORE UPDATE OR DELETE` row trigger, `BEFORE TRUNCATE` statement trigger, each raising `admin_audit_log is append-only`) in `src/db/init.sql`. Added `insertAuditLog` (transaction-only, `db` required) to a new `auditLog.queries.ts`; `listAuditLogsPage` is left for 26d as the doc specifies.
+- Added two test helpers (`getAuditLogRowsForTarget`/`getAuditLogRowsForActor`) to `tests/helpers/db.ts` and a new test file covering the doc's 26a Verification bullets: trigger rejection of UPDATE/DELETE/TRUNCATE, a deleted actor/target leaving its audit row untouched, `insertAuditLog`'s fields and database-clock `created_at`, NULL `user_agent`/`before`/`after` handling, and transaction rollback on a later failure. Noted in the helper's own header that `admin_audit_log` has no FK, so `truncateAll`'s `TRUNCATE users CASCADE` does not clear it between tests in the same file by design — the new helpers filter by actor/target instead of relying on an empty table.
+- Verification run: `npx tsc --noEmit` clean; new test file — 8/8 pass; full suite — 860/860 pass. Two concurrency tests failed on an earlier full-suite run (`ECONNRESET`/`register failed: 401`); confirmed this is pre-existing flakiness unrelated to this change by reverting to `main` and reproducing the same tests passing alone, then reproducing a _different_ flaky failure signature on the changed tree in isolation, and finally a clean 860/860 full-suite run.
+
+**Files:**
+
+- `instructions.md` (modified — sub-stage renumbering 24a-24e → 26a-26e, change #10 and the Stage 26e proxy section extended to `frontend/nginx/default.conf`)
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/auditLog.queries.ts` (created)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/db/queries/auditLog.queries.test.ts` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None beyond the verify-first report above, which you already reviewed before I started 26a.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26b: Reasons and Audit Rows for Status, Role and Unlock
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 26's "Reasons" / "Preset codes" tables and "Unlock behaviour (option A)", and the "Stage 26b" section.
+
+**Prompts (exact):**
+
+> go for it
+
+(Continuing the prior turn's "Proceed with Stage 26a only (schema), then stop and wait for my confirmation" — this prompt approved moving on to 26b after 26a's review.)
+
+**Key responses:**
+
+- Added `src/constants/auditReasons.ts`: `AuditAction` (moved out of `auditLog.queries.ts`, which now imports it) and the backend-authoritative `AUDIT_REASON_CODES` map, one preset list per audited action, copied verbatim from the doc's "Preset codes" table. The frontend will keep its own matching constant in Stage 26e; flagging here (and again then) that the two lists must stay in sync.
+- `users.controller.ts`: added a shared `reasonSuperRefine(action)` (Zod `superRefine`) used by `updateStatus`, `changeRole` and a new `unlockBodySchema`, each as a single `.strict()` object together with the existing status/role field so there's one source of "unexpected field" truth. Implements every rule from the "Reasons" table: required/type/invalid-code/OTHER-details-required/length 10-500/`otherReason`-with-a-non-OTHER-code treated as an unexpected field (per the table's own "(unexpected field)" phrasing) with the exact Zod messages specified. `toStoredReason` builds the stored value (`<CODE>` or `OTHER: <trimmed text>`). Verified empirically with a throwaway script that Zod's `.strict()` unrecognized-key issue and a `superRefine`-added issue can both land in the same `ZodError`, and that the global handler's existing "any issue is `unrecognized_keys`" check still wins regardless of order - so no change was needed there.
+- `users.service.ts`: `changeUserStatus`, `changeUserRole` and `unlockUser` now take `reason`/`userAgent` and call `insertAuditLog` with the same `client`, after the change, before returning - never on a no-op or a rejection path (all existing early-return/throw points are unchanged and now implicitly skip the insert). `before`/`after` match the doc's table exactly.
+- **Unlock behaviour change, per the doc's own instruction**: the Verify-first report for Stage 26 (shared with you before starting) found `unlockUser` had no `isLocked` check at all - it unconditionally cleared the login lock and OTP send blocks regardless of whether the target was actually locked. Per the doc's "If your Verify-first report shows unlock currently acts on non-locked users, change it to the no-op and tell me," `unlockUser` now switches to `lockUserByIdWithNow` and only clears state / writes an audit row when `login_locked_until` is in the future relative to the database clock (the same definition `listUsersPage`'s `locked` filter uses in SQL, read against `clock_timestamp()` rather than the app's `Date.now()` for consistency with the rest of this stage and to avoid clock-skew flakiness in tests); a non-locked target is now `200`, unchanged, nothing cleared, no row.
+- Updated every existing call site and request body across `tests/services/users.service.test.ts`, `tests/concurrency/lock-recheck.concurrency.test.ts`, `tests/concurrency/users.concurrency.test.ts` and `tests/controllers/users.controller.test.ts` for the new required params/fields (service-level tests use a placeholder `'TEST_REASON'`/`null`, since the service itself does not validate reason content - only the controller does; HTTP-level tests use real preset codes).
+- Added new test coverage for every Stage 26b Verification bullet: per-action audit row content and `before`/`after` (status, role, unlock); `OTHER`/`otherReason` storage and the 9/10/500/501-character boundary; every reason-validation rejection case (`it.each` for status; targeted cases for role/unlock) with "no change, no row"; invalid reason on a would-be no-op still `400`; every existing permission/404/422 rejection writes no row; forcing `insertAuditLog` to throw (via `vi.spyOn` on the imported queries module) gives `500 INTERNAL_ERROR` with the status change and token revocation rolled back; `created_at` from the database clock; unlock's new no-op-when-not-locked case. Extended the existing concurrent-status/concurrent-role tests to also assert the audit rows form a consistent `before`/`after` chain ending at the final DB state (ran the concurrency test alone 10+ times to confirm the new assertion itself isn't flaky).
+- Verification run: `npx tsc --noEmit` clean; `npx eslint .` clean; targeted files 100% pass (`users.controller.test.ts` 101/101, `users.service.test.ts` 54/54, `lock-recheck.concurrency.test.ts` 27/27, `users.concurrency.test.ts` 2/2). Full suite: 884/884 on a clean run; two other full-suite runs each hit 1-2 unrelated failures (`socket hang up` / `ECONNRESET` in `me.controller.test.ts` and `users.concurrency.test.ts`, and once a `createUserWithRole` fixture failure) - confirmed pre-existing environmental flakiness under full-suite load (different test each time, passes alone every time), not something this change introduced; same pattern already noted in the Stage 26a log entry.
+
+**Files:**
+
+- `src/constants/auditReasons.ts` (created)
+- `src/db/queries/auditLog.queries.ts` (modified - `AuditAction` now imported from the constants file)
+- `src/controllers/users.controller.ts` (modified)
+- `src/services/users.service.ts` (modified)
+- `tests/services/users.service.test.ts` (modified)
+- `tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `tests/concurrency/users.concurrency.test.ts` (modified)
+- `tests/controllers/users.controller.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None - the one behaviour change (unlock's no-op guard) was explicitly pre-authorized by the doc's own "change it to the no-op and tell me" instruction, flagged to you before 26a started and now implemented.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26c: Unmask as POST with a Reason
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 26c section, plus the "Reasons" table and Stage 20's still-applicable permission rules it references.
+
+**Prompts (exact):**
+
+> go for 26c
+
+**Key responses:**
+
+- `users.routes.ts`: `GET /:id/full-email` → `POST /:id/full-email`, same position (before `GET /:id`) and middleware (`authenticate` + `authorize('admin')`).
+- `users.controller.ts`: `fullEmail` now parses `req.body` with a new `fullEmailBodySchema` built from the same shared `reasonSuperRefine('EMAIL_UNMASK')` helper added in 26b, and no longer has a special try/catch for the id's `VALIDATION_ERROR` case - that existed only to drive the old console log, which Stage 26c removes.
+- `users.service.ts`: rewrote `getFullEmail` to take `reason`/`userAgent`, wrap the read + `insertAuditLog` call in one `withTransaction` (the insert is the only write here, since unmask changes no target state), and return the email only after the insert succeeds - if it throws, propagates to `500 INTERNAL_ERROR` with no email, same as the doc specifies. `before`/`after` are `NULL` per the "`before`/`after`" table's `EMAIL_UNMASK` row. All of Stage 20's permission rules (404, `403 FORBIDDEN` on a super-admin target including self, admin-on-self allowed, pending/suspended targets allowed) are preserved unchanged, just re-expressed without the logging.
+- Deleted `logUnmaskAttempt`, `formatUserAgent` and `logUnmaskValidationFailure` entirely (nothing else used them) along with every `[UNMASK EMAIL]` console line. Left `findByIdWithNow` in place: it is a general-purpose, already-tested query helper (not itself "log-line code"), even though this was its only current call site: removing a separately tested query function felt like a bigger, more opinionated cleanup than the doc's "remove the code that existed only to produce them" asks for, so I left it and its own test suite (`findByIdWithNow` in `users.queries.test.ts`) untouched. Flagging this choice in case the team would rather it be removed.
+- Replaced the old console-log-assertion test suites with row/response assertions: `tests/services/users.service.test.ts`'s "getFullEmail / logUnmaskValidationFailure" suite is now "getFullEmail (Stage 26c)" (one `EMAIL_UNMASK` row per successful call, `before`/`after` NULL, NULL user agent, DB-clock `created_at`, forced-throw propagation with no row), and `tests/controllers/users.controller.test.ts`'s `describe` is now `POST /users/:id/full-email (Stage 26c, ...)` with the same HTTP-level coverage as 26b's other endpoints (every reason-validation message, 500-on-forced-throw, a dedicated "`GET /users/:id/full-email` no longer exists" check, and a "the audit row never contains the email" check, noting the response itself does contain it by design - unmasking is the whole point of the endpoint).
+- **Note for the team (same note as 26b, repeated because it's now also relevant here):** the backend's `AUDIT_REASON_CODES['EMAIL_UNMASK']` list must match whatever the frontend's constant will be when Stage 26e builds it.
+- Verification run: `npx tsc --noEmit` and `npx eslint .` both clean on every changed/touched file; `users.controller.test.ts` 105/105, `users.service.test.ts` 52/52. Full suite: 885/886, the one failure being `ECONNRESET` on an unrelated forgot-password test under full-suite load - the same pre-existing environmental flakiness already noted in the 26a/26b entries, not something this change introduced.
+- Did not touch the frontend (`frontend/src/api/users.js` already calls the old `GET .../full-email`), since the doc's own plan defers that wiring to Stage 26e - the frontend unmask call is expected to be broken until then.
+
+**Files:**
+
+- `src/routes/users.routes.ts` (modified)
+- `src/controllers/users.controller.ts` (modified)
+- `src/services/users.service.ts` (modified)
+- `tests/services/users.service.test.ts` (modified)
+- `tests/controllers/users.controller.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+Left `findByIdWithNow` (and its test suite) in place rather than deleting it, even though `getFullEmail` was its only caller - see the note above. The frontend's unmask call is now broken until Stage 26e rewires it to `POST` with a reason; this is the doc's own intended sequencing, not an oversight.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26d: GET /admin/audit-logs
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` "Viewing the log" decisions table and the "Stage 26d" section.
+
+**Prompts (exact):**
+
+> go for it
+
+**Key responses:**
+
+- `auditLog.queries.ts`: added `listAuditLogsPage({ actor, target, actions, reasonCode, from, to, sortDir, limit, offset }, db = pool)`, mirroring `listUsersPage`'s (Stage 15b) window-function `COUNT(*) OVER()` + fallback-count-query pattern for the same `WHERE` on both, and its LIKE-escaping technique for substring filters (exported `escapeLikePattern` from `users.queries.ts` to reuse it rather than duplicating it). Two `LEFT JOIN users` (aliased `actor_user`/`target_user`) resolve both usernames; a deleted user leaves that alias's columns NULL. `reasonCode=OTHER` matches `reason LIKE 'OTHER: %'`; any other code is an exact `reason = $code` match.
+- `src/constants/auditReasons.ts`: added `AUDIT_ACTIONS` (the six valid values, for the `action` filter) and `ALL_REASON_CODES` (the deduplicated union of every action's preset codes, for the `reasonCode` filter, which isn't tied to one action).
+- `auditLog.service.ts` (new): `listAuditLogs(params)`, `PAGE_SIZE = 50`, maps the query's snake_case/joined-alias row to the camelCase `AuditLogEntry` shape from the decisions table.
+- `auditLog.controller.ts` (new): Zod `.strict()` on `req.query`. `page` reuses Stage 15b's single-message pattern; `actor`/`target` lowercase+trim and treat a repeated param (which Express turns into an array) as the field's own "must be a string" case, satisfying "a repeated param on a single-value filter -> 400" without a separate message; `action` accepts one value or several (repeatable param) against `AUDIT_ACTIONS`; `reasonCode` against `ALL_REASON_CODES`; `from`/`to` parse via `new Date(value)`, invalid -> the exact messages the doc gives; a `superRefine` on the whole object rejects `from` after `to`. `sortDir` only (`asc`/`desc`, default `desc`); no `sortBy` field is declared, so one is rejected by `.strict()`'s own "unexpected field" path, per the doc's "`sortBy=anything` -> 400 (unexpected field)" bullet - no special-casing needed.
+- `auditLog.routes.ts` (new) + mounted at `/admin/audit-logs` in `app.ts`, behind `authenticate` + `authorize('admin')` (which already lets `admin` and `super admin` both through, per the existing `authorize` middleware - satisfies "Admin and super admin see the same rows" with no extra code).
+- **Testing an append-only table that spans the whole run, not just this stage:** `admin_audit_log` has no FK to `users`, so `truncateAll()` never clears it, and because `globalSetup` only resets the DB once per `vitest run` (not per file), rows from every earlier 26a/26b/26c test in the same run persist throughout. This isn't a new problem Stage 26d introduced, but it is the first stage where it actually matters, since `listAuditLogsPage`'s own tests need exact counts. Resolved by scoping every pagination/filter test's query by an `actor`/`target` username (or, for the "deleted user" test, by `action`+`reasonCode`) that only exists in the live `users` table for that test's duration - a stale row from an earlier, already-truncated test has a NULL joined username via the `LEFT JOIN` and can never match a substring filter on a currently-live username. Documented this reasoning in both new test files' headers so it doesn't need rediscovering later.
+- Caught and fixed two precision bugs while writing the query-level tests myself, before they became real issues: (1) testing `from`/`to` inclusivity by reading back a `clock_timestamp()`-generated `created_at` and feeding it straight back as the bound failed, because node-postgres's `Date` truncates the column's microsecond precision, so the truncated bound could sit just before the row's real timestamp - fixed by inserting a test row with an explicit, millisecond-precision `created_at` (a plain `INSERT` with that column given no, since the append-only trigger only blocks `UPDATE`/`DELETE`/`TRUNCATE`, not `INSERT`); (2) a case-insensitivity test called the query function directly with an uppercase filter and failed, because lowercasing is the controller's job (`usernameSubstringSchema`), not the query's - fixed the test to pass pre-lowercased input at that layer, matching `listUsersPage`'s own convention of leaving case handling to the caller.
+- Verification run: `npx tsc --noEmit` and `npx eslint .` clean. New test files: `auditLog.queries.test.ts` (listAuditLogsPage additions) 18/18, `auditLog.controller.test.ts` (new) 18/18. Full suite: 914/914 clean on one run. An earlier full-suite run hit a native-module crash (`libc++abi: ... Napi::Error`) partway through that cascaded into unrelated failures in `races.concurrency.test.ts` and elsewhere (files this change never touched); re-ran clean immediately after, consistent with the environmental flakiness already logged in the 26a-26c entries, just a more disruptive manifestation of it this time.
+
+**Files:**
+
+- `src/db/queries/users.queries.ts` (modified - exported `escapeLikePattern`)
+- `src/db/queries/auditLog.queries.ts` (modified)
+- `src/constants/auditReasons.ts` (modified)
+- `src/services/auditLog.service.ts` (created)
+- `src/controllers/auditLog.controller.ts` (created)
+- `src/routes/auditLog.routes.ts` (created)
+- `src/app.ts` (modified)
+- `tests/db/queries/auditLog.queries.test.ts` (modified)
+- `tests/controllers/auditLog.controller.test.ts` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None - no wording in the doc was ambiguous enough to need a stop-and-ask; the two precision bugs above were caught and fixed in the tests themselves, not raised as open questions.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26e: Frontend — Reason Dialogs, Audit Log Page, Unmask, Proxy Entries
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 26e section (Reason dialog, Unmask, `AdminLogs.jsx`, proxy entries, Tests).
+
+**Prompts (exact):**
+
+> go for 26e
+
+**Key responses:**
+
+- **Reason dialog (`AdminUsers.jsx`):** extended the existing, shared `ConfirmActionDialog` (rather than adding a parallel copy) with a reason picker: a `<select>` of the action's preset codes (from a new `src/constants/auditReasons.js`, transcribed verbatim from the doc's "Preset codes" table) and, when `OTHER` is chosen, a 10-500 character details `<textarea>` with a live `{count}/500` indicator and `FieldError` for an invalid length. Confirm is `disabled` until a code is chosen and (for `OTHER`) the details are valid. `onConfirm` now receives the reason payload (`{ reason }` or `{ reason: 'OTHER', otherReason }`) instead of taking no argument.
+- **Cross-page consequence, not explicitly named in the doc but required by it:** `ConfirmActionDialog`, `ACTION_DIALOG` and `getRowActions` are exported from `AdminUsers.jsx` and reused by `AdminUserTransactions.jsx` (Stage 24) for the exact same suspend/unsuspend/promote/demote actions. Since those now require a reason too (Stage 26b), updated `AdminUserTransactions.jsx`'s `runAction`/`onConfirm` the same way, so its actions keep working rather than breaking against the now-reason-requiring backend.
+- **Unmask:** the eye icon's reveal path (masked -> click) now opens the same `ConfirmActionDialog` (action `'unmask'`, `EMAIL_UNMASK` presets) instead of calling `getFullEmail` directly; confirming calls the now-POST `getFullEmail(id, reason)`. Re-masking (second click on an already-unmasked row, or the existing 60s timer) is unchanged and still sends nothing, since that path never touches the new dialog.
+- **`src/api/users.js`:** `updateUserStatus`, `updateUserRole`, `unlockUser` and `getFullEmail` all take a `reason` param, spread into the JSON body; `getFullEmail` switched to `POST`.
+- **`src/api/auditLog.js`** (new): `listAuditLogs` (`GET /admin/audit-logs`).
+- **`src/api/http.js`:** `withQuery` now sends an array value (the audit log page's `action` filter) as a repeated query param via `.append`, rather than stringifying it; every existing scalar caller is unaffected.
+- **`src/pages/AdminLogs.jsx`** (new), at `/admin/logs` behind `RequireAuth` + `RequireRole minimum="admin"` (added to `App.jsx`), linked from `TopNav.jsx`'s admin links: a read-only table (time, actor, action, target, reason, before -> after, user agent; `null` actor/target username shown as "user deleted"), debounced actor/target substring filters (300ms, matching `AdminUsers.jsx`'s own pattern), a native multi-select for `action`, a single select for `reasonCode` (built from a deduplicated union of every action's codes, humanized rather than using the action-specific long descriptions, since a few codes like `SUSPECTED_COMPROMISE` mean different things depending on which action they belong to and the filter isn't scoped to one), `datetime-local` pickers for `from`/`to`, a click-to-flip time-sort header (default newest first), and the existing `Pager` component for prev/next pagination. Any filter or sort change resets to page 1. Per the doc's own explicit instruction (differing from the other admin list pages' inline-notice convention), a load failure shows a **toast** via `describeError`, not an inline error state.
+- **Proxy entries:** added `/admin/audit-logs` to `vite.config.js`'s dev proxy and a new, more specific `location /admin/audit-logs` block in `frontend/nginx/default.conf` (placed so it cannot be reached by `/admin/logs`, `/admin/users` or `/admin/suppliers*`, which are SPA routes handled by the fallback, not proxied at all).
+- **Frontend test setup check (per the stage's "stop and tell me" instruction):** `frontend/` already has Vitest configured (`vitest.config.js`, `tests/` directory, existing suites for pages/components/api), so nothing new needed adding - proceeded directly to writing tests in the existing layout.
+- Updated every existing test that the reason requirement or the unmask-dialog change broke: `tests/api/users.test.js` (`getFullEmail` is now `POST` with a body), `tests/pages/AdminUserTransactions.test.jsx` (both profile-action tests now select a reason before confirming), `tests/pages/AdminUsers.test.jsx` (every eye-icon reveal test now goes through the dialog via a new `startReveal` helper).
+- Added new test coverage for the stage's Tests section: a `ConfirmActionDialog` suite (`AdminUsers reason dialog (Stage 26e)`) covering per-action preset codes, Confirm disabled until valid, the `OTHER` details box's live count/inline error/boundary, the two request-body shapes, cancelling sending nothing, and a no-op action still collecting and sending a reason; a new `AdminLogs.test.jsx` (rendering incl. "user deleted", empty state, failure toast, debounced actor/target, `action` sent as a repeated-param array, `reasonCode`/`from`/`to` combined, time-header sort toggle, filter-resets-page-to-1); and a `TopNav.test.jsx` addition for the new "Audit log" link's admin-only visibility.
+- Verification run: `npx oxlint .` - only pre-existing warning categories (no new error-level findings; the one new `set-state-in-effect` warning on `AdminLogs.jsx`'s toast-on-error effect matches warnings already present on several other pre-existing files, not a new category); `npm run build` (vite) succeeds; `npx vitest run` - 25 files / 138 tests pass (all previously-passing tests still pass, plus the new ones). Did **not** start the dev server or open a real browser - the user was asked and chose to rely on the automated suites plus the production build rather than rebuild/restart the running Docker containers to do a live check. The following therefore still need the team's own manual verification per the stage's "List the visual and phone-width checks... for manual verification" instruction:
+  - Visual check of the reason dialog and the `AdminLogs` table/filters at desktop and phone width.
+  - `/admin/users`, `/admin/suppliers` and `/admin/logs` all loading the React app on a hard reload, and the audit log page's data actually loading through the dev/prod proxy against a live `user-service`.
+  - A real failure (user-service stopped) producing the toast, end to end.
+
+**Files:**
+
+- `src/constants/auditReasons.js` (created)
+- `src/api/auditLog.js` (created)
+- `src/api/users.js` (modified)
+- `src/api/http.js` (modified)
+- `src/pages/AdminUsers.jsx` (modified)
+- `src/pages/AdminUserTransactions.jsx` (modified)
+- `src/pages/AdminLogs.jsx` (created)
+- `src/components/TopNav.jsx` (modified)
+- `src/App.jsx` (modified)
+- `vite.config.js` (modified)
+- `nginx/default.conf` (modified)
+- `tests/api/users.test.js` (modified)
+- `tests/pages/AdminUserTransactions.test.jsx` (modified)
+- `tests/pages/AdminUsers.test.jsx` (modified)
+- `tests/pages/AdminLogs.test.jsx` (created)
+- `tests/components/TopNav.test.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+- Extended the shared `ConfirmActionDialog`/`runAction` in `AdminUserTransactions.jsx` (Stage 24's page) as a necessary consequence of Stage 26b's backend change, not an explicit instruction in Stage 26e's own text - flagged here rather than silently left broken.
+- The `reasonCode` filter's dropdown shows a humanized code (e.g. "Fraud or scam") rather than the action-specific long description, because a handful of codes (`SUSPECTED_COMPROMISE`, `USER_REQUEST`) carry different meanings under different actions and the filter isn't scoped to one action.
+- No live browser/Docker verification was done, per the user's choice above; the remaining manual/visual checks are listed in Key responses.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-06 — Stage 26 amendment: unlock and unmask no longer require a reason
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** Author instruction in chat ("wait can you remove the reason for user unlock and email unmask, that's not needed"), recorded as an amendment in `instructions.md` Stage 26's "Reasons" section and Stage 26c.
+
+**Prompts (exact):**
+
+> wait can you remove the reason for user unlock and email unmask, that's not needed.
+
+**Key responses:**
+
+- Backend: `unlockBodySchema`/`fullEmailBodySchema` in `users.controller.ts` no longer validate a `reason`/`otherReason` (now `z.object({}).strict()`, rejecting any field); `unlockUser`/`getFullEmail` in `users.service.ts` dropped their `reason` parameter and store a fixed `'N/A'` in the `admin_audit_log.reason` column (unchanged, `NOT NULL`), since the column's nullability is a schema decision not made here. Emptied `EMAIL_UNMASK`/`USER_UNLOCK`'s preset-code lists in `src/constants/auditReasons.ts` and the frontend's mirror, rather than deleting the actions (still needed for the audit-log page's filters/display).
+- Frontend: `ConfirmActionDialog` (`AdminUsers.jsx`) now skips rendering the reason picker and calls `onConfirm()` with no payload for any action with no preset codes (currently only `unlock`), so Unlock keeps its plain confirmation dialog. Unmask no longer shows a dialog at all - the email eye click calls `getFullEmail(id)` directly, matching its pre-Stage-26 behaviour. `unlockUser`/`getFullEmail` in `api/users.js` dropped their `reason` param and now send an empty JSON body.
+- Updated `instructions.md`'s Stage 26 "Reasons" table, the Stage 26c section, the preset-codes table, and the Stage 26e reason-dialog/unmask sections with dated amendment notes rather than silently rewriting the original decisions, so the change stays traceable.
+- Updated every test the change broke: backend controller tests (unlock/full-email's reason-validation cases replaced with an unexpected-field-rejection case each; audit-row assertions now expect `reason: 'N/A'`), backend service tests (dropped the `reason` arg from every `unlockUser`/`getFullEmail` call), and frontend tests (`AdminUsers.test.jsx`'s `startReveal` helper no longer drives a dialog; added a test that Unlock's dialog has no reason field and confirms with no payload; `api/users.test.js`'s `getFullEmail` test now expects an empty body).
+- Verification run: `npx tsc --noEmit` (user-service) clean; `npx vitest run` (user-service) - 909/910 passing, the one failure (`me.concurrency.test.ts`, a login-rate-limit timing flake unrelated to this change) passes on its own in isolation; `npx vitest run` (frontend) - 139/139 passing; `npx oxlint .` (frontend) - no new warnings or errors, same pre-existing categories as before.
+
+**Files:**
+
+- `instructions.md` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/constants/auditReasons.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `frontend/src/constants/auditReasons.js` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/api/users.js` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/api/users.test.js` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None - the author gave this instruction directly, and the only implementation choice it left open (what to store in the still-`NOT NULL` `reason` column when nothing is collected) was resolved with a fixed placeholder (`'N/A'`) rather than a schema change, since altering the column's nullability is a schema decision outside this task's scope.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

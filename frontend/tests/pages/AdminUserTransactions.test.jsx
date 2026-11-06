@@ -10,6 +10,13 @@
  *        lookups hooks are mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Stage 26e - the shared ConfirmActionDialog now requires a reason to be selected
+ *        before Confirm is enabled; the two "profile actions" tests now select one and assert
+ *        it is forwarded to updateUserStatus.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -201,11 +208,12 @@ describe('AdminUserTransactions profile actions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
 
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
     const suspendButtons = screen.getAllByRole('button', { name: 'Suspend' })
     fireEvent.click(suspendButtons[suspendButtons.length - 1])
 
     expect(await screen.findByRole('status')).toHaveTextContent('alice was suspended.')
-    expect(updateUserStatus).toHaveBeenCalledWith('user-1', 'suspended')
+    expect(updateUserStatus).toHaveBeenCalledWith('user-1', 'suspended', { reason: 'FRAUD_OR_SCAM' })
     expect(getUser).toHaveBeenCalledTimes(1) // no reload needed on success
   })
 
@@ -216,6 +224,7 @@ describe('AdminUserTransactions profile actions', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
     const suspendButtons = screen.getAllByRole('button', { name: 'Suspend' })
     fireEvent.click(suspendButtons[suspendButtons.length - 1])
 

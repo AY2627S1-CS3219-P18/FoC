@@ -10,12 +10,26 @@
  * Scope: Added the concurrent PUT /users/:id/role test (Stage 10 Verification).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Both requests now send a reason (required by Stage 26b), and each test asserts
+ *        exactly one audit row per actual state transition: rows ordered by created_at form a
+ *        consistent before/after chain ending at the final DB status/role, which a no-op
+ *        request cannot have added a link to.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import app from '../../src/app.js';
 import { CONCURRENT_REQUESTS as N, LOOP_ITERATIONS } from '../helpers/constants.js';
-import { getRefreshTokens, getUserByEmail, seedRefreshToken, truncateAll } from '../helpers/db.js';
+import {
+  getAuditLogRowsForTarget,
+  getRefreshTokens,
+  getUserByEmail,
+  seedRefreshToken,
+  truncateAll,
+} from '../helpers/db.js';
 import { resetEmailMock } from '../helpers/email.js';
 import {
   accessTokenFor,
@@ -38,12 +52,13 @@ describe('concurrent PUT /users/:id/status', () => {
       await seedRefreshToken(target.id, `tok-${i}`);
 
       const statuses = Array.from({ length: N }, (_, k) => (k % 2 === 0 ? 'suspended' : 'active'));
+      const reasonFor = { suspended: 'FRAUD_OR_SCAM', active: 'ISSUE_RESOLVED' } as const;
       const rs = await Promise.all(
         statuses.map((status) =>
           request(app)
             .put(`/users/${target.id}/status`)
             .set('Authorization', bearer(token))
-            .send({ status }),
+            .send({ status, reason: reasonFor[status] }),
         ),
       );
 
@@ -60,6 +75,16 @@ describe('concurrent PUT /users/:id/status', () => {
         const tokens = await getRefreshTokens(target.id);
         expect(tokens.every((t) => t.is_revoked)).toBe(true);
       }
+
+      // Exactly one audit row per actual transition: consecutive rows chain
+      // before -> after, and the chain ends at the final DB status. A no-op leaves no row,
+      // so there is no link to break this chain.
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows.length).toBeGreaterThan(0);
+      for (let j = 1; j < rows.length; j++) {
+        expect(rows[j]!.before).toEqual(rows[j - 1]!.after);
+      }
+      expect((rows.at(-1)!.after as { status: string }).status).toBe(finalStatus);
     }
   });
 });
@@ -74,12 +99,13 @@ describe('concurrent PUT /users/:id/role', () => {
       await seedRefreshToken(target.id, `role-tok-${i}`);
 
       const roles = Array.from({ length: N }, (_, k) => (k % 2 === 0 ? 'admin' : 'user'));
+      const reasonFor = { admin: 'APPOINTED_MODERATOR', user: 'ROLE_ENDED' } as const;
       const rs = await Promise.all(
         roles.map((role) =>
           request(app)
             .put(`/users/${target.id}/role`)
             .set('Authorization', bearer(token))
-            .send({ role }),
+            .send({ role, reason: reasonFor[role] }),
         ),
       );
 
@@ -95,6 +121,13 @@ describe('concurrent PUT /users/:id/role', () => {
         const tokens = await getRefreshTokens(target.id);
         expect(tokens.every((t) => t.is_revoked)).toBe(true);
       }
+
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows.length).toBeGreaterThan(0);
+      for (let j = 1; j < rows.length; j++) {
+        expect(rows[j]!.before).toEqual(rows[j - 1]!.after);
+      }
+      expect((rows.at(-1)!.after as { role: string }).role).toBe(finalRole);
     }
   });
 });

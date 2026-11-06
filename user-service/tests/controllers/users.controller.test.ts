@@ -30,12 +30,28 @@
  *        instructions.md Stage 20a's Verification bullets (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: PUT /users/:id/status, PUT /users/:id/role and POST /users/:id/unlock now require a
+ *        reason; updated every existing request body and added Stage 26b's reason-validation
+ *        and audit-row Verification bullets, plus unlock's new no-op-when-not-locked case.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): unlock
+ *        and full-email no longer require or accept a reason. Replaced their reason-validation
+ *        tests with an unexpected-field-is-rejected test each, and updated the stored-audit-row
+ *        assertions to expect reason "N/A".
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../src/app.js';
 import {
   dbNow,
+  getAuditLogRowsForTarget,
   getRefreshTokens,
   getUserByEmail,
   setLoginLockState,
@@ -79,8 +95,23 @@ const put = (path: string, token: string | undefined, body: unknown) => {
   return (token ? r.set('Authorization', bearer(token)) : r).send(body as object);
 };
 
-const putStatus = (token: string, target: TestUser | { id: string }, status: unknown) =>
-  put(`/users/${target.id}/status`, token, { status });
+// Stage 26b: every audited action requires a reason. These helpers default to a valid preset
+// code for whichever target value is given, so tests written before Stage 26 keep working;
+// `body` lets a test override or add fields (e.g. `otherReason`, or an explicit `reason`).
+const REASON_FOR_STATUS: Record<string, string> = { suspended: 'FRAUD_OR_SCAM', active: 'ISSUE_RESOLVED' };
+const putStatus = (
+  token: string | undefined,
+  target: TestUser | { id: string },
+  status: unknown,
+  body: Record<string, unknown> = {},
+) =>
+  put(`/users/${target.id}/status`, token, {
+    status,
+    ...(typeof status === 'string' && status in REASON_FOR_STATUS
+      ? { reason: REASON_FOR_STATUS[status] }
+      : {}),
+    ...body,
+  });
 
 describe('GET /users', () => {
   it('rejects a request with no Authorization header with 401 UNAUTHORIZED', async () => {
@@ -186,9 +217,15 @@ describe('GET /users locked filter and fields (Stage 18d)', () => {
 });
 
 describe('POST /users/:id/unlock', () => {
-  const unlock = (token: string | undefined, target: { id: string }) => {
+  // No reason required (instructions.md Stage 26 "Reasons" amendment); pass `body` to send an
+  // unexpected field for the rejection test below.
+  const unlock = (
+    token: string | undefined,
+    target: { id: string },
+    body: Record<string, unknown> = {},
+  ) => {
     const r = request(app).post(`/users/${target.id}/unlock`);
-    return token ? r.set('Authorization', bearer(token)) : r;
+    return (token ? r.set('Authorization', bearer(token)) : r).send(body);
   };
 
   it('rejects a request with no Authorization header with 401 UNAUTHORIZED', async () => {
@@ -260,6 +297,62 @@ describe('POST /users/:id/unlock', () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
   });
+
+  describe('no-op and audit rows (Stage 26b)', () => {
+    it('unlocking a locked user writes one USER_UNLOCK audit row with reason "N/A"', async () => {
+      const { token, user: actor } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+      const res = await unlock(token, target);
+      expect(res.status).toBe(200);
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        actor_id: actor.id,
+        action: 'USER_UNLOCK',
+        target_id: target.id,
+        before: { isLocked: true },
+        after: { isLocked: false },
+        reason: 'N/A',
+      });
+    });
+
+    it('unlocking a user who is not login-locked is a no-op: 200, unchanged, nothing cleared, no row', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const before = (await getUserByEmail(target.email))!;
+
+      const res = await unlock(token, target);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
+      const after = (await getUserByEmail(target.email))!;
+      expect(after.updated_at).toEqual(before.updated_at);
+      expect(after.login_failed_attempts).toBe(before.login_failed_attempts);
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('rejects an unexpected field in the body with 400, no row', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      await setLoginLockState(target.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+      const res = await unlock(token, target, { reason: 'IDENTITY_VERIFIED' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Request contains unexpected fields', code: 'VALIDATION_ERROR' });
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('each existing rejection writes no audit row', async () => {
+      const { token } = await callerToken('admin', 'caller1');
+      const admin2 = await createUserWithRole('admin2', 'admin');
+      await setLoginLockState(admin2.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+
+      const res = await unlock(token, admin2);
+      expect(res.status).toBe(403);
+      expect(await getAuditLogRowsForTarget(admin2.id)).toHaveLength(0);
+    });
+  });
 });
 
 describe('GET /users/:id', () => {
@@ -328,37 +421,39 @@ describe('GET /users/:id', () => {
   });
 });
 
-describe('GET /users/:id/full-email (Stage 20a, NFR3.1.1)', () => {
-  const getWithUa = (path: string, token: string | undefined, ua?: string) => {
-    const r = request(app).get(path);
+describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
+  // No reason required (instructions.md Stage 26 "Reasons" amendment); pass `body` to send an
+  // unexpected field for the rejection test below.
+  const unmask = (
+    path: string,
+    token: string | undefined,
+    body: Record<string, unknown> = {},
+    ua?: string,
+  ) => {
+    const r = request(app).post(path);
     const withToken = token ? r.set('Authorization', bearer(token)) : r;
-    return ua === undefined ? withToken : withToken.set('User-Agent', ua);
+    return (ua === undefined ? withToken : withToken.set('User-Agent', ua)).send(body);
   };
 
-  it('rejects a request with no token with 401, a regular user with 403; neither logs', async () => {
+  it('rejects a request with no token with 401, a regular user with 403; no row either way', async () => {
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const noToken = await get(`/users/${target.id}/full-email`);
+    const noToken = await unmask(`/users/${target.id}/full-email`, undefined);
     expect(noToken.status).toBe(401);
     expect(noToken.body).toEqual(UNAUTHORIZED);
 
     const { token } = await callerToken('user');
-    const res = await get(`/users/${target.id}/full-email`, token);
+    const res = await unmask(`/users/${target.id}/full-email`, token);
     expect(res.status).toBe(403);
     expect(res.body).toEqual(FORBIDDEN);
 
-    expect(log).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-    log.mockRestore();
-    error.mockRestore();
+    expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
   });
 
   it.each(['admin', 'super admin'] as const)(
-    '%s unmasks a user, a pending user, a suspended user and an admin',
+    '%s unmasks a user, a pending user, a suspended user and an admin, each with one EMAIL_UNMASK row',
     async (role) => {
-      const { token } = await callerToken(role);
+      const { user: actor, token } = await callerToken(role);
       const user = await createActiveUser(1);
       const pending = await registerPending(2);
       const suspended = await createActiveUser(3);
@@ -366,130 +461,130 @@ describe('GET /users/:id/full-email (Stage 20a, NFR3.1.1)', () => {
       const admin2 = await createUserWithRole('admin2', 'admin');
 
       for (const target of [user, pending, suspended, admin2]) {
-        const res = await get(`/users/${target.id}/full-email`, token);
+        const res = await unmask(`/users/${target.id}/full-email`, token);
         expect(res.status).toBe(200);
         expect(res.body).toEqual({ email: target.email });
+        const rows = await getAuditLogRowsForTarget(target.id);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          actor_id: actor.id,
+          action: 'EMAIL_UNMASK',
+          target_id: target.id,
+          before: null,
+          after: null,
+          reason: 'N/A',
+        });
       }
     },
   );
 
-  it('any caller targeting a super admin gets 403 FORBIDDEN', async () => {
+  it('any caller targeting a super admin gets 403 FORBIDDEN, no row', async () => {
     const { token } = await callerToken('admin');
     const sa = await createUserWithRole('sa', 'super admin');
-    const res = await get(`/users/${sa.id}/full-email`, token);
+    const res = await unmask(`/users/${sa.id}/full-email`, token);
     expect(res.status).toBe(403);
     expect(res.body).toEqual({
       message: "Cannot unmask a super administrator's email",
       code: 'FORBIDDEN',
     });
+    expect(await getAuditLogRowsForTarget(sa.id)).toHaveLength(0);
   });
 
   it('returns 404 USER_NOT_FOUND for an unknown UUID', async () => {
     const { token } = await callerToken('admin');
-    const res = await get(`/users/${UNKNOWN_ID}/full-email`, token);
+    const res = await unmask(`/users/${UNKNOWN_ID}/full-email`, token);
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ message: 'User not found', code: 'USER_NOT_FOUND' });
   });
 
   it('returns 400 VALIDATION_ERROR "Invalid user ID" for a non-UUID id', async () => {
     const { token } = await callerToken('admin');
-    const res = await get('/users/not-a-uuid/full-email', token);
+    const res = await unmask('/users/not-a-uuid/full-email', token);
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
   });
 
   it('admin targeting their own id is granted; super admin targeting their own id is denied', async () => {
     const { user: admin, token: adminToken } = await callerToken('admin', 'ownadmin');
-    const own = await get(`/users/${admin.id}/full-email`, adminToken);
+    const own = await unmask(`/users/${admin.id}/full-email`, adminToken);
     expect(own.status).toBe(200);
     expect(own.body).toEqual({ email: admin.email });
+    expect(await getAuditLogRowsForTarget(admin.id)).toHaveLength(1);
 
     const { user: sa, token: saToken } = await callerToken('super admin', 'ownsa');
-    const ownSa = await get(`/users/${sa.id}/full-email`, saToken);
+    const ownSa = await unmask(`/users/${sa.id}/full-email`, saToken);
     expect(ownSa.status).toBe(403);
     expect(ownSa.body.code).toBe('FORBIDDEN');
+    expect(await getAuditLogRowsForTarget(sa.id)).toHaveLength(0);
   });
 
-  it('logs exactly one granted line with actor/target ids and usernames, a quoted user agent, and no email', async () => {
-    const { user: admin, token } = await callerToken('admin');
-    const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  it('stores the given user agent, or NULL when none is sent', async () => {
+    const { token } = await callerToken('admin');
 
-    const res = await getWithUa(`/users/${target.id}/full-email`, token, 'Mozilla/5.0 Test');
-    expect(res.status).toBe(200);
+    const withUa = await createActiveUser(1);
+    await unmask(`/users/${withUa.id}/full-email`, token, {}, 'Mozilla/5.0 Test');
+    expect((await getAuditLogRowsForTarget(withUa.id))[0]!.user_agent).toBe('Mozilla/5.0 Test');
 
-    expect(log).toHaveBeenCalledTimes(1);
-    const line = log.mock.calls[0]![0] as string;
-    expect(line).toContain('[UNMASK EMAIL]');
-    expect(line).toContain(`actorId=${admin.id}`);
-    expect(line).toContain(`actorUsername=${admin.username}`);
-    expect(line).toContain(`targetId=${target.id}`);
-    expect(line).toContain(`targetUsername=${target.username}`);
-    expect(line).toContain('userAgent="Mozilla/5.0 Test"');
-    expect(line).toContain('outcome=granted');
-    expect(line).not.toContain(target.email);
-    expect(line).not.toContain('@');
-    log.mockRestore();
+    const withoutUa = await createActiveUser(2);
+    await unmask(`/users/${withoutUa.id}/full-email`, token);
+    expect((await getAuditLogRowsForTarget(withoutUa.id))[0]!.user_agent).toBeNull();
   });
 
-  it('a missing User-Agent header is logged as userAgent=-', async () => {
+  it('rejects an unexpected field in the body with 400 VALIDATION_ERROR, no email, no row', async () => {
     const { token } = await callerToken('admin');
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await getWithUa(`/users/${target.id}/full-email`, token);
-
-    expect(log.mock.calls[0]![0]).toContain('userAgent=-');
-    log.mockRestore();
+    const res = await unmask(`/users/${target.id}/full-email`, token, { reason: 'SUPPORT_REQUEST' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message: 'Request contains unexpected fields', code: 'VALIDATION_ERROR' });
+    expect(res.body).not.toHaveProperty('email');
+    expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
   });
 
-  it('a denied attempt (unknown target) logs targetUsername=- and the raw, quoted id for an invalid one', async () => {
-    const { token } = await callerToken('admin');
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await get(`/users/${UNKNOWN_ID}/full-email`, token);
-    expect(error.mock.calls[0]![0]).toContain(`targetId=${JSON.stringify(UNKNOWN_ID)}`);
-    expect(error.mock.calls[0]![0]).toContain('targetUsername=-');
-    error.mockClear();
-
-    await get('/users/not-a-uuid/full-email', token);
-    expect(error.mock.calls[0]![0]).toContain(`targetId=${JSON.stringify('not-a-uuid')}`);
-    expect(error.mock.calls[0]![0]).toContain('targetUsername=-');
-    expect(error.mock.calls[0]![0]).toContain('reason=VALIDATION_ERROR');
-    error.mockRestore();
-  });
-
-  it("the logged timestamp comes from the database clock, not the service's own clock", async () => {
+  it("created_at comes from the database clock, not the service's own clock", async () => {
     const { token } = await callerToken('admin');
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const before = await dbNow();
 
-    await get(`/users/${target.id}/full-email`, token);
+    await unmask(`/users/${target.id}/full-email`, token);
 
     const after = await dbNow();
-    const match = /timestamp=([^\s]+)/.exec(log.mock.calls[0]![0] as string);
-    expect(match).not.toBeNull();
-    const logged = new Date(match![1]!);
-    expect(logged.getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect(logged.getTime()).toBeLessThanOrEqual(after.getTime());
-    log.mockRestore();
+    const [row] = await getAuditLogRowsForTarget(target.id);
+    expect(row!.created_at.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(row!.created_at.getTime()).toBeLessThanOrEqual(after.getTime());
   });
 
-  it('returns 500 INTERNAL_ERROR and no email when writing the log line throws', async () => {
+  it('force insertAuditLog to throw: 500 INTERNAL_ERROR, no email, no row', async () => {
     const { token } = await callerToken('admin');
     const target = await createActiveUser(1);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {
-      throw new Error('log sink down');
-    });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const auditLogQueries = await import('../../src/db/queries/auditLog.queries.js');
+    const spy = vi
+      .spyOn(auditLogQueries, 'insertAuditLog')
+      .mockRejectedValueOnce(new Error('insert failed'));
 
-    const res = await get(`/users/${target.id}/full-email`, token);
+    const res = await unmask(`/users/${target.id}/full-email`, token);
     expect(res.status).toBe(500);
     expect(res.body.code).toBe('INTERNAL_ERROR');
     expect(res.body).not.toHaveProperty('email');
-    log.mockRestore();
-    errorSpy.mockRestore();
+    expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    spy.mockRestore();
+  });
+
+  it('GET /users/:id/full-email no longer exists', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+    const res = await get(`/users/${target.id}/full-email`, token);
+    expect(res.status).toBe(404);
+  });
+
+  it('the audit row never contains the email, masked or full (the response does, by design)', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+
+    const res = await unmask(`/users/${target.id}/full-email`, token);
+    const [row] = await getAuditLogRowsForTarget(target.id);
+    expect(JSON.stringify(row)).not.toContain('@');
+    expect(res.body.email).toBe(target.email);
   });
 });
 
@@ -616,6 +711,167 @@ describe('PUT /users/:id/status', () => {
     });
   });
 
+  describe('reason validation and audit rows (Stage 26b)', () => {
+    it('suspending with a valid reason writes one USER_SUSPEND audit row', async () => {
+      const { token, user: actor } = await callerToken('admin');
+      const target = await createActiveUser(1);
+
+      const res = await putStatus(token, target, 'suspended');
+      expect(res.status).toBe(200);
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        actor_id: actor.id,
+        action: 'USER_SUSPEND',
+        target_id: target.id,
+        before: { status: 'active' },
+        after: { status: 'suspended' },
+        reason: 'FRAUD_OR_SCAM',
+        user_agent: null,
+      });
+    });
+
+    it('unsuspending with a valid reason writes one USER_UNSUSPEND audit row', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      await putStatus(token, target, 'suspended');
+
+      const res = await putStatus(token, target, 'active');
+      expect(res.status).toBe(200);
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows).toHaveLength(2);
+      expect(rows[1]).toMatchObject({
+        action: 'USER_UNSUSPEND',
+        before: { status: 'suspended' },
+        after: { status: 'active' },
+        reason: 'ISSUE_RESOLVED',
+      });
+    });
+
+    it('OTHER with otherReason stores "OTHER: <trimmed text>"; 9 or 501 chars is rejected, 10 and 500 accepted', async () => {
+      const { token } = await callerToken('admin');
+
+      const tooShort = await createActiveUser(1);
+      const shortRes = await putStatus(token, tooShort, 'suspended', {
+        reason: 'OTHER',
+        otherReason: '123456789',
+      });
+      expect(shortRes.status).toBe(400);
+      expect(shortRes.body).toEqual({
+        message: 'Details must be between 10 and 500 characters',
+        code: 'VALIDATION_ERROR',
+      });
+
+      const tooLong = await createActiveUser(2);
+      const longRes = await putStatus(token, tooLong, 'suspended', {
+        reason: 'OTHER',
+        otherReason: 'x'.repeat(501),
+      });
+      expect(longRes.status).toBe(400);
+
+      const atMin = await createActiveUser(3);
+      const minRes = await putStatus(token, atMin, 'suspended', {
+        reason: 'OTHER',
+        otherReason: '  0123456789  ',
+      });
+      expect(minRes.status).toBe(200);
+      expect((await getAuditLogRowsForTarget(atMin.id))[0]).toMatchObject({
+        reason: 'OTHER: 0123456789',
+      });
+
+      const atMax = await createActiveUser(4);
+      const maxRes = await putStatus(token, atMax, 'suspended', {
+        reason: 'OTHER',
+        otherReason: 'x'.repeat(500),
+      });
+      expect(maxRes.status).toBe(200);
+    });
+
+    it.each([
+      ['missing reason', {}, 'Reason is required'],
+      ['non-string reason', { reason: 123 }, 'Reason must be a string'],
+      ['a code from a different action', { reason: 'APPOINTED_MODERATOR' }, 'Invalid reason'],
+      ['OTHER without otherReason', { reason: 'OTHER' }, 'Details are required when the reason is Other'],
+      [
+        'otherReason with a non-OTHER code',
+        { reason: 'FRAUD_OR_SCAM', otherReason: 'some free text here' },
+        'Request contains unexpected fields',
+      ],
+      [
+        'an extra field',
+        { reason: 'FRAUD_OR_SCAM', foo: 'bar' },
+        'Request contains unexpected fields',
+      ],
+    ])('rejects %s with 400 VALIDATION_ERROR "%s", no change, no row', async (_label, overrides, message) => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/status`, token, { status: 'suspended', ...overrides });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message, code: 'VALIDATION_ERROR' });
+      expect((await getUserByEmail(target.email))!.status).toBe('active');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('an invalid reason on a request that would have been a no-op is still 400', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+
+      const res = await put(`/users/${target.id}/status`, token, { status: 'active' });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('each existing rejection writes no audit row', async () => {
+      const { token: adminToken } = await callerToken('admin', 'caller1');
+      const admin2 = await createUserWithRole('admin2', 'admin');
+      const resForbidden = await putStatus(adminToken, admin2, 'suspended');
+      expect(resForbidden.status).toBe(403);
+
+      const { token: saToken } = await callerToken('super admin', 'caller2');
+      const pending = await registerPending(2);
+      const resPending = await putStatus(saToken, pending, 'suspended');
+      expect(resPending.status).toBe(422);
+
+      const resNotFound = await putStatus(saToken, { id: UNKNOWN_ID }, 'suspended');
+      expect(resNotFound.status).toBe(404);
+
+      expect(await getAuditLogRowsForTarget(admin2.id)).toHaveLength(0);
+      expect(await getAuditLogRowsForTarget(pending.id)).toHaveLength(0);
+    });
+
+    it('force insertAuditLog to throw: 500 INTERNAL_ERROR, the status change and token revocation roll back', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      await seedRefreshToken(target.id, 'tok-a');
+      const auditLogQueries = await import('../../src/db/queries/auditLog.queries.js');
+      const spy = vi
+        .spyOn(auditLogQueries, 'insertAuditLog')
+        .mockRejectedValueOnce(new Error('insert failed'));
+
+      const res = await putStatus(token, target, 'suspended');
+      expect(res.status).toBe(500);
+      expect(res.body.code).toBe('INTERNAL_ERROR');
+      expect((await getUserByEmail(target.email))!.status).toBe('active');
+      expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+
+      spy.mockRestore();
+    });
+
+    it("created_at comes from the database clock", async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const before = await dbNow();
+
+      await putStatus(token, target, 'suspended');
+      const after = await dbNow();
+
+      const [row] = await getAuditLogRowsForTarget(target.id);
+      expect(row!.created_at.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(row!.created_at.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+  });
+
   describe('target role restriction', () => {
     it('admin suspends a plain user: 200', async () => {
       const { token } = await callerToken('admin');
@@ -701,6 +957,8 @@ describe('PUT /users/:id/status', () => {
       expect((await getRefreshTokens(target.id)).map((t) => t.revoked_at)).toEqual(
         tokensBefore.map((t) => t.revoked_at),
       );
+      // One row for the first (real) suspend, none for this no-op repeat.
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(1);
     });
 
     it('unsuspending an already-active user: 200, unchanged user, no revocation', async () => {
@@ -715,12 +973,23 @@ describe('PUT /users/:id/status', () => {
       expect(new Date(res.body.updatedAt)).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(userBefore.updated_at);
       expect((await getRefreshTokens(target.id))[0]!.is_revoked).toBe(false);
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
     });
   });
 });
 
-const putRole = (token: string, target: TestUser | { id: string }, role: unknown) =>
-  put(`/users/${target.id}/role`, token, { role });
+const REASON_FOR_ROLE: Record<string, string> = { admin: 'APPOINTED_MODERATOR', user: 'ROLE_ENDED' };
+const putRole = (
+  token: string | undefined,
+  target: TestUser | { id: string },
+  role: unknown,
+  body: Record<string, unknown> = {},
+) =>
+  put(`/users/${target.id}/role`, token, {
+    role,
+    ...(typeof role === 'string' && role in REASON_FOR_ROLE ? { reason: REASON_FOR_ROLE[role] } : {}),
+    ...body,
+  });
 
 describe('PUT /users/:id/role', () => {
   describe('authentication and authorization', () => {
@@ -894,6 +1163,77 @@ describe('PUT /users/:id/role', () => {
       const res = await put('/users/abc123/role', token, { role: 'admin' });
       expect(res.status).toBe(400);
       expect(res.body).toEqual({ message: 'Invalid user ID', code: 'VALIDATION_ERROR' });
+    });
+  });
+
+  describe('reason validation and audit rows (Stage 26b)', () => {
+    it('promoting with a valid reason writes one USER_PROMOTE audit row', async () => {
+      const { token, user: actor } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(200);
+      const rows = await getAuditLogRowsForTarget(target.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        actor_id: actor.id,
+        action: 'USER_PROMOTE',
+        target_id: target.id,
+        before: { role: 'user' },
+        after: { role: 'admin' },
+        reason: 'APPOINTED_MODERATOR',
+      });
+    });
+
+    it('demoting with a valid reason writes one USER_DEMOTE audit row', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+
+      const res = await putRole(token, target, 'user');
+      expect(res.status).toBe(200);
+      expect(await getAuditLogRowsForTarget(target.id)).toMatchObject([
+        { action: 'USER_DEMOTE', before: { role: 'admin' }, after: { role: 'user' }, reason: 'ROLE_ENDED' },
+      ]);
+    });
+
+    it('rejects a missing reason with 400, no change, no row', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/role`, token, { role: 'admin' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Reason is required', code: 'VALIDATION_ERROR' });
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('rejects a reason code that belongs to a different action', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await put(`/users/${target.id}/role`, token, { role: 'admin', reason: 'FRAUD_OR_SCAM' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Invalid reason', code: 'VALIDATION_ERROR' });
+    });
+
+    it('no-op promote (admin to admin again) writes no audit row', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(200);
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('each existing rejection writes no audit row', async () => {
+      const { token, user } = await callerToken('super admin');
+      const resSelf = await putRole(token, user, 'user');
+      expect(resSelf.status).toBe(403);
+
+      const pending = await registerPending(1);
+      const resPending = await putRole(token, pending, 'admin');
+      expect(resPending.status).toBe(422);
+
+      expect(await getAuditLogRowsForTarget(user.id)).toHaveLength(0);
+      expect(await getAuditLogRowsForTarget(pending.id)).toHaveLength(0);
     });
   });
 

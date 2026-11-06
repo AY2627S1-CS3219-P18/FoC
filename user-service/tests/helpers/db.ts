@@ -29,6 +29,13 @@
 // 2026-11-05: Added getBookmarkRows for supplier bookmarking tests (Tool: Claude Code, model:
 //   claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Stage 26a - added getAuditLogRowsForTarget/getAuditLogRowsForActor, for tests on
+//   admin_audit_log. Since that table has no FK to users, truncateAll's TRUNCATE ... CASCADE
+//   does not clear it between tests in the same file (by design - deleting a user must never
+//   touch audit rows); these helpers filter by target/actor instead of relying on an empty
+//   table. Governing decision: instructions.md Stage 26.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -36,6 +43,7 @@ import type { OtpPurpose, OtpRow } from '../../src/db/queries/otp.queries.js';
 import type { CreditAllocationOutboxRow, OutboxStatus } from '../../src/db/queries/creditOutbox.queries.js';
 import type { RefreshTokenRow } from '../../src/db/queries/tokens.queries.js';
 import type { UserRow } from '../../src/db/queries/users.queries.js';
+import type { AuditLogRow } from '../../src/db/queries/auditLog.queries.js';
 
 export async function truncateAll(): Promise<void> {
   await pool.query('TRUNCATE users CASCADE');
@@ -311,6 +319,22 @@ export async function getBookmarkRows(
   const r = await pool.query<{ supplier_id: number; created_at: Date }>(
     'SELECT supplier_id, created_at FROM user_bookmarks WHERE user_id = $1 ORDER BY created_at, supplier_id',
     [userId],
+  );
+  return r.rows;
+}
+
+export async function getAuditLogRowsForTarget(targetId: string): Promise<AuditLogRow[]> {
+  const r = await pool.query<AuditLogRow>(
+    'SELECT * FROM admin_audit_log WHERE target_id = $1 ORDER BY created_at',
+    [targetId],
+  );
+  return r.rows;
+}
+
+export async function getAuditLogRowsForActor(actorId: string): Promise<AuditLogRow[]> {
+  const r = await pool.query<AuditLogRow>(
+    'SELECT * FROM admin_audit_log WHERE actor_id = $1 ORDER BY created_at',
+    [actorId],
   );
   return r.rows;
 }

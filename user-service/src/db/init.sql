@@ -18,6 +18,11 @@
 --    docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md). Tool: Claude Code (model:
 --    claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the AI tool.
 --    Author review:
+--  2026-11-06: Stage 26a - added audit_action_enum, the append-only admin_audit_log table, its
+--    indexes, and the triggers that enforce append-only. No requirements, architecture, schema,
+--    or API decisions were made by the AI tool — see instructions.md Stage 26 for the governing
+--    decision.
+--    Author review:
 
 DO $$ BEGIN
   CREATE TYPE status_enum AS ENUM ('pending', 'active', 'suspended');
@@ -119,3 +124,54 @@ CREATE TABLE IF NOT EXISTS user_bookmarks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, supplier_id)
 );
+
+DO $$ BEGIN
+  CREATE TYPE audit_action_enum AS ENUM (
+    'USER_PROMOTE', 'USER_DEMOTE', 'USER_SUSPEND', 'USER_UNSUSPEND', 'EMAIL_UNMASK', 'USER_UNLOCK'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Stage 26a: append-only audit log for high-risk admin actions (NFR3.2.2). actor_id/target_id
+-- have no foreign key so that deleting a user never touches audit rows (see the trigger below).
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  actor_id UUID NOT NULL,
+  action audit_action_enum NOT NULL,
+  target_id UUID NOT NULL,
+  before JSONB,
+  after JSONB,
+  reason TEXT NOT NULL,
+  user_agent TEXT
+);
+
+CREATE INDEX IF NOT EXISTS admin_audit_log_created_at_idx ON admin_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS admin_audit_log_actor_id_idx ON admin_audit_log (actor_id);
+CREATE INDEX IF NOT EXISTS admin_audit_log_target_id_idx ON admin_audit_log (target_id);
+CREATE INDEX IF NOT EXISTS admin_audit_log_action_idx ON admin_audit_log (action);
+
+CREATE OR REPLACE FUNCTION admin_audit_log_no_update_or_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'admin_audit_log is append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION admin_audit_log_no_truncate()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'admin_audit_log is append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS admin_audit_log_no_update_or_delete_trigger ON admin_audit_log;
+CREATE TRIGGER admin_audit_log_no_update_or_delete_trigger
+  BEFORE UPDATE OR DELETE ON admin_audit_log
+  FOR EACH ROW EXECUTE FUNCTION admin_audit_log_no_update_or_delete();
+
+DROP TRIGGER IF EXISTS admin_audit_log_no_truncate_trigger ON admin_audit_log;
+CREATE TRIGGER admin_audit_log_no_truncate_trigger
+  BEFORE TRUNCATE ON admin_audit_log
+  FOR EACH STATEMENT EXECUTE FUNCTION admin_audit_log_no_truncate();

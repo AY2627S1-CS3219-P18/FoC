@@ -36,9 +36,26 @@
  *        since that id never reaches the service. Per instructions.md Stage 20 (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: `updateStatus`, `changeRole` and `unlock` now require and validate a `reason` (plus
+ *        `otherReason` when the reason is `OTHER`) in the request body, and pass the stored
+ *        reason string and the User-Agent header through to the service, per instructions.md
+ *        Stage 26b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: `fullEmail` now backs POST /users/:id/full-email (was GET): validates a `reason` body
+ *        the same way as the other audited actions, and no longer has a special
+ *        VALIDATION_ERROR path (that existed only to log the old console line, which is gone).
+ *        Per instructions.md Stage 26c.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
+import { AUDIT_REASON_CODES, type AuditAction } from '../constants/auditReasons.js';
 import * as usersService from '../services/users.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -56,9 +73,71 @@ const statusErrorMap: z.ZodErrorMap = (issue) => {
   return { message: 'Status must be a string' };
 };
 
+// Shared by updateStatus, changeRole and unlock (Stage 26b): validates `reason` against the
+// given action's preset codes and, when it is `OTHER`, `otherReason`'s presence and length.
+// `otherReason` present for a non-OTHER code is treated the same as an unknown field, since the
+// decisions table calls it "rejected (unexpected field)".
+function reasonSuperRefine(action: AuditAction) {
+  return (data: { reason?: unknown; otherReason?: unknown }, ctx: z.RefinementCtx): void => {
+    const codes = AUDIT_REASON_CODES[action];
+    const { reason, otherReason } = data;
+
+    if (reason === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Reason is required', path: ['reason'] });
+      return;
+    }
+    if (typeof reason !== 'string') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Reason must be a string', path: ['reason'] });
+      return;
+    }
+    if (!codes.includes(reason)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid reason', path: ['reason'] });
+      return;
+    }
+
+    if (reason === 'OTHER') {
+      if (otherReason === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Details are required when the reason is Other',
+          path: ['otherReason'],
+        });
+        return;
+      }
+      if (typeof otherReason !== 'string' || otherReason.trim().length < 10 || otherReason.trim().length > 500) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Details must be between 10 and 500 characters',
+          path: ['otherReason'],
+        });
+      }
+    } else if (otherReason !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Request contains unexpected fields',
+        path: ['otherReason'],
+      });
+    }
+  };
+}
+
+// The code alone (e.g. "FRAUD_OR_SCAM"), or "OTHER: <trimmed text>". Call only after
+// reasonSuperRefine has accepted the same data.
+function toStoredReason(data: { reason?: unknown; otherReason?: unknown }): string {
+  const reason = data.reason as string;
+  return reason === 'OTHER' ? `OTHER: ${(data.otherReason as string).trim()}` : reason;
+}
+
 const updateStatusSchema = z
-  .object({ status: z.enum(['active', 'suspended'], { errorMap: statusErrorMap }) })
-  .strict();
+  .object({
+    status: z.enum(['active', 'suspended'], { errorMap: statusErrorMap }),
+    reason: z.unknown(),
+    otherReason: z.unknown().optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) =>
+    reasonSuperRefine(data.status === 'suspended' ? 'USER_SUSPEND' : 'USER_UNSUSPEND')(data, ctx),
+  );
 
 // A single, fixed message regardless of why the value failed (wrong type, repeated
 // param turned into an array by Express, or not one of `values`) - per instructions.md
@@ -186,9 +265,17 @@ export const getById = asyncHandler(async (req, res) => {
 
 export const updateStatus = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
-  const { status } = updateStatusSchema.parse(req.body);
+  const parsed = updateStatusSchema.parse(req.body);
+  const reason = toStoredReason(parsed);
   // authenticate has run, so req.user is set.
-  const user = await usersService.changeUserStatus(req.user!.user_id, req.user!.role, id, status);
+  const user = await usersService.changeUserStatus(
+    req.user!.user_id,
+    req.user!.role,
+    id,
+    parsed.status,
+    reason,
+    req.get('user-agent') ?? null,
+  );
   res.status(200).json(user);
 });
 
@@ -203,40 +290,48 @@ const roleErrorMap: z.ZodErrorMap = (issue) => {
 };
 
 const changeRoleSchema = z
-  .object({ role: z.enum(['admin', 'user'], { errorMap: roleErrorMap }) })
-  .strict();
+  .object({
+    role: z.enum(['admin', 'user'], { errorMap: roleErrorMap }),
+    reason: z.unknown(),
+    otherReason: z.unknown().optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) =>
+    reasonSuperRefine(data.role === 'admin' ? 'USER_PROMOTE' : 'USER_DEMOTE')(data, ctx),
+  );
 
 export const changeRole = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
-  const { role } = changeRoleSchema.parse(req.body);
+  const parsed = changeRoleSchema.parse(req.body);
+  const reason = toStoredReason(parsed);
   // authenticate has run, so req.user is set.
-  const user = await usersService.changeUserRole(req.user!.user_id, id, role);
+  const user = await usersService.changeUserRole(
+    req.user!.user_id,
+    id,
+    parsed.role,
+    reason,
+    req.get('user-agent') ?? null,
+  );
   res.status(200).json(user);
 });
+
+const unlockBodySchema = z.object({}).strict();
 
 export const unlock = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
+  unlockBodySchema.parse(req.body);
   // authenticate has run, so req.user is set.
-  const user = await usersService.unlockUser(req.user!.user_id, req.user!.role, id);
+  const user = await usersService.unlockUser(req.user!.user_id, req.user!.role, id, req.get('user-agent') ?? null);
   res.status(200).json(user);
 });
 
-// GET /users/:id/full-email. The id's VALIDATION_ERROR case never reaches usersService.getFullEmail,
-// so it is logged here, before the ZodError is rethrown for the global handler's usual 400.
+const fullEmailBodySchema = z.object({}).strict();
+
+// POST /users/:id/full-email.
 export const fullEmail = asyncHandler(async (req, res) => {
-  let id: string;
-  try {
-    ({ id } = idParamsSchema.parse(req.params));
-  } catch (err) {
-    // authenticate has run, so req.user is set.
-    await usersService.logUnmaskValidationFailure(
-      req.user!.user_id,
-      req.params.id!,
-      req.get('user-agent'),
-    );
-    throw err;
-  }
+  const { id } = idParamsSchema.parse(req.params);
+  fullEmailBodySchema.parse(req.body);
   // authenticate has run, so req.user is set.
-  const { email } = await usersService.getFullEmail(req.user!.user_id, id, req.get('user-agent'));
+  const { email } = await usersService.getFullEmail(req.user!.user_id, id, req.get('user-agent') ?? null);
   res.status(200).json({ email });
 });
