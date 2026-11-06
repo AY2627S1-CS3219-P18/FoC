@@ -9638,3 +9638,35 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-07 — ECS Fargate: start and stop checklist
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
+
+**Prompts (exact):**
+> It worked
+
+**Key responses:**
+
+- Wrote the stop, start and full teardown steps, using the real resource names, and added a short troubleshooting table from problems met during setup.
+- Recorded the deployment status in the plan. `order-service:3` added `SUPPLIER_SERVICE_URL` after the first deploy of `1fad383` had gone out without it.
+
+**Verification (run):** read-only checks through the console and the load balancer during setup, listed in earlier entries. The Deploy run for `4895ef8` succeeded. George reported that posting an errand worked on `order-service:3`, and I saw that revision's image and variable. **Not verified:** the checklist's stop and start steps haven't been run in full yet, and the Redis addresses staying the same after recreation is unconfirmed.
+
+**Files:**
+
+- `docs/ecs-fargate-run-checklist.md` (created)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
