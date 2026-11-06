@@ -1,0 +1,46 @@
+//
+// AI Assistance Disclosure:
+// Tool: Codex (model: GPT-6), date: 2026-11-07
+// Scope: Implemented the team-specified chat creation endpoint and supporting scaffold.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review: tng wen xi
+
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+  moduleFormat = "esm"
+  importFileExtension = "js"
+}
+datasource db {
+  provider = "mysql"
+}
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+}
+enum ParticipantRole {
+  REQUESTER
+  COURIER
+}
+model Conversation {
+  conversationId String @id @default(uuid()) @map("conversation_id") @db.Char(36)
+  orderId String @unique @map("order_id") @db.Char(36)
+  title String @map("chat_title") @db.Text
+  status ConversationStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.DateTime(3)
+  participants ChatParticipant[]
+  @@index([updatedAt, conversationId])
+  @@map("chats")
+}
+model ChatParticipant {
+  id String @id @default(uuid()) @db.Char(36)
+  chatId String @map("chat_id") @db.Char(36)
+  userId String @map("user_id") @db.Char(36)
+  role ParticipantRole
+  lastReadMessageId String? @map("last_read_message_id") @db.Char(36)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.DateTime(3)
+  revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  conversation Conversation @relation(fields: [chatId], references: [conversationId], onDelete: Restrict, onUpdate: Restrict)
+  @@map("chat_participants")
+}

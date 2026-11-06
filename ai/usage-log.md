@@ -9541,3 +9541,109 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-07 — Chat service: conversation creation endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate | Refactor/Docs
+**Governing decision:** Team decisions supplied in this chat for POST /chat/conversations, response/error bodies, service API-key authentication, MySQL/Prisma v7 adapter, schema fields, timestamp precision, index and duplicate handling. Implemented contract documented in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> yes. now can u implement this endpoint first? then we go thru the rest tgt
+
+> soft deletion: add nullable **`revokedAt`**
+>
+> **`@prisma/adapter-mariadb`** for Prisma v7
+
+> identical creation details 200, differing detais 409
+>
+> initial timestamp: revokedAt startst null, the rest when the row is created
+
+> ok NOW IMPLEMENT im tired
+
+**Key responses:**
+
+- Created the standalone Express/TypeScript chat-service, following order-service's routes/controllers/services/config/db structure. Added POST /chat/conversations with the confirmed orderId, requesterId and orderDescription body. No user bearer token is used or stored.
+- Service-key authentication uses timing-safe comparison of SHA-256 digests; missing/invalid keys return the supplied 401 response, and a valid key with an unpermitted service name returns the supplied 403 response.
+- Added UUID conversation/participant IDs, unique orderId, chat_title TEXT NOT NULL, ACTIVE initial status, UTC DATETIME(3) timestamps, nullable read position/revokedAt, and the confirmed updatedAt/conversationId composite index. Creation uses a nested Prisma write for the conversation and requester participant together.
+- Identical retries return 200, new rows return 201, and differing requester/description return the supplied 409. The service recovers unique-orderId races by reading the winning row. Validation uses the supplied 400 envelope.
+- Added migration, local configuration placeholders and setup instructions. No message/system notification/socket endpoints or order-service BullMQ delivery were implemented in this endpoint-only stage.
+- Verification: 13 HTTP tests passed with injected Prisma doubles (including auth, validation, duplicate/conflict and unique-constraint race recovery). Prisma generation and validation, TypeScript typecheck and build passed. Initial sandbox test attempt could not bind localhost; rerunning with permission passed. A test argument type error was corrected before final passing checks. One typecheck command was accidentally invoked at repository root (no package.json); the subsequent chat-service check passed.
+- Dependency installation and Prisma engine generation required network permission. npm audit reported zero vulnerabilities at install time. The stalled initial sandbox install was stopped after the successful install.
+- No live database integration/migration execution: Docker daemon unavailable. Migration SQL was generated with prisma migrate diff, inspected, and the Prisma schema validated. postman status was attempted but the installed CLI does not support that command; no Postman workspace was created or published.
+
+**Files:**
+
+- `chat-service/.env.example` (created)
+- `chat-service/.gitignore` (created)
+- `chat-service/README.md` (created)
+- `chat-service/package-lock.json` (created)
+- `chat-service/package.json` (created)
+- `chat-service/prisma.config.ts` (created)
+- `chat-service/prisma/migrations/20261107000000_create_conversations/migration.sql` (created)
+- `chat-service/prisma/migrations/migration_lock.toml` (created)
+- `chat-service/prisma/schema.prisma` (created)
+- `chat-service/src/app.ts` (created)
+- `chat-service/src/config/env.ts` (created)
+- `chat-service/src/controllers/conversations.controller.ts` (created)
+- `chat-service/src/conversations.spec.ts` (created)
+- `chat-service/src/db/prisma.ts` (created)
+- `chat-service/src/middleware/authenticate-service.ts` (created)
+- `chat-service/src/routes/conversations.routes.ts` (created)
+- `chat-service/src/server.ts` (created)
+- `chat-service/src/services/conversations.service.ts` (created)
+- `chat-service/tsconfig.build.json` (created)
+- `chat-service/tsconfig.json` (created)
+- `chat-service/vitest.config.ts` (created)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure header and log index)
+
+**Deviations / questions raised for the team:**
+
+- No further questions. Title/requester comparison follows the supplied creation contract; future title mutation must preserve/revisit original creation-detail comparison.
+- Only creation-related tables are included; messages, attachments and processed events are not scaffolded in this stage.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — Chat service: Docker setup
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Boilerplate | Refactor/Docs
+**Governing decision:** User requested Docker setup for the existing chat service; prior chat decisions specify MySQL and service-key authentication, and matching order-service structure. Reused order-service Docker multi-stage/dev-watch conventions and supplier-service's existing MySQL 8 Compose convention.
+
+**Prompts (exact):**
+
+> set up the docker for chat service also
+
+**Key responses:**
+
+- Added dev and production image targets with Node 24, Prisma generation, automatic migration deployment, production compilation and dev-dependency pruning. Production runs as node; Docker context excludes credentials, local modules and generated output.
+- Added chat-service and persistent chat-db to root Compose, UTC MySQL configuration, database readiness dependency, service-key configuration and configurable host port (CHAT_SERVICE_PORT, default 3005). Development override uses the existing Compose Watch pattern.
+- Added safe root environment placeholders and setup commands. Existing real .env values were not read, printed or modified. No frontend routes, HTTP health endpoints or worker delivery changes were introduced.
+- Verification: base and merged development Compose configurations passed config --quiet using .env.example; production and dev image builds succeeded. Temporary isolated MySQL 8 and both API images started successfully. Production migration applied; dev detected no pending migrations. Real HTTP creation/identical retry/conflict/invalid-key returned 201/200/409/401; dev duplicate returned 200. Database inspection found one conversation, REQUESTER participant with NULL read position/revokedAt, and +00:00 server timezone.
+- Docker initially required sandbox access escalation; authorized execution succeeded. Temporary verification containers/network and their test volume were removed after checks. Verification image tags remain cached locally. The entire application stack and file-change-triggered reload were not exercised.
+
+**Files:**
+
+- `chat-service/Dockerfile` (created)
+- `chat-service/.dockerignore` (created)
+- `compose.yaml` (modified)
+- `compose.dev.yaml` (modified)
+- `.env.example` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: header and log index)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+i kept all changes
+
+**Author review:**
+tng wen xi

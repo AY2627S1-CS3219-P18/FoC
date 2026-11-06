@@ -38,9 +38,52 @@
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
 
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-11-07
+# Scope: Docker scaffold following existing order/supplier service conventions.
+# No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review: tng wen xi
 name: foc
 
 services:
+  # AI-generated (human review pending).
+  # ---- chat-service ---------------------------------------------------------
+  chat-db:
+    image: mysql:8
+    restart: unless-stopped
+    command: ["--default-time-zone=+00:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${CHAT_DB_PASSWORD:?set CHAT_DB_PASSWORD in .env}
+      MYSQL_DATABASE: chat_service
+    volumes:
+      - chat-db-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chat-service:
+    build:
+      context: ./chat-service
+      target: production
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: mysql://root:${CHAT_DB_PASSWORD}@chat-db:3306/chat_service
+      CHAT_SERVICE_API_KEY: ${CHAT_SERVICE_API_KEY:?set CHAT_SERVICE_API_KEY in .env}
+    ports:
+      - "${CHAT_SERVICE_PORT:-3005}:3000"
+    depends_on:
+      chat-db:
+        condition: service_healthy
+
   # ---- order-service ----------------------------------------------------------
   order-db:
     image: postgres:17
@@ -81,7 +124,13 @@ services:
       order-redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -93,7 +142,8 @@ services:
       target: production
     init: true
     restart: unless-stopped
-    command: ["sh", "-c", "npx prisma migrate deploy && exec node dist/worker.js"]
+    command:
+      ["sh", "-c", "npx prisma migrate deploy && exec node dist/worker.js"]
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
@@ -114,7 +164,8 @@ services:
     # The relay deletes an outbox row once its job is enqueued, so Redis then holds the
     # only copy of each credit job. AOF (fsync every second) bounds a crash to ~1 s of
     # writes; Redis's default RDB snapshots are kept, and AOF rewrites use an RDB preamble.
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    command:
+      ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - order-redis-data:/data
     healthcheck:
@@ -127,7 +178,7 @@ services:
   # AI Assistance Disclosure:
   # Tool: Claude Code (claude-sonnet-5), date: 2026-09-24
   #   24/09/2026: Stage 3b - user-db + user-service compose services
-  #     Author review: No changes needed. 
+  #     Author review: No changes needed.
   #   26/09/2026: Stage 7 - publish user-db on host port 5434 for the test suite (REVERSE BEFORE DEPLOY)
   #     Author review:
   user-db:
@@ -237,7 +288,13 @@ services:
       credit-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -340,7 +397,11 @@ services:
       - supplier-db-data:/var/lib/mysql
       - ./supplier-service/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -437,3 +498,4 @@ volumes:
   user-db-data:
   credit-db-data:
   supplier-db-data:
+  chat-db-data:

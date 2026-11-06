@@ -28,7 +28,41 @@
 #        or API decisions were made by the AI tool.
 # Author review:
 
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-11-07
+# Scope: Docker scaffold following existing order/supplier service conventions.
+# No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review: tng wen xi
 services:
+  # AI-generated (human review pending).
+  chat-service:
+    build:
+      target: dev
+    restart: "no"
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - action: sync
+          path: ./chat-service/src
+          target: /app/src
+          ignore:
+            - generated/
+        - action: sync+restart
+          path: ./chat-service/prisma
+          target: /app/prisma
+        - action: sync+restart
+          path: ./chat-service/prisma.config.ts
+          target: /app/prisma.config.ts
+        - action: rebuild
+          path: ./chat-service/package.json
+        - action: rebuild
+          path: ./chat-service/package-lock.json
+        - action: rebuild
+          path: ./chat-service/tsconfig.json
+        - action: rebuild
+          path: ./chat-service/tsconfig.build.json
+
   frontend:
     build:
       context: ./frontend
