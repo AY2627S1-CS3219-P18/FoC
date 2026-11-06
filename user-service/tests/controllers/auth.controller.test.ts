@@ -878,11 +878,11 @@ describe('POST /auth/verify-otp', () => {
       expect((await getUserByEmail(user.email))!.status).toBe('pending');
     });
 
-    it('5 wrong OTPs, then the correct one: 429 OTP_ATTEMPTS_EXCEEDED, account stays pending', async () => {
+    it('4 wrong OTPs, then the 5th: 429 OTP_ATTEMPTS_EXCEEDED with Retry-After, and the correct one afterwards still 429 (account stays pending)', async () => {
       const user = await registerPending(1);
       const good = latestOtpFor(user.email);
       const bad = wrongOtp(good);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 4; i++) {
         const r = await post('/auth/verify-otp').send({
           email: user.email,
           otp: bad,
@@ -890,6 +890,15 @@ describe('POST /auth/verify-otp', () => {
         });
         expect(r.status).toBe(400);
       }
+      const fifth = await post('/auth/verify-otp').send({
+        email: user.email,
+        otp: bad,
+        purpose: 'registration',
+      });
+      expect(fifth.status).toBe(429);
+      expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
+      expect(fifth.headers['retry-after']).toBeDefined();
+
       const res = await post('/auth/verify-otp').send({
         email: user.email,
         otp: good,
@@ -1079,10 +1088,15 @@ describe('POST /auth/verify-otp', () => {
       expect((await getOtps(user.id, 'Forgot Password'))[0]!.attempts_count).toBe(1);
     });
 
-    it('5 wrong OTPs: then even the correct one gets 429 OTP_ATTEMPTS_EXCEEDED', async () => {
+    it('4 wrong OTPs: 400 each; the 5th: 429 OTP_ATTEMPTS_EXCEEDED; the correct one afterwards still 429', async () => {
       const { user, otp } = await withForgotOtp();
-      for (let i = 0; i < 5; i++)
+      for (let i = 0; i < 4; i++)
         expect((await verify(user.email, wrongOtp(otp))).status).toBe(400);
+      const fifth = await verify(user.email, wrongOtp(otp));
+      expect(fifth.status).toBe(429);
+      expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
+      expect(fifth.headers['retry-after']).toBeDefined();
+
       const res = await verify(user.email, otp);
       expect(res.status).toBe(429);
       expect(res.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
@@ -1623,10 +1637,15 @@ describe('POST /auth/reset-password', () => {
       expect((await getRefreshTokenByPlain(refreshToken))!.is_revoked).toBe(false);
     });
 
-    it('5 wrong OTPs, then the correct one: 429 OTP_ATTEMPTS_EXCEEDED, password unchanged', async () => {
+    it('4 wrong OTPs, then the 5th: 429 OTP_ATTEMPTS_EXCEEDED; the correct one afterwards still 429, password unchanged', async () => {
       const { user, otp } = await withForgotOtp();
       const before = (await getUserByEmail(user.email))!.password_hash;
-      for (let i = 0; i < 5; i++) expect((await reset(user.email, wrongOtp(otp))).status).toBe(400);
+      for (let i = 0; i < 4; i++) expect((await reset(user.email, wrongOtp(otp))).status).toBe(400);
+
+      const fifth = await reset(user.email, wrongOtp(otp));
+      expect(fifth.status).toBe(429);
+      expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
+      expect(fifth.headers['retry-after']).toBeDefined();
 
       const res = await reset(user.email, otp);
 

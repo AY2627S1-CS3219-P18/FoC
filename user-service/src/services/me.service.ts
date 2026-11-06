@@ -72,6 +72,12 @@
  *        (self-view, so the email stays unmasked), per instructions.md Stage 20.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
+ * Scope: verifyEmailChangeOtp and confirmPasswordChange now call the shared throwOtpFailure
+ *        helper instead of a hardcoded INVALID_OTP throw, per instructions.md Stage 25.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -92,7 +98,7 @@ import {
   USERNAME_REGEX,
 } from './auth.service.js';
 import { escalationWording } from './lockEscalation.js';
-import { checkOtp, requestOtp, type RequestOtpResult } from './otp.service.js';
+import { checkOtp, requestOtp, throwOtpFailure, type RequestOtpResult } from './otp.service.js';
 import { toUserResponse, type UserResponse } from './userResponse.js';
 
 const BCRYPT_WORK_FACTOR = 10;
@@ -321,7 +327,7 @@ export async function verifyEmailChangeOtp(userId: string, otp: string): Promise
 
   // Thrown only after commit so the incremented attempt count is persisted.
   if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    throwOtpFailure(result);
   }
 }
 
@@ -497,6 +503,6 @@ export async function confirmPasswordChange(
 
   // Thrown only after commit so the incremented attempt count is persisted.
   if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    throwOtpFailure(result);
   }
 }

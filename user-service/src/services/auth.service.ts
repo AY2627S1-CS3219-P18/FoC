@@ -58,6 +58,12 @@
 //   locking and error codes are unchanged. Governing decision: instructions.md Stage 23b.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Stage 25a/25c - verifyRegistrationOtp, verifyForgotPasswordOtp and resetPassword
+//   now call the shared throwOtpFailure helper instead of a hardcoded INVALID_OTP throw, so
+//   they also surface OTP_EXPIRED and the 429 OTP_ATTEMPTS_EXCEEDED (with Retry-After) from
+//   otp.service.ts. Governing decision: instructions.md Stage 25.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -73,7 +79,7 @@ import { signAccessToken } from '../utils/jwt.js';
 import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { durationHoursForLevel, effectiveEscalationLevel, escalationWording } from './lockEscalation.js';
-import { checkOtp, issueOtp, requestOtp } from './otp.service.js';
+import { checkOtp, issueOtp, requestOtp, throwOtpFailure } from './otp.service.js';
 
 function accountLockedMessage(lockLevel: number): string {
   return `Too many failed login attempts. Please try again in ${escalationWording(lockLevel)}.`;
@@ -424,7 +430,7 @@ export async function verifyRegistrationOtp({
 
   // Thrown only after commit so the incremented attempt count is persisted.
   if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    throwOtpFailure(result);
   }
 }
 
@@ -573,7 +579,7 @@ export async function verifyForgotPasswordOtp({
 
   // Thrown only after commit so the incremented attempt count is persisted.
   if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    throwOtpFailure(result);
   }
 }
 
@@ -633,6 +639,6 @@ export async function resetPassword({
 
   // Thrown only after commit so the incremented attempt count is persisted.
   if (!result.ok) {
-    throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
+    throwOtpFailure(result);
   }
 }

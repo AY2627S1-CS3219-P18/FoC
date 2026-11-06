@@ -17,10 +17,19 @@
 //   sendOtpEmail for its per-attempt log lines. Governing decision: instructions.md Stage 19.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-06: Stage 25a/25c - checkOtp now returns a reason on failure instead of always
+//   throwing INVALID_OTP; an expired code counts as a failed attempt (capped by
+//   incrementAttempts, Stage 25c); the attempts check moved above the expiry check; the 5th
+//   failed attempt (wrong or expired) returns 429 OTP_ATTEMPTS_EXCEEDED with a Retry-After
+//   computed from the DB clock via the shared otpRetryAfterSeconds helper; added the shared
+//   throwOtpFailure helper used by every checkOtp caller. Governing decision: instructions.md
+//   Stage 25.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { config } from "../config.js";
 import * as otpQueries from "../db/queries/otp.queries.js";
-import type { OtpPurpose } from "../db/queries/otp.queries.js";
+import type { OtpPurpose, OtpRowWithNow } from "../db/queries/otp.queries.js";
 import * as userQueries from "../db/queries/users.queries.js";
 import type { Queryable } from "../db/transaction.js";
 import { AppError } from "../utils/AppError.js";
@@ -179,9 +188,39 @@ export async function requestOtp(
   return { status: "sent" };
 }
 
+export type CheckOtpResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid" | "expired"; exhausted?: boolean; retryAfterSeconds?: number };
+
+// Seconds until a resend is allowed for this OTP row, on the DB clock. Shared by the
+// attempts-exceeded check below and the 5th-failed-attempt path, so both give the same value.
+function otpRetryAfterSeconds(row: { created_at: Date; db_now: Date }): number {
+  const availableAt = row.created_at.getTime() + config.otp.resendCooldownSeconds * 1000;
+  return Math.max(0, Math.ceil((availableAt - row.db_now.getTime()) / 1000));
+}
+
+// Throws the response for a checkOtp failure, after the caller's transaction has committed
+// (so the incremented attempt count is never rolled back). Use at every checkOtp call site
+// instead of a hardcoded INVALID_OTP throw.
+export function throwOtpFailure(result: { ok: false; reason: "invalid" | "expired"; exhausted?: boolean; retryAfterSeconds?: number }): never {
+  if (result.exhausted) {
+    throw new AppError(
+      429,
+      "Too many incorrect attempts. Please request a new OTP.",
+      "OTP_ATTEMPTS_EXCEEDED",
+      result.retryAfterSeconds,
+    );
+  }
+  if (result.reason === "expired") {
+    throw new AppError(400, "OTP has expired. Please request a new one.", "OTP_EXPIRED");
+  }
+  throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
+}
+
 // Must run inside a transaction that already holds the user row lock.
-// Returns { ok: false } on a wrong guess instead of throwing, so the caller's
-// transaction commits and the incremented attempt count is not rolled back.
+// Returns { ok: false, ... } on a failed guess instead of throwing, so the caller's
+// transaction commits and the incremented attempt count is not rolled back. The caller
+// throws via throwOtpFailure once the transaction has committed.
 export async function checkOtp(
   {
     userId,
@@ -190,29 +229,28 @@ export async function checkOtp(
   }: { userId: string; purpose: OtpPurpose; otp: string },
   db: Queryable,
   consume: boolean = true,
-): Promise<{ ok: boolean }> {
+): Promise<CheckOtpResult> {
   const row = await otpQueries.findLatestOtp(userId, purpose, db);
   if (!row || row.consumed_at) {
     throw new AppError(400, "Invalid or expired OTP", "INVALID_OTP");
   }
-  if (row.expires_at.getTime() <= row.db_now.getTime()) {
-    throw new AppError(
-      400,
-      "OTP has expired. Please request a new one.",
-      "OTP_EXPIRED",
-    );
-  }
+  // Checked before expiry: a code that is both exhausted and expired is dead, not stale.
   if (row.attempts_count >= row.max_attempts) {
     throw new AppError(
       429,
       "Too many incorrect attempts. Please request a new OTP.",
       "OTP_ATTEMPTS_EXCEEDED",
+      otpRetryAfterSeconds(row),
     );
   }
 
-  if (!hashesMatch(sha256(otp), row.otp_hash)) {
-    await otpQueries.incrementAttempts(row.id, db);
-    return { ok: false };
+  const expired = row.expires_at.getTime() <= row.db_now.getTime();
+  if (!expired && !hashesMatch(sha256(otp), row.otp_hash)) {
+    return failedAttempt(row, "invalid", db);
+  }
+  if (expired) {
+    // A guess against an expired code counts as a failed attempt either way (Stage 25c).
+    return failedAttempt(row, "expired", db);
   }
 
   // consume=false validates the code without using it up (wrong guesses still count above).
@@ -227,4 +265,16 @@ export async function checkOtp(
     await otpQueries.resetSendEscalation(row.id, db);
   }
   return { ok: true };
+}
+
+async function failedAttempt(
+  row: OtpRowWithNow,
+  reason: "invalid" | "expired",
+  db: Queryable,
+): Promise<CheckOtpResult> {
+  const newCount = await otpQueries.incrementAttempts(row.id, db);
+  if (newCount >= row.max_attempts) {
+    return { ok: false, reason, exhausted: true, retryAfterSeconds: otpRetryAfterSeconds(row) };
+  }
+  return { ok: false, reason };
 }
