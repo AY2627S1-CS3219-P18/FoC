@@ -9267,6 +9267,7 @@ Accepted all changes.
 **Governing decision:** George's ECS Fargate plan, `ecs-fargate-session-prompt.md` ("Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project"), section "Phase 1: repo changes", items 1-11. The plan was supplied as a local file attachment and is not committed to this repository.
 
 **Prompts (exact):**
+
 > @"C:\Users\Aeodile\Downloads\ecs-fargate-session-prompt.md"
 > The attached file, ecs-fargate-session-prompt.md, is my full plan for moving this repo from Docker Compose to AWS ECS on Fargate. Treat it as my instructions, including its ground rules, and don't reopen its decisions unless a fact proves one wrong.
 >
@@ -9371,6 +9372,7 @@ Facts found while testing:
 **Governing decision:** George's instruction in chat, below. Supersedes the note in the entry "ECS Fargate Phase 1: repo changes for deployment" that the plan is not committed; that plan now lives at `docs/ecs-fargate-session-prompt.md`.
 
 **Prompts (exact):**
+
 > > The plan isn’t in the repo: the usage log cites ecs-fargate-session-prompt.md by name only. AGENTS.md expects decisions to be written down, so consider committing it to docs/.
 >
 > ok add it to docs
@@ -9404,6 +9406,7 @@ None.
 **Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
 
 **Prompts (exact):**
+
 > wait wait, the repo is supposed to be the teams repo not mine
 
 > Yes, use team repo
@@ -9447,6 +9450,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
 
 **Prompts (exact):**
+
 > this is intended, it should auto deploy on every main merge
 
 The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
@@ -9483,6 +9487,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 **Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
 
 **Prompts (exact):**
+
 > One PR
 
 **Key responses:**
@@ -9503,3 +9508,36 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-06 — Order events: courierId on acceptance
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's explicit chat instruction below; existing nullable courierId in `order-service/prisma/schema.prisma`.
+
+**Prompts (exact):**
+
+> sorry bro i said wrongly. add the courier id to the order accepted event.
+
+**Key responses:**
+
+- Added top-level `courierId` to `order:accepted` from the committed order row and documented it in the payload type. Updated the existing acceptance event assertion.
+- Verification: targeted Vitest run covering order-events, socket-sink, and credit-jobs passed (3 files, 24 tests). `npm run typecheck` passed.
+- No database migration or event transport changes were made.
+
+**Files:**
+
+- `order-service/src/realtime/order-events.ts` (modified)
+- `order-service/src/realtime/order-events.spec.ts` (modified)
+- `README.md` (modified: disclosure header and log index)
+- `ai/usage-log.md` (appended: this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

@@ -7,6 +7,11 @@
  * Scope (2026-10-20): `failed` status - pending -> failed publishes order:failed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Codex (model: GPT-6), date: 2026-11-06
+ * Scope: Updated the acceptance event assertion for the user-specified courierId field.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import type { OrderRequest } from '../generated/prisma/client.js';
@@ -97,7 +102,7 @@ describe('eventsForTransition', () => {
       {
         name: 'order:accepted',
         rooms: [`user:${R}`, `user:${C}`, `order:${ID}`, 'listing'],
-        payload: thin('accepted'),
+        payload: { ...thin('accepted'), courierId: C },
         joins: [{ userId: C, orderId: ID }],
       },
     ]);
