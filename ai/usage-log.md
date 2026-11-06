@@ -9474,3 +9474,32 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-06 — ECS Fargate plan: add audit log route
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
+
+**Prompts (exact):**
+> One PR
+
+**Key responses:**
+
+- Merged the team's `main` (`9063cdd`, Stage 26) into this branch. Only `README.md` and `ai/usage-log.md` conflicted, and both sides had only appended, so both were kept. The ECS Fargate rows in the README index were renumbered 190-193 to follow the team's rows, and the entries' content is unchanged.
+- Added `/admin/audit-logs` and `/admin/audit-logs/*` to the user-service ALB rule in Phase 2 step 18 of the plan. The 5-path limit on an ALB rule is from memory and marked to verify.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

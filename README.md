@@ -114,6 +114,10 @@ Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #19
        Fargate CD workflow. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
 Author review:
+Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #194 for the audit
+       log route in the ECS Fargate plan, and renumbered this branch's rows after merging main.
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -563,3 +567,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 191 | 2026-11-06 | docs | ECS Fargate plan: add to docs | Copied the ECS Fargate plan into docs/ verbatim with a disclosure header. |
 | 192 | 2026-11-06 | docs | ECS Fargate plan: record team repo and CD trigger decisions | Reworded the plan for the team repo, deploy on every main merge and skipped budget alert. |
 | 193 | 2026-11-06 | CI/CD | ECS Fargate Phase 3: CD workflow | Added a workflow and script that build images and deploy to ECS on every main merge. |
+| 194 | 2026-11-06 | docs | ECS Fargate plan: add audit log route | Added /admin/audit-logs to the plan's ALB rules after merging main. |

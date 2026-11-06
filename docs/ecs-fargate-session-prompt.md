@@ -139,7 +139,7 @@ Service Connect tasks are larger because AWS recommends adding [256 CPU and at l
 17. **Target groups:** target type IP, health paths from the table above, deregistration delay 30s.
 18. **ALB:** internet-facing, public subnets, `foc-alb`, idle timeout 60s. HTTP listener on 80 with default forward to frontend, and rules:
     - `/api/v1`, `/api/v1/*` → supplier
-    - `/auth`, `/auth/*`, `/users`, `/users/*` → user
+    - `/auth`, `/auth/*`, `/users`, `/users/*`, `/admin/audit-logs`, `/admin/audit-logs/*` → user. Other `/admin/*` paths are SPA routes, so they stay on the frontend. This is 6 paths, and an ALB rule may only take 5 **(verify)**, so it may need two rules
     - `/credits`, `/credits/*` → credit
     - `/orders`, `/orders/*`, `/socket.io`, `/socket.io/*` → order
 19. **ECS services:** desired count 1, public IP on, `foc-tasks`, deployment settings from the decisions table, deployment circuit breaker with rollback on web services, health check grace period of at least 60s. Create in this order: user, credit, supplier, order, workers, frontend. **(verify)** A Service Connect client only learns endpoints that exist when its task starts, and user and credit each need the other, so force a new deployment of `user-service` afterwards.
