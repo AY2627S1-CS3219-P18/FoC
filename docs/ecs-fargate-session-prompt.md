@@ -21,6 +21,11 @@ Scope: Recorded facts from Phase 2 steps 10-14: MySQL version, database logins, 
        SSM parameter names and the one-off log group. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
+Scope: Recorded facts from Phase 2 and Phase 4: ALB rule limit, the superadmin smoke test finding and
+       the task definition order for shipping 1fad383. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment
@@ -76,6 +81,9 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 - **User database name:** `foc-user-db` was created without an initial database name, so step 16 must run `CREATE DATABASE user_service;` first.
 - **SSM parameters:** `/foc/user/db-password`, `/foc/user/super-admin-password`, `/foc/user/jwt-private-key`, `/foc/user/jwt-public-key`, `/foc/credit/admin-password`, `/foc/credit/app-password`, `/foc/supplier/db-password` and `/foc/order/database-url`.
 - **One-off task logs:** steps 16 and 20 log to an extra log group, `/ecs/foc/one-off`.
+- **ALB rules:** a rule takes at most 5 path values, so user's 6 paths use two rules.
+- **Smoke test finding:** `superadmin` has no credit balance, so a transfer to it as courier ends in `COURIER_NOT_FOUND` and a dead-letter row while the order shows `completed`. Raised for the team to decide.
+- **`SUPPLIER_SERVICE_URL`:** `order-service` must run a task definition with this variable before `1fad383` deploys, because CD only swaps the image.
 
 ## What the repo looks like (found by reading `acd4397`)
 

@@ -126,6 +126,10 @@ Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #19
        Phase 2 facts in the ECS Fargate plan. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #197 for shipping the
+       order supplier check. No requirements, architecture, schema, or API decisions were made by
+       the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -578,3 +582,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 194 | 2026-11-06 | docs | ECS Fargate plan: add audit log route | Added /admin/audit-logs to the plan's ALB rules after merging main. |
 | 195 | 2026-11-06 | supplier-service, docs | ECS Fargate: supplier S3 access through a task role | Made S3 keys optional so ECS can use a task role; updated the plan. |
 | 196 | 2026-11-07 | docs | ECS Fargate plan: record Phase 2 steps 10-14 facts | Recorded database logins, versions and SSM parameter names in the plan. |
+| 197 | 2026-11-07 | order-service, docs | ECS Fargate: ship the order supplier check | Applied the supplier and location existence check onto main for deployment. |

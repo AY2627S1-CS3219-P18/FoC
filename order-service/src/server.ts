@@ -23,6 +23,10 @@
  *        Fargate plan, Phase 1 item 8.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): passes SUPPLIER_SERVICE_URL to the app.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createServer } from 'node:http';
@@ -68,6 +72,7 @@ const events = createSocketSink(io);
 const app = createApp({
   prisma,
   userServiceUrl: env.USER_SERVICE_URL,
+  supplierServiceUrl: env.SUPPLIER_SERVICE_URL,
   events,
 });
 httpServer.on('request', app);

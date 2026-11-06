@@ -28,24 +28,35 @@
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): the router takes the supplier-service client for create / edit.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
+ * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
 import type { RequestStatus } from '../generated/prisma/client.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
 import type { PrismaClient } from '../db/prisma.js';
+import type { SuppliersClient } from '../clients/suppliers.client.js';
 import * as ordersController from '../controllers/orders.controller.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
 
 export interface OrdersRouterDeps {
+  /** supplier-service, for the create / edit existence check. */
+  suppliers: SuppliersClient;
   events?: OrderEventPublisher;
   userServiceUrl?: string;
 }
 
 export function ordersRouter(
   prisma: PrismaClient,
-  { events, userServiceUrl = 'http://localhost:3001' }: OrdersRouterDeps = {},
+  { suppliers, events, userServiceUrl = 'http://localhost:3001' }: OrdersRouterDeps,
 ): Router {
   const router = Router();
   router.param('id', (_req, res, next, id) => {
@@ -64,12 +75,15 @@ export function ordersRouter(
     ordersController.getAdminUserOrders(prisma, userServiceUrl),
   );
   router.get('/:id', ordersController.getOrderById(prisma));
-  router.post('/', ordersController.createOrder(prisma));
+  router.post('/', ordersController.createOrder(prisma, suppliers));
   router.post('/:id/accept', transition('accepted'));
   router.post('/:id/pickup', transition('picked_up'));
   router.post('/:id/deliver', transition('delivered'));
   router.post('/:id/complete', transition('completed'));
   router.post('/:id/cancel', transition('cancelled'));
-  router.patch('/:id/edit', ordersController.editOrder(prisma, events));
+  router.patch(
+    '/:id/edit',
+    ordersController.editOrder(prisma, suppliers, events),
+  );
   return router;
 }

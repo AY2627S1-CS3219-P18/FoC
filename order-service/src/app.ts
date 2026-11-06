@@ -17,6 +17,15 @@
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): AppDeps takes the supplier-service client (or its URL, default
+ *        http://localhost:3004, supplier-service's published port) for the orders router.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
+ * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import express, { type Express } from 'express';
@@ -27,6 +36,10 @@ import { errorHandler, notFound } from './middleware/error-handler.js';
 import { healthRouter } from './routes/health.routes.js';
 import { ordersRouter } from './routes/orders.routes.js';
 import type { OrderEventPublisher } from './realtime/order-events.js';
+import {
+  createHttpSuppliersClient,
+  type SuppliersClient,
+} from './clients/suppliers.client.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -34,6 +47,9 @@ export interface AppDeps {
   userServiceUrl?: string;
   /** Where writes publish order events (the Socket.IO sink in production). */
   events?: OrderEventPublisher;
+  /** supplier-service for the create / edit existence check; defaults to HTTP. */
+  suppliers?: SuppliersClient;
+  supplierServiceUrl?: string;
 }
 
 /**
@@ -45,6 +61,8 @@ export function createApp({
   authenticate,
   userServiceUrl = 'http://localhost:3001',
   events,
+  supplierServiceUrl = 'http://localhost:3004',
+  suppliers = createHttpSuppliersClient(supplierServiceUrl),
 }: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -54,7 +72,7 @@ export function createApp({
   app.use(
     '/orders',
     authenticate ?? createAuthenticate(userServiceUrl),
-    ordersRouter(prisma, { events, userServiceUrl }),
+    ordersRouter(prisma, { suppliers, events, userServiceUrl }),
   );
 
   app.use(notFound);

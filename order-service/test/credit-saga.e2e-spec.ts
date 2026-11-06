@@ -32,6 +32,10 @@
  *        passes REQUESTER.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): createOrder takes the supplier-service reference check; stubbed here.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -43,6 +47,7 @@ import { loadEnv } from '../src/config/env.js';
 import { createDeadLetterRepository } from '../src/db/dead-letter.repository.js';
 import { createOutboxRepository } from '../src/db/outbox.repository.js';
 import { createPrismaClient } from '../src/db/prisma.js';
+import { createStubSuppliersClient } from '../src/clients/suppliers.client.js';
 import type { QueuedJob } from '../src/queue/bull-queue.js';
 import {
   createOrder,
@@ -68,6 +73,11 @@ loadDotenv({ quiet: true });
 const prisma = createPrismaClient(loadEnv().DATABASE_URL);
 
 const REQUESTER = '0192f0c4-0000-7000-8000-00000000000a';
+// No supplier-service in this suite: every supplier / location id exists.
+const REFS = {
+  suppliers: createStubSuppliersClient(),
+  authorization: 'Bearer e2e',
+};
 const SUPPLIER = 1; // supplier-service integer id
 const payload = {
   supplierId: SUPPLIER,
@@ -138,7 +148,7 @@ afterAll(async () => {
 
 describe('credit reservation saga (e2e)', () => {
   it('creates a pending order with its reserve task in one commit', async () => {
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
 
     expect(result.order.status).toBe('pending');
@@ -154,7 +164,7 @@ describe('credit reservation saga (e2e)', () => {
 
   it('opens the order once credit-service reserves, and empties the outbox', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
 
     const jobs = await h.drain();
@@ -181,7 +191,7 @@ describe('credit reservation saga (e2e)', () => {
       status: 422,
       code: 'INSUFFICIENT_UNRESERVED_CREDITS',
     }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
 
     await h.drain();
@@ -199,7 +209,7 @@ describe('credit reservation saga (e2e)', () => {
       kind: 'transient',
       code: 'fetch failed',
     }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
 
     await h.drain(4); // the 5th and final attempt
@@ -219,7 +229,7 @@ describe('credit reservation saga (e2e)', () => {
 
   it('requester cancellation of an open order queues and runs a release', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     await h.drain();
 
@@ -237,7 +247,7 @@ describe('credit reservation saga (e2e)', () => {
 
   it('a transition that loses the version race writes no outbox row', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     await h.drain();
 
@@ -301,7 +311,7 @@ describe('release dead-letter re-drive (e2e)', () => {
   }
 
   it('re-drives a transient release failure as a fresh outbox row and marks it REDRIVEN', async () => {
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     const dl = await deadLetter(
       'credit_release',
@@ -345,7 +355,7 @@ describe('release dead-letter re-drive (e2e)', () => {
 
   it('a re-driven release runs to completion once credit-service is back', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     await h.drain(); // order is open
     await prisma.outbox.deleteMany();
@@ -367,7 +377,7 @@ describe('credit transfer on completion (e2e)', () => {
   it("completing the order relays a credit_transfer job to credit-service's queue", async () => {
     const COURIER = '0192f0c4-0000-7000-8000-00000000000b';
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     await h.drain(); // reserved -> open
     const id = result.order.id;
@@ -413,7 +423,7 @@ describe('credit transfer on completion (e2e)', () => {
 describe('accept (e2e)', () => {
   it('exactly one of many concurrent accepts wins (F12.2.1)', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS);
     if (!result.ok) throw new Error('create failed');
     await h.drain(); // open
 
@@ -553,7 +563,7 @@ describe('listing (e2e)', () => {
   });
 
   it('never lists pending orders by default', async () => {
-    const created = await createOrder(prisma, REQUESTER, payload); // stays pending
+    const created = await createOrder(prisma, REQUESTER, payload, REFS); // stays pending
     if (!created.ok) throw new Error('create failed');
     const seen = await walk({});
     expect(seen).not.toContain(created.order.id);
