@@ -8,11 +8,19 @@ Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Added Docker and Compose setup instructions.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Tool: Codex (model: GPT-6), date: 2026-11-08
+Scope: Documented the team-specified listing contract and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented host access to Compose MySQL for Studio.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented the requested table renames.
+Author review:
 -->
 
 # Chat service
 
-Text MVP, first endpoint only. Express 5, TypeScript ESM, Prisma 7 and MySQL through `@prisma/adapter-mariadb`. File structure follows order-service.
+Conversation creation and authenticated conversation listing. Express 5, TypeScript ESM, Prisma 7 and MySQL through `@prisma/adapter-mariadb`. File structure follows order-service.
 
 ## Run locally
 
@@ -61,7 +69,7 @@ Creates an ACTIVE conversation and REQUESTER participant atomically. The initial
 - 403 FORBIDDEN: valid configured key but service name is not order-service.
 - 409 ORDER_ID_CONFLICT: same order ID with different requester or description.
 
-Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Messages, sockets, other endpoints, order-worker delivery, Compose and deployment wiring are not implemented in this stage.
+Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Message sending, sockets and order-worker delivery are not implemented.
 
 ## Checks
 
@@ -88,3 +96,62 @@ docker compose -f compose.yaml -f compose.dev.yaml up --build --watch chat-servi
 ```
 
 Both image targets apply pending migrations before starting. The development target also regenerates Prisma before startup. The production image runs as the node user. No new health endpoint or order-worker integration is introduced.
+
+## GET /chat/conversations
+
+Team-specified contract supplied in the 2026-11-08 implementation conversation:
+
+- Authenticate the Bearer token using the same RS256 User Service JWKS validation as order-service. The verified token subject supplies the user ID.
+- `limit`: integer 1–50, default 20.
+- `cursor`: standard base64 encoding of UTF-8 JSON `{ "updatedAt": "<ISO timestamp>", "id": "<conversation UUID>" }`. URL-encode the base64 value when constructing a query string.
+- Optional `status=active|archived` and `role=courier|requester`. Role filters the user's chat participation, independently of their token role.
+- Without filters, return every conversation the user participates in, including revoked memberships. Revocation does not hide conversation history.
+- Order by `updatedAt DESC, conversationId DESC`, with an exclusive cursor boundary on those fields.
+- Return the object below directly, without the creation endpoint's `success/data` wrapper. `nextCursor` is an object to encode for the next request, or null on the final page.
+- Latest message and read-position ordering use `created_at`, then message `id`, both descending for latest-message selection. SYSTEM messages can be the latest message; content may be null. Empty conversations have `lastMessage: null`.
+- Unread counts exclude the user's own messages, include system messages, and count messages strictly after the stored read position. A null `lastReadMessageId` means all eligible messages are unread.
+- 401 `{ "message": "Unauthorized", "code": "UNAUTHORIZED" }` for absent/invalid authentication.
+- 400 `{ "message": "Invalid conversation query parameters", "code": "VALIDATION_ERROR" }` for invalid query parameters.
+
+```json
+{
+  "conversations": [
+    {
+      "id": "0192f0c4-0000-7000-8000-000000000002",
+      "orderId": "0192f0c4-0000-7000-8000-000000000001",
+      "lastMessage": {
+        "content": null,
+        "type": "SYSTEM",
+        "createdAt": "2026-11-08T00:00:00.000Z"
+      },
+      "unreadCount": 1,
+      "updatedAt": "2026-11-08T00:00:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "hasMore": false
+}
+```
+
+The supplied `messages` table has UUID `id`, `chat_id` referencing conversations, nullable UUID `sender_id` (null for system), type TEXT/IMAGE/VIDEO/SYSTEM, nullable text `content`, nullable JSON `metadata` (system eventType/orderId), and `created_at`. Apply its checked-in migration with `npm run db:deploy` before using the endpoint.
+
+`USER_SERVICE_URL` selects the JWKS host (default `http://user-service:3001` for Compose); set it to `http://localhost:3001` for local host execution. No additional package is required: the verifier is copied from order-service with its existing attribution preserved.
+
+Listing verification: 46 tests passed across listing, authentication and creation; typecheck, build and Prisma schema validation passed. Tests use injected Prisma doubles and stubbed JWKS responses with generated test RSA keys. The new migration and listing queries have not been exercised against live MySQL or a live User Service in this task.
+
+## Prisma Studio with Docker Compose
+
+The Compose `chat-db` service publishes MySQL at `127.0.0.1:3306` for Studio running on the host. Recreate the database container after changing the port mapping (the named database volume is retained):
+
+```sh
+docker compose up -d --no-deps chat-db
+```
+
+In `chat-service/.env`, set `DATABASE_URL` to `mysql://root:<URL-encoded CHAT_DB_PASSWORD>@127.0.0.1:3306/chat_service`, using the database password configured in the repository-root `.env`. The Compose service creates a root account; the `chat:password` placeholder in the local example is not that account. Existing database volumes retain their original password.
+
+```sh
+cd chat-service
+npx prisma studio
+```
+
+The database tables are `conversations` and `conversation_participants`. The rename migration preserves existing rows and foreign-key references. Prisma model names and existing column names remain unchanged.

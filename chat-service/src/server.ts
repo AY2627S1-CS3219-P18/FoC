@@ -4,6 +4,8 @@
  * Scope: Implemented the team-specified chat creation endpoint and supporting scaffold.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented conversation listing.
+ * Author review:
  */
 import "dotenv/config";
 import { createApp } from "./app.js";
@@ -11,7 +13,7 @@ import { loadEnv } from "./config/env.js";
 import { createPrismaClient } from "./db/prisma.js";
 const env = loadEnv();
 const prisma = createPrismaClient(env.DATABASE_URL);
-const server = createApp({ prisma, apiKey: env.CHAT_SERVICE_API_KEY }).listen(
+const server = createApp({ prisma, apiKey: env.CHAT_SERVICE_API_KEY, userServiceUrl: env.USER_SERVICE_URL }).listen(
   env.PORT,
   () => console.log(`chat-service listening on :${env.PORT}`),
 );

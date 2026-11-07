@@ -9647,3 +9647,254 @@ i kept all changes
 
 **Author review:**
 tng wen xi
+
+
+## 2026-11-08 — Chat service: conversation listing endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** User-supplied endpoint, schema and follow-up annotation answers in this conversation; transcribed in `chat-service/README.md` § GET /chat/conversations. JWT/JWKS behavior reused from `order-service/src/middleware/authenticate.ts` as explicitly requested.
+
+**Prompts (exact):**
+Task request and subsequent response-annotation comments are quoted separately below in conversation order; IDE metadata is not a task instruction.
+
+> ok now let's move on to the next endpoint of chat service - `GET /chat/conversations?limit=20` to get user's conversations
+>
+> - from the validated user
+> - query params: limit, cursor, status filter (active / archived), role filter (courier / requester)
+> - ordering: updatedAt DESC, conversationId DESC
+> - return the following:
+> ```php
+> 200 ok
+> {
+>   "conversations": [
+>     {
+>       "id": string (uuid)
+>       "orderId": string (uuid)
+>       "lastMessage": {
+>         "content": string,
+>         "type": TEXT / IMAGE / VIDEO,
+>         "createdAt": timestamp
+>       }
+>       "unreadCount": int
+>       "updatedAt": timestamp
+>     }
+>   ]
+>   "nextCursor": {
+>     "updatedAt": timestamp,
+>     "id": string
+>   },
+>   "hasMore": boolean
+> }
+> ```
+>
+> lmk if you need anything else
+
+> yeps
+
+> oh for message table, refer to the message below
+
+> yes
+
+> base64 encoding using updatedAt and id
+> limit 20 by default. changeable through query param.
+>
+> null on last page.
+
+> when filters are off, return all chats that the user is a participant in. if revokedAt is set, then still return the chat because the user is able to see the chat but not send
+
+> implement error codes and messages similar to order service. refer to message for status codes and response format.
+
+> message schema:&#x20;
+> ```xml
+> <table>
+>   <tr>
+>    <td>Field
+>    </td>
+>    <td>Type
+>    </td>
+>    <td>Description
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>id
+>    </td>
+>    <td>uuid
+>    </td>
+>    <td>Primary key
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>chat_id
+>    </td>
+>    <td>uuid
+>    </td>
+>    <td>Foreign key to chats
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>sender_id
+>    </td>
+>    <td>Uuid / null
+>    </td>
+>    <td>User id of sender, NULL if system
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>type
+>    </td>
+>    <td>enum
+>    </td>
+>    <td>TEXT / IMAGE / VIDEO / SYSTEM
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>content
+>    </td>
+>    <td>Text / null
+>    </td>
+>    <td>Message text. Null if image / video has no caption
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>metadata
+>    </td>
+>    <td>Json / null
+>    </td>
+>    <td>For system messages:
+> <ul>
+>
+> <li>eventType</li>
+>
+> <li>orderId</li>
+> </ul>
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>created_at
+>    </td>
+>    <td>timestamp
+>    </td>
+>    <td>Message creation time
+>    </td>
+>   </tr>
+> </table>
+> ```
+>
+> validation:
+>
+> - user not authenticated: 401
+
+> oh yes invalid query params should return 400 as well.
+
+> yes, system messages can appear in last message. yes, if null then response can have null too
+
+> limit is maximally 50.
+
+> yes pls.
+
+> i think can exclude own messages but include system messages. if lastReadMessageId is null, all eligible messages are unread
+
+**Key responses:**
+- Asked the team for missing authentication, message schema, unread-count, validation and cursor decisions before coding. Implemented their supplied answers; did not supply schema/interface/security choices for the team.
+- Added authenticated GET /chat/conversations, validated limit 1–50 (default 20), base64 JSON cursor, active/archived status and courier/requester participant filters. Listing includes revoked memberships and uses updatedAt/conversationId descending, with one extra row to determine hasMore. Response uses the supplied unwrapped shape, an object nextCursor or null, and nullable lastMessage/content with SYSTEM permitted.
+- Added the supplied message fields and generated a migration. Reused the existing order-service RS256/JWKS verifier with original attribution, and added USER_SERVICE_URL configuration. Existing POST retains its service-key authentication.
+- Unread counts exclude own messages, include null system senders, and compare createdAt/id against the stored read position. Null read position counts all eligible messages. No sending endpoint was added.
+- Added HTTP tests with injected Prisma doubles and verifier tests with generated test RSA keys and stubbed fetch responses. All 46 tests passed (including 13 existing creation tests), typecheck/build passed, and Prisma schema validation passed. HTTP tests first failed with sandbox listen EPERM; rerunning with approved local socket access passed.
+- Initial Prisma generation command was run from repository root and failed because no root package.json exists; rerun from chat-service succeeded. Migration diff from migrations required a shadow database; generating the diff from the previous checked-in schema instead succeeded. Migration was generated but not applied to live MySQL. No live User Service verification or HTTP dependency simulation was run.
+- Applied the local API Engineer skill for contract/verification guidance. Installed Postman CLI rejected `postman status` as an unknown command; no Postman workspace or external service was changed.
+
+**Files:**
+- `chat-service/.env.example` (modified)
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261108000000_add_messages/migration.sql` (created)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/middleware/authenticate.ts` (created; copied from order-service with attribution)
+- `chat-service/src/types/express.d.ts` (created)
+- `chat-service/src/conversations-list.spec.ts` (created)
+- `chat-service/src/middleware/authenticate.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: attribution and matching log-index row)
+- `ai/usage-log.md` (appended)
+- `chat-service/src/generated/prisma/` (regenerated, ignored generated output; no comment headers added)
+
+**Deviations / questions raised for the team:**
+Missing contract decisions were requested and supplied in the exact comments above. Live database migration/listing and live User Service checks remain unperformed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Chat service: Prisma Studio Docker connectivity
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, docs
+**Scope:** Boilerplate, Debugging, Refactor/Docs
+**Governing decision:** User explicitly requested fixing the missing Docker host port for locally running Prisma Studio. Existing local connection specified localhost:3306; existing Compose configuration specifies root credentials and chat_service database. Local binding follows the repository's existing loopback publishing convention.
+
+**Prompts (exact):**
+> solve this!
+
+The annotation selected the previous finding that Compose chat-db had no published host port, preventing Studio on the Mac from connecting.
+
+> yes im running through docker compose
+
+**Key responses:**
+- Added 127.0.0.1:3306:3306 to chat-db and documented Prisma Studio setup.
+- Validated base and combined development Compose configurations with .env.example; both passed.
+- Initial Docker execution was blocked by sandbox socket permissions. Approved execution recreated and started only chat-db with its existing named volume retained.
+- A direct MariaDB driver probe then returned ER_CANNOT_RETRIEVE_RSA_KEY. Checked local-vs-Compose credential matches using booleans only; the local configuration did not match the Compose account/password. Updated ignored chat-service/.env to use the existing Compose credentials, without printing or recording their values. No database account, password or authentication settings were changed.
+- Prisma migrate status subsequently connected to 127.0.0.1:3306/chat_service and reported two migrations with database schema up to date. No migrations were applied by this task. Studio browser UI was not exercised; an existing Studio process must be restarted to load the corrected local environment.
+
+**Files:**
+- `compose.yaml` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/.env` (modified, ignored local configuration; credentials not logged)
+- `README.md` (modified: header and matching log-index row)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Chat service: conversation table names
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** The user explicitly supplied the two table-name changes in the prompt below. Existing column names, models, indexes and foreign-key definitions are retained.
+
+**Prompts (exact):**
+> hm sorry could you change the table name chats to conversations and chat_participants to conversation_participants so that it is consistent with the url
+
+**Key responses:**
+- Updated Prisma table mappings to conversations and conversation_participants. Explicitly mapped existing index/constraint names so the requested table renames do not implicitly rename those objects.
+- Added a new MySQL RENAME TABLE migration, retaining earlier migrations. Updated service documentation, regenerated Prisma, and added the root README log-index row.
+- Prisma generation, typecheck, build and all 46 tests passed. Live MySQL verification through Prisma confirmed both renamed models are queryable, and both participant/message foreign keys reference conversations. Prisma migrate diff from the configured live database to the schema reported no differences.
+- The attempted pre-rename count query failed because chats no longer existed. The subsequent migrate deploy command reported all three migrations already applied and did not apply a pending migration. No claim is made about which process applied the migration. Post-rename counts were zero for conversations, participants and messages; a before/after count comparison was unavailable. The checked-in SQL only renames tables and does not delete rows.
+
+**Files:**
+- `chat-service/prisma/schema.prisma` (modified: mappings and disclosure)
+- `chat-service/prisma/migrations/20261108010000_rename_conversation_tables/migration.sql` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: disclosure and matching log-index row)
+- `ai/usage-log.md` (appended)
+- `chat-service/src/generated/prisma/` (regenerated, ignored generated output)
+
+**Deviations / questions raised for the team:**
+None. Pre-rename row counts could not be obtained because the migration was already recorded as applied when checked.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

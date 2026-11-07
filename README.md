@@ -130,6 +130,12 @@ Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Added the chat Docker setup disclosure log-index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Added conversation-listing log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added Studio connectivity fix log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added table rename log index row.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -583,3 +589,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 195 | 2026-11-06 | order-service                                                 | Order events: courierId on acceptance                                                                            | Added courierId to the acceptance event payload and verified existing tests.                                                                    |
 | 196 | 2026-11-07 | chat-service                                                  | Chat service: conversation creation endpoint                                                                     | Implemented authenticated creation, duplicate handling, schema, migration and endpoint tests.                                                   |
 | 197 | 2026-11-07 | chat-service                                                  | Chat service: Docker setup                                                                                       | Added Docker images, Compose database/service, development watch and verified real MySQL startup.                                               |
+| 198 | 2026-11-08 | chat-service | Chat service: conversation listing endpoint | Implemented listing, message schema, JWT authentication, pagination, filters and unread counts. |
+| 199 | 2026-11-08 | chat-service | Chat service: Prisma Studio Docker connectivity | Published local MySQL port and corrected the ignored local connection configuration. |
+| 200 | 2026-11-08 | chat-service | Chat service: conversation table names | Renamed tables, preserved constraints, regenerated Prisma and verified the local database. |

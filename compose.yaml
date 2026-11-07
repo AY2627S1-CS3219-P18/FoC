@@ -43,6 +43,8 @@
 # Scope: Docker scaffold following existing order/supplier service conventions.
 # No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review: tng wen xi
+# Scope (2026-11-08, Codex, model: GPT-6): Published chat-db for local Prisma Studio access.
+# Author review:
 name: foc
 
 services:
@@ -55,6 +57,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${CHAT_DB_PASSWORD:?set CHAT_DB_PASSWORD in .env}
       MYSQL_DATABASE: chat_service
+    # AI-generated (edited by <name>).
+    ports:
+      - "127.0.0.1:3306:3306"
     volumes:
       - chat-db-data:/var/lib/mysql
     healthcheck:
