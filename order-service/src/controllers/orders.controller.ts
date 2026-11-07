@@ -55,6 +55,12 @@
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): create / edit pass supplier-service and the caller's Authorization
+ *        header to the existence check; SUPPLIER_SERVICE_UNAVAILABLE -> 503,
+ *        SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND -> 422 (George, 2026-10-23).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -70,10 +76,20 @@ import {
   listOrders,
 } from '../services/order-listing.service.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
+import type { SuppliersClient } from '../clients/suppliers.client.js';
 import { RequestStatus } from '../generated/prisma/enums.js';
 
+/** The caller's own token, forwarded to supplier-service for the existence check. */
+const referenceCheck = (
+  suppliers: SuppliersClient,
+  req: Parameters<RequestHandler>[0],
+): ordersService.ReferenceCheck => ({
+  suppliers,
+  authorization: req.get('authorization') ?? '',
+});
+
 export const createOrder =
-  (prisma: PrismaClient): RequestHandler =>
+  (prisma: PrismaClient, suppliers: SuppliersClient): RequestHandler =>
   async (req, res) => {
     const requesterId = req.user?.user_id;
     if (!isUuid(requesterId)) {
@@ -87,6 +103,7 @@ export const createOrder =
       prisma,
       requesterId,
       req.body ?? {},
+      referenceCheck(suppliers, req),
     );
     if (!result.ok) {
       const errorMessageString = result.errors
@@ -189,7 +206,11 @@ export const getOrderById =
   };
 
 export const editOrder =
-  (prisma: PrismaClient, events?: OrderEventPublisher): RequestHandler =>
+  (
+    prisma: PrismaClient,
+    suppliers: SuppliersClient,
+    events?: OrderEventPublisher,
+  ): RequestHandler =>
   async (req, res) => {
     const actorId = req.user?.user_id;
     if (!isUuid(actorId)) {
@@ -206,6 +227,7 @@ export const editOrder =
       actorId,
       orderId,
       payload,
+      referenceCheck(suppliers, req),
       events,
     );
     if (result.ok) {
@@ -258,6 +280,9 @@ export const transitionOrder =
 
 function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.CREDIT_SERVICE_UNAVAILABLE)) return 503;
+  if (errors.includes(ErrorCode.SUPPLIER_SERVICE_UNAVAILABLE)) return 503;
+  if (errors.includes(ErrorCode.SUPPLIER_NOT_FOUND)) return 422;
+  if (errors.includes(ErrorCode.DELIVERY_LOCATION_NOT_FOUND)) return 422;
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
   if (errors.includes(ErrorCode.ORDER_NOT_FOUND)) return 404;
   if (errors.includes(ErrorCode.FORBIDDEN)) return 403;

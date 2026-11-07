@@ -9648,7 +9648,6 @@ i kept all changes
 **Author review:**
 tng wen xi
 
-
 ## 2026-11-08 — Chat service: conversation listing endpoint
 
 **Tool:** Codex (model: GPT-6)
@@ -9665,6 +9664,7 @@ Task request and subsequent response-annotation comments are quoted separately b
 > - query params: limit, cursor, status filter (active / archived), role filter (courier / requester)
 > - ordering: updatedAt DESC, conversationId DESC
 > - return the following:
+>
 > ```php
 > 200 ok
 > {
@@ -9707,6 +9707,7 @@ Task request and subsequent response-annotation comments are quoted separately b
 > implement error codes and messages similar to order service. refer to message for status codes and response format.
 
 > message schema:&#x20;
+>
 > ```xml
 > <table>
 >   <tr>
@@ -9797,6 +9798,7 @@ Task request and subsequent response-annotation comments are quoted separately b
 > i think can exclude own messages but include system messages. if lastReadMessageId is null, all eligible messages are unread
 
 **Key responses:**
+
 - Asked the team for missing authentication, message schema, unread-count, validation and cursor decisions before coding. Implemented their supplied answers; did not supply schema/interface/security choices for the team.
 - Added authenticated GET /chat/conversations, validated limit 1–50 (default 20), base64 JSON cursor, active/archived status and courier/requester participant filters. Listing includes revoked memberships and uses updatedAt/conversationId descending, with one extra row to determine hasMore. Response uses the supplied unwrapped shape, an object nextCursor or null, and nullable lastMessage/content with SYSTEM permitted.
 - Added the supplied message fields and generated a migration. Reused the existing order-service RS256/JWKS verifier with original attribution, and added USER_SERVICE_URL configuration. Existing POST retains its service-key authentication.
@@ -9806,6 +9808,7 @@ Task request and subsequent response-annotation comments are quoted separately b
 - Applied the local API Engineer skill for contract/verification guidance. Installed Postman CLI rejected `postman status` as an unknown command; no Postman workspace or external service was changed.
 
 **Files:**
+
 - `chat-service/.env.example` (modified)
 - `chat-service/prisma/schema.prisma` (modified)
 - `chat-service/prisma/migrations/20261108000000_add_messages/migration.sql` (created)
@@ -9827,10 +9830,64 @@ Task request and subsequent response-annotation comments are quoted separately b
 **Deviations / questions raised for the team:**
 Missing contract decisions were requested and supplied in the exact comments above. Live database migration/listing and live User Service checks remain unperformed.
 
+## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
+
+**Prompts (exact):**
+
+> shouldnt i make Account Regional namespace (recommended)
+
+> User was not created.
+> User: arn:aws:sts::993173880680:assumed-role/AWSReservedSSO_nusisb_IsbUsersPS_045e734b50045e6a/[redacted] is not authorized to perform: iam:CreateUser on resource: arn:aws:iam::993173880680:user/foc-supplier-photos with an explicit deny in a service control policy: arn:aws:organizations::864899849123:policy/o-celk1f6y0n/service_control_policy/p-j6rrqzxn. Go to https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/authorization-details/9e6c0f0xs1z1gl9j9qm3qqpm2 for complete details, or call the GetRequestAuthorizationDetails API with the following authorization id: 9e6c0f0xs1z1gl9j9qm3qqpm2
+
+> the bucket is fine, but what is the IAM user for
+
+> ok lets do task role
+
+> also explain what task role involves too
+
+The email address in the second prompt is redacted, as personal data. The prompt is otherwise exact.
+
+**Key responses:**
+
+- Told George the IAM user was blocked by an organisation rule that retrying wouldn't change, and listed two options: an ECS task role, or asking NUS to allow the user. George chose the task role.
+- `createS3PhotoStorage` now passes credentials only when both keys are set. Otherwise the AWS SDK finds its own, which on ECS means the task role. `createConfiguredPhotoStorage` treats one key without the other as not configured.
+- `vitest.seed.config.ts` no longer fills in the MinIO dev keys when ECS's container credentials variables are set, because those keys would override the role.
+- Updated the plan's photo decision, Phase 2 steps 5, 7 and 15, and the teardown list, and recorded the NUS rule and bucket name.
+
+**Verification (run):**
+
+- `supplier-service`: 434/434 tests pass, with `tsc --noEmit` and `eslint .` clean.
+- A new test runs a real upload against local stand-ins for the credentials endpoint and S3, and checks the role's key and session token signed it.
+- Seed image built and run twice against throwaway MySQL and a stub. All 10 uploads were signed with the stub role's key, none with the MinIO key, and the second run uploaded nothing new. Two earlier attempts failed because of the test setup: the stub returned no image type, and MySQL wasn't ready.
+
+**Not verified:** nothing ran on real AWS or S3. The local tests set `AWS_CONTAINER_CREDENTIALS_FULL_URI`, while Fargate sets `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, whose address can't be reached locally. `compose.yaml` wasn't rerun; it still sets both keys, and the test for that path passes.
+
+**Files:**
+
+- `supplier-service/src/storage/s3PhotoStorage.ts` (modified)
+- `supplier-service/vitest.seed.config.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageRegion.test.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageTaskRole.test.ts` (created)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/README.md` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+The plan's IAM user can't exist in this account, so the plan changed. Other AWS services may also be limited by NUS's rules. The deploy role needs `iam:PassRole` on the new role before CD can update supplier's services.
+
 **What I kept/changed/rejected:**
 
 **Author review:**
 
+<<<<<<< HEAD
 
 ## 2026-11-08 — Chat service: Prisma Studio Docker connectivity
 
@@ -9840,6 +9897,7 @@ Missing contract decisions were requested and supplied in the exact comments abo
 **Governing decision:** User explicitly requested fixing the missing Docker host port for locally running Prisma Studio. Existing local connection specified localhost:3306; existing Compose configuration specifies root credentials and chat_service database. Local binding follows the repository's existing loopback publishing convention.
 
 **Prompts (exact):**
+
 > solve this!
 
 The annotation selected the previous finding that Compose chat-db had no published host port, preventing Studio on the Mac from connecting.
@@ -9847,6 +9905,7 @@ The annotation selected the previous finding that Compose chat-db had no publish
 > yes im running through docker compose
 
 **Key responses:**
+
 - Added 127.0.0.1:3306:3306 to chat-db and documented Prisma Studio setup.
 - Validated base and combined development Compose configurations with .env.example; both passed.
 - Initial Docker execution was blocked by sandbox socket permissions. Approved execution recreated and started only chat-db with its existing named volume retained.
@@ -9854,19 +9913,126 @@ The annotation selected the previous finding that Compose chat-db had no publish
 - Prisma migrate status subsequently connected to 127.0.0.1:3306/chat_service and reported two migrations with database schema up to date. No migrations were applied by this task. Studio browser UI was not exercised; an existing Studio process must be restarted to load the corrected local environment.
 
 **Files:**
+
 - `compose.yaml` (modified)
 - `chat-service/README.md` (modified)
 - `chat-service/.env` (modified, ignored local configuration; credentials not logged)
 - `README.md` (modified: header and matching log-index row)
 - `ai/usage-log.md` (appended)
 
+# **Deviations / questions raised for the team:**
+
+## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
+
+**Prompts (exact):**
+
+> foc namespace is added and yes 3 days for all
+
+**Key responses:**
+
+- Added these facts to the plan: MySQL 8.4 (RDS MySQL 8.0 left standard support on 2026-07-31), the `foc_admin` login on all 4 databases, `foc-user-db` needing `CREATE DATABASE user_service;` at step 16, the SSM parameter names, and the extra `/ecs/foc/one-off` log group.
+- Checked George's AWS settings through the built-in browser, read-only. No secret values were opened.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
 **Deviations / questions raised for the team:**
-None.
+
+The `foc_admin` login and the extra log group were the AI tool's small naming choices, flagged to George in chat. The login replaces Compose's `order`, `credit`, `postgres` and `root` logins on AWS only.
 
 **What I kept/changed/rejected:**
 
 **Author review:**
 
+## 2026-11-07 — ECS Fargate: ship the order supplier check
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
+
+**Prompts (exact):**
+
+> Ship 1fad383 now
+
+**Key responses:**
+
+- Applied `1fad383` onto the team's `main` (`1a07f90`). Six files conflicted: `app.ts`, `config/env.ts`, `constants/errors.ts`, `orders.controller.ts`, `orders.routes.ts` and `server.ts`.
+- Kept both sides. In code, `ordersRouter` now takes both `suppliers` and `userServiceUrl`. The other conflicts were disclosure headers only.
+- Recorded in the plan that `order-service` must run a task definition with `SUPPLIER_SERVICE_URL` before this deploys, because CD only swaps the image, plus the ALB rule limit and the superadmin smoke test finding.
+
+**Verification (run):**
+
+- `order-service`: `npm run typecheck` and `npm run lint` clean, and 667/667 tests pass, run on Windows.
+
+**Not verified:** the e2e suite wasn't run, as it needs Postgres and Redis and CI doesn't run it either. Nothing has run on AWS yet. `npx prisma generate` failed locally because `DATABASE_URL` was unset, so the type check used the existing generated client.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/clients/suppliers.client.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+Creating or editing an order now returns `503` when supplier-service can't answer, including on `429`. Supplier's production `PER_IP_RATE_LIMIT` is 30, and the requests come from order-service's task, so heavy order traffic could hit it. Flagged for the team, and not changed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — ECS Fargate: start and stop checklist
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
+
+**Prompts (exact):**
+
+> It worked
+
+**Key responses:**
+
+- Wrote the stop, start and full teardown steps, using the real resource names, and added a short troubleshooting table from problems met during setup.
+- Recorded the deployment status in the plan. `order-service:3` added `SUPPLIER_SERVICE_URL` after the first deploy of `1fad383` had gone out without it.
+
+**Verification (run):** read-only checks through the console and the load balancer during setup, listed in earlier entries. The Deploy run for `4895ef8` succeeded. George reported that posting an errand worked on `order-service:3`, and I saw that revision's image and variable. **Not verified:** the checklist's stop and start steps haven't been run in full yet, and the Redis addresses staying the same after recreation is unconfirmed.
+
+**Files:**
+
+- `docs/ecs-fargate-run-checklist.md` (created)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 
 ## 2026-11-08 — Chat service: conversation table names
 
@@ -9876,15 +10042,18 @@ None.
 **Governing decision:** The user explicitly supplied the two table-name changes in the prompt below. Existing column names, models, indexes and foreign-key definitions are retained.
 
 **Prompts (exact):**
+
 > hm sorry could you change the table name chats to conversations and chat_participants to conversation_participants so that it is consistent with the url
 
 **Key responses:**
+
 - Updated Prisma table mappings to conversations and conversation_participants. Explicitly mapped existing index/constraint names so the requested table renames do not implicitly rename those objects.
 - Added a new MySQL RENAME TABLE migration, retaining earlier migrations. Updated service documentation, regenerated Prisma, and added the root README log-index row.
 - Prisma generation, typecheck, build and all 46 tests passed. Live MySQL verification through Prisma confirmed both renamed models are queryable, and both participant/message foreign keys reference conversations. Prisma migrate diff from the configured live database to the schema reported no differences.
 - The attempted pre-rename count query failed because chats no longer existed. The subsequent migrate deploy command reported all three migrations already applied and did not apply a pending migration. No claim is made about which process applied the migration. Post-rename counts were zero for conversations, participants and messages; a before/after count comparison was unavailable. The checked-in SQL only renames tables and does not delete rows.
 
 **Files:**
+
 - `chat-service/prisma/schema.prisma` (modified: mappings and disclosure)
 - `chat-service/prisma/migrations/20261108010000_rename_conversation_tables/migration.sql` (created)
 - `chat-service/README.md` (modified)
@@ -9896,5 +10065,8 @@ None.
 None. Pre-rename row counts could not be obtained because the migration was already recorded as applied when checked.
 
 **What I kept/changed/rejected:**
+I kept all changes.
 
-**Author review:**
+# **Author review:**
+
+tng wen xi

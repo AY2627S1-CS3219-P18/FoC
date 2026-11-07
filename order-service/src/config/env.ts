@@ -23,6 +23,11 @@
  *        builder for Redis connection options, per George's ECS Fargate plan, Phase 1 item 5.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): SUPPLIER_SERVICE_URL for the create / edit existence check;
+ *        localhost default is supplier-service's published port (3004).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -45,6 +50,9 @@ const EnvSchema = z.object({
   /** "true" connects to Redis over TLS. Off for Compose and CI. */
   REDIS_TLS: z.enum(['true', 'false']).default('false'),
   CREDIT_SERVICE_URL: z.url().default('http://localhost:3003'),
+  SUPPLIER_SERVICE_URL: z
+    .url({ protocol: /^https?$/ })
+    .default('http://localhost:3004'),
   /** Worker only: serve the bull-board queue dashboard on this port; unset = off. */
   QUEUE_DASHBOARD_PORT: z.coerce.number().int().min(1).max(65535).optional(),
 });

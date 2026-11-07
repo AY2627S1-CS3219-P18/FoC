@@ -68,6 +68,12 @@
  *        own orders; the default listing is not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
+ * Scope (2026-10-23): appWith injects a supplier-service client (stub: everything exists);
+ *        HTTP coverage for 422 SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND and 503
+ *        SUPPLIER_SERVICE_UNAVAILABLE on create and edit, and the caller's token forwarded.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -75,6 +81,11 @@ import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
 import { bearer } from '../../test/helpers/tokens.js';
 import type { PrismaClient } from '../db/prisma.js';
+import {
+  createStubSuppliersClient,
+  type Existence,
+  type SuppliersClient,
+} from '../clients/suppliers.client.js';
 
 const USER = '0192f0c4-7a1e-7c3a-9b2d-3f4e5a6b7c8d';
 const body = {
@@ -98,6 +109,7 @@ function appWith(
     }) => Promise<{ count: number }>;
     findUniqueOrThrow: (args: { where: { id: string } }) => Promise<object>;
   }> = {},
+  suppliers: SuppliersClient = createStubSuppliersClient(),
 ) {
   const outbox = { createMany: vi.fn(async () => ({ count: 1 })) };
   const prisma = {
@@ -127,7 +139,9 @@ function appWith(
     req.user = { user_id: userId, role: req.get('x-role') ?? 'user' };
     next();
   };
-  return Object.assign(createApp({ prisma, authenticate }), { outbox });
+  return Object.assign(createApp({ prisma, authenticate, suppliers }), {
+    outbox,
+  });
 }
 
 beforeEach(() => {
@@ -860,5 +874,86 @@ describe('GET /orders: non-open statuses are scoped to the caller', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { AND: [{ status: 'open' }] } }),
     );
+  });
+});
+
+describe('supplier-service existence check over HTTP', () => {
+  const ORDER_ID = '0192f0c4-0000-7000-8000-000000000001';
+  const answering = (supplier: Existence, location: Existence) => ({
+    supplierExists: vi.fn(async () => supplier),
+    locationExists: vi.fn(async () => location),
+  });
+  const openOrder = {
+    findUniqueOrThrow: async () => ({
+      id: ORDER_ID,
+      requesterId: USER,
+      status: 'open',
+      version: 0,
+    }),
+  };
+
+  it('forwards the caller token and answers 202 when both ids exist', async () => {
+    const suppliers = answering('found', 'found');
+    await request(appWith(undefined, {}, suppliers))
+      .post('/orders')
+      .set('authorization', bearer(USER))
+      .send(body)
+      .expect(202);
+    expect(suppliers.supplierExists).toHaveBeenCalledWith(1, bearer(USER));
+    expect(suppliers.locationExists).toHaveBeenCalledWith(12, bearer(USER));
+  });
+
+  it.each([
+    [
+      'not_found',
+      'found',
+      422,
+      'That supplier does not exist or is unavailable.',
+    ],
+    ['found', 'not_found', 422, 'That delivery location does not exist.'],
+    [
+      'unavailable',
+      'found',
+      503,
+      'Supplier details could not be checked right now. Please try again.',
+    ],
+  ] as const)(
+    'POST /orders: supplier %s, location %s -> %i',
+    async (supplier, location, status, message) => {
+      const app = appWith(undefined, {}, answering(supplier, location));
+      const res = await request(app)
+        .post('/orders')
+        .set('authorization', bearer(USER))
+        .send(body)
+        .expect(status);
+      expect(res.body).toEqual({ message });
+      expect(app.outbox.createMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('PATCH /orders/:id/edit: 422 for an unknown supplier', async () => {
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    await request(
+      appWith(
+        undefined,
+        { ...openOrder, updateMany },
+        answering('not_found', 'found'),
+      ),
+    )
+      .patch(`/orders/${ORDER_ID}/edit`)
+      .set('authorization', bearer(USER))
+      .send({ supplierId: 999 })
+      .expect(422);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('PATCH /orders/:id/edit: 503 when supplier-service is down', async () => {
+    await request(
+      appWith(undefined, openOrder, answering('found', 'unavailable')),
+    )
+      .patch(`/orders/${ORDER_ID}/edit`)
+      .set('authorization', bearer(USER))
+      .send({ deliveryLocationId: 7 })
+      .expect(503);
   });
 });
