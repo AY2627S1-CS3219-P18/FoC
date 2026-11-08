@@ -588,3 +588,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 196 | 2026-11-07 | docs | ECS Fargate plan: record Phase 2 steps 10-14 facts | Recorded database logins, versions and SSM parameter names in the plan. |
 | 197 | 2026-11-07 | order-service, docs | ECS Fargate: ship the order supplier check | Applied the supplier and location existence check onto main for deployment. |
 | 198 | 2026-11-07 | docs | ECS Fargate: start and stop checklist | Wrote the AWS start, stop and teardown checklist. |
+| 199 | 2026-11-08 | order-service, user-service, frontend | Precise delivery location: design spec and implementation plan | Wrote the spec and plan from the team's decisions; no code yet. |

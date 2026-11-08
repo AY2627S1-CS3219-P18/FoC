@@ -9670,3 +9670,66 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-08 — Precise delivery location: design spec and implementation plan
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
+
+**Prompts (exact):**
+> in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
+
+> 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
+> 2. a new table last_request will store "last_req_del_loc_id" (same as deliverLocationId of order db, integer) the and "last_req_del_loc_details" (same as deliveryDetails, free text, notnull, max 250 chars) these 2 fields will be used together to populate the request form if needed.
+> 3. two new endpoints to the new table will be created for read and update, and when the user creates a request, that endpoint will be called to read the 2 values. On request submission, the update endpoint is used to update the values. editing an existing order also invokes the same update endpoint
+> 4. where is order-service writing to user-service??
+> 5. if the location id is no longer an option, the prompt will not be shown. shown only for new requests. the click prefills both the location id selector and the free text field
+
+> 1. the user services onws the table and enpoints, as previously devided
+> 2. the UUID will be the userid, just like the user_bookmarks table
+> 3. both db level and api validation. deliveryDetails on requests is just the the last_req_del_lo_details
+> 4. existing orders gets a "Nil". This is also the default
+> 5. follow existing conventions used by the user_bookmarks flow
+> 6. if the row does not exist (which should not happen), i should get a 200 with nulls so the flows dont get blokced, and upon successful request, the row will be populated
+> 7. the authenticated user will only update their own row
+> 8. the ids are populated from the form, which is already pulled from the actual db, so there is no need to do another round of validation.
+> 9. yes, required field. this will be enforced on the frontend that prevents any extra chars after 250chars. if that is somehow bypassed , return 400 bad request
+> 10. no error. they are async. if the order fails, the user will likely want to send the request again. then the stored values will act as a recovery as well.
+>
+> Also move all changes to a new branch "add precise delivery location". start with spec and plan
+
+> 1. confirm
+> 2. delivery details are compulsory
+> 3. follow existing code name style and message text. empty and whitespace only values are gated on the frontend, and trailing spaces will be trimmed before storing to the db
+> 4. parallel call. completely unrelated, and will go ahead even if the order is rejected. Rationale is as mentioned, for the record to serve as a "last state"
+> 5. the delivery details will be displayed together with the existing deliveryLocatioId everywhere the id is used to retrieve the location name
+> 6. the prompt will be a discrete "tips" card that is displayed below the deliver to form questions and above the choose a drop off point selector. prompt heading itself can be "Delivering to the same location?", with the body containing the rendered location and details, and a "Confirm" button
+> 7. last_request is created on registration with the default "Nil" values. in the api call, receiving Nil is the same as there is no value, and the prompt will not even be rendered
+> 8. ok yes, add an updated-at timestamp as well, just like the bookmarks
+
+> 1. relax the last_req_del_loc_id to be nullable, and store null as the default
+> 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
+> 3.  the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
+
+**Key responses:**
+- First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
+- Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
+- Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
+- Second round: recorded the answers as P15-P20 in the spec. Endpoint names (`/users/me/last-request`) and the new error codes were named by the bookmark and error-code conventions and flagged for the team to check, because the reply to the endpoint question was "confirm". Three new gaps remain (Q1-Q3).
+- Third round: recorded P21-P23 (nullable id, trimming and edit-time update, display), closed all open questions, and wrote the implementation plan. Existing users are not backfilled; this follows the team's "missing row reads as nulls, first update populates it" decision (P8) and is for the team to check.
+- No code was changed. No tests were run.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
+- `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None open. Endpoint paths (`/users/me/last-request`), error code names and messages were derived from the bookmark and error-code conventions after the reply "confirm", and need the team's check at approval.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
