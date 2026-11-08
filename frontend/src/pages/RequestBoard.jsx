@@ -37,9 +37,12 @@
  *        stage's "Find errands empty state" row (posting is now requester-only, so the CTA no
  *        longer belongs on this courier-only page).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import RequestCard from "../components/RequestCard";
@@ -272,7 +275,7 @@ export default function RequestBoard() {
             {f}
           </button>
         ))}
-        <select
+        <SearchableSelect
           value={locationId}
           onChange={(e) => setLocationId(e.target.value)}
           aria-label="Drop-off point"
@@ -284,8 +287,8 @@ export default function RequestBoard() {
               {l.location}
             </option>
           ))}
-        </select>
-        <select
+        </SearchableSelect>
+        <SearchableSelect
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value)}
           aria-label="Sort errands"
@@ -296,7 +299,7 @@ export default function RequestBoard() {
               {s.label}
             </option>
           ))}
-        </select>
+        </SearchableSelect>
       </div>
 
       {/* F3.5.2 — the board updates live over the order-service socket. */}

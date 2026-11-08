@@ -24,9 +24,12 @@
  *        in the new generic RequireRole/Forbidden, which is reserved for /admin/users
  *        (stage 16g).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
@@ -209,7 +212,7 @@ export default function AdminSuppliers() {
               className="h-11 w-full rounded-btn border border-line bg-surface pl-11 pr-4 text-base text-ink md:h-10"
             />
           </div>
-          <select
+          <SearchableSelect
             aria-label="Filter by location"
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
@@ -221,8 +224,8 @@ export default function AdminSuppliers() {
                 {l.location}
               </option>
             ))}
-          </select>
-          <select
+          </SearchableSelect>
+          <SearchableSelect
             aria-label="Filter by category"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
@@ -234,8 +237,8 @@ export default function AdminSuppliers() {
                 {c.category}
               </option>
             ))}
-          </select>
-          <select
+          </SearchableSelect>
+          <SearchableSelect
             aria-label="Sort order"
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value)}
@@ -243,7 +246,7 @@ export default function AdminSuppliers() {
           >
             <option>A-Z</option>
             <option>Z-A</option>
-          </select>
+          </SearchableSelect>
         </div>
 
         {listNotice}

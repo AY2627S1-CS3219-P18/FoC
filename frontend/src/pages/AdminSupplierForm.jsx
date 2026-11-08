@@ -20,9 +20,12 @@
  * Scope: Reads isAdmin from the new AuthContext instead of DemoContext, per
  *        instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ArrowDown, ArrowLeft, ArrowUp, Plus, Trash2, Upload } from 'lucide-react'
@@ -256,14 +259,14 @@ function SupplierForm({ existing }) {
           htmlFor="type"
           hint={isFacility ? 'Facilities are open 24 hours. Their hours are set automatically.' : undefined}
         >
-          <select id="type" className={inputClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>
+          <SearchableSelect id="type" className={inputClass} value={form.type} onChange={(e) => set({ type: e.target.value })}>
             <option>Store</option>
             <option>Facility</option>
-          </select>
+          </SearchableSelect>
         </Field>
 
         <Field label="Location" htmlFor="location" error={errors.locationId}>
-          <select
+          <SearchableSelect
             id="location"
             className={inputClass}
             value={form.locationId}
@@ -275,7 +278,7 @@ function SupplierForm({ existing }) {
                 {l.location} · {l.faculty}
               </option>
             ))}
-          </select>
+          </SearchableSelect>
         </Field>
 
         <fieldset>
@@ -332,7 +335,7 @@ function SupplierForm({ existing }) {
                 <div className="mt-1 space-y-2">
                   {form.openingHours.map((h, i) => (
                     <div key={i} className="flex flex-wrap items-center gap-2">
-                      <select
+                      <SearchableSelect
                         aria-label="Day"
                         value={h.day}
                         onChange={(e) => setHour(i, { day: Number(e.target.value) })}
@@ -343,7 +346,7 @@ function SupplierForm({ existing }) {
                             {name}
                           </option>
                         ))}
-                      </select>
+                      </SearchableSelect>
                       <input
                         type="time"
                         aria-label="Opens"

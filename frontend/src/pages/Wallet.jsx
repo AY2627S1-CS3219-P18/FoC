@@ -24,9 +24,12 @@
  *        that opened the deleted LoginModal via requireLogin. The signed-in user's id now
  *        comes from the new AuthContext instead of DemoContext, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Ban, RotateCcw } from 'lucide-react'
 import CreditPill from '../components/CreditPill'
@@ -229,7 +232,7 @@ export default function Wallet() {
               <h2 className="text-xl font-semibold text-ink">Activity</h2>
               <label className="flex items-center gap-2 text-sm text-ink-70">
                 <span className="sr-only">Filter transactions</span>
-                <select
+                <SearchableSelect
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   className="h-11 cursor-pointer rounded-btn border border-line bg-surface px-2 text-sm text-ink md:h-10"
@@ -239,7 +242,7 @@ export default function Wallet() {
                       {f.label}
                     </option>
                   ))}
-                </select>
+                </SearchableSelect>
               </label>
             </div>
 

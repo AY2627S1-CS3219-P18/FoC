@@ -1,5 +1,11 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-08, Codex, model: GPT-6): Added dropdown fixes log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added searchable dropdown log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -614,3 +620,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 204 | 2026-11-08 | frontend | Saved location action icons | Replaced prompt action text with icons. |
 | 205 | 2026-11-08 | frontend | Swap saved location action icons | Swapped the confirm and dismiss icons. |
 | 206 | 2026-11-08 | frontend | Previous location input visibility | Revealed delivery inputs after the previous location prompt. |
+| 207 | 2026-11-08 | frontend | Searchable dropdowns | Added searchable single and multi-select dropdowns. |
+| 208 | 2026-11-08 | frontend | Searchable dropdown display fixes | Fixed chevron alignment and selection display. |

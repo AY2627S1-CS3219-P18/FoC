@@ -88,16 +88,21 @@
  *        the deleted LoginModal. `credits` now comes from the new AuthContext instead of
  *        DemoContext, per instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Posting or editing an errand now lands on /my-errands instead of the removed
  *        /activity, per instructions.md Stage 22 ("Links that went to /activity from the
  *        request form ... go to /my-errands").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Aligned dropdown chevrons by moving field spacing outside the control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Check, Loader2, Minus, Plus, X } from 'lucide-react'
@@ -326,11 +331,11 @@ function RequestForm({ order }) {
               </button>
             </div>
           ) : (
-            <select
+            <div className="mt-2"><SearchableSelect
               id="supplier"
               value={supplierId}
               onChange={(e) => setSupplierId(e.target.value)}
-              className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+              className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
             >
               <option value="">Choose a stall</option>
               {suppliers.map((s) => (
@@ -338,7 +343,7 @@ function RequestForm({ order }) {
                   {qualifiedName(s)}
                 </option>
               ))}
-            </select>
+            </SearchableSelect></div>
           )}
         </section>
 
@@ -381,11 +386,11 @@ function RequestForm({ order }) {
           )}
           {(isEdit || dismissedLocation || (!lastLoading && !locationsLoading && !savedLocation)) && <>
           {/* Delivery locations are the Supplier Service's location reference list (ids). */}
-          <select
+          <div className="mt-2"><SearchableSelect
             id="location"
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+            className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
           >
             <option value="">Choose a drop-off point</option>
             {locations.map((l) => (
@@ -393,7 +398,7 @@ function RequestForm({ order }) {
                 {l.location}
               </option>
             ))}
-          </select>
+          </SearchableSelect></div>
           <div className="mt-4">
             {label('Exact delivery details', 'delivery-details', true)}
             <input 

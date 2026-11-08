@@ -9927,3 +9927,80 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+
+## 2026-11-08 — Searchable dropdowns
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> i want to add a purely cosmetic change to the UI - styling all dropdown input fields. Currently they look ugly - the down chevron is flushed to the right, and the dropdown options are browser defaults. I want to style them and standardise the design across the entire page
+
+> No. the policy dictates architectural designs. Not artistic UI designs.
+> Essentially the current design of the entire website is modern and sleek, favoring rounded corners and no sharp edges. For all dropdowns, i want to style them as a searchable dropdown. clicking on an empty input, it will be a serachbox with options listed below. Typing in the box will be a live filtering of the options. Hovering over the options, each of them will be a rounded-corner option i can select
+
+> what kind of implementation pattern is and interface is there??? This is just a frontend UI design that the policies does not restrict at all. Again, the policy only dictated software architecture designs. And frontend UI does not fall under that.
+
+> for multi select options, yes. It should be searchable with each of the options then coming with a styled checkbox on the left
+
+**Key responses:** Replaced frontend dropdowns with a searchable control, including checkbox multi-select and keyboard navigation. Updated affected interaction tests. The frontend build and two focused control tests passed. The initial full suite failed under parallel execution, including outdated native-select tests and timeouts; subsequent verification is reported below.
+
+**Files:**
+- `frontend/src/pages/AdminLogs.jsx` (modified)
+- `frontend/src/pages/AdminSupplierForm.jsx` (modified)
+- `frontend/src/pages/AdminSuppliers.jsx` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/Suppliers.jsx` (modified)
+- `frontend/src/pages/Wallet.jsx` (modified)
+- `frontend/src/components/DemoControls.jsx` (modified)
+- `frontend/src/components/SearchableSelect.jsx` (created)
+- `frontend/tests/components/SearchableSelect.test.jsx` (created)
+- `frontend/tests/pages/AdminLogs.test.jsx` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked whether multi-selects should remain multi-select; user specified searchable options with checkboxes. Work applies to frontend, not the standalone mockup.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+**Verification continuation:** Full frontend suite with two workers: 146 passed, 1 failed. The remaining CreateRequest test expects maxLength 250 while the existing input in HEAD uses 200; this task did not change that limit. Browser and screen-reader testing were not performed.
+
+
+## 2026-11-08 — Searchable dropdown display fixes
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> 2 issues:
+>
+> 1. in the request pages, the deliver to dropdown's chevron is not vertically centred.&#x20;
+> 2. In the suppliers page, selecting an option in the Sort dropdown should populate the input field as well. Currently it stays blank. I also want the options area to be dismissed as soon as a choice is made for single option selectors. For multiselects, like thtat in the audit log page, should also display the selected options live after i click on the options
+
+**Key responses:** Moved request dropdown spacing outside the control, prevented label activation from reopening a single-select after a choice, and showed multi-select choices while the menu is open. Added regression tests; 17 focused tests passed. Production build succeeded before the final click-handling adjustment.
+
+**Files:**
+- `frontend/src/components/SearchableSelect.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/components/SearchableSelect.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
