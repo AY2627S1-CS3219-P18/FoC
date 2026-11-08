@@ -11464,3 +11464,941 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Mark displayed chat messages read
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug
+**Scope:** Implementation code
+**Governing decision:** User request below; existing read endpoint contract in `chat-service/README.md`, “POST /chat/conversations/:conversationID/read”.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> implement it such that when i open a chat, all displayed messages get marked as read
+
+**Key responses:**
+Connected the existing read endpoint to the latest rendered message using existing chronological message ordering. Incoming messages advance the read position; empty conversations make no read request. Successful receipts clear the loaded conversation's unread count. Failures leave messages displayed and show the existing error feedback; Refresh messages retries the receipt. No schema or API contracts changed.
+Verification: focused Chat UI and chat HTTP tests passed (18 tests); frontend production build passed; lint exited successfully with warnings. Tests use API/fetch doubles, not a live Chat Service. Applied API simulation skill verification guidance; inspected the existing order-chat-failure context, which covers order worker failures rather than this frontend path; no simulation was run or changed.
+
+**Files:**
+
+- `frontend/src/api/chat.js` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat bubbles and read indicators
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's UI instructions below; existing chat details and `messsage:read` contracts in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> make the following ui changes:
+>
+> - add text bubbles to the messages
+> - add read receipt indicators: single tick for sent, double tick for read
+> - in the chat list, change the unread count label to remove the word "unread". it should be clear that the number is the number of unread messages
+> - remove the "refresh messages" button from the chat window
+> - place the title at the top middle instead of left aligned
+> - replaace "all chats" with a back arrow
+
+**Key responses:**
+Added incoming/outgoing message bubbles with centered system notices, single sent ticks and double read ticks driven by the existing socket event. Ignored receipts from the current user and other conversations. Added numeric unread badges with accessible unread-message labels, centered the thread title, replaced All chats with an accessible back arrow, and removed Refresh messages. Existing automatic message refresh on reconnect remains.
+Verification: 21 focused frontend UI, socket and HTTP tests passed; production build passed; lint exited successfully with warnings. No live service or visual browser verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/realtime/chatSocket.js` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/realtime/chatSocket.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+The existing details/history contracts do not return persisted recipient read positions. Double ticks reflect receipts observed while this chat is mounted and whose position is in loaded messages; prior read state cannot be restored after reopening. No API contract changes were made. The team must specify any contract extension for persisted indicators, per AGENTS.md §2.1.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat date separators and receipt spacing
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, generate
+**Scope:** Implementation code
+**Governing decision:** User's UI formatting instructions and attached message screenshot.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> the double ticks seem to be cut off at the right side. solve that. also remove the timestamp from the message. follow telegram's style and place the date in the center at the middle, and then the time (without seconds) in the timestamp
+
+**Key responses:**
+Reserved a non-shrinking inline-flex box for receipt icons, aligned message metadata, and padded the scroll area. Message timestamps show 24-hour hours and minutes; centered date separators appear before the first loaded message of each local calendar day. Long message text wraps within bubbles. No schema or API changes.
+Verification: all 16 Chat UI tests passed, including a date-grouping and minute-only time regression test; frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Persisted chat read positions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User-specified addition of participant read positions to GET /chat/conversations/:id/messages, using existing database fields. Response fields supplied below; existing nullable read position retained. Contract recorded in `chat-service/README.md` message listing section.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> under participants, for each item of the array,&#x20;
+>
+> ```bash
+> {
+>   "userId": <id>,
+>   "role": <role>,
+>   "joinedAt": <timestamp>,
+>   "lastReadMessageId": <id>
+> }
+> ```
+
+**Key responses:**
+Extended each message-history page with participants containing exactly userId, role, ISO joinedAt and lastReadMessageId. Retained null when the stored read position is null. Frontend merges other participants' saved positions with live receipts on initial/reconnect history loads and older-page loads, restoring ticks after remount. Documented the supplied contract. No database migration or schema changes.
+Verification: first backend endpoint run could not bind a local port (EPERM); rerun with local networking permission passed all 12 endpoint tests using injected Prisma doubles. Initial typecheck found a duplicate fixture property introduced during editing; corrected it and typecheck passed. Frontend focused suite passed 23 tests including reopening with a saved receipt. Backend and frontend builds passed. No live database/service or browser verification. Applied API Engineer skill guidance; `postman status` failed with unknown command, so no Postman setup validation was established.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+Read indicators can compare saved positions when their referenced message is loaded; no new ordering fields or API contracts beyond the supplied participant fields were introduced.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Complete read receipt ticks
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Implementation code
+**Governing decision:** User correction below; existing request for double read ticks.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> the double tick is still clipped
+
+**Key responses:**
+Inspected the installed Lucide CheckCheck glyph: its second path intentionally has a short lower arm. Replaced that glyph with two complete existing Check icons, overlapping inside a reserved 28-pixel-wide non-shrinking container. No read-state behavior changed. No external code copied.
+Verification: 17 Chat UI tests passed; frontend production build passed; no browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Closer read receipt ticks
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's visual spacing request below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> can the two ticks be closer to each other? like telegram's style
+
+**Key responses:**
+Reduced the second tick's horizontal offset from 8px to 4px and the receipt container width from 28px to 24px. Both complete ticks remain inside the container.
+Verification: frontend production build passed. No tests or browser visual verification were run for this spacing-only change.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — System message timestamp styling
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's system message styling request below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> ok now for system messages, can u add some styling so that the timestamp doesnt look so awkward
+
+**Key responses:**
+Styled centered system notices with a subtle rounded background and border. Centered their times below the notice text in smaller, subdued text. Existing message time formatting retained.
+Verification: frontend production build passed. Tests and browser visual verification were not run for this styling-only change.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Role-aware chat titles
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's title formatting instruction below; existing participant roles and public display-name lookup in `frontend/src/api/lookups.js`.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> for the chat title, if user is requester, display courier's name beside the order separated by a dot. if user is courier, display requester's name.
+
+**Key responses:**
+Added shared title rendering for list and thread: order title followed by a middle dot and the opposite role participant's username. Reused the existing useUserName lookup and conversation participants. The order title stays visible while the name is unavailable. No schema, API contract, or inter-service call changes.
+Verification: frontend production build passed; all 19 Chat UI tests passed, including both roles in list and thread. Initial new tests used exact link accessible-name matching, which also included the preview/time; corrected tests to match the title within the link. Name lookups were mocked; no live service/browser verification.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat title order and list timestamps
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's title order and date formatting instructions below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> other way round, name then order description. also for the timestamp displayed on the list of chats, if it's same day just display time (no need seconds). if different day just display dd/mm. if different year, display year only
+
+**Key responses:**
+Reordered list and thread titles to name, middle dot, order description. Chat-list timestamps now use local calendar dates: HH:mm today, dd/mm on other days of the same year, and the year alone for another year.
+Verification: all 20 Chat UI tests passed, including both title roles and the three date formats; frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat opening scroll and composer focus
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's initial scroll and input focus instructions below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> when i open a chat window, make it be by default scrolled to the bottom. and when i send a message, autofocus the text field again
+
+**Key responses:**
+Added DOM refs and a layout effect to scroll the message list to its bottom once initial history finishes loading. Loading older pages does not repeat that initial jump. After a send attempt completes, focus returns to the text field once it is re-enabled, including when sending fails and the draft remains. Existing keyed thread remount resets initial scroll for each selected chat.
+Verification: all 21 Chat UI tests passed, including initial scrolling, no repeated bottom jump on older history, and refocus after sending. Scroll height was mocked in jsdom. Frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — First unread opening position
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's opening scroll request, clarified to first unread; existing message pagination and participant read-position contracts.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> if the last unread message is out of the window, then when it opens, make the last unread message at the top of the window
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> first!
+
+**Key responses:**
+Asked whether the requested position meant first or last unread; user confirmed first. Initial history loading now follows older-page cursors until the existing saved read boundary is found or history ends. A null saved position loads to the oldest message. Selects the first subsequent message not sent by the current user, including system messages per existing unread semantics. Positions it at the top when above the default bottom viewport; otherwise retains bottom opening. Captures the boundary before the existing mark-read effect runs. No API/schema changes.
+Verification: all 22 Chat UI tests passed, including older-page boundary loading and first-unread placement using mocked DOM geometry; frontend production build passed. No browser visual verification or live service checks were run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+Resolved first-versus-last unread ambiguity through the user's explicit clarification.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Scroll after sending
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's send-scroll instruction below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> when i send a message also scroll down!
+
+**Key responses:**
+Successful message submission now schedules bottom scrolling after the saved message renders, alongside existing composer refocus. Failed sends do not trigger the new scroll.
+Verification: all 23 Chat UI tests passed, including sending while scrolled up and input refocus; frontend production build passed. Scroll geometry was mocked in jsdom; no browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Seamless message sending
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's request to remove loading text between sends.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> remove the loading... between each send so that it is more seamless
+
+**Key responses:**
+Tracked message submission separately to suppress the thread loading label during sends. Existing pending-send disabling, error feedback, bottom scrolling, and refocus remain. History loading still shows its loading label.
+Verification: all 24 Chat UI tests passed, including a deferred pending-send check asserting no loading label and disabled send button; frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Sidebar loading label removal
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's sidebar loading-text removal request below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> in the sidebar also, the loading chats... should be removed
+
+**Key responses:**
+Removed the sidebar's Loading chats… text. Existing loading state still disables pagination during requests.
+Verification: frontend production build passed. Tests and browser visual verification were not run for this text removal.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Automatic older message loading
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's top-scroll pagination instruction below; existing message-history cursor contract.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> change the "load older messages" button to automatically load when scrolled up to the top
+
+**Key responses:**
+Removed the older-history button and connected top-of-list scrolling to the existing pagination request. Guarded against concurrent older-page requests and requests after the final page. Restored the viewport using the content-height difference after prepend; disabled native scroll anchoring on the list to avoid competing adjustments. Initial opening and successful-send scrolling remain.
+Verification: all 25 Chat UI tests passed, including no request away from the top, duplicate-scroll guarding, viewport restoration as content height grows, and final-page stopping; frontend production build passed. DOM dimensions were mocked; no browser visual verification or live service checks were run.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Errand-origin chat back navigation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's explicit outer back-button visibility and return destination instruction below; existing /my-errands and /my-deliveries card pages.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> for the back button outside the hchat window, make it appear only when it is opened from the errands page. if the chat is opened from the chat icon, then dont display the back button. and make the back button always go back to the errand card page
+
+**Key responses:**
+Errand-card Open chat now carries its existing card-page destination in navigation state. Chat preserves that state through order resolution and internal chat navigation. The outer Back button renders only for that origin and navigates explicitly to /my-errands or /my-deliveries instead of browser history. Chat icon navigation supplies no origin and therefore hides the outer button. No routes or API contracts changed.
+Verification: all 30 focused Chat and MyActivitySplit tests passed; frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Top chat unread badge
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's top icon unread-count request below; existing role-filtered conversation list and unreadCount contract.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> ok, noww for the chat icon at the top, is it possible to display total number of unread messages in the corner?
+
+**Key responses:**
+Added a numeric corner badge to the desktop top chat icon, summing unreadCount across all conversation pages for the active view. Hides at zero. Refreshes on navigation, role/user changes, new messages, socket readiness, and successful local mark-read requests. Badge has an accessible unread count label. No backend/API changes.
+Verification: 10 focused TopNav and chat API tests passed, including multi-page unread totals; frontend production build passed. No live service or browser verification was run.
+
+**Files:**
+
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/tests/components/TopNav.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+Used the current requester/courier view's existing conversation list; stated this scope in commentary.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Floating chat unread badge
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User request below to reuse the existing bottom-right chat shortcut instead of the top shortcut.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> sorry i just realised there is already a chat icon at the bottom right. could we use that instead? so no need for the icon on the top
+
+**Key responses:**
+Moved existing live unread total loading and refresh handling from TopNav to ChatBubble, replacing its mock unread data. Removed desktop top chat icon and mobile navigation chat shortcut. Floating shortcut retains its existing styling, route, zero-count behavior, and hidden-on-chat/logged-out behavior. No API changes.
+Verification: all 10 focused TopNav/floating shortcut and chat API tests passed; frontend production build passed. No live service/browser verification was run.
+
+**Files:**
+
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/tests/components/TopNav.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — New message icon animation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's new-message icon animation request below.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> can u display some animation of the chat icon when there is a new message? so that users can see
+
+**Key responses:**
+Added a brief 650ms wiggle and scale animation to the floating icon when the loaded unread total increases for the same user/view. Initial totals, decreases, and changing roles/users do not trigger it. Repeated increases restart the animation. Reduced-motion preference disables the animation.
+Verification: all 7 focused navigation/floating icon tests passed, including no initial animation and an animation on an unread-count increase; frontend production build passed. No browser visual verification was run.
+
+**Files:**
+
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/src/index.css` (modified)
+- `frontend/tests/components/TopNav.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Incoming message wiggle fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Implementation code
+**Governing decision:** User's reported animation failure below and earlier request for new-message animation.
+
+**Prompts (exact):**
+
+> # Context from my IDE setup:
+>
+> ## Active file: order-service/src/worker/credit-jobs.ts
+>
+> ## Open tabs:
+>
+> - credit-jobs.ts: order-service/src/worker/credit-jobs.ts
+> - orders.service.ts: order-service/src/services/orders.service.ts
+> - orders.controller.ts: order-service/src/controllers/orders.controller.ts
+> - schema.prisma: order-service/prisma/schema.prisma
+> - credit-saga.e2e-spec.ts: order-service/test/credit-saga.e2e-spec.ts
+>
+> ## My request:
+>
+> it did not wiggle :(
+
+**Key responses:**
+Changed animation trigger from fetched unread-count increases to direct incoming socket messages. Skips own messages, hidden chat routes, and consecutive duplicate message IDs. Animates the whole shortcut with a 900ms upward wiggle and scale instead of only its small glyph, restarting for each new message. Unread totals still refresh separately. Reduced-motion handling retained. The precise cause in the user's browser was not reproduced.
+Verification: 7 focused tests passed, including immediate incoming-message triggering, skipping own/duplicate messages, and restart on another message; frontend production build passed. No browser animation or live socket verification was run.
+
+**Files:**
+
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/src/index.css` (modified)
+- `frontend/tests/components/TopNav.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified; append-only disclosure entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
