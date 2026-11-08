@@ -14,11 +14,14 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified participant addition endpoint.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
+  addParticipant,
   markConversationRead,
   sendMessage,
   listConversations,
@@ -323,6 +326,34 @@ export function postRead(
         console.error(error);
       }
       res.status(200).json(result.receipt);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+export function postParticipant(prisma: PrismaClient): RequestHandler {
+  return async (req, res) => {
+    const id = z.uuid().safeParse(req.params.conversationID);
+    const body = z
+      .object({
+        userId: z.uuid(),
+        role: z.enum(["COURIER", "REQUESTER"]),
+      })
+      .safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await addParticipant(prisma, id.data, body.data);
+      if (result.status !== 200) {
+        res.sendStatus(result.status);
+        return;
+      }
+      res.status(200).json(result.participant);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

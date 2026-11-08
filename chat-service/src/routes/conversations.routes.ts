@@ -14,6 +14,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified participant addition endpoint.
+ * Author review: tng wen xi
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -25,6 +27,7 @@ import {
   type TokenVerifier,
 } from "../middleware/authenticate.js";
 import {
+  postParticipant,
   postRead,
   postMessage,
   getConversation,
@@ -69,6 +72,19 @@ export function conversationsRouter(
     "/:conversationID/read",
     createAuthenticate(userServiceUrl, verifyToken),
     postRead(prisma, publishRead),
+  );
+  // AI-generated (edited by <name>).
+  router.post(
+    "/:conversationID/participants",
+    authenticateMessage(apiKey, userServiceUrl, verifyToken),
+    (req, res, next) => {
+      if (req.user) {
+        res.sendStatus(403);
+        return;
+      }
+      next();
+    },
+    postParticipant(prisma),
   );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;

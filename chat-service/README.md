@@ -24,6 +24,10 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified send endp
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified read receipt endpoint.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified participant addition endpoint.
+Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied participant limits.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -247,3 +251,26 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 - This targets other sockets already in the chat room. Conversation subscription handlers remain deferred as documented above; automatically joined user rooms alone do not receive this event.
 
 Verification: all 109 tests passed, including 13 read endpoint cases and a real local WebSocket receipt-delivery check. Typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency and Redis cross-replica delivery were not exercised.
+
+## POST /chat/conversations/:conversationId/participants
+
+Team decisions supplied in the 2026-11-08 implementation conversation:
+
+- Require `X-Service-Key` matching CHAT_SERVICE_API_KEY; no `X-Service-Name` is required. Reuse message authentication: a supplied key takes precedence; invalid/missing credentials return 401, and a valid Bearer-only user returns 403.
+- Body: `{ "userId": "<User Service UUID>", "role": "COURIER" }`. Both COURIER and REQUESTER are allowed. Invalid conversation/user UUIDs or roles return 400. The caller supplies the user ID; this endpoint does not call User Service.
+- Missing conversation returns 404. Archived conversation or any existing membership for that user, including revoked membership, returns 409. Existing memberships are not changed.
+- Return 200 with the object below directly. Insert the participant using existing schema defaults. The transaction locks the active conversation before checking membership and inserting; no schema changes or realtime event were added.
+
+```json
+{
+  "conversationParticipantId": "0192f0c4-0000-7000-8000-000000000003",
+  "conversationId": "0192f0c4-0000-7000-8000-000000000001",
+  "userId": "0192f0c4-0000-7000-8000-00000000000a",
+  "joinedAt": "2026-11-08T00:00:00.000Z",
+  "role": "COURIER"
+}
+```
+
+Verification: 126 tests passed, including 17 participant cases; typecheck and build passed. HTTP tests use injected Prisma doubles. Live MySQL transaction/concurrency behavior was not exercised.
+
+Participant limits: each conversation permits at most one REQUESTER (including revoked requester memberships) and one non-revoked COURIER. Adding another participant of an occupied role returns 409. A revoked courier does not block a different courier; the existing same-user conflict still applies. These checks run inside the existing conversation-locked transaction; existing rows are not modified.

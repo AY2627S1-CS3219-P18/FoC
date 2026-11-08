@@ -14,6 +14,10 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified participant addition endpoint.
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Enforced the supplied requester and active courier limits.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -387,4 +391,51 @@ export async function markConversationRead(
       receipt: { conversationId, userId, lastReadMessageId: retainedId },
     };
   }
+}
+
+// AI-generated (edited by <name>).
+export async function addParticipant(
+  prisma: PrismaClient,
+  conversationId: string,
+  input: { userId: string; role: "COURIER" | "REQUESTER" },
+) {
+  return prisma.$transaction(async (tx) => {
+    // Serialize additions on this conversation before checking existing membership.
+    const locked = await tx.conversation.updateMany({
+      where: { conversationId, status: "ACTIVE" },
+      data: { conversationId },
+    });
+    const conversation = await tx.conversation.findUnique({
+      where: { conversationId },
+      select: {
+        participants: {
+          where: {
+            OR: [
+              { userId: input.userId },
+              input.role === "REQUESTER"
+                ? { role: "REQUESTER" }
+                : { role: "COURIER", revokedAt: null },
+            ],
+          },
+          select: { id: true },
+        },
+      },
+    });
+    if (!conversation) return { status: 404 as const };
+    if (locked.count === 0 || conversation.participants.length > 0)
+      return { status: 409 as const };
+    const row = await tx.chatParticipant.create({
+      data: { chatId: conversationId, userId: input.userId, role: input.role },
+    });
+    return {
+      status: 200 as const,
+      participant: {
+        conversationParticipantId: row.id,
+        conversationId: row.chatId,
+        userId: row.userId,
+        joinedAt: row.joinedAt.toISOString(),
+        role: row.role,
+      },
+    };
+  });
 }

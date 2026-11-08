@@ -159,6 +159,12 @@ Scope (2026-11-08, Codex, model: GPT-6): Added the message sending task to the A
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Added read receipt task log index row.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the participant endpoint disclosure index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Indexed the participant limit enforcement task.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Indexed the system notification disclosure entry.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)

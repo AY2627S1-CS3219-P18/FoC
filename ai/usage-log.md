@@ -10478,3 +10478,122 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Chat service: participant addition endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team's endpoint request and response annotations in this conversation, recorded in `chat-service/README.md`, POST participants section; existing schema and message authentication/status conventions.
+
+**Prompts (exact):**
+
+> Next endpoint:
+>
+> `POST /chat/conversations/:conversationId/participants` - add particcipant to a conversation
+>
+> payload:
+>
+> ```json
+> {
+>   "userId": "courier_123",
+>   "role": "COURIER"
+> }
+> ```
+>
+> sent by system, so use the chat api key. and 403 if authenticated user tries to send to this endpoint. only system can call this
+
+Response annotations (selected text followed by the user's exact comment):
+
+> What success status and response body should it return?
+
+> 200 ok.
+>
+> return the participant object.
+>
+> ```bash
+> {
+>   "conversationParticipantId": id,
+>   "conversationId": id,
+>   "userId": id,
+>   "joinedAt": timestamp,
+>   "role": "COURIER"/"REQUESTER"
+> }
+> ```
+
+> What happens if the participant already exists or was revoked?
+
+> 409
+
+> Can participants be added to archived conversations?
+
+> no
+
+> Is userId any nonempty string (like courier_123), and are both REQUESTER and COURIER allowed?
+
+> both roles are allowed. userId is the user's uuid in user service. will be provided by the caller
+
+> Should any valid chat API key work without X-Service-Name, as with message sending?
+
+> yes
+
+**Key responses:**
+
+- Clarified the contract before implementation. Added system-key participant insertion returning the requested 200 object; valid Bearer-only users receive 403. Reused message authentication, including supplied-key precedence and no service-name restriction.
+- Validate UUID conversation/user IDs and the existing two roles. Reused 400/404/409 conventions for invalid input, missing conversations and archived conversations. Existing/revoked membership returns the specified 409.
+- Used an existing Prisma transaction pattern; lock the active conversation with an update before checking membership and inserting. No schema, dependency, inter-service call or socket event changes. Live database concurrency was not tested.
+- Added 17 HTTP cases covering both roles, validation, authentication, missing/archived conversations, existing/revoked membership and persistence failure. All 126 tests passed with permitted loopback access; typecheck and build passed. Initial sandbox test run failed with listen EPERM. Initial test-file write used an incorrect working-directory-relative path and failed; corrected before the successful run.
+- Used the Postman API engineer skill locally. `postman status` failed with unknown command; no external workspace changes were made.
+
+**Files:**
+
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for missing contract details before implementation; responses recorded above. Reused existing chat status conventions for archived, missing and malformed conversations.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: participant role limits
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's explicit participant limits below, recorded in `chat-service/README.md`; existing participant conflict status and conversation-locked transaction.
+
+**Prompts (exact):**
+
+> enforce that each conversation can only have 1 requester and 1 non-revoked courier.
+
+**Key responses:**
+
+- Extended the existing locked participant-addition check to reject occupied roles with the existing 409 conflict status. Any requester membership occupies the requester slot; only non-revoked courier memberships occupy the courier slot. Existing same-user conflicts remain enforced, including revoked users. No schema changes or existing data modifications.
+- Added six regression cases for active/revoked requester and courier slots and independent roles. All 132 tests passed; typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency was not tested.
+- Initial typecheck/build commands used the repository root and failed due to its missing package.json; reran successfully in chat-service. Final `postman status` is unsupported by the installed CLI. No remote workspace changes.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. No existing records were changed; enforcement applies to participant additions through this endpoint.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
