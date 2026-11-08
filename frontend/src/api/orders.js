@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Copilot SDK (model: unspecified by runtime), date: 2026-10-16
  * Scope: Added the frontend client for the order-service list endpoint. The endpoint path and
  * response shape follow order-service/src/routes/orders.routes.ts and its controller.
@@ -50,7 +53,7 @@
 import { request } from './http'
 
 // 202 with the `pending` order; the outcome arrives later as order:created / order:failed.
-// payload: { supplierId, description, deliveryLocationId, credits, completeBy?, additionalDetails? }
+// payload: { supplierId, description, deliveryLocationId, deliveryDetails, credits, completeBy?, additionalDetails? }
 export const createOrder = (payload) => request('/orders', { method: 'POST', json: payload })
 
 // Listing (needs a token). query: { status, location, minCredits, maxCredits, expiresBefore, expiresAfter,
@@ -66,7 +69,7 @@ export const listActiveDeliveries = () => request('/orders/active')
 const transition = (action) => (id) =>
   request('/orders/' + encodeURIComponent(id) + '/' + action, { method: 'POST' })
 
-// F18: edit an open errand. payload: { supplierId?, description?, deliveryLocationId?, completeBy?,
+// F18: edit an open errand. payload: { supplierId?, description?, deliveryLocationId?, deliveryDetails, completeBy?,
 // additionalDetails? } (credits are fixed). 200 with the updated order, or { message }.
 export const editOrder = (id, payload) =>
   request('/orders/' + encodeURIComponent(id) + '/edit', { method: 'PATCH', json: payload })

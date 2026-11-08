@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issues #6/#59 - unit tests for the order-change -> event/rooms mapping.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -32,6 +35,7 @@ const order = (
     supplierId: 9,
     description: 'kopi',
     deliveryLocationId: 7,
+    deliveryDetails: 'Nil',
     credits: 3,
     completeBy: null,
     additionalDetails: null,
@@ -62,6 +66,7 @@ describe('eventsForTransition', () => {
             supplierId: 9,
             description: 'kopi',
             deliveryLocationId: 7,
+            deliveryDetails: 'Nil',
             credits: 3,
             completeBy: null,
             additionalDetails: null,

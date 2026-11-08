@@ -1,5 +1,23 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-08, Codex, model: GPT-6): Added the saved location icon swap log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-08, Codex, model: GPT-6): Added the saved location action icons log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-08, Codex, model: GPT-6): Added the saved location prompt dismissal log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for completing precise delivery location implementation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for partial user-service implementation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -588,3 +606,11 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 196 | 2026-11-07 | docs | ECS Fargate plan: record Phase 2 steps 10-14 facts | Recorded database logins, versions and SSM parameter names in the plan. |
 | 197 | 2026-11-07 | order-service, docs | ECS Fargate: ship the order supplier check | Applied the supplier and location existence check onto main for deployment. |
 | 198 | 2026-11-07 | docs | ECS Fargate: start and stop checklist | Wrote the AWS start, stop and teardown checklist. |
+| 199 | 2026-11-08 | order-service, user-service, frontend | Precise delivery location: design spec and implementation plan | Wrote the spec and plan from the team's decisions; no code yet. |
+| 200 | 2026-11-08 | user-service | Precise delivery location: partial user-service implementation | Added last-request storage and endpoints; remaining implementation is outstanding. |
+| 201 | 2026-11-08 | order-service, frontend | Precise delivery location: order service and frontend implementation | Implemented order details, form reuse, displays and tests. |
+| 202 | 2026-11-08 | frontend | Saved location prompt dismissal | Added dismiss and confirm actions to the saved location prompt. |
+| 203 | 2026-11-08 | frontend | Saved location prompt action alignment | Moved prompt actions alongside the heading. |
+| 204 | 2026-11-08 | frontend | Saved location action icons | Replaced prompt action text with icons. |
+| 205 | 2026-11-08 | frontend | Swap saved location action icons | Swapped the confirm and dismiss icons. |
+| 206 | 2026-11-08 | frontend | Previous location input visibility | Revealed delivery inputs after the previous location prompt. |

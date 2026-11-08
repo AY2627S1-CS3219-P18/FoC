@@ -1,5 +1,7 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-09-27
  * Scope: Unit tests for team-authored createOrder validation rules and the
  *        F9.1.2 reserve-then-create flow.
@@ -72,6 +74,14 @@
  */
 
 import { ErrorCode } from '../constants/errors.js';
+
+// AI-generated (edited by <name>).
+it('requires delivery details when creating an order', async () => {
+  const { prisma } = fakes();
+  const { deliveryDetails: _details, ...withoutDetails } = valid;
+  const result = await createOrder(prisma, REQUESTER, withoutDetails as CreateOrderPayload, REFS);
+  expect(result).toEqual({ ok: false, errors: ['MISSING_DELIVERY_DETAILS'] });
+});
 import type { PrismaClient } from '../db/prisma.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -86,10 +96,34 @@ import {
 } from '../clients/suppliers.client.js';
 import {
   createOrder,
-  editOrder,
+  editOrder as editOrderImpl,
   runRequestMaintenance,
   transitionOrder,
 } from './orders.service.js';
+
+const editWithDetails = (...args: Parameters<typeof editOrderImpl>) => {
+  args[3] = { deliveryDetails: 'Nil', ...args[3] };
+  return editOrderImpl(...args);
+};
+
+it.each([
+  [null, ErrorCode.MISSING_DELIVERY_DETAILS],
+  ['', ErrorCode.MISSING_DELIVERY_DETAILS],
+  ['   ', ErrorCode.MISSING_DELIVERY_DETAILS],
+  [12, ErrorCode.INVALID_DELIVERY_DETAILS],
+  ['x'.repeat(251), ErrorCode.INVALID_DELIVERY_DETAILS],
+])('validates delivery details %s', async (deliveryDetails, code) => {
+  const result = await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails } as CreateOrderPayload, REFS);
+  expect(result).toEqual({ ok: false, errors: [code] });
+});
+
+it('trims delivery details on create and requires them on edit', async () => {
+  const { prisma, create } = fakes();
+  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: '  Lobby  ' }, REFS)).ok).toBe(true);
+  expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) });
+  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: 'x'.repeat(250) }, REFS)).ok).toBe(true);
+  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({ ok: false, errors: [ErrorCode.MISSING_DELIVERY_DETAILS] });
+});
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
 const LATER = '2099-09-27T14:00:00.000Z';
@@ -108,6 +142,7 @@ const valid: CreateOrderPayload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
   deliveryLocationId: 12,
+  deliveryDetails: 'Nil',
   credits: 4,
   additionalDetails: null,
 };
@@ -191,6 +226,7 @@ describe('createOrder: validation', () => {
         supplierId: SUPPLIER,
         description: '1x chicken rice',
         deliveryLocationId: 12,
+        deliveryDetails: 'Nil',
         credits: 4,
         completeBy: new Date(LATER),
         additionalDetails: null,
@@ -216,6 +252,7 @@ describe('createOrder: validation', () => {
         ErrorCode.MISSING_SUPPLIER,
         ErrorCode.MISSING_DESCRIPTION,
         ErrorCode.MISSING_DELIVERY_LOCATION,
+        ErrorCode.MISSING_DELIVERY_DETAILS,
         ErrorCode.MISSING_CREDITS_OFFERED,
       ],
     });
@@ -338,6 +375,15 @@ describe('editOrder', () => {
     return { findUniqueOrThrow, updateMany, prisma, order };
   }
 
+  it('trims details on edit and rejects invalid details', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+    expect((await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: '  Lobby  ' }, REFS)).ok).toBe(true);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) }));
+    expect(await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: 'x'.repeat(251) }, REFS))
+      .toEqual({ ok: false, errors: [ErrorCode.INVALID_DELIVERY_DETAILS] });
+  });
+
   it('rejects unsupported fields before querying the database', async () => {
     const findUniqueOrThrow = vi.fn();
     const prisma = {
@@ -345,7 +391,7 @@ describe('editOrder', () => {
     } as unknown as PrismaClient;
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         REQUESTER,
         'order-1',
@@ -391,7 +437,7 @@ describe('editOrder', () => {
       } as unknown as PrismaClient;
 
       await expect(
-        editOrder(prisma, REQUESTER, 'order-1', payload as never, REFS),
+        editWithDetails(prisma, REQUESTER, 'order-1', payload as never, REFS),
       ).resolves.toEqual({ ok: false, errors: [code] });
       expect(findUniqueOrThrow).not.toHaveBeenCalled();
     },
@@ -402,7 +448,7 @@ describe('editOrder', () => {
     findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         REQUESTER,
         order.id,
@@ -423,7 +469,7 @@ describe('editOrder', () => {
     } as unknown as PrismaClient;
 
     await expect(
-      editOrder(prisma, REQUESTER, 'order-1', { credits: 8 }, REFS),
+      editWithDetails(prisma, REQUESTER, 'order-1', { credits: 8 }, REFS),
     ).resolves.toEqual({ ok: false, errors: [ErrorCode.INVALID_FIELD] });
     expect(findUniqueOrThrow).not.toHaveBeenCalled();
   });
@@ -440,7 +486,7 @@ describe('editOrder', () => {
       .mockResolvedValueOnce(updatedOrder);
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         REQUESTER,
         order.id,
@@ -455,6 +501,7 @@ describe('editOrder', () => {
       where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
+        deliveryDetails: 'Nil',
         version: { increment: 1 },
       },
     });
@@ -465,7 +512,7 @@ describe('editOrder', () => {
     const { prisma, updateMany, order } = prismaWithEdit();
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         OTHER_USER,
         order.id,
@@ -496,7 +543,7 @@ describe('editOrder', () => {
     order.status = status;
 
     await expect(
-      editOrder(prisma, REQUESTER, order.id, { description: 'x' }, REFS),
+      editWithDetails(prisma, REQUESTER, order.id, { description: 'x' }, REFS),
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.ORDER_NOT_EDITABLE],
@@ -510,7 +557,7 @@ describe('editOrder', () => {
     });
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         REQUESTER,
         order.id,
@@ -528,6 +575,7 @@ describe('editOrder', () => {
       where: { id: order.id, version: order.version, status: 'open' },
       data: {
         description: 'Updated description',
+        deliveryDetails: 'Nil',
         version: { increment: 1 },
       },
     });
@@ -546,7 +594,7 @@ describe('editOrder', () => {
     } as unknown as PrismaClient;
 
     await expect(
-      editOrder(
+      editWithDetails(
         prisma,
         REQUESTER,
         'missing-order',
@@ -636,12 +684,12 @@ describe('supplier-service reference check (create / edit)', () => {
   it('edit checks only the ids it changes', async () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const { prisma } = openOrder();
-    await editOrder(prisma, REQUESTER, 'order-1', { supplierId: 3 }, refs);
+    await editWithDetails(prisma, REQUESTER, 'order-1', { supplierId: 3 }, refs);
     expect(client.supplierExists).toHaveBeenCalledWith(3, 'Bearer abc');
     expect(client.locationExists).not.toHaveBeenCalled();
 
     client.supplierExists.mockClear();
-    await editOrder(prisma, REQUESTER, 'order-1', { description: 'x' }, refs);
+    await editWithDetails(prisma, REQUESTER, 'order-1', { description: 'x' }, refs);
     expect(client.supplierExists).not.toHaveBeenCalled();
     expect(client.locationExists).not.toHaveBeenCalled();
   });
@@ -650,7 +698,7 @@ describe('supplier-service reference check (create / edit)', () => {
     const { refs } = suppliersAnswering('found', 'not_found');
     const { prisma, updateMany } = openOrder();
     await expect(
-      editOrder(prisma, REQUESTER, 'order-1', { deliveryLocationId: 99 }, refs),
+      editWithDetails(prisma, REQUESTER, 'order-1', { deliveryLocationId: 99 }, refs),
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.DELIVERY_LOCATION_NOT_FOUND],
@@ -662,7 +710,7 @@ describe('supplier-service reference check (create / edit)', () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const { prisma } = openOrder();
     await expect(
-      editOrder(prisma, OTHER_USER, 'order-1', { supplierId: 3 }, refs),
+      editWithDetails(prisma, OTHER_USER, 'order-1', { supplierId: 3 }, refs),
     ).resolves.toEqual({ ok: false, errors: [ErrorCode.FORBIDDEN] });
     expect(client.supplierExists).not.toHaveBeenCalled();
   });

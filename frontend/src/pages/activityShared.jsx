@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Extracted from the former Activity.jsx (deleted), per instructions.md Stage 22's "My
  *        activity" row: split into My errands (MyErrands.jsx) and My deliveries
@@ -262,6 +265,7 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
           <p className="mt-1 text-sm text-ink-40">
             <span aria-hidden="true">&rarr;</span> {locationName}
             {other && (asCourier ? ' · for ' + other : ' · courier ' + other)}
+            {request.deliveryDetails !== undefined && <span className="block">{request.deliveryDetails}</span>}
           </p>
           {/* The delivery deadline stays visible for as long as the errand is live. */}
           {!CLOSED.includes(request.status) && (

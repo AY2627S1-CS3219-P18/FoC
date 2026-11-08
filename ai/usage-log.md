@@ -9670,3 +9670,260 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-08 — Precise delivery location: design spec and implementation plan
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
+
+**Prompts (exact):**
+> in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
+
+> 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
+> 2. a new table last_request will store "last_req_del_loc_id" (same as deliverLocationId of order db, integer) the and "last_req_del_loc_details" (same as deliveryDetails, free text, notnull, max 250 chars) these 2 fields will be used together to populate the request form if needed.
+> 3. two new endpoints to the new table will be created for read and update, and when the user creates a request, that endpoint will be called to read the 2 values. On request submission, the update endpoint is used to update the values. editing an existing order also invokes the same update endpoint
+> 4. where is order-service writing to user-service??
+> 5. if the location id is no longer an option, the prompt will not be shown. shown only for new requests. the click prefills both the location id selector and the free text field
+
+> 1. the user services onws the table and enpoints, as previously devided
+> 2. the UUID will be the userid, just like the user_bookmarks table
+> 3. both db level and api validation. deliveryDetails on requests is just the the last_req_del_lo_details
+> 4. existing orders gets a "Nil". This is also the default
+> 5. follow existing conventions used by the user_bookmarks flow
+> 6. if the row does not exist (which should not happen), i should get a 200 with nulls so the flows dont get blokced, and upon successful request, the row will be populated
+> 7. the authenticated user will only update their own row
+> 8. the ids are populated from the form, which is already pulled from the actual db, so there is no need to do another round of validation.
+> 9. yes, required field. this will be enforced on the frontend that prevents any extra chars after 250chars. if that is somehow bypassed , return 400 bad request
+> 10. no error. they are async. if the order fails, the user will likely want to send the request again. then the stored values will act as a recovery as well.
+>
+> Also move all changes to a new branch "add precise delivery location". start with spec and plan
+
+> 1. confirm
+> 2. delivery details are compulsory
+> 3. follow existing code name style and message text. empty and whitespace only values are gated on the frontend, and trailing spaces will be trimmed before storing to the db
+> 4. parallel call. completely unrelated, and will go ahead even if the order is rejected. Rationale is as mentioned, for the record to serve as a "last state"
+> 5. the delivery details will be displayed together with the existing deliveryLocatioId everywhere the id is used to retrieve the location name
+> 6. the prompt will be a discrete "tips" card that is displayed below the deliver to form questions and above the choose a drop off point selector. prompt heading itself can be "Delivering to the same location?", with the body containing the rendered location and details, and a "Confirm" button
+> 7. last_request is created on registration with the default "Nil" values. in the api call, receiving Nil is the same as there is no value, and the prompt will not even be rendered
+> 8. ok yes, add an updated-at timestamp as well, just like the bookmarks
+
+> 1. relax the last_req_del_loc_id to be nullable, and store null as the default
+> 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
+> 3.  the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
+
+**Key responses:**
+- First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
+- Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
+- Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
+- Second round: recorded the answers as P15-P20 in the spec. Endpoint names (`/users/me/last-request`) and the new error codes were named by the bookmark and error-code conventions and flagged for the team to check, because the reply to the endpoint question was "confirm". Three new gaps remain (Q1-Q3).
+- Third round: recorded P21-P23 (nullable id, trimming and edit-time update, display), closed all open questions, and wrote the implementation plan. Existing users are not backfilled; this follows the team's "missing row reads as nulls, first update populates it" decision (P8) and is for the team to check.
+- No code was changed. No tests were run.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
+- `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None open. Endpoint paths (`/users/me/last-request`), error code names and messages were derived from the bookmark and error-code conventions after the reply "confirm", and need the team's check at approval.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Precise delivery location: partial user-service implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
+
+> implement it
+
+**Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
+
+**Files:**
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/db/queries/lastRequest.queries.ts` (created)
+- `user-service/src/services/lastRequest.service.ts` (created)
+- `user-service/src/controllers/lastRequest.controller.ts` (created)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/db/queries/lastRequest.queries.test.ts` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Implementation and the plan's full test coverage remain incomplete.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Precise delivery location: order service and frontend implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> finish all implementation
+
+**Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
+
+**Files:**
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/types/orders.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/realtime/order-events.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/realtime/order-events.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/test/realtime.e2e-spec.ts` (modified)
+- `frontend/src/api/lastRequest.js` (created)
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/pages/AdminOrderTransactions.jsx` (modified)
+- `frontend/tests/api/lastRequest.test.js` (created)
+- `frontend/tests/pages/CreateRequest.test.jsx` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** The planned task-by-task commits and manual browser check were not performed. Migration deployment succeeded on a scratch database; the old-row migration scenario was not separately exercised.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Saved location prompt dismissal
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
+
+**Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location prompt action alignment
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
+
+**Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> replace the confirm and dismiss words with a cross and tick icon respectively
+
+**Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Swap saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> swap the 2 icons. the tick is for confirm
+
+**Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Previous location input visibility
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
+
+> Show the fields immediately
+
+**Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked how to show fields when no previous location exists; the user chose to show them immediately.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
