@@ -8,6 +8,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified conversation details endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
+ * Author review: tng wen xi
  */
 import { Router } from "express";
 import type { PrismaClient } from "../db/prisma.js";
@@ -18,6 +20,7 @@ import {
 } from "../middleware/authenticate.js";
 import {
   getConversation,
+  getMessages,
   getConversations,
   postConversation,
 } from "../controllers/conversations.controller.js";
@@ -38,6 +41,12 @@ export function conversationsRouter(
     "/:conversationID",
     createAuthenticate(userServiceUrl, verifyToken),
     getConversation(prisma),
+  );
+  // AI-generated (edited by <name>).
+  router.get(
+    "/:conversationID/messages",
+    createAuthenticate(userServiceUrl, verifyToken),
+    getMessages(prisma),
   );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;

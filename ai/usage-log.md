@@ -10139,3 +10139,105 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Chat service: conversation messages endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team contract and annotation answers in chat, transcribed in `chat-service/README.md` § GET /chat/conversations/:conversationID/messages; existing schema and conversation listing/details contracts.
+
+**Prompts (exact):**
+
+> Next endpoint:
+>
+> `GET /chat/conversations/:conversationID/messages` - get conversation messages
+>
+> ordering: createdAt DESC, id DESC
+>
+> response:
+>
+> 200ok
+>
+> ```json
+> {
+>   "data": [
+>     {
+>       "messageId": "msg_098",
+>       "conversationId": "conv_123",
+>       "senderId": "user_456",
+>       "type": "TEXT",
+>       "content": "Can you get an iced latte?",
+>       "metadata": null,
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:10:00Z"
+>     },
+>     {
+>       "messageId": "msg_099",
+>       "conversationId": "conv_123",
+>       "senderId": null,
+>       "type": "SYSTEM",
+>       "content": "The courier has accepted your order.",
+>       "metadata": {
+>         "eventType": "ORDER_ACCEPTED",
+>         "orderId": "order_123"
+>       },
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:11:00Z"
+>     },
+>     {
+>       "messageId": "msg_100",
+>       "conversationId": "conv_123",
+>       "senderId": "user_789",
+>       "type": "TEXT",
+>       "content": "Sure, I'll get it!",
+>       "metadata": null,
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:12:00Z"
+>     }
+>   ],
+>   "pagination": {
+>     "nextCursor": "older_cursor_value",
+>     "hasMore": true
+>   }
+> }
+> ```
+>
+> lmk what else u need
+
+Team annotation replies, verbatim in annotation order (IDE context omitted):
+
+> yes follow the pagination rules for the other endpoint (conversation listing)
+
+> same
+
+> oh sorry ignore the attachments first! for mvp no attachments, will implement later on
+
+> oh yes sorry descending
+
+**Key responses:**
+
+- Asked the team for pagination, access/error, attachment and ordering decisions before implementation. Confirmed listing-style object-valued nextCursor, details-style access/error handling, omitted attachments and descending ordering.
+- Implemented message field mapping and exclusive createdAt/id pagination using the existing schema and Bearer middleware. Revoked participants retain access. No schema changes.
+- Added 12 HTTP tests covering authentication, validation, access denial, revoked access, empty pages, response mapping, lookahead/final-page behavior, cursor query boundaries and database errors.
+- First test-file write used an incorrect relative path and created no file; corrected it. Initial HTTP tests were blocked by sandbox socket permissions. After approved local socket access, all 68 tests passed. Typecheck and build passed. No live database or User Service verification.
+- Used the Postman API engineer skill locally; `postman status` returned unknown command. No Postman workspace changes.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified the contract before implementation; team answers supersede the initial sample ordering, cursor string and attachments.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

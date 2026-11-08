@@ -8,6 +8,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified conversation details endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -203,5 +205,68 @@ export async function getConversationDetails(
     })),
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
+  };
+}
+
+// AI-generated (edited by <name>).
+export async function listMessages(
+  prisma: PrismaClient,
+  conversationId: string,
+  userId: string,
+  input: { limit: number; cursor?: { createdAt: string; id: string } },
+) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { conversationId },
+    select: { participants: { select: { userId: true } } },
+  });
+  if (!conversation) return null;
+  if (!conversation.participants.some((p) => p.userId === userId)) return false;
+  const rows = await prisma.message.findMany({
+    where: {
+      chatId: conversationId,
+      ...(input.cursor
+        ? {
+            OR: [
+              { createdAt: { lt: new Date(input.cursor.createdAt) } },
+              {
+                createdAt: new Date(input.cursor.createdAt),
+                id: { lt: input.cursor.id },
+              },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: input.limit + 1,
+    select: {
+      id: true,
+      chatId: true,
+      senderId: true,
+      type: true,
+      content: true,
+      metadata: true,
+      createdAt: true,
+    },
+  });
+  const hasMore = rows.length > input.limit;
+  const page = rows.slice(0, input.limit);
+  const last = page.at(-1);
+  return {
+    data: page.map((row) => ({
+      messageId: row.id,
+      conversationId: row.chatId,
+      senderId: row.senderId,
+      type: row.type,
+      content: row.content,
+      metadata: row.metadata,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    pagination: {
+      nextCursor:
+        hasMore && last
+          ? { createdAt: last.createdAt.toISOString(), id: last.id }
+          : null,
+      hasMore,
+    },
   };
 }

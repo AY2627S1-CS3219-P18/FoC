@@ -18,6 +18,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented the requested table renames.
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details implementation and disclosure.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified message listing endpoint.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -187,3 +189,22 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 ```
 
 Verification: all 56 tests passed, including 10 details tests; typecheck and build passed. HTTP tests use injected Prisma doubles and the existing token-verifier injection. No live database or User Service was exercised.
+
+## GET /chat/conversations/:conversationID/messages
+
+Team-specified contract supplied in the 2026-11-08 implementation conversation:
+
+- Bearer authentication and UUID validation; 401 unauthenticated, 400 invalid ID/query, 404 missing conversation, 403 non-participant. Revoked participants retain access.
+- `limit`: integer 1–50, default 20. `cursor`: standard base64 UTF-8 JSON `{ "createdAt": "<ISO timestamp>", "id": "<message UUID>" }`; URL-encode it in query strings.
+- Order by `createdAt DESC, id DESC`, with an exclusive cursor boundary.
+- Pagination follows conversation listing: `nextCursor` is an object to encode for the next request, or null on the final page. It uses the last returned message. `hasMore` indicates additional older messages.
+- Each message exposes messageId, conversationId, senderId, type, content, metadata and createdAt. Nullable values are preserved; attachments are omitted for MVP. No schema changes.
+
+```json
+{
+  "data": [],
+  "pagination": { "nextCursor": null, "hasMore": false }
+}
+```
+
+Verification: 68 tests passed, including 12 message endpoint tests; typecheck and build passed. HTTP tests use Prisma doubles and injected authentication; no live MySQL or User Service was exercised.

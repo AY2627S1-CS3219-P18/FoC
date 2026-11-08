@@ -8,12 +8,15 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified conversation details endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
   listConversations,
+  listMessages,
   getConversationDetails,
   createConversation,
 } from "../services/conversations.service.js";
@@ -157,6 +160,73 @@ export function getConversation(prisma: PrismaClient): RequestHandler {
         prisma,
         parsed.data,
         req.user!.user_id,
+      );
+      if (result === null) {
+        res.sendStatus(404);
+        return;
+      }
+      if (result === false) {
+        res.sendStatus(403);
+        return;
+      }
+      res.status(200).json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+const messageCursorSchema = z
+  .object({ createdAt: z.iso.datetime(), id: z.uuid() })
+  .strict();
+const messageQuerySchema = z
+  .object({
+    limit: z
+      .string()
+      .regex(/^[0-9]+$/)
+      .transform(Number)
+      .pipe(z.number().int().min(1).max(50))
+      .default(20),
+    cursor: z
+      .string()
+      .min(1)
+      .transform((value, ctx) => {
+        try {
+          // Reject malformed base64 rather than relying on Buffer's permissive decoder.
+          if (
+            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+              value,
+            )
+          )
+            throw new Error();
+          return messageCursorSchema.parse(
+            JSON.parse(Buffer.from(value, "base64").toString("utf8")),
+          );
+        } catch {
+          ctx.addIssue({ code: "custom", message: "Invalid cursor" });
+          return z.NEVER;
+        }
+      })
+      .optional(),
+  })
+  .strict();
+
+export function getMessages(prisma: PrismaClient): RequestHandler {
+  return async (req, res) => {
+    const id = z.uuid().safeParse(req.params.conversationID);
+    const query = messageQuerySchema.safeParse(req.query);
+    if (!id.success || !query.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await listMessages(
+        prisma,
+        id.data,
+        req.user!.user_id,
+        query.data,
       );
       if (result === null) {
         res.sendStatus(404);

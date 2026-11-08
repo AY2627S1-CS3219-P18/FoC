@@ -153,6 +153,8 @@ Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #19
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details implementation and disclosure.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the message listing disclosure log-index row.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -613,3 +615,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 202 | 2026-11-08 | chat-service                                                  | Chat service: Prisma Studio Docker connectivity                                                                  | Published local MySQL port and corrected the ignored local connection configuration.                                                            |
 | 203 | 2026-11-08 | chat-service                                                  | Chat service: conversation table names                                                                           | Renamed tables, preserved constraints, regenerated Prisma and verified the local database.                                                      |
 | 204 | 2026-11-08 | chat-service | Chat service: conversation details endpoint | Implemented participant-only details, ID validation and endpoint tests. |
+| 205 | 2026-11-08 | chat-service | Chat service: conversation messages endpoint | Implemented authenticated message history, pagination and endpoint tests. |
