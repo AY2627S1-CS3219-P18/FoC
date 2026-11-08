@@ -41,7 +41,11 @@
 //   the AI tool.
 // Author review:
 
+// Scope (2026-11-08, Codex, model: GPT-6): Added the default last-request row at user creation.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import pool from "../pool.js";
+import { insertDefaultRow } from './lastRequest.queries.js';
 import type { Queryable } from "../transaction.js";
 
 export interface UserRow {
@@ -80,6 +84,7 @@ export async function createUser(
     `INSERT INTO users (username, email, password_hash, status) VALUES ($1, $2, $3, $4) RETURNING *`,
     [username, email, passwordHash, status],
   );
+  await insertDefaultRow(result.rows[0]!.id, db);
   return result.rows[0]!;
 }
 
@@ -156,6 +161,7 @@ export async function createSuperAdmin(
    RETURNING *`,
   [username, email, passwordHash],
 );
+  if (result.rows[0]) await insertDefaultRow(result.rows[0].id, db);
   return result.rows[0] ?? null;
 }
 

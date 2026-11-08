@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Created the admin order-history page, per instructions.md Stage 24 (F5.3.2): the full
  *        order record plus its credit transactions for one errand. An order that is missing or
@@ -179,7 +182,7 @@ export default function AdminOrderTransactions() {
           </div>
           <div>
             <dt className="text-ink-40">Delivery location</dt>
-            <dd className="text-ink-70">{locationName(order.deliveryLocationId)}</dd>
+            <dd className="text-ink-70">{locationName(order.deliveryLocationId)}{order.deliveryDetails !== undefined && <span className="block">{order.deliveryDetails}</span>}</dd>
           </div>
           <div>
             <dt className="text-ink-40">Credits</dt>

@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-09-27
  * Scope: HTTP-level tests for POST /orders status codes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -96,6 +99,7 @@ const body = {
   supplierId: 1,
   description: '1x chicken rice',
   deliveryLocationId: 12,
+  deliveryDetails: 'Nil',
   credits: 4,
   additionalDetails: null,
 };
@@ -208,7 +212,7 @@ describe('PATCH /orders/:id/edit', () => {
     )
       .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(requesterId))
-      .send({ description: 'Updated description' })
+      .send({ description: 'Updated description', deliveryDetails: 'Nil' })
       .expect(200);
 
     expect(res.body).toEqual(updatedOrder);
@@ -216,6 +220,7 @@ describe('PATCH /orders/:id/edit', () => {
       where: { id: orderId, version: 3, status: 'open' },
       data: {
         description: 'Updated description',
+        deliveryDetails: 'Nil',
         version: { increment: 1 },
       },
     });
@@ -233,7 +238,7 @@ describe('PATCH /orders/:id/edit', () => {
     )
       .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(requesterId))
-      .send({ description: 'Updated description' })
+      .send({ description: 'Updated description', deliveryDetails: 'Nil' })
       .expect(403, {
         message: 'You are not allowed to perform this action.',
       });
@@ -252,7 +257,7 @@ describe('PATCH /orders/:id/edit', () => {
     )
       .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(requesterId))
-      .send({ description: 'Updated description' })
+      .send({ description: 'Updated description', deliveryDetails: 'Nil' })
       .expect(409, { message: 'Only open requests can be edited.' });
   });
 
@@ -270,7 +275,7 @@ describe('PATCH /orders/:id/edit', () => {
     )
       .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(requesterId))
-      .send({ description: 'Updated description' })
+      .send({ description: 'Updated description', deliveryDetails: 'Nil' })
       .expect(409, {
         message:
           'This order was changed by someone else. Refresh and try again.',
@@ -281,7 +286,7 @@ describe('PATCH /orders/:id/edit', () => {
     await request(appWith())
       .patch(`/orders/${orderId}/edit`)
       .set('authorization', bearer(USER))
-      .send({ unsupported: true })
+      .send({ unsupported: true, deliveryDetails: 'Nil' })
       .expect(400, {
         message: 'Payload contains an unsupported field.',
       });
@@ -946,7 +951,7 @@ describe('supplier-service existence check over HTTP', () => {
     )
       .patch(`/orders/${ORDER_ID}/edit`)
       .set('authorization', bearer(USER))
-      .send({ supplierId: 999 })
+      .send({ supplierId: 999, deliveryDetails: 'Nil' })
       .expect(422);
     expect(updateMany).not.toHaveBeenCalled();
   });
@@ -957,7 +962,7 @@ describe('supplier-service existence check over HTTP', () => {
     )
       .patch(`/orders/${ORDER_ID}/edit`)
       .set('authorization', bearer(USER))
-      .send({ deliveryLocationId: 7 })
+      .send({ deliveryLocationId: 7, deliveryDetails: 'Nil' })
       .expect(503);
   });
 });

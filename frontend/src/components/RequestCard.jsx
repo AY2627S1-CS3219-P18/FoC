@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5), date: 2026-09-08
  * Scope: Generated UI mockup component RequestCard.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
@@ -170,6 +173,7 @@ export default function RequestCard({ request, locationName, onAccepted }) {
           <p className="mt-1.5 text-sm text-ink-70">
             <span aria-hidden="true">&rarr;</span> {locationName}
             <span className="text-ink-40"> · {completeByLabel(request.completeBy)}</span>
+            {request.deliveryDetails !== undefined && <span className="block">{request.deliveryDetails}</span>}
           </p>
           {/* The second clock: how long this stays on the board if nobody takes it. */}
           {request.status === 'open' && request.completeBy && (

@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issue #4 - end-to-end test of the credit-reservation saga against a real
  *        Postgres (migrations applied): createOrder -> outbox -> relay -> reserve job ->
@@ -83,6 +86,7 @@ const payload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
   deliveryLocationId: 12,
+  deliveryDetails: 'Nil',
   credits: 4,
   additionalDetails: null,
 };
@@ -467,6 +471,7 @@ describe('listing (e2e)', () => {
         supplierId: SUPPLIER,
         description: `order ${i}`,
         deliveryLocationId: (i % 3) + 1,
+        deliveryDetails: 'Nil',
         credits: (i % 7) + 1,
         completeBy: i % 5 === 0 ? null : new Date(BASE + (i % 11) * 60_000),
         additionalDetails: null,

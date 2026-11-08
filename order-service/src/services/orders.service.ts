@@ -1,5 +1,7 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: GitHub Copilot (model: GPT-5.6 Luna), date: 2026-10-12
  * Scope: Narrowed edit-order validation and Prisma error handling; unsupported
  *        fields now return a validation error and missing orders remain
@@ -125,6 +127,7 @@ const EDITABLE_ORDER_FIELDS = new Set([
   'supplierId',
   'description',
   'deliveryLocationId',
+  'deliveryDetails',
   'completeBy',
   'additionalDetails',
 ]);
@@ -134,6 +137,15 @@ export type CreateOrderResult =
 
 export type EditOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
+
+const checkDeliveryDetails = (value: unknown): { error: ErrorCode } | { value: string } => {
+  if (value === undefined || value === null) return { error: ErrorCode.MISSING_DELIVERY_DETAILS };
+  if (typeof value !== 'string') return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
+  const trimmed = value.trim();
+  if (!trimmed) return { error: ErrorCode.MISSING_DELIVERY_DETAILS };
+  if (trimmed.length > 250) return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
+  return { value: trimmed };
+};
 
 const validateCredits = (credits: number) => {
   return Number.isInteger(credits) && credits > 0;
@@ -219,6 +231,8 @@ export const createOrder = async (
   } else if (!isPositiveInt(requestPayload.deliveryLocationId)) {
     errors.push(ErrorCode.INVALID_DELIVERY_LOCATION);
   }
+  const details = checkDeliveryDetails(requestPayload.deliveryDetails);
+  if ('error' in details) errors.push(details.error);
   if (requestPayload.credits === undefined || requestPayload.credits === null) {
     errors.push(ErrorCode.MISSING_CREDITS_OFFERED);
   } else if (!validateCredits(requestPayload.credits)) {
@@ -258,6 +272,7 @@ export const createOrder = async (
         supplierId: requestPayload.supplierId,
         description: requestPayload.description,
         deliveryLocationId: requestPayload.deliveryLocationId,
+        deliveryDetails: 'value' in details ? details.value : '',
         credits: requestPayload.credits,
         completeBy: requestPayload.completeBy
           ? new Date(requestPayload.completeBy)
@@ -306,6 +321,8 @@ export const editOrder = async (
   events?: OrderEventPublisher,
 ): Promise<EditOrderResult> => {
   const errors: ErrorCode[] = [];
+  const details = checkDeliveryDetails(payload.deliveryDetails);
+  if ('error' in details) errors.push(details.error);
   for (const [key, value] of Object.entries(payload)) {
     if (!EDITABLE_ORDER_FIELDS.has(key)) {
       errors.push(ErrorCode.INVALID_FIELD);
@@ -376,6 +393,7 @@ export const editOrder = async (
       where: { id: order.id, version: order.version, status: 'open' },
       data: {
         ...payload,
+        deliveryDetails: 'value' in details ? details.value : '',
         version: { increment: 1 },
       },
     });

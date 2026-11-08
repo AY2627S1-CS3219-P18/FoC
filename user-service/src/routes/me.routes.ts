@@ -37,14 +37,20 @@
  *        the 2026-11-05 supplier-bookmarking spec.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added last-request routes per the spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
 import * as bookmarksController from '../controllers/bookmarks.controller.js';
+import * as lastRequestController from '../controllers/lastRequest.controller.js';
 import * as meController from '../controllers/me.controller.js';
 import { authenticate } from '../middleware/authenticate.js';
 
 const router = Router();
+router.get('/last-request', authenticate, lastRequestController.read);
+router.put('/last-request', authenticate, lastRequestController.update);
 
 router.get('/', authenticate, meController.getProfile);
 router.put('/active-view', authenticate, meController.updateActiveView);

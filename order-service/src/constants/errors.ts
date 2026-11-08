@@ -1,5 +1,7 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: GitHub Copilot (model: GPT-5.6 Luna), date: 2026-10-12
  * Scope: Added the invalid-field error code and message for malformed edit
  *        payloads. No requirements, architecture, schema, or API decisions
@@ -37,6 +39,8 @@ export enum ErrorCode {
   INVALID_SUPPLIER = 'INVALID_SUPPLIER',
   MISSING_DESCRIPTION = 'MISSING_DESCRIPTION',
   INVALID_DESCRIPTION = 'INVALID_DESCRIPTION',
+  MISSING_DELIVERY_DETAILS = 'MISSING_DELIVERY_DETAILS',
+  INVALID_DELIVERY_DETAILS = 'INVALID_DELIVERY_DETAILS',
   MISSING_DELIVERY_LOCATION = 'MISSING_DELIVERY_LOCATION',
   INVALID_DELIVERY_LOCATION = 'INVALID_DELIVERY_LOCATION',
   MISSING_CREDITS_OFFERED = 'MISSING_CREDITS_OFFERED',
@@ -72,6 +76,8 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.INVALID_SUPPLIER]: 'Supplier id is invalid.',
   [ErrorCode.MISSING_DESCRIPTION]: 'Request is missing a description.',
   [ErrorCode.INVALID_DESCRIPTION]: 'Description must be non-empty text.',
+  [ErrorCode.MISSING_DELIVERY_DETAILS]: 'Request is missing delivery details.',
+  [ErrorCode.INVALID_DELIVERY_DETAILS]: 'Delivery details must be text of at most 250 characters.',
   [ErrorCode.MISSING_DELIVERY_LOCATION]:
     'Request is missing a delivery location.',
   [ErrorCode.INVALID_DELIVERY_LOCATION]:

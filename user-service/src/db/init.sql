@@ -2,6 +2,9 @@
 -- No requirements, architecture, schema, or API decisions were made by the AI tool.
 -- Author review:
 -- AI Assistance Disclosure:
+-- Scope (2026-11-08, Codex, model: GPT-6): Added last_request per the precise delivery location spec.
+-- No requirements, architecture, schema, or API decisions were made by the AI tool.
+-- Author review:
 -- Tool: Claude Code (claude-sonnet-5)
 --  2026-09-24: Generated initial implementation as part of Stage 2b
 --    Author review: No changes needed.
@@ -183,3 +186,10 @@ DROP TRIGGER IF EXISTS admin_audit_log_no_truncate_trigger ON admin_audit_log;
 CREATE TRIGGER admin_audit_log_no_truncate_trigger
   BEFORE TRUNCATE ON admin_audit_log
   FOR EACH STATEMENT EXECUTE FUNCTION admin_audit_log_no_truncate();
+CREATE TABLE IF NOT EXISTS last_request (
+  user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+  last_req_del_loc_id INTEGER CHECK (last_req_del_loc_id > 0),
+  last_req_del_loc_details VARCHAR(250) NOT NULL DEFAULT 'Nil'
+    CHECK (char_length(last_req_del_loc_details) >= 1),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

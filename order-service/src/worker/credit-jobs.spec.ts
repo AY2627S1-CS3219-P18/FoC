@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issue #4 - unit tests for the credit_reserve / credit_release job handlers:
  *        each branch of George's saga decisions (success, permanent failure, transient
@@ -75,6 +78,7 @@ function setup(
       supplierId: 9,
       description: '1x chicken rice',
       deliveryLocationId: 12,
+      deliveryDetails: 'Nil',
       credits: 4,
       additionalDetails: null,
     } as OrderRequest);
@@ -149,6 +153,7 @@ describe('credit_reserve', () => {
           occurredAt: NOW.toISOString(),
           order: expect.objectContaining({
             deliveryLocationId: 12,
+            deliveryDetails: 'Nil',
             credits: 4,
           }),
         }),
