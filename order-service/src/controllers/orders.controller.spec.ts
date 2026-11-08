@@ -74,6 +74,10 @@
  *        SUPPLIER_SERVICE_UNAVAILABLE on create and edit, and the caller's token forwarded.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification HTTP calls and username fallback.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Included courier participant task in acceptance assertions.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -956,4 +960,74 @@ describe('supplier-service existence check over HTTP', () => {
       .send({ deliveryLocationId: 7 })
       .expect(503);
   });
+});
+
+// AI-generated (edited by <name>).
+describe('acceptance notification username', () => {
+  it.each(['success', 'http failure', 'network failure', 'invalid json'])(
+    'forwards bearer and handles %s',
+    async (scenario) => {
+      const courier = '0192f0c4-0000-7000-8000-00000000000b';
+      const id = '0192f0c4-0000-7000-8000-000000000001';
+      const lookup = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async () => {
+          if (scenario === 'network failure') throw new Error('unreachable');
+          return new Response(
+            scenario === 'invalid json'
+              ? '{'
+              : JSON.stringify({ username: 'courier_name' }),
+            { status: scenario === 'http failure' ? 503 : 200 },
+          );
+        });
+      try {
+        const app = appWith(undefined, {
+          findUnique: async () => ({
+            id,
+            requesterId: USER,
+            courierId: null,
+            status: 'open',
+            completeBy: null,
+            version: 0,
+          }),
+          findUniqueOrThrow: async () => ({
+            id,
+            requesterId: USER,
+            courierId: courier,
+            status: 'accepted',
+            version: 1,
+          }),
+        });
+        await request(app)
+          .post(`/orders/${id}/accept`)
+          .set('authorization', bearer(courier))
+          .expect(200);
+        expect(lookup).toHaveBeenCalledWith(
+          new URL('http://localhost:3001/users/me'),
+          { headers: { authorization: bearer(courier) } },
+        );
+        expect(app.outbox.createMany).toHaveBeenCalledWith({
+          data: [
+            expect.objectContaining({
+              taskName: 'chat_participant',
+              payload: { orderId: id, userId: courier, role: 'COURIER' },
+            }),
+            expect.objectContaining({
+              taskName: 'chat_notification',
+              payload: {
+                orderId: id,
+                messageId: expect.any(String),
+                message:
+                  scenario === 'success'
+                    ? 'The order has been accepted by courier_name'
+                    : 'The order has been accepted',
+              },
+            }),
+          ],
+        });
+      } finally {
+        lookup.mockRestore();
+      }
+    },
+  );
 });

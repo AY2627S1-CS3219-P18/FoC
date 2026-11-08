@@ -69,6 +69,10 @@
  *        unavailable, and edit checking only the ids it changes, after authorization.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -706,9 +710,12 @@ describe('runRequestMaintenance', () => {
       where: { id: open.id, version: open.version },
       data: { status: 'expired', version: { increment: 1 } },
     });
-    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith(
-      releaseRow(open.id, 3),
-    );
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+      data: [
+        ...releaseRow(open.id, 3).data,
+        notificationRow(open.id, 3, 'The order has expired'),
+      ],
+    });
   });
 
   it('expires at the exact delivery deadline', async () => {
@@ -934,6 +941,7 @@ describe('transitionOrder', () => {
             taskName: 'credit_transfer',
             payload: { requestId: orderId, courierId },
           }),
+          notificationRow(orderId, 4, 'The order has been marked as completed'),
         ],
       });
     },
@@ -947,7 +955,9 @@ describe('transitionOrder', () => {
     });
 
     await transitionOrder(prisma, orderId, 'delivered', courierId);
-    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+      data: [notificationRow(orderId, 4, 'The order has been delivered')],
+    });
   });
 
   it('returns ORDER_NOT_FOUND when the order does not exist', async () => {
@@ -1052,9 +1062,12 @@ describe('transitionOrder', () => {
       ),
     ).resolves.toMatchObject({ ok: true });
 
-    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith(
-      releaseRow(orderId, 4),
-    );
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+      data: [
+        ...releaseRow(orderId, 4).data,
+        notificationRow(orderId, 4, 'The order has been cancelled'),
+      ],
+    });
   });
 
   it('queues no release when cancellation loses the optimistic-lock race', async () => {
@@ -1090,7 +1103,15 @@ describe('transitionOrder', () => {
 
     await transitionOrder(prisma, orderId, 'accepted', courierId);
 
-    expect(outboxOf(prisma).createMany).not.toHaveBeenCalled();
+    expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          taskName: 'chat_participant',
+          payload: { orderId, userId: courierId, role: 'COURIER' },
+        }),
+        notificationRow(orderId, 4, 'The order has been accepted'),
+      ],
+    });
   });
 
   it('fails a pending order without a release unless asked (permanent reserve failure)', async () => {
@@ -1286,4 +1307,83 @@ describe('transitionOrder', () => {
     ).resolves.toEqual({ ok: false, error: ErrorCode.ORDER_CONFLICT });
     expect(orderRequest.findUniqueOrThrow).not.toHaveBeenCalled();
   });
+  describe('status notification text', () => {
+    it.each([
+      [
+        'open',
+        'accepted',
+        OTHER_USER,
+        'The order has been accepted by courier',
+      ],
+      ['accepted', 'picked_up', OTHER_USER, 'The order has been picked up'],
+      ['picked_up', 'delivered', OTHER_USER, 'The order has been delivered'],
+    ] as const)('%s -> %s', async (status, to, actor, message) => {
+      const { prisma } = prismaWithTransition({
+        status,
+        requesterId: REQUESTER,
+        courierId: status === 'open' ? null : actor,
+      });
+      const result = await transitionOrder(
+        prisma,
+        '0192f0c4-0000-7000-8000-000000000001',
+        to,
+        actor,
+        new Date(),
+        { acceptanceUsername: async () => 'courier' },
+      );
+      expect(result.ok).toBe(true);
+      expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+        data: [
+          ...(to === 'accepted'
+            ? [expect.objectContaining({ taskName: 'chat_participant' })]
+            : []),
+          expect.objectContaining({
+            payload: expect.objectContaining({ message }),
+          }),
+        ],
+      });
+    });
+    it('uses acceptance fallback when username lookup throws', async () => {
+      const { prisma } = prismaWithTransition({
+        status: 'open',
+        requesterId: REQUESTER,
+        courierId: null,
+      });
+      await transitionOrder(
+        prisma,
+        '0192f0c4-0000-7000-8000-000000000001',
+        'accepted',
+        OTHER_USER,
+        new Date(),
+        {
+          acceptanceUsername: async () => {
+            throw new Error('unavailable');
+          },
+        },
+      );
+      expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({ taskName: 'chat_participant' }),
+          expect.objectContaining({
+            payload: expect.objectContaining({
+              message: 'The order has been accepted',
+            }),
+          }),
+        ],
+      });
+    });
+  });
 });
+
+// AI-generated (edited by <name>).
+function notificationRow(orderId: string, version: number, message: string) {
+  return {
+    taskName: 'chat_notification',
+    version,
+    payload: {
+      orderId,
+      message,
+      messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    },
+  };
+}

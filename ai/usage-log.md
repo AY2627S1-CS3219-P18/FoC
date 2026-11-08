@@ -10667,3 +10667,444 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Order/chat: reservation-success delivery and message deduplication
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-08
+Scope: Appended this task's disclosure record.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Boilerplate; Refactor/Docs
+**Governing decision:** Team's task and annotation answers in this conversation, recorded below; existing outbox/worker implementation in `order-service/src/services/orders.service.ts`, `order-service/src/worker.ts`, and `order-service/src/queue/bull-queue.ts`; existing chat contracts in `chat-service/README.md`. The supplied integration contract is documented in `order-service/README.md` and `chat-service/README.md` in this change. Root `AGENTS.md` and `order-service/AGENTS.md` apply.
+
+**Prompts (exact):**
+Task text and annotation comments, quoted verbatim in conversation order. IDE open-tab metadata is omitted.
+
+> now i wanna integrate with order service. when order is created, need to create a new chat with the chat endpoint. and send a system message saying f"Your order {order.description} has been created"
+
+> after success of reservation!
+
+> through a worker!
+
+> use bullmq to deal with this
+
+> yes. stay open.
+
+> nope duplicate system messages are not acceptable. handle it in chat service
+
+> how is it currently dealed with in order-service when it calls credit service?
+
+> oh ya then is it possible to assign each system message an id when sending, then check that id does not exist in the db before adding, if exists then dont add?
+
+> ya. it is a uuid generated when creating the bullmq job. and stored as the message id.
+
+> yeps
+
+> dont add the message, and return a 409
+
+**Key responses:**
+Initially stopped for team decisions on trigger timing, worker delivery, failure behavior and deduplication contract. Explained the existing credit client and worker, including the available-balance-before-duplicate-check caveat, without modifying Credit Service. Implemented only after the team supplied the answers quoted above.
+
+The reservation-success `pending` to `open` transaction now records a `chat_create` outbox task containing the order details and a generated UUID message ID. Existing relay/queue handling delivers it to the existing order worker; it creates the conversation and then sends `Your order ${order.description} has been created`. The UUID is retained across retries. Chat failures use the existing BullMQ retry and dead-letter flow without changing order state or releasing credits. Added worker URL/key configuration to examples and Compose. No secrets were read or recorded.
+
+Chat system notifications now require UUID `messageId`, stored in the existing message primary key. Identical ID/order/text retries return the existing message with HTTP 200 and no write or broadcast. Collisions with different order/text or non-system messages return 409. Concurrent primary-key collisions are handled after transaction rollback. New messages retain HTTP 201. No database schema or migration changes were made.
+
+Verification: Chat Service 160 tests passed; Order Service 673 tests passed. Both typechecks and builds passed; Order Service lint passed without warnings; `git diff --check` passed. Initial sandboxed HTTP tests and the first simulation start failed due to local port restrictions; permitted reruns succeeded. The formatting command initially referenced a nonexistent Chat Service Prettier binary; formatting then completed using Order Service's installed binary. An initial Order Service typecheck caught a test-double cast and was corrected before passing.
+
+Used the Postman API Engineering, API Simulation and API Mocking skills. CLI version 1.73.0 supports simulation but rejects `postman status` as an unknown command, so no owner-workspace mock search or remote operations were performed. Added a local 503 HTTP stand-in. Ran the compiled client/worker against it on attempt five; the worker threw the expected retryable HTTP_503 error and a guard verified no order database access. The simulation request log confirmed POST /chat/conversations returned 503. Synthetic IDs and key only. Database tests use injected doubles; no live MySQL/PostgreSQL persistence or Redis/BullMQ retry scheduling was exercised. Simulation evidence is in the adjacent context YAML; raw logs were not committed.
+
+**Files:**
+
+- `.env.example` (modified)
+- `README.md` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (modified)
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/README.md` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (created)
+- `order-service/src/clients/chat.client.spec.ts` (created)
+- `postman/mocks/chat-unavailable/default.js` (created)
+- `postman/simulations/order-chat-failure.sim.yaml` (created)
+- `postman/simulations/order-chat-failure.context.yaml` (created)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for the trigger, worker delivery, order failure behavior and idempotency contract before implementing. Team confirmed successful reservation, BullMQ worker, order stays open, UUID generated with the job and used as message primary key, HTTP 200 for identical repeats and 409 for differing order/text. No unresolved team decisions were implemented. Live database and Redis verification remains unperformed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Order/chat: system message wording
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User supplied the exact system message text in chat; existing delivery contract in order-service/src/clients/chat.client.ts.
+
+**Prompts (exact):**
+
+> remove the order description from the system message
+
+> Change it to "the order has been created"
+
+**Key responses:**
+Changed the notification text to exactly `the order has been created`, updated the existing client test and service documentation. Conversation metadata still uses the existing order description. Initial test command from repository root failed because there is no root package.json; the targeted client suite passed (5 tests) from order-service before the final wording adjustment. After the final wording adjustment, the targeted client suite passed again (5 tests); git diff --check passed.
+
+**Files:**
+
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Kept all changes.
+
+**Author review:**
+tng wen xi
+
+
+## 2026-11-08 — Order/chat: status change notifications
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's notification text, BullMQ/UUID, bearer forwarding and fallback decisions in this conversation; recorded in order-service/README.md, Status change notifications. Existing delivery contract: order-service/README.md, Chat delivery after reservation; chat-service/README.md, POST /chat/send-system-notification.
+
+**Prompts (exact):**
+
+> now i want to implement the sending of notifications every time the order status changes:
+>
+>
+>
+> - any status to cancelled: "The order has been cancelled"
+> - open to expireed: "The order has expired"
+> - open to accepted: "The order has been accepted by \<name of courier>"
+> - accepted to picked up: "The order has been picked up"
+> - picked up to delivered: "The order has been delivered"
+> - delivered to completed: "The order has been marked as completed"
+
+> oh yea same thing, use bullmq to generate a unique uuid key
+
+> since the courier triggers the acceptance, he is able to forward his bearer token to the endpoint to get username from user service. use the username.
+
+> i fhtat lookup fails, then just use "The order has been accepted".
+
+**Key responses:**
+Initially stopped for team decisions on delivery and username source, then lookup-failure behavior. Implemented notifications for the six specified transitions through the existing transactional outbox and BullMQ worker. UUID message IDs persist across retries. Acceptance forwards the request bearer to GET /users/me; failed or unusable lookups use the supplied fallback. Bearer tokens are not queued. Added tests for text, fallback, HTTP forwarding, worker success/transient/permanent outcomes, and direct notification delivery; updated existing credit-task assertions. Reviewed the Postman simulation skill and existing chat-creation failure context; no simulation was run or modified.
+
+Verification: initial root npm command failed (no root package.json); initial typecheck exposed an outdated ChatClient test double, corrected. Initial tests exposed outdated outbox assertions, corrected. Initial full-suite run could not bind local HTTP ports in the sandbox. Full suite rerun with local port access: 18 files, 685 tests passed. Typecheck, build and lint passed; git diff --check passed. Live services, database, Redis scheduling and end-to-end BullMQ delivery were not exercised.
+
+**Files:**
+
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for delivery mechanism, courier username source and lookup-failure behavior; user supplied decisions before implementation. Treated “expireed” as existing `expired` status.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — User service: existing database OTP columns
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging, Implementation code
+**Governing decision:** instructions.md Stage 18 OTP send escalation storage; existing column definitions in user-service/src/db/init.sql.
+
+**Prompts (exact):**
+
+> ```javascript
+> foc-user-service      | error: column "send_escalation_level" of relation "users_otps" does not exist
+> foc-user-service      |     at /app/node_modules/pg/lib/client.js:694:17
+> foc-user-service      |     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+> foc-user-service      |     at async Module.createOtp (/app/src/db/queries/otp.queries.ts:67:18)
+> foc-user-service      |     at async issueOtp (/app/src/services/otp.service.ts:63:3)
+> foc-user-service      |     at async <anonymous> (/app/src/services/auth.service.ts:228:5)
+> foc-user-service      |     at async withTransaction (/app/src/db/transaction.ts:18:20)
+> foc-user-service      |     at async Module.register (/app/src/services/auth.service.ts:192:3)
+> foc-user-service      |     at async <anonymous> (/app/src/controllers/auth.controller.ts:75:3) {
+> foc-user-service      |   length: 144,
+> foc-user-service      |   severity: 'ERROR',
+> foc-user-service      |   code: '42703',
+> foc-user-service      |   detail: undefined,
+> foc-user-service      |   hint: undefined,
+> foc-user-service      |   position: '83',
+> foc-user-service      |   internalPosition: undefined,
+> foc-user-service      |   internalQuery: undefined,
+> foc-user-service      |   where: undefined,
+> foc-user-service      |   schema: undefined,
+> foc-user-service      |   table: undefined,
+> foc-user-service      |   column: undefined,
+> foc-user-service      |   dataType: undefined,
+> foc-user-service      |   constraint: undefined,
+> foc-user-service      |   file: 'parse_target.c',
+> foc-user-service      |   line: '1066',
+> foc-user-service      |   routine: 'checkInsertTargets'
+> foc-user-service      | }
+> ```
+
+**Key responses:**
+Identified that CREATE TABLE IF NOT EXISTS did not update the existing users_otps table. Local information_schema query confirmed both send_escalation_level and send_blocked_until absent. Added idempotent ALTER statements matching the existing Stage 18 definitions to init.sql, and applied only those two statements in a transaction to the running local user-db. Verified send_escalation_level is SMALLINT NOT NULL DEFAULT 0 and send_blocked_until is nullable TIMESTAMPTZ. Existing data retained; no reset or service restart performed. Docker inspection initially lacked socket permission and succeeded with approved access. No registration request, OTP email, tests or build were run; verification was successful SQL execution and schema inspection. git diff --check passed.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None; applied already-recorded column definitions.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Frontend: chat entry points and role-filtered listing
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** User request quoted below; chat-service/README.md existing listing, details, messages and sending contracts; existing frontend same-origin proxy configuration.
+
+**Prompts (exact):**
+> Now we link it to the frontend. Currently there is a button that allows requesters to message the courier when the order has been accepted. change that to say "Open chat" when the order has been created, and the text remains as that even when the courier has accepted. then add a separate button beside the notification bell with a chat logo and upon clicking that, users will see a list of their chats called by the list chats endpoint. depending on requester/courier mode, filter the chats in the http call.
+
+**Key responses:**
+Changed activity action to Open chat, available for open orders and retained through accepted/picked-up/delivered states. Added chat icon beside desktop bell and chat link in mobile menu. Replaced mock chat screen with authenticated role-filtered HTTP list, cursor pagination, unread counts, empty/loading/error states and retry. Resolves order IDs through paginated listing to existing conversation IDs; displays a retry message when worker creation has not completed. Connected details, paginated message history and text sending to documented endpoints. Incoming messages require manual Refresh messages; no socket subscription, automatic read receipts or backend contracts were changed. Added matching narrow Vite/nginx API proxies and Compose development target, preserving SPA /chat routes. Read Postman API Simulation skill; existing order-worker simulation does not cover this UI, so used component and fetch-level tests. Initial build/test attempts failed because local dependencies were missing; offline installation failed due to cache miss; npm ci then installed locked dependencies without modifying manifests/lockfile. Build passed; frontend suite passed 145 tests in 26 files; lint passed with warnings, including state-in-effect warnings; existing AuthContext tests emitted act warnings. Final targeted verification recorded below. No live authenticated backend/browser end-to-end check was performed.
+
+**Files:**
+- `frontend/src/api/chat.js` (created)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/nginx/default.conf` (modified)
+- `compose.dev.yaml` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (created)
+- `frontend/tests/pages/MyActivitySplit.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. Pending credit reservation remains hidden as before; Open chat starts at existing open status. No realtime subscription decisions were made.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+**Final verification:** After adding activity-button assertions and isolating list state on mode changes, all 13 targeted tests passed across 3 files; production build and git diff --check passed.
+
+
+## 2026-11-08 — Frontend: chats list page
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User request below; existing chat-service/README.md listing ordering and conversation-details title contract; previous requester/courier filtering instruction.
+
+**Prompts (exact):**
+> add a page with route /chats and this page lists all chats in order of updatedAt DESC and with the title displayed and last message, similar to how a messaging app would work. then upon clicking an individual chat, the messages appear.
+
+**Key responses:**
+Added authenticated /chats list route, retaining /chat compatibility and /chat/:id message route. Changed nav and floating chat links to /chats and added an All chats return link. Rendered full-width rows with stored title, latest-message preview, updated timestamp and unread count. Preserved backend updatedAt DESC ordering and role filtering across pagination. Existing list response omits title, so fetched existing details for each returned conversation; no backend response shape or endpoint was altered. Added click-through/order/title/preview test. Initial targeted tests failed on expectations omitting an explicit undefined cursor argument; corrected test expectations. Final frontend suite passed 146 tests in 26 files; build passed; lint passed with warnings; git diff --check passed. Existing AuthContext tests emitted act warnings. No live browser or authenticated backend verification was run.
+
+**Files:**
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. Retained the previously requested requester/courier filter and cursor pagination.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Order/chat: courier participant delivery by order ID
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug, docs
+**Scope:** Implementation code, Debugging, Refactor/Docs
+**Governing decision:** User decisions quoted below; order-service/README.md Courier chat participation on acceptance; chat-service/README.md order participant endpoint; existing participant contract and outbox retry behavior.
+
+**Prompts (exact):**
+> it's not displaying the chats properly for the courier
+
+> oh yes sorry i forgot to ask you to add the courier as a chat participant using the endpoint. failure should also be retried.
+
+> then the worker should not retry.
+
+> can you create another endpoint in chat service `POST /chat/orders/{orderId}/participants` which behaves exactly like the conversations one but uses orderId
+
+**Key responses:**
+Diagnosed that role filtering was correct, but the local database had one requester participant and zero courier participants. Asked the team how to obtain conversation IDs and handle repeated participant conflicts before changing inter-service behavior. User specified the order-ID endpoint, background retries and no retry for 409. Implemented the new endpoint through the shared participant handler/service, resolving by orderId in the transaction before existing locking/validation. Acceptance queues courier addition atomically with its status change and existing notification; client posts accepting userId/COURIER with existing service credentials. Worker reuses existing retry/permanent-error handling: network/5xx retry, 409 stops retries and is dead-lettered. Existing accepted orders were not modified or backfilled. Added endpoint/auth/validation/conflict, client, worker and acceptance task tests. Initial sandbox endpoint tests failed because listening sockets were unavailable; reran with permitted sockets. Four existing acceptance assertions initially failed because they omitted the new task; updated them. Final results: Chat Service 169 tests and Order Service 691 tests passed; both typechecks/builds passed; Order Service lint and git diff --check passed. Extended the existing local Postman stand-in and exercised compiled worker/client with synthetic inputs against HTTP 503 then 409; asserted retryable then final failure and no order/credit access, with both requests confirmed in simulation log. No live Redis scheduling or live cross-service database persistence tested. Postman status remains unsupported by the installed CLI (unknown command). Skills used: Postman API Engineer and API Simulation. No remote workspace publishing performed.
+
+**Files:**
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `chat-service/src/order-participants.spec.ts` (created)
+- `postman/mocks/chat-unavailable/default.js` (modified)
+- `postman/simulations/order-chat-failure.context.yaml` (modified)
+- `order-service/README.md` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Stopped to request conversation-ID resolution and 409 behavior; implemented the user's supplied decisions. No historical participant backfill performed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Frontend: send message button
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** User request below; chat-service/README.md POST conversation messages contract; existing frontend sendMessage API function.
+
+**Prompts (exact):**
+> thanks bro, now make the sending of messages work
+
+> link the send message button to the endpoint to send a message in the chat
+
+**Key responses:**
+Inspected the existing form and found it already called sendMessage, which POSTs type TEXT/content with the session bearer to /chat/conversations/:id/messages. Made the send control an explicit submit button with visible Send text and styling, guarded submission for inactive chats, and disabled draft editing during requests so a successful response cannot clear a newly edited draft. Added tests verifying click-to-endpoint arguments, saved-message display/draft clearing, failed-send error/draft retention, and the actual fetch URL, method, bearer header and JSON body. All 149 frontend tests passed in 26 files; production build, lint (with warnings), and git diff --check passed. Existing AuthContext tests emitted act warnings. Tests used component/API doubles; no live authenticated backend or browser send was performed. No backend contract, realtime subscription or automatic retry behavior changed.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None; reused the existing send endpoint and form flow.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Chat: on-demand socket rooms and realtime frontend
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** User socket path, room timing, events and acknowledgement decisions quoted below; existing chat-service/README.md JWT lifecycle, membership rule, message:sent payload and HTTP error statuses; existing frontend order socket lifecycle.
+
+**Prompts (exact):**
+> OKKK now make the frontend subscribe to the socketio rooms for real-time updates
+
+> /chat-socket.io
+
+> how does order service do it?
+
+> okk then no need payload and acknowledgement also.
+
+> **automatically join user-level rooms on connection, but join conversation rooms on demand when the user opens a chat.**
+
+> just conversation id.&#x20;
+>
+> response sends:
+> ```yaml
+> success: true
+> conversationId: <id>
+> ```
+>
+> (if successful)
+>
+>
+>
+> else:
+> ```yaml
+> success: false
+> error: {
+> ...
+> }
+> ```
+
+> `chat:join`, `chat:leave`. follow the error code and error message.
+
+The second and third quoted items were user response annotations.
+
+**Key responses:**
+Inspected existing order socket subscription behavior and asked for the chat event/payload/path decisions before implementation. Implemented /chat-socket.io, automatic authenticated user room, chat:join/chat:leave with conversation UUID string and success/error acknowledgements. Join checks database participation and revokedAt; errors mirror existing REST HTTP status codes/messages. Leaves permit cleanup without membership reauthorization. Room operations execute sequentially to preserve join/leave order. Production passes Prisma into the socket server; Vite/nginx proxy the separate chat socket path. Frontend connects with the existing JWT refresh/reconnect lifecycle, disconnects on logout, joins open conversations, leaves on unmount, rejoins after ready and refreshes missed history. message:sent updates threads and triggers role-filtered list reload; messages merge by ID across HTTP/socket arrivals. Added server real-socket access and delivery tests plus frontend room/reconnect/error/dedup tests. Chat Service suite passed 174 tests; typecheck and build passed. Frontend full suite passed 150 tests before the additional socket-lifecycle test; final targeted suite passed 12 tests in 2 files; frontend build and lint (with warnings) passed. git diff --check passed. Existing AuthContext tests emitted act warnings. No live authenticated browser, JWKS or cross-replica Redis check performed. No automatic read receipts or new read UI implemented.
+
+**Files:**
+- `chat-service/src/realtime/socket-server.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/nginx/default.conf` (modified)
+- `frontend/src/realtime/chatSocket.js` (created)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/realtime/chatSocket.test.jsx` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Requested event names, room timing, payload/acknowledgements and public socket path; user supplied decisions.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

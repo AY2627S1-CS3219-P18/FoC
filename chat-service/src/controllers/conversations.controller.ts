@@ -18,6 +18,10 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -337,9 +341,14 @@ export function postRead(
 }
 
 // AI-generated (edited by <name>).
-export function postParticipant(prisma: PrismaClient): RequestHandler {
+export function postParticipant(
+  prisma: PrismaClient,
+  byOrderId = false,
+): RequestHandler {
   return async (req, res) => {
-    const id = z.uuid().safeParse(req.params.conversationID);
+    const id = z
+      .uuid()
+      .safeParse(byOrderId ? req.params.orderId : req.params.conversationID);
     const body = z
       .object({
         userId: z.uuid(),
@@ -351,7 +360,12 @@ export function postParticipant(prisma: PrismaClient): RequestHandler {
       return;
     }
     try {
-      const result = await addParticipant(prisma, id.data, body.data);
+      const result = await addParticipant(
+        prisma,
+        id.data,
+        body.data,
+        byOrderId,
+      );
       if (result.status !== 200) {
         res.sendStatus(result.status);
         return;
@@ -373,6 +387,7 @@ export function postSystemNotification(
     const body = z
       .object({
         orderId: z.uuid(),
+        messageId: z.uuid(),
         message: z.string().refine((value) => value.trim().length > 0),
       })
       .safeParse(req.body);
@@ -382,17 +397,17 @@ export function postSystemNotification(
     }
     try {
       const result = await sendSystemNotification(prisma, body.data);
-      if (result.status !== 201) {
+      if (result.status !== 201 && result.status !== 200) {
         res.sendStatus(result.status);
         return;
       }
       // Reuse normal delivery only after the message transaction commits.
       try {
-        publish?.(result.message!, result.userIds!);
+        if (result.status === 201) publish?.(result.message!, result.userIds!);
       } catch (error) {
         console.error(error);
       }
-      res.status(201).json(result.message);
+      res.status(result.status).json(result.message);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

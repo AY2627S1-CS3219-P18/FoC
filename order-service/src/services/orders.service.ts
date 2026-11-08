@@ -74,11 +74,20 @@
  *        Edit checks only the fields it changes, after the requester / open checks.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
 import { insertOutboxRows } from '../db/outbox.repository.js';
 import {
+  buildChatCreateTask,
+  buildChatNotificationTask,
+  buildChatParticipantTask,
   buildReleaseTask,
   buildReserveTask,
   buildTransferTask,
@@ -463,18 +472,23 @@ export interface TransitionOptions {
    * committed on credit-service's side without us hearing back (George, 2026-10-19).
    */
   releaseCredits?: boolean;
+  /** Courier username lookup supplied by the acceptance request; never persisted. */
+  acceptanceUsername?: () => Promise<string | undefined>;
   /** Where to publish the resulting order event once the change has committed. */
   events?: OrderEventPublisher;
   /** Reason carried on the event (a failed reservation's code). */
   reason?: string;
 }
 
-/** Credit tasks that must commit together with moving `order` to `to`. */
+/** Tasks that must commit together with moving `order` to `to`. */
 function creditTasksFor(
   order: OrderRequest,
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
+  // AI-generated (edited by <name>).
+  if (order.status === 'pending' && to === 'open')
+    return [buildChatCreateTask(order)];
   // Completion pays the courier: credit-service moves the reserved credits.
   if (to === 'completed' && order.courierId) {
     return [
@@ -506,6 +520,27 @@ export const transitionOrder = async (
   if (!check.ok) return check;
 
   const tasks = creditTasksFor(order, to, options);
+  // AI-generated (edited by <name>).
+  const messages: Partial<Record<RequestStatus, string>> = {
+    cancelled: 'The order has been cancelled',
+    expired: 'The order has expired',
+    accepted: 'The order has been accepted',
+    picked_up: 'The order has been picked up',
+    delivered: 'The order has been delivered',
+    completed: 'The order has been marked as completed',
+  };
+  let message = messages[to];
+  if (to === 'accepted' && options.acceptanceUsername) {
+    try {
+      const username = await options.acceptanceUsername();
+      if (username) message += ` by ${username}`;
+    } catch {
+      // The team-specified fallback also covers network and malformed-response errors.
+    }
+  }
+  if (to === 'accepted')
+    tasks.push(buildChatParticipantTask(order.id, actorId));
+  if (message) tasks.push(buildChatNotificationTask(order.id, message));
 
   // use versioning to prevent data race by updating only on row with same version as found order;
   // any credit task commits in the same transaction, so a lost race writes nothing.

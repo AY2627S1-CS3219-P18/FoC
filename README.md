@@ -165,6 +165,24 @@ Scope (2026-11-08, Codex, model: GPT-6): Indexed the participant limit enforceme
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Indexed the system notification disclosure entry.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied order/chat delivery contract and disclosure index.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the system message wording log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the status notification log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Indexed the OTP database repair disclosure.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added frontend chat integration disclosure index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added /chats page disclosure index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order participant endpoint and courier delivery.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Indexed send-button verification.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Indexed chat realtime integration.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -631,3 +649,12 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 208 | 2026-11-08 | chat-service | Chat service: participant addition endpoint | Implemented system-only participant addition, validation, conflict handling and tests. |
 | 209 | 2026-11-08 | chat-service | Chat service: participant role limits | Enforced one requester and one non-revoked courier; added regression tests. |
 | 210 | 2026-11-08 | chat-service | Chat service: system notification endpoint | Implemented order-based SYSTEM messages, service authentication, realtime delivery and tests. |
+| 211 | 2026-11-08 | order-service, chat-service | Order/chat: reservation-success delivery and message deduplication | Added reservation-success chat delivery, stable message IDs, duplicate handling and tests. |
+| 212 | 2026-11-08 | order-service | Order/chat: system message wording | Updated order creation notification text and its test. |
+| 213 | 2026-11-08 | order-service | Order/chat: status change notifications | Implemented queued status messages, courier username lookup, fallback and tests. |
+| 214 | 2026-11-08 | user-service | User service: existing database OTP columns | Applied existing OTP columns locally and added idempotent SQL. |
+| 215 | 2026-11-08 | frontend | Frontend: chat entry points and role-filtered listing | Connected Open chat, navigation icon, role-filtered lists and existing chat HTTP endpoints. |
+| 216 | 2026-11-08 | frontend | Frontend: chats list page | Added /chats with titles, last messages, timestamps and conversation navigation. |
+| 217 | 2026-11-08 | order-service, chat-service | Order/chat: courier participant delivery by order ID | Added order participant endpoint and queued courier addition on acceptance with retries. |
+| 218 | 2026-11-08 | frontend | Frontend: send message button | Verified authenticated message submission; added explicit Send control and success/failure tests. |
+| 219 | 2026-11-08 | frontend, chat-service | Chat: on-demand socket rooms and realtime frontend | Added authenticated rooms, acknowledgements, chat socket proxy and realtime message updates. |

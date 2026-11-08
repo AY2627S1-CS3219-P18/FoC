@@ -20,6 +20,10 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -287,6 +291,7 @@ export async function sendMessage(
   conversationId: string,
   senderId: string | null,
   validate: () => { type: "TEXT" | "SYSTEM"; content: string } | 400 | 422,
+  messageId?: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const conversation = await tx.conversation.findUnique({
@@ -311,6 +316,7 @@ export async function sendMessage(
     const now = new Date();
     const row = await tx.message.create({
       data: {
+        ...(messageId ? { id: messageId } : {}),
         chatId: conversationId,
         senderId,
         type: input.type,
@@ -400,8 +406,17 @@ export async function addParticipant(
   prisma: PrismaClient,
   conversationId: string,
   input: { userId: string; role: "COURIER" | "REQUESTER" },
+  byOrderId = false,
 ) {
   return prisma.$transaction(async (tx) => {
+    if (byOrderId) {
+      const conversation = await tx.conversation.findUnique({
+        where: { orderId: conversationId },
+        select: { conversationId: true },
+      });
+      if (!conversation) return { status: 404 as const };
+      conversationId = conversation.conversationId;
+    }
     // Serialize additions on this conversation before checking existing membership.
     const locked = await tx.conversation.updateMany({
       where: { conversationId, status: "ACTIVE" },
@@ -445,15 +460,64 @@ export async function addParticipant(
 // AI-generated
 export async function sendSystemNotification(
   prisma: PrismaClient,
-  input: { orderId: string; message: string },
+  input: { orderId: string; message: string; messageId: string },
 ) {
+  const existingResult = async () => {
+    const row = await prisma.message.findUnique({
+      where: { id: input.messageId },
+      include: { conversation: { select: { orderId: true } } },
+    });
+    if (!row) return null;
+    if (
+      row.conversation.orderId !== input.orderId ||
+      row.content !== input.message ||
+      row.type !== "SYSTEM" ||
+      row.senderId !== null
+    )
+      return { status: 409 as const };
+    return {
+      status: 200 as const,
+      message: {
+        messageId: row.id,
+        conversationId: row.chatId,
+        senderId: row.senderId,
+        type: row.type,
+        content: row.content,
+        metadata: row.metadata,
+        createdAt: row.createdAt.toISOString(),
+      },
+    };
+  };
+  const existing = await existingResult();
+  if (existing) return existing;
   const conversation = await prisma.conversation.findUnique({
     where: { orderId: input.orderId },
     select: { conversationId: true },
   });
   if (!conversation) return { status: 404 as const };
-  return sendMessage(prisma, conversation.conversationId, null, () => ({
-    type: "SYSTEM",
-    content: input.message,
-  }));
+  try {
+    return await sendMessage(
+      prisma,
+      conversation.conversationId,
+      null,
+      () => ({
+        type: "SYSTEM",
+        content: input.message,
+      }),
+      input.messageId,
+    );
+  } catch (error) {
+    // Concurrent retries can both miss the lookup; the primary key arbitrates.
+    // Read the winner only after the losing transaction has rolled back.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      const winner = await existingResult();
+      if (winner) return winner;
+    }
+    throw error;
+  }
 }

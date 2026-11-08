@@ -36,6 +36,8 @@
  * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -56,7 +58,11 @@ export interface OrdersRouterDeps {
 
 export function ordersRouter(
   prisma: PrismaClient,
-  { suppliers, events, userServiceUrl = 'http://localhost:3001' }: OrdersRouterDeps,
+  {
+    suppliers,
+    events,
+    userServiceUrl = 'http://localhost:3001',
+  }: OrdersRouterDeps,
 ): Router {
   const router = Router();
   router.param('id', (_req, res, next, id) => {
@@ -64,7 +70,7 @@ export function ordersRouter(
     res.status(404).json({ message: ErrorMessage[ErrorCode.ORDER_NOT_FOUND] });
   });
   const transition = (status: RequestStatus) =>
-    ordersController.transitionOrder(prisma, status, events);
+    ordersController.transitionOrder(prisma, status, events, userServiceUrl);
 
   router.get('/', ordersController.getOrders(prisma));
   router.get('/active', ordersController.getActiveDeliveries(prisma));

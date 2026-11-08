@@ -6,7 +6,10 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Verified read receipt room delivery and reader exclusion.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Tested on-demand chat rooms and acknowledgements.
+ * Author review:
  */
+import type { PrismaClient } from "../db/prisma.js";
 import { createServer } from "node:http";
 import { io as connect, type Socket } from "socket.io-client";
 import { createSocketServer } from "./socket-server.js";
@@ -25,15 +28,17 @@ async function setup(
       exp: Math.floor(Date.now() / 1000) + 60,
     };
   },
+  prisma?: PrismaClient,
 ) {
   const http = createServer();
-  const io = createSocketServer(http, { verifyToken });
+  const io = createSocketServer(http, { verifyToken, prisma });
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
   const address = http.address();
   if (!address || typeof address === "string") throw new Error("No address");
   const clients: Socket[] = [];
   const client = (token?: string) => {
     const socket = connect(`http://127.0.0.1:${address.port}`, {
+      path: "/chat-socket.io",
       transports: ["websocket"],
       auth: token === undefined ? {} : { token },
       reconnection: false,
@@ -80,7 +85,7 @@ it("joins only the verified user's room and broadcasts once to the union of targ
     const serverA = t.io.sockets.sockets.get(a.id!)!;
     expect([...serverA.rooms]).toEqual([a.id, "user:a"]);
     expect(t.io.sockets.sockets.get(b.id!)!.rooms.has("user:a")).toBe(false);
-    // Test-only room join; production subscription handlers are deliberately deferred.
+    // Direct join isolates union-broadcast behavior from the subscription tests below.
     await serverA.join("chat:c");
     let received = 0;
     a.on("message:sent", () => {
@@ -161,3 +166,90 @@ it("delivers read receipts only to other sockets in the conversation room", asyn
     await t.close();
   }
 });
+
+// AI-generated (edited by <name>).
+it("joins authorized conversations on demand, receives broadcasts, and leaves with acknowledgements", async () => {
+  const id = "0192f0c4-0000-7000-8000-000000000001";
+  const findUnique = vi
+    .fn()
+    .mockResolvedValue({ participants: [{ revokedAt: null }] });
+  const t = await setup(undefined, {
+    conversation: { findUnique },
+  } as unknown as PrismaClient);
+  try {
+    const client = t.client("member");
+    await t.ready(client);
+    const server = t.io.sockets.sockets.get(client.id!)!;
+    expect(server.rooms.has(`chat:${id}`)).toBe(false);
+    expect(await client.emitWithAck("chat:join", id)).toEqual({
+      success: true,
+      conversationId: id,
+    });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { conversationId: id },
+      select: {
+        participants: {
+          where: { userId: "member" },
+          select: { revokedAt: true },
+        },
+      },
+    });
+    const received = new Promise((resolve) =>
+      client.once("message:sent", resolve),
+    );
+    const message = {
+      messageId: "m",
+      conversationId: id,
+      senderId: "other",
+      type: "TEXT" as const,
+      content: "Live message",
+      metadata: null,
+      createdAt: new Date().toISOString(),
+    };
+    createMessagePublisher(t.io)(message, []);
+    expect(await received).toEqual(message);
+    expect(await client.emitWithAck("chat:leave", id)).toEqual({
+      success: true,
+      conversationId: id,
+    });
+    expect(server.rooms.has(`chat:${id}`)).toBe(false);
+  } finally {
+    await t.close();
+  }
+});
+it.each([
+  ["invalid", null, 400, "Bad Request"],
+  ["0192f0c4-0000-7000-8000-000000000001", null, 404, "Not Found"],
+  [
+    "0192f0c4-0000-7000-8000-000000000001",
+    { participants: [] },
+    403,
+    "Forbidden",
+  ],
+  [
+    "0192f0c4-0000-7000-8000-000000000001",
+    { participants: [{ revokedAt: new Date() }] },
+    409,
+    "Conflict",
+  ],
+])(
+  "rejects inaccessible room %s with HTTP error semantics",
+  async (id, row, code, message) => {
+    const t = await setup(undefined, {
+      conversation: { findUnique: vi.fn().mockResolvedValue(row) },
+    } as unknown as PrismaClient);
+    try {
+      const client = t.client("member");
+      await t.ready(client);
+      expect(await client.emitWithAck("chat:join", id)).toEqual({
+        success: false,
+        error: { code, message },
+      });
+      expect(
+        t.io.sockets.sockets.get(client.id!)!.rooms.has(`chat:${id}`),
+      ).toBe(false);
+    } finally {
+      await t.close();
+    }
+  },
+);

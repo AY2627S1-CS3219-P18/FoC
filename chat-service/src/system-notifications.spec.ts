@@ -4,6 +4,8 @@
  * Scope: Tested the team-specified system notification endpoint.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -11,6 +13,7 @@ import type { PrismaClient } from "./db/prisma.js";
 const id = "0192f0c4-0000-7000-8000-000000000001";
 const userId = "0192f0c4-0000-7000-8000-00000000000a";
 function setup() {
+  const findMessage = vi.fn().mockResolvedValue(null);
   const findOrder = vi.fn().mockResolvedValue({ conversationId: id });
   const findUnique = vi.fn().mockResolvedValue({
     status: "ACTIVE",
@@ -38,6 +41,7 @@ function setup() {
   const app = createApp({
     prisma: {
       conversation: { findUnique: findOrder },
+      message: { findUnique: findMessage },
       $transaction: transaction,
     } as unknown as PrismaClient,
     apiKey: "test",
@@ -47,13 +51,16 @@ function setup() {
       return { user_id: userId, role: "student", exp: 9999999999 };
     },
   });
-  const post = (body: object = { orderId: id, message: "  Order ready  " }) =>
+  const post = (
+    body: object = { orderId: id, messageId: id, message: "  Order ready  " },
+  ) =>
     request(app)
       .post("/chat/send-system-notification")
       .set("X-Service-Key", "test")
       .send(body);
   return {
     app,
+    findMessage,
     post,
     findOrder,
     findUnique,
@@ -82,6 +89,7 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
   });
   expect(t.create).toHaveBeenCalledWith({
     data: {
+      id,
       chatId: id,
       senderId: null,
       type: "SYSTEM",
@@ -97,11 +105,11 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
 });
 it.each([
   {},
-  { orderId: "bad", message: "hello" },
-  { orderId: id },
-  { orderId: id, message: "" },
-  { orderId: id, message: " \n " },
-  { orderId: id, message: 1 },
+  { messageId: id, orderId: "bad", message: "hello" },
+  { messageId: id, orderId: id },
+  { messageId: id, orderId: id, message: "" },
+  { messageId: id, orderId: id, message: " \n " },
+  { messageId: id, orderId: id, message: 1 },
 ])("rejects invalid input %j", async (body) => {
   const t = setup();
   expect((await t.post(body)).status).toBe(400);
@@ -118,9 +126,9 @@ it.each([
   const req = request(t.app).post("/chat/send-system-notification");
   if (key) req.set("X-Service-Key", String(key));
   if (token) req.set("Authorization", `Bearer ${token}`);
-  expect((await req.send({ orderId: id, message: "hello" })).status).toBe(
-    status,
-  );
+  expect(
+    (await req.send({ orderId: id, messageId: id, message: "hello" })).status,
+  ).toBe(status);
   if (status !== 201) expect(t.findOrder).not.toHaveBeenCalled();
 });
 it.each(["missing order", "missing conversation", "archived"])(
@@ -157,5 +165,66 @@ it.each(["lookup", "insert", "update", "broadcast"])(
     } finally {
       log.mockRestore();
     }
+  },
+);
+
+// AI-generated (edited by <name>).
+function storedMessage(overrides: object = {}) {
+  return {
+    id,
+    chatId: id,
+    senderId: null,
+    type: "SYSTEM",
+    content: "  Order ready  ",
+    metadata: null,
+    createdAt: new Date("2026-11-08T00:00:00Z"),
+    conversation: { orderId: id },
+    ...overrides,
+  };
+}
+it("returns the existing message on retry without writing or broadcasting", async () => {
+  const t = setup();
+  t.findMessage.mockResolvedValue(storedMessage());
+  const response = await t.post();
+  expect(response.status).toBe(200);
+  expect(response.body.messageId).toBe(id);
+  expect(t.transaction).not.toHaveBeenCalled();
+  expect(t.publish).not.toHaveBeenCalled();
+});
+it.each([
+  { content: "different" },
+  { conversation: { orderId: userId } },
+  { type: "TEXT" },
+  { senderId: userId },
+])("rejects message ID collision %j", async (overrides) => {
+  const t = setup();
+  t.findMessage.mockResolvedValue(storedMessage(overrides));
+  expect((await t.post()).status).toBe(409);
+  expect(t.transaction).not.toHaveBeenCalled();
+  expect(t.publish).not.toHaveBeenCalled();
+});
+it.each([false, true])(
+  "handles a concurrent primary-key collision (conflict=%s)",
+  async (conflict) => {
+    const t = setup();
+    t.findMessage
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        storedMessage(conflict ? { content: "different" } : {}),
+      );
+    t.create.mockRejectedValue({ code: "P2002" });
+    expect((await t.post()).status).toBe(conflict ? 409 : 200);
+    expect(t.update).not.toHaveBeenCalled();
+    expect(t.publish).not.toHaveBeenCalled();
+  },
+);
+it.each([undefined, "bad"])(
+  "requires a UUID messageId (%s)",
+  async (messageId) => {
+    const t = setup();
+    expect(
+      (await t.post({ orderId: id, message: "hello", messageId })).status,
+    ).toBe(400);
+    expect(t.findMessage).not.toHaveBeenCalled();
   },
 );

@@ -47,6 +47,8 @@
  *        banner never carries over to the next login.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -55,6 +57,7 @@ import * as authApi from '../api/auth'
 import * as profileApi from '../api/profile'
 import { getBalance } from '../api/credits'
 import { setAccessToken, setOnSessionExpired, setOnSessionTimeLeft } from '../api/http'
+import { connectChatSocket, disconnectChatSocket } from '../realtime/chatSocket'
 import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 
 const AuthContext = createContext(null)
@@ -161,7 +164,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!isLoggedIn) return undefined
     connectOrderSocket()
-    return () => disconnectOrderSocket()
+    connectChatSocket()
+    return () => { disconnectOrderSocket(); disconnectChatSocket() }
   }, [isLoggedIn])
 
   const login = useCallback(async (identifier, password) => {

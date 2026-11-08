@@ -27,260 +27,177 @@
  *        routing/navigationHistory.js tracker.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Verified message submission and added send-button feedback and regression tests.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
+ * Author review:
  */
 
-import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Languages, Paperclip, Phone, Send, Video } from 'lucide-react'
-import { threads, LANG_NAMES, SYSTEM_USER, threadHref, findThread } from '../data/messages'
-import { getUser, firstName } from '../data/users'
-import { getSupplier, qualifiedName } from '../data/suppliers'
-import { useDemo } from '../context/DemoContext'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, MessageCircle, Send } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { findOrderChat, getChat, listChats, listMessages, sendMessage } from '../api/chat'
+import { useChatRoom, useChatMessages, useChatReady } from '../realtime/chatSocket'
 import { hasPreviousPage } from '../routing/navigationHistory'
 import { mainPageFor } from '../routing/views'
 
-// Nice-to-have: real-time chat and translation. Translations are hardcoded in messages.js.
 export default function Chat() {
-  const { id } = useParams()
-  const navigate = useNavigate()
   const { user } = useAuth()
-  const { currentUser, requests } = useDemo()
-  const goBack = () => {
-    if (hasPreviousPage()) navigate(-1)
-    else navigate(mainPageFor(user?.activeView))
+  return <ChatView key={user?.activeView} />
+}
+
+// Listing supplies authoritative updatedAt DESC ordering; details supplies each stored title.
+async function loadChatPage(role, cursor) {
+  const page = await listChats(role, cursor)
+  const conversations = await Promise.all(page.conversations.map(async (chat) => {
+    const details = await getChat(chat.id)
+    return { ...chat, title: details.title }
+  }))
+  return { ...page, conversations }
+}
+
+function ChatView() {
+  const { id } = useParams()
+  const [params] = useSearchParams()
+  const orderId = params.get('orderId')
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [page, setPage] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [retry, setRetry] = useState(0)
+  useChatMessages(() => setRetry((v) => v + 1))
+  useChatReady(() => setRetry((v) => v + 1))
+  const role = user?.activeView
+  useEffect(() => {
+    let live = true
+    setPage(null)
+    setError(null)
+    setLoading(true)
+    const load = orderId ? findOrderChat(orderId, role) : loadChatPage(role)
+    load.then((result) => {
+      if (!live) return
+      if (orderId) navigate('/chat/' + result.id, { replace: true })
+      else setPage(result)
+    }).catch((err) => { if (live) setError(err.message) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [role, orderId, navigate, retry])
+
+  const more = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const next = await loadChatPage(role, page.nextCursor)
+      setPage((prev) => ({ ...next, conversations: [...prev.conversations, ...next.conversations] }))
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
   }
-  const [autoTranslate, setAutoTranslate] = useState(false)
-  const [translated, setTranslated] = useState({})
-
-  const thread = findThread(id) || threads[0]
-  const isSystem = thread.withUserId === 'system'
-  const request = thread.requestId ? requests.find((r) => r.id === thread.requestId) : null
-  const supplier = request ? getSupplier(request.supplierId) : null
-  const other = isSystem ? SYSTEM_USER : getUser(thread.withUserId)
-
-  const isTranslated = (m) => autoTranslate || translated[m.id]
-
+  const goBack = () => hasPreviousPage() ? navigate(-1) : navigate(mainPageFor(role))
   return (
-    <div className="page-width page-gutter py-0 md:py-6">
-      <div className="flex h-[calc(100vh-4rem)] gap-6 md:h-[calc(100vh-8rem)]">
-        {/* Conversation list */}
-        <aside className="hidden w-[320px] shrink-0 flex-col overflow-hidden rounded-card border border-line md:flex">
-          <h1 className="border-b border-line px-4 py-4 text-base font-semibold text-ink">
-            Messages
-          </h1>
-          <ul className="flex-1 overflow-y-auto">
-            {threads.map((t) => {
-              const person = t.withUserId === 'system' ? SYSTEM_USER : getUser(t.withUserId)
-              const active = t.id === thread.id
-              const last = t.messages[t.messages.length - 1]
-              return (
-                <li key={t.id}>
-                  <Link
-                    to={threadHref(t)}
-                    className={
-                      'flex gap-3 border-b border-line px-4 py-3 ' +
-                      (active ? 'bg-surface-alt' : 'hover:bg-surface-alt')
-                    }
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
-                      {person.initials}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-ink">{person.name}</span>
-                        <span className="tnum shrink-0 text-xs text-ink-40">{t.lastAt}</span>
-                      </span>
-                      <span className="mt-0.5 block truncate text-sm text-ink-40">{last.text}</span>
-                    </span>
-                    {t.unread > 0 && (
-                      <span className="tnum mt-1 flex h-5 min-w-[20px] items-center justify-center rounded-pill bg-ink px-1.5 text-[11px] font-semibold text-white">
-                        {t.unread}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </aside>
-
-        {/* Thread */}
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden md:rounded-card md:border md:border-line">
-          <header className="flex items-center gap-3 border-b border-line px-1 py-3 md:px-4">
-            <button
-              type="button"
-              onClick={goBack}
-              aria-label="Go back"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn text-ink md:hidden"
-            >
-              <ArrowLeft size={20} aria-hidden="true" />
-            </button>
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
-              {other.initials}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-ink">{other.name}</p>
-              <p className="truncate text-xs text-ink-40">
-                {isSystem ? (
-                  'Account updates'
-                ) : (
-                  <>
-                    {qualifiedName(supplier)} <span aria-hidden="true">&rarr;</span>{' '}
-                    {request.deliveryLocation} ·{' '}
-                    <span className="tnum">{request.credits}</span> cr
-                  </>
-                )}
-              </p>
-            </div>
-            {!isSystem && (
-              <>
-                <button
-                  type="button"
-                  aria-label="Voice call"
-                  className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
-                >
-                  <Phone size={18} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Video call"
-                  className="flex h-11 w-11 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
-                >
-                  <Video size={18} aria-hidden="true" />
-                </button>
-              </>
-            )}
-          </header>
-
-          {!isSystem && (
-            <div className="flex items-center justify-end gap-2 border-b border-line px-3 py-2 md:px-4">
-            <span id="auto-translate-label" className="text-xs text-ink-70">
-              Auto-translate
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoTranslate}
-              aria-labelledby="auto-translate-label"
-              onClick={() => setAutoTranslate((v) => !v)}
-              /* The button carries the 44px tap target; the track inside stays 24px tall. */
-              className="flex h-11 w-11 shrink-0 items-center justify-center md:h-6 md:w-10"
-            >
-              <span
-                className={
-                  'relative block h-6 w-10 rounded-pill transition-colors duration-150 ' +
-                  (autoTranslate ? 'bg-blue' : 'bg-line')
-                }
-                aria-hidden="true"
-              >
-                <span
-                  className={
-                    'absolute top-0.5 h-5 w-5 rounded-pill bg-surface transition-all duration-150 ' +
-                    (autoTranslate ? 'left-[18px]' : 'left-0.5')
-                  }
-                />
+    <div className="page-width page-gutter py-6">
+      <button type="button" onClick={goBack} aria-label="Go back" className="mb-4 flex h-11 items-center gap-2"><ArrowLeft size={20} /> Back</button>
+      <div className="flex gap-6">
+        <aside className={(id ? 'hidden md:block ' : '') + (id ? 'w-full md:w-80 ' : 'w-full ') + 'shrink-0 rounded-card border border-line bg-surface p-4'}>
+          <h1 className="mb-4 text-lg font-semibold">Chats</h1>
+          {error && <div role="alert">{error} <button onClick={() => setRetry((v) => v + 1)}>Retry</button></div>}
+          {loading && <p role="status">Loading chats…</p>}
+          {page?.conversations.length === 0 && <p>No chats in {role} mode.</p>}
+          <ul>{page?.conversations.map((chat) => <li key={chat.id} className="border-b border-line last:border-0">
+            <Link to={'/chat/' + chat.id} aria-current={id === chat.id ? 'page' : undefined} className="flex items-center gap-3 rounded-btn px-2 py-4 hover:bg-surface-alt">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-alt text-ink-70"><MessageCircle size={22} aria-hidden="true" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="truncate font-semibold">{chat.title}</span>
+                  <time dateTime={chat.updatedAt} className="shrink-0 text-xs text-ink-40">{new Date(chat.updatedAt).toLocaleString()}</time>
+                </span>
+                <span className="mt-1 block truncate text-sm text-ink-70">{chat.lastMessage?.content ?? (chat.lastMessage ? chat.lastMessage.type : 'No messages yet')}</span>
               </span>
-            </button>
-          </div>
-          )}
-
-          <ol className="flex-1 space-y-4 overflow-y-auto px-3 py-4 md:px-4">
-            {thread.messages.map((m) => {
-              if (m.from === 'system') {
-                return (
-                  <li key={m.id} className="flex flex-col items-center">
-                    <div className="max-w-prose rounded-card border border-line bg-surface-alt px-4 py-3 text-center text-sm text-ink-70">
-                      {m.text}
-                    </div>
-                    <p className="tnum mt-1 text-xs text-ink-40">{m.at}</p>
-                  </li>
-                )
-              }
-              const own = m.from === currentUser.id
-              const translatable = m.lang !== 'en' && m.translation
-              const showing = translatable && isTranslated(m)
-              return (
-                <li key={m.id} className={'flex flex-col ' + (own ? 'items-end' : 'items-start')}>
-                  <div className="max-w-[70%]">
-                    {showing && (
-                      <p className="mb-1 text-xs text-ink-40">
-                        Translated from {LANG_NAMES[m.lang]}
-                      </p>
-                    )}
-                    <div
-                      className={
-                        'rounded-card px-3.5 py-2.5 text-base ' +
-                        (own
-                          ? 'rounded-br-[4px] bg-ink text-white'
-                          : 'rounded-bl-[4px] bg-surface-alt text-ink')
-                      }
-                    >
-                      <span key={showing ? 't' : 'o'} className="foc-fade block">
-                        {showing ? m.translation : m.text}
-                      </span>
-                    </div>
-                    {translatable && !autoTranslate && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setTranslated((prev) => ({ ...prev, [m.id]: !prev[m.id] }))
-                        }
-                        className="mt-1 flex min-h-[44px] items-center gap-1 text-xs font-medium text-blue hover:underline md:min-h-0"
-                      >
-                        <Languages size={13} aria-hidden="true" />
-                        {translated[m.id] ? 'Show original' : 'Translate'}
-                      </button>
-                    )}
-                    <p className={'tnum mt-1 text-xs text-ink-40 ' + (own ? 'text-right' : '')}>
-                      {m.at}
-                    </p>
-                  </div>
-                </li>
-              )
-            })}
-          </ol>
-
-          <form
-            className="flex items-center gap-2 border-t border-line px-3 py-3 md:px-4"
-            onSubmit={(e) => e.preventDefault()}
-          >
-            <button
-              type="button"
-              disabled={isSystem}
-              aria-label="Attach a file"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt disabled:text-ink-40"
-            >
-              <Paperclip size={18} aria-hidden="true" />
-            </button>
-            <input
-              type="text"
-              disabled={isSystem}
-              placeholder={isSystem ? 'You cannot reply to FoC' : 'Message ' + firstName(other)}
-              aria-label={isSystem ? 'Replies are not available' : 'Message ' + firstName(other)}
-              className={
-                'h-11 min-w-0 flex-1 rounded-pill border border-line px-4 text-base ' +
-                (isSystem
-                  ? 'cursor-not-allowed bg-surface-alt text-ink-40'
-                  : 'bg-surface text-ink')
-              }
-            />
-            <button
-              type="submit"
-              disabled={isSystem}
-              aria-label="Send message"
-              className={
-                'flex h-11 w-11 shrink-0 items-center justify-center rounded-pill transition-colors duration-150 ' +
-                (isSystem
-                  ? 'cursor-not-allowed bg-surface-alt text-ink-40'
-                  : 'bg-ink text-white hover:bg-ink-70')
-              }
-            >
-              <Send size={17} aria-hidden="true" />
-            </button>
-          </form>
-        </section>
+              {chat.unreadCount > 0 && <span className="shrink-0 rounded-pill bg-ink px-2 py-1 text-xs text-white">{chat.unreadCount} unread</span>}
+            </Link>
+          </li>)}</ul>
+          {page?.hasMore && <button disabled={loading} onClick={more}>Load more chats</button>}
+        </aside>
+        {id && <Thread key={id + ':' + role} id={id} user={user} />}
       </div>
     </div>
   )
+}
+
+// HTTP responses and socket delivery may arrive in either order; retain one row per saved ID.
+function mergeMessages(previous, incoming) {
+  return [...new Map([...previous, ...incoming].map((message) => [message.messageId, message])).values()]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.messageId.localeCompare(b.messageId))
+}
+
+function Thread({ id, user }) {
+  const [chat, setChat] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [pagination, setPagination] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [text, setText] = useState('')
+  const [retry, setRetry] = useState(0)
+  useChatRoom(id, (message) => { if (message) setError(message) })
+  useChatReady(() => setRetry((v) => v + 1))
+  useChatMessages((message) => {
+    if (message.conversationId !== id) return
+    setMessages((prev) => mergeMessages(prev, [message]))
+  })
+  useEffect(() => {
+    let live = true
+    setBusy(true)
+    setError(null)
+    Promise.all([getChat(id), listMessages(id)]).then(([details, history]) => {
+      if (!live) return
+      setChat(details)
+      setMessages((prev) => mergeMessages(prev, history.data))
+      setPagination(history.pagination)
+    }).catch((err) => { if (live) setError(err.message) })
+      .finally(() => { if (live) setBusy(false) })
+    return () => { live = false }
+  }, [id, retry])
+  const older = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const history = await listMessages(id, pagination.nextCursor)
+      setMessages((prev) => mergeMessages(prev, history.data))
+      setPagination(history.pagination)
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+  const send = async (event) => {
+    event.preventDefault()
+    if (!text.trim() || busy || chat?.status !== 'ACTIVE') return
+    setBusy(true)
+    setError(null)
+    try {
+      const message = await sendMessage(id, text)
+      setMessages((prev) => mergeMessages(prev, [message]))
+      setText('')
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+  return <section className="min-w-0 flex-1 rounded-card border border-line p-4">
+    <Link to="/chats">All chats</Link>
+    <h2 className="text-lg font-semibold">{chat?.title ?? 'Chat'}</h2>
+    <button onClick={() => setRetry((v) => v + 1)} disabled={busy}>Refresh messages</button>
+    {error && <p role="alert">{error}</p>}
+    {busy && <p role="status">Loading…</p>}
+    {pagination?.hasMore && <button onClick={older} disabled={busy}>Load older messages</button>}
+    <ol className="my-4 max-h-[60vh] space-y-3 overflow-y-auto">{messages.map((message) => <li key={message.messageId} className={message.senderId === user?.id ? 'text-right' : ''}>
+      <p className={message.type === 'SYSTEM' ? 'text-center text-ink-70' : ''}>{message.content}</p>
+      <time className="text-xs text-ink-40">{new Date(message.createdAt).toLocaleString()}</time>
+    </li>)}</ol>
+    <form onSubmit={send} className="flex gap-2">
+      <input aria-label="Message" value={text} onChange={(event) => setText(event.target.value)} disabled={busy || !chat || chat.status !== 'ACTIVE'} className="min-w-0 flex-1 rounded-btn border border-line p-3" />
+      <button type="submit" aria-label="Send message" disabled={busy || !text.trim() || chat?.status !== 'ACTIVE'} className="flex items-center gap-2 rounded-btn bg-ink px-4 text-white disabled:opacity-50"><Send size={20} aria-hidden="true" /> Send</button>
+    </form>
+  </section>
 }

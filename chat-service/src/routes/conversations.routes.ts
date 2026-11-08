@@ -18,6 +18,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -102,6 +104,18 @@ export function systemNotificationsRouter(
   publish?: MessagePublisher,
 ) {
   const router = Router();
+  router.post(
+    "/orders/:orderId/participants",
+    authenticateMessage(apiKey, userServiceUrl, verifyToken),
+    (req, res, next) => {
+      if (req.user) {
+        res.sendStatus(403);
+        return;
+      }
+      next();
+    },
+    postParticipant(prisma, true),
+  );
   router.post(
     "/send-system-notification",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),

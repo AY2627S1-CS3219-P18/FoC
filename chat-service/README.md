@@ -30,6 +30,12 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied participant lim
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the confirmed system notification endpoint.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied order/chat delivery contract and disclosure index.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order participant endpoint and courier delivery.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified socket path and room events.
+Author review:
 -->
 
 # Chat service
@@ -83,7 +89,7 @@ Creates an ACTIVE conversation and REQUESTER participant atomically. The initial
 - 403 FORBIDDEN: valid configured key but service name is not order-service.
 - 409 ORDER_ID_CONFLICT: same order ID with different requester or description.
 
-Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Message sending and sockets are described below; order-worker delivery is not implemented.
+Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Message sending and sockets are described below; order-worker delivery is described in `../order-service/README.md`.
 
 ## Checks
 
@@ -109,7 +115,7 @@ Development with Compose Watch:
 docker compose -f compose.yaml -f compose.dev.yaml up --build --watch chat-service
 ```
 
-Both image targets apply pending migrations before starting. The development target also regenerates Prisma before startup. The production image runs as the node user. No new health endpoint or order-worker integration is introduced.
+Both image targets apply pending migrations before starting. The development target also regenerates Prisma before startup. The production image runs as the node user. Order-worker integration is described in `../order-service/README.md`.
 
 ## GET /chat/conversations
 
@@ -233,9 +239,9 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 
 ### Socket.IO
 
-Connection and authentication follow order-service: same HTTP server as REST, default `/socket.io` path, WebSocket transport only, JWT in `auth.token`, existing JWKS verifier, `connect_error` with message `unauthorized` on failure, disconnect at token expiry. Authenticated sockets automatically join `user:<verifiedUserId>` and then receive `ready`.
+Connection and authentication follow order-service: same HTTP server as REST, `/chat-socket.io` path, WebSocket transport only, JWT in `auth.token`, existing JWKS verifier, `connect_error` with message `unauthorized` on failure, disconnect at token expiry. Authenticated sockets automatically join `user:<verifiedUserId>` and then receive `ready`.
 
-Conversation subscription/unsubscription handlers are deferred by the team until frontend work. The recorded future rule is participant verification before joining `chat:<conversationId>`, excluding revoked participants. No client-controlled room joins are implemented now.
+Conversation rooms are joined on demand. Emit `chat:join` or `chat:leave` with the conversation UUID string as the sole data argument and an acknowledgement callback. Both acknowledge `{ "success": true, "conversationId": "<id>" }`, or `{ "success": false, "error": { "code": <HTTP status number>, "message": "<existing HTTP status message>" } }`. Codes/messages follow existing REST statuses: 400 Bad Request, 404 Not Found, 403 Forbidden, 409 Conflict for revoked participants, and 500 "Internal server error." Joining verifies a non-revoked participant before adding `chat:<conversationId>`. Leaving removes only that socket's subscription and permits cleanup after revocation. Join/leave operations execute in received order. User rooms are joined automatically before `ready`; conversation rooms are not automatically joined.
 
 The Redis adapter follows order-service's publisher/subscriber setup. Configure REDIS_HOST, REDIS_PORT (default 6379) and REDIS_TLS (`true`/`false`, default false). Local execution defaults to localhost. Compose connects chat to the existing order-redis service. The adapter uses the `chat-socket.io` Redis key prefix. No worker pub/sub relay is needed for this REST endpoint.
 
@@ -250,7 +256,7 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 - Advance the participant's existing lastReadMessageId using the established `createdAt`, then `id` ordering. Older or identical positions return 200 with the retained position. Concurrent writes retry against the latest stored position.
 - Return `{ "conversationId": "<UUID>", "userId": "<authenticated UUID>", "lastReadMessageId": "<retained UUID>" }` directly. No readAt field or schema change.
 - After persistence, emit **`messsage:read`** (three s characters, as specified) with that same object to `chat:<conversationId>`, excluding the reader's `user:<userId>` room. Emit even when the position stays unchanged. Socket broadcast failures are logged and do not change the successful HTTP response.
-- This targets other sockets already in the chat room. Conversation subscription handlers remain deferred as documented above; automatically joined user rooms alone do not receive this event.
+- This targets other sockets already in the chat room. Clients join conversation rooms with `chat:join` as documented above; automatically joined user rooms alone do not receive this event.
 
 Verification: all 109 tests passed, including 13 read endpoint cases and a real local WebSocket receipt-delivery check. Typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency and Redis cross-replica delivery were not exercised.
 
@@ -281,10 +287,50 @@ Participant limits: each conversation permits at most one REQUESTER (including r
 
 Team decisions supplied and confirmed in the 2026-11-08 implementation conversation:
 
-- Body: `{ "orderId": "<UUID>", "message": "Order ready" }`. Invalid UUIDs, missing fields, non-string messages, empty or whitespace-only messages return 400. Valid text is stored unchanged.
+- Body: `{ "orderId": "<UUID>", "messageId": "<UUID>", "message": "Order ready" }`. Invalid UUIDs, missing fields, non-string messages, empty or whitespace-only messages return 400. Valid text is stored unchanged.
 - Same service-key authentication as participant addition: valid X-Service-Key, no service-name restriction, supplied-key precedence, 401 missing/invalid credentials and 403 valid Bearer-only users.
 - Look up the conversation by orderId; return 404 if missing and 409 if archived.
 - Reuse normal sending to insert a SYSTEM message with senderId null, text in content and metadata null, updating conversation updatedAt in the same transaction.
 - Return 201 with the normal message object. After commit, reuse `message:sent` delivery to the union of chat and active participant user rooms. Broadcast failures are logged while retaining the successful response.
 
 Verification: all 151 tests passed, including 19 system-notification cases; typecheck and build passed. HTTP persistence tests use injected Prisma doubles; live MySQL and Redis cross-replica delivery were not exercised.
+
+<!-- AI-generated (edited by <name>). -->
+### System notification retries
+
+The sender supplies a UUID `messageId`, generated once when creating the delivery
+job and stored as the existing message primary key. An identical retry (same ID,
+order ID and text) returns HTTP 200 with the existing message, without another
+insert, conversation timestamp update or broadcast. A reused ID with different
+order ID or text returns 409; IDs belonging to non-system messages also conflict.
+New messages return 201. The primary key also handles concurrent duplicate inserts;
+the losing transaction rolls back and reads the committed message. Missing or
+malformed `messageId` returns 400. No schema migration is needed.
+
+
+## POST /chat/orders/:orderId/participants
+
+Team decision supplied on 2026-11-08: behave exactly like
+`POST /chat/conversations/:conversationId/participants`, resolving the conversation
+by orderId. The same service authentication, UUID/body validation, transaction,
+participant limits, response shape and status codes apply. The response still
+contains the resolved conversationId. An order without a conversation returns 404.
+No schema changes.
+
+Verification: 169 tests passed, including order-based participant endpoint cases;
+typecheck and build passed. Endpoint tests use injected Prisma doubles.
+
+
+### Frontend realtime integration
+
+The authenticated frontend opens a separate Chat Service connection on
+`/chat-socket.io`, proxied through Vite/nginx. Opening a chat joins its conversation
+room; closing it leaves the room. On reconnect, open rooms are rejoined and HTTP
+history/list data is refreshed. `message:sent` updates the open thread and reloads
+the role-filtered chat list. Messages are merged by messageId to avoid duplicate
+HTTP/socket delivery. No automatic read request or read-receipt display was added.
+
+Verification: Chat Service tests use real local WebSocket connections with injected
+membership/JWT verification. Frontend tests mock the socket transport. Live JWKS,
+Redis cross-instance delivery and authenticated browser end-to-end delivery were
+not exercised.

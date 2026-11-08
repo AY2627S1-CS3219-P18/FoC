@@ -10,6 +10,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
+ * Author review:
  */
 import "dotenv/config";
 import { createServer } from "node:http";
@@ -31,7 +33,7 @@ const verifyToken = createTokenVerifier(env.USER_SERVICE_URL);
 const adapterPub = new Redis(redisConnectionOptions(env));
 const adapterSub = adapterPub.duplicate();
 const server = createServer();
-const io = createSocketServer(server, { verifyToken });
+const io = createSocketServer(server, { verifyToken, prisma });
 io.adapter(createAdapter(adapterPub, adapterSub, { key: "chat-socket.io" }));
 server.on(
   "request",
