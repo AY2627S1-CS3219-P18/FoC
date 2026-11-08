@@ -10,7 +10,7 @@
  * Scope: Shows a 'Manage suppliers' link when the demo role is Admin. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
  * Author review: Congchen
-  *
+ *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: The nav shows the logged-in username and initials from the session, logs out through the User Service, and shows the admin link only for admin and super admin accounts. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
@@ -61,58 +61,64 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Added or tested a total unread badge on the top chat icon.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Moved or tested live unread counts on the floating chat shortcut and removed the top shortcut.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
-import { useEffect, useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Bell, LogOut, Menu, MessageCircle, X } from 'lucide-react'
-import Logo from './Logo'
-import Button from './Button'
-import CreditPill from './CreditPill'
-import ActiveViewToggle from './ActiveViewToggle'
-import { useAuth } from '../context/AuthContext'
-import { NAV_LINKS } from '../routing/views'
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { Bell, LogOut, Menu, X } from "lucide-react";
+import Logo from "./Logo";
+import Button from "./Button";
+import CreditPill from "./CreditPill";
+import ActiveViewToggle from "./ActiveViewToggle";
+import { useAuth } from "../context/AuthContext";
+import { NAV_LINKS } from "../routing/views";
 
 const ADMIN_LINKS = [
-  { to: '/admin/suppliers', label: 'Manage suppliers' },
-  { to: '/admin/users', label: 'Manage users' },
-  { to: '/admin/logs', label: 'Audit log' },
-]
+  { to: "/admin/suppliers", label: "Manage suppliers" },
+  { to: "/admin/users", label: "Manage users" },
+  { to: "/admin/logs", label: "Audit log" },
+];
 
 export default function TopNav() {
-  const { isLoggedIn, user, credits, requireAuth, logout, isAdmin } = useAuth()
-  const links = isLoggedIn ? NAV_LINKS[user.activeView] : []
-  const linksWithAdmin = isAdmin ? [...links, ...ADMIN_LINKS] : links
-  const displayName = user?.username ?? ''
-  const initials = displayName.slice(0, 2).toUpperCase()
-  const [scrolled, setScrolled] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const location = useLocation()
+  const { isLoggedIn, user, credits, requireAuth, logout, isAdmin } = useAuth();
+  const links = isLoggedIn ? NAV_LINKS[user.activeView] : [];
+  const linksWithAdmin = isAdmin ? [...links, ...ADMIN_LINKS] : links;
+  const displayName = user?.username ?? "";
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const [scrolled, setScrolled] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 4)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
-    setDrawerOpen(false)
-  }, [location.pathname])
+    setDrawerOpen(false);
+  }, [location.pathname]);
 
   const navLinkClass = ({ isActive }) =>
-    'text-sm font-medium transition-colors duration-150 ' +
-    (isActive ? 'text-ink' : 'text-ink-70 hover:text-ink')
+    "text-sm font-medium transition-colors duration-150 " +
+    (isActive ? "text-ink" : "text-ink-70 hover:text-ink");
 
   return (
     <>
       <header
         className={
-          'sticky top-0 z-40 h-16 bg-surface transition-shadow duration-150 ' +
-          (scrolled ? 'border-b border-line shadow-nav' : '')
+          "sticky top-0 z-40 h-16 bg-surface transition-shadow duration-150 " +
+          (scrolled ? "border-b border-line shadow-nav" : "")
         }
       >
         <div className="page-width page-gutter flex h-16 items-center justify-between gap-4">
@@ -130,12 +136,13 @@ export default function TopNav() {
             {isLoggedIn ? (
               <>
                 <ActiveViewToggle />
-                <Link to="/wallet" aria-label={credits.available + ' credits available'}>
+                <Link
+                  to="/wallet"
+                  aria-label={credits.available + " credits available"}
+                >
                   <CreditPill value={credits.available} size="md" />
                 </Link>
-                <Link to="/chats" aria-label="Chats" className="flex h-10 w-10 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt">
-                  <MessageCircle size={18} aria-hidden="true" />
-                </Link>
+
                 <button
                   type="button"
                   className="relative flex h-10 w-10 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
@@ -148,7 +155,9 @@ export default function TopNav() {
                   to="/account"
                   className="flex h-10 items-center gap-2 rounded-btn px-1.5 hover:bg-surface-alt"
                 >
-                  <span className="text-sm font-medium text-ink">{displayName}</span>
+                  <span className="text-sm font-medium text-ink">
+                    {displayName}
+                  </span>
                   <span className="flex h-8 w-8 items-center justify-center rounded-pill bg-surface-alt text-xs font-semibold text-ink">
                     {initials}
                   </span>
@@ -167,7 +176,12 @@ export default function TopNav() {
                 <Button variant="secondary" size="sm" as={Link} to="/register">
                   Register
                 </Button>
-                <Button size="sm" onClick={() => requireAuth('Log in to post and accept errands.')}>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    requireAuth("Log in to post and accept errands.")
+                  }
+                >
                   Log in
                 </Button>
               </>
@@ -177,11 +191,15 @@ export default function TopNav() {
           <button
             type="button"
             className="flex h-11 w-11 items-center justify-center rounded-btn text-ink md:hidden"
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+            aria-label={drawerOpen ? "Close menu" : "Open menu"}
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen((v) => !v)}
           >
-            {drawerOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+            {drawerOpen ? (
+              <X size={20} aria-hidden="true" />
+            ) : (
+              <Menu size={20} aria-hidden="true" />
+            )}
           </button>
         </div>
       </header>
@@ -210,8 +228,10 @@ export default function TopNav() {
             {isLoggedIn && (
               <>
                 <ActiveViewToggle className="self-start" />
-                <Link to="/chats" className="flex items-center gap-2"><MessageCircle size={18} aria-hidden="true" /> Chats</Link>
-                <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
+                <Link
+                  to="/wallet"
+                  className="flex items-center gap-3 rounded-card border border-line p-3"
+                >
                   <CreditPill value={credits.available} size="md" />
                   <span className="text-sm text-ink-70">available</span>
                 </Link>
@@ -233,11 +253,16 @@ export default function TopNav() {
             <div className="mt-auto">
               {isLoggedIn ? (
                 <div className="flex items-center gap-3">
-                  <Link to="/account" className="flex items-center gap-3 min-w-0">
+                  <Link
+                    to="/account"
+                    className="flex items-center gap-3 min-w-0"
+                  >
                     <span className="flex h-10 w-10 items-center justify-center rounded-pill bg-surface-alt text-sm font-semibold text-ink">
                       {initials}
                     </span>
-                    <p className="truncate text-sm font-medium text-ink">{displayName}</p>
+                    <p className="truncate text-sm font-medium text-ink">
+                      {displayName}
+                    </p>
                   </Link>
                   <button
                     type="button"
@@ -253,8 +278,8 @@ export default function TopNav() {
                     size="lg"
                     className="w-full"
                     onClick={() => {
-                      setDrawerOpen(false)
-                      requireAuth('Log in to post and accept errands.')
+                      setDrawerOpen(false);
+                      requireAuth("Log in to post and accept errands.");
                     }}
                   >
                     Log in
@@ -276,5 +301,5 @@ export default function TopNav() {
         </div>
       )}
     </>
-  )
+  );
 }

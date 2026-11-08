@@ -207,6 +207,66 @@ Scope (2026-11-08, Codex, model: GPT-6): Added the notification message ID clari
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Added the service-key configuration clarification log index row.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the mark displayed chat messages read log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the chat bubbles and read indicators log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the chat date separators and receipt spacing log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the persisted chat read positions log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the complete read receipt ticks log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the closer read receipt ticks log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the system message timestamp styling log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the role-aware chat titles log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the chat title order and list timestamps log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the chat opening scroll and composer focus log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the first unread opening position log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the scroll after sending log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the seamless message sending log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the sidebar loading label removal log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the automatic older message loading log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the errand-origin chat back navigation log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the top chat unread badge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the floating chat unread badge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the new message icon animation log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the incoming message wiggle fix log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -693,3 +753,23 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 207 | 2026-11-08 | chat-service                                                  | Chat service: system notification caller guide                                                                   | Documented authentication, requests, responses, duplicate handling and realtime delivery.                                                       |
 | 208 | 2026-11-08 | chat-service                                                  | Chat service: notification message ID clarification                                                              | Clarified caller-generated UUIDs and reuse for retries.                                                                                         |
 | 209 | 2026-11-08 | chat-service                                                  | Chat service: service-key configuration clarification                                                            | Explained loading the .env key into the authentication header.                                                                                  |
+| 210 | 2026-11-08 | frontend | Mark displayed chat messages read | Connected displayed messages to existing read receipts. |
+| 211 | 2026-11-08 | frontend | Chat bubbles and read indicators | Updated chat styling, navigation, badges and live receipt ticks. |
+| 212 | 2026-11-08 | frontend | Chat date separators and receipt spacing | Fixed receipt spacing and separated dates from message times. |
+| 213 | 2026-11-08 | chat-service / frontend | Persisted chat read positions | Returned participant positions and restored read ticks after refresh. |
+| 214 | 2026-11-08 | frontend | Complete read receipt ticks | Replaced shortened double-check glyph with two complete ticks. |
+| 215 | 2026-11-08 | frontend | Closer read receipt ticks | Tightened spacing between the two read receipt ticks. |
+| 216 | 2026-11-08 | frontend | System message timestamp styling | Styled system notices with centered, subdued times. |
+| 217 | 2026-11-08 | frontend | Role-aware chat titles | Displayed the opposite participant name beside order titles. |
+| 218 | 2026-11-08 | frontend | Chat title order and list timestamps | Put names first and formatted chat-list dates. |
+| 219 | 2026-11-08 | frontend | Chat opening scroll and composer focus | Scrolled initial history down and refocused the composer after sending. |
+| 220 | 2026-11-08 | frontend | First unread opening position | Opened chats at offscreen first unread messages. |
+| 221 | 2026-11-08 | frontend | Scroll after sending | Scrolled to the newest message after successful sends. |
+| 222 | 2026-11-08 | frontend | Seamless message sending | Hid the loading label during message sends. |
+| 223 | 2026-11-08 | frontend | Sidebar loading label removal | Removed the loading-chats sidebar text. |
+| 224 | 2026-11-08 | frontend | Automatic older message loading | Loaded older history on top scrolling while preserving position. |
+| 225 | 2026-11-08 | frontend | Errand-origin chat back navigation | Showed outer Back only for errands and returned to card pages. |
+| 226 | 2026-11-08 | frontend | Top chat unread badge | Displayed total unread messages on the top chat icon. |
+| 227 | 2026-11-08 | frontend | Floating chat unread badge | Moved live unread totals to the floating shortcut. |
+| 228 | 2026-11-08 | frontend | New message icon animation | Animated the floating chat icon when unread totals increase. |
+| 229 | 2026-11-08 | frontend | Incoming message wiggle fix | Triggered whole-button animation directly on incoming messages. |

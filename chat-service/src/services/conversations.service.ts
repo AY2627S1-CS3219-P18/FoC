@@ -21,9 +21,12 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified participant read positions in message history.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -231,7 +234,16 @@ export async function listMessages(
 ) {
   const conversation = await prisma.conversation.findUnique({
     where: { conversationId },
-    select: { participants: { select: { userId: true } } },
+    select: {
+      participants: {
+        select: {
+          userId: true,
+          role: true,
+          joinedAt: true,
+          lastReadMessageId: true,
+        },
+      },
+    },
   });
   if (!conversation) return null;
   if (!conversation.participants.some((p) => p.userId === userId)) return false;
@@ -266,6 +278,12 @@ export async function listMessages(
   const page = rows.slice(0, input.limit);
   const last = page.at(-1);
   return {
+    participants: conversation.participants.map((participant) => ({
+      userId: participant.userId,
+      role: participant.role,
+      joinedAt: participant.joinedAt.toISOString(),
+      lastReadMessageId: participant.lastReadMessageId,
+    })),
     data: page.map((row) => ({
       messageId: row.id,
       conversationId: row.chatId,

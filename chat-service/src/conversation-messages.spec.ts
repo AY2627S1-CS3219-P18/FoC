@@ -4,6 +4,9 @@
  * Scope: Tested the team-specified message listing contract.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified participant read positions in message history.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -19,10 +22,16 @@ function setup() {
     status: "ACTIVE",
     title: "Alice · Coffee from Deck",
     participants: [
-      { userId, role: "REQUESTER", joinedAt: new Date(time) },
+      {
+        userId,
+        role: "REQUESTER",
+        joinedAt: new Date(time),
+        lastReadMessageId: null,
+      },
       {
         userId: "0192f0c4-0000-7000-8000-00000000000b",
         role: "COURIER",
+        lastReadMessageId: conversationId,
         joinedAt: new Date(time),
       },
     ],
@@ -53,6 +62,7 @@ it("returns an empty final page and defaults to 20", async () => {
   const res = await t.get();
   expect(res.status).toBe(200);
   expect(res.body).toEqual({
+    participants: t.row.participants.map((p) => ({ ...p, joinedAt: time })),
     data: [],
     pagination: { nextCursor: null, hasMore: false },
   });
@@ -104,6 +114,7 @@ it("maps system messages and emits a reusable last-row cursor", async () => {
   t.findMany.mockResolvedValue([row, row]);
   const res = await t.get().query({ limit: "1" });
   expect(res.body).toEqual({
+    participants: t.row.participants.map((p) => ({ ...p, joinedAt: time })),
     data: [
       {
         messageId: conversationId,
@@ -143,7 +154,16 @@ it("retains revoked participant access", async () => {
   expect((await t.get()).status).toBe(200);
   expect(t.findUnique.mock.calls[0]![0]).toEqual({
     where: { conversationId },
-    select: { participants: { select: { userId: true } } },
+    select: {
+      participants: {
+        select: {
+          userId: true,
+          role: true,
+          joinedAt: true,
+          lastReadMessageId: true,
+        },
+      },
+    },
   });
 });
 it("handles database errors", async () => {

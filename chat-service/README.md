@@ -38,6 +38,9 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified socket path a
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Linked the system notification caller guide.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified message-history participant read positions.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -216,10 +219,19 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 - `limit`: integer 1–50, default 20. `cursor`: standard base64 UTF-8 JSON `{ "createdAt": "<ISO timestamp>", "id": "<message UUID>" }`; URL-encode it in query strings.
 - Order by `createdAt DESC, id DESC`, with an exclusive cursor boundary.
 - Pagination follows conversation listing: `nextCursor` is an object to encode for the next request, or null on the final page. It uses the last returned message. `hasMore` indicates additional older messages.
+- Team update (2026-11-08): Every message-history page also returns `participants`, with `userId`, `role`, ISO `joinedAt`, and nullable `lastReadMessageId` for each participant. Null preserves the existing stored value when no read position exists. No schema change.
 - Each message exposes messageId, conversationId, senderId, type, content, metadata and createdAt. Nullable values are preserved; attachments are omitted for MVP. No schema changes.
 
 ```json
 {
+  "participants": [
+    {
+      "userId": "0192f0c4-0000-7000-8000-00000000000a",
+      "role": "REQUESTER",
+      "joinedAt": "2026-11-08T00:00:00.000Z",
+      "lastReadMessageId": null
+    }
+  ],
   "data": [],
   "pagination": { "nextCursor": null, "hasMore": false }
 }
