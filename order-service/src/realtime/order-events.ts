@@ -19,6 +19,11 @@
  *        order:cancelled from pending.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ *
+ * Tool: Codex (model: GPT-6), date: 2026-11-06
+ * Scope: Added courierId to order:accepted per the user's explicit contract decision.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import type {
@@ -53,6 +58,8 @@ export interface ListingCard {
 
 export interface OrderEventPayload {
   orderId: string;
+  /** order:accepted only; the assigned courier from the committed order. */
+  courierId?: string | null;
   status: RequestStatus;
   version: number;
   occurredAt: string;
@@ -142,7 +149,7 @@ export function eventsForTransition(
             room,
             LISTING_ROOM,
           ],
-          payload: payloadOf(order),
+          payload: payloadOf(order, { courierId: courier }),
           joins: courier ? [{ userId: courier, orderId: id }] : [],
         },
       ];

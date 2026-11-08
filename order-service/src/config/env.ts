@@ -28,6 +28,8 @@
  *        localhost default is supplier-service's published port (3004).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -50,6 +52,8 @@ const EnvSchema = z.object({
   /** "true" connects to Redis over TLS. Off for Compose and CI. */
   REDIS_TLS: z.enum(['true', 'false']).default('false'),
   CREDIT_SERVICE_URL: z.url().default('http://localhost:3003'),
+  CHAT_SERVICE_URL: z.url().default('http://localhost:3005'),
+  CHAT_SERVICE_API_KEY: z.string().min(1).optional(),
   SUPPLIER_SERVICE_URL: z
     .url({ protocol: /^https?$/ })
     .default('http://localhost:3004'),

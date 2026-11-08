@@ -10,6 +10,10 @@
  * Scope: Added the three admin supplier routes (list, new, edit). No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
+ * Author review:
  */
 
 /*
@@ -230,7 +234,8 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/chat" element={<Navigate to="/chat/r6" replace />} />
+          <Route path="/chats" element={<RequireAuth><Chat /></RequireAuth>} />
+          <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
           <Route
             path="/chat/:id"
             element={

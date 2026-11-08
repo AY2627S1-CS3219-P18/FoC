@@ -1,0 +1,42 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Codex (model: GPT-6), date: 2026-11-08
+ * Scope: Implemented the team-specified message sending and realtime delivery.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
+ * Author review: tng wen xi
+ */
+import type { Server } from "socket.io";
+import type { sendMessage } from "../services/conversations.service.js";
+export type SentMessage = NonNullable<
+  Awaited<ReturnType<typeof sendMessage>>["message"]
+>;
+export type MessagePublisher = (
+  message: SentMessage,
+  userIds: string[],
+) => void;
+export function createMessagePublisher(io: Server): MessagePublisher {
+  return (message, userIds) => {
+    // One union broadcast delivers once even when a socket belongs to several rooms.
+    io.to([
+      `chat:${message.conversationId}`,
+      ...userIds.map((id) => `user:${id}`),
+    ]).emit("message:sent", message);
+  };
+}
+
+// AI-generated (edited by <name>).
+export type ReadReceipt = {
+  conversationId: string;
+  userId: string;
+  lastReadMessageId: string;
+};
+export type ReadPublisher = (receipt: ReadReceipt) => void;
+export function createReadPublisher(io: Server): ReadPublisher {
+  return (receipt) => {
+    io.to(`chat:${receipt.conversationId}`)
+      .except(`user:${receipt.userId}`)
+      .emit("messsage:read", receipt);
+  };
+}

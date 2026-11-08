@@ -10,7 +10,13 @@
  * Scope: Added a base-layer rule hiding Edge's native `::-ms-reveal` button on password inputs
  *        (Stage 21b), so it doesn't duplicate PasswordInput.jsx's own show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Added or verified a brief new-message chat shortcut animation with reduced-motion support.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Fixed the chat animation to react directly to incoming messages and move the entire shortcut.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 @tailwind base;
@@ -48,7 +54,15 @@
   }
 
   /* Focus ring: 2px blue, 2px offset, visible on every interactive element. */
-  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  :where(
+    a,
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex]
+  ):focus-visible {
     outline: 2px solid var(--blue);
     outline-offset: 2px;
     border-radius: 4px;
@@ -68,7 +82,7 @@
 
 @layer components {
   .font-display {
-    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-family: "Bricolage Grotesque", Georgia, serif;
     letter-spacing: -0.03em;
   }
 
@@ -147,5 +161,30 @@
   }
   * {
     transition-duration: 1ms !important;
+  }
+}
+
+@keyframes chat-new-message {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  20%,
+  60% {
+    transform: translateY(-6px) rotate(-12deg) scale(1.08);
+  }
+  40%,
+  80% {
+    transform: translateY(-6px) rotate(12deg) scale(1.08);
+  }
+}
+
+.chat-new-message {
+  animation: chat-new-message 900ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-new-message {
+    animation: none;
   }
 }

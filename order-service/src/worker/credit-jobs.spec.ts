@@ -17,6 +17,14 @@
  *        order:failed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added tests for order-based participant delivery.
+ * Author review:
  */
 
 import { UnrecoverableError } from 'bullmq';
@@ -117,6 +125,7 @@ function setup(
   });
   return {
     processJob,
+    prisma,
     reserve,
     release,
     published,
@@ -150,7 +159,22 @@ describe('credit_reserve', () => {
         }),
       }),
     ]);
-    expect(t.outbox.createMany).not.toHaveBeenCalled();
+    expect(t.outbox.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          taskName: 'chat_create',
+          version: 1,
+          payload: {
+            orderId: ORDER_ID,
+            requesterId: REQUESTER,
+            orderDescription: '1x chicken rice',
+            messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+          },
+        },
+      ],
+    });
+    await t.processJob(job('credit_reserve', reservePayload));
+    expect(t.outbox.createMany).toHaveBeenCalledTimes(1);
   });
 
   it('fails the order without a release and passes the reason on a permanent failure', async () => {
@@ -305,4 +329,115 @@ describe('unknown tasks and final failures', () => {
       ),
     ).toBe(true);
   });
+});
+
+// AI-generated (edited by <name>).
+describe('chat_create', () => {
+  const data = {
+    orderId: ORDER_ID,
+    requesterId: REQUESTER,
+    orderDescription: 'Coffee',
+    messageId: REQUESTER,
+  };
+  it('retries transient chat failures without changing the open order', async () => {
+    const t = setup('open');
+    const create = vi
+      .fn()
+      .mockResolvedValue({ ok: false, kind: 'transient', code: 'HTTP_503' });
+    const process = createCreditJobProcessor({
+      prisma: t.prisma as unknown as PrismaClient,
+      credits: { reserve: t.reserve, release: t.release },
+      chat: { create, notify: vi.fn(), addParticipant: vi.fn() },
+    });
+    await expect(process(job('chat_create', data))).rejects.toThrow(
+      'transient',
+    );
+    expect(create).toHaveBeenCalledWith(data);
+    expect(t.row()?.status).toBe('open');
+    expect(t.outbox.createMany).not.toHaveBeenCalled();
+  });
+});
+
+// AI-generated (edited by <name>).
+describe('chat_notification', () => {
+  it.each(['success', 'transient', 'permanent'] as const)(
+    'handles %s and retains the message ID',
+    async (kind) => {
+      const t = setup('open');
+      const notify = vi
+        .fn()
+        .mockResolvedValue(
+          kind === 'success'
+            ? { ok: true }
+            : { ok: false, kind, code: 'HTTP_ERROR' },
+        );
+      const process = createCreditJobProcessor({
+        prisma: t.prisma as unknown as PrismaClient,
+        credits: { reserve: t.reserve, release: t.release },
+        chat: { create: vi.fn(), notify, addParticipant: vi.fn() },
+      });
+      const data = {
+        orderId: ORDER_ID,
+        messageId: REQUESTER,
+        message: 'The order has been delivered',
+      };
+      if (kind === 'success')
+        await expect(
+          process(job('chat_notification', data)),
+        ).resolves.toBeUndefined();
+      else if (kind === 'permanent')
+        await expect(
+          process(job('chat_notification', data)),
+        ).rejects.toBeInstanceOf(UnrecoverableError);
+      else
+        await expect(process(job('chat_notification', data))).rejects.toThrow(
+          'transient',
+        );
+      expect(notify).toHaveBeenCalledWith(data);
+      expect(t.outbox.createMany).not.toHaveBeenCalled();
+    },
+  );
+});
+
+// AI-generated (edited by <name>).
+describe('chat_participant', () => {
+  it.each(['success', 'transient', 'permanent'] as const)(
+    'handles %s without changing order state',
+    async (kind) => {
+      const t = setup('accepted');
+      const addParticipant = vi
+        .fn()
+        .mockResolvedValue(
+          kind === 'success'
+            ? { ok: true }
+            : {
+                ok: false,
+                kind,
+                status: kind === 'permanent' ? 409 : 503,
+                code: 'HTTP_ERROR',
+              },
+        );
+      const process = createCreditJobProcessor({
+        prisma: t.prisma as unknown as PrismaClient,
+        credits: { reserve: t.reserve, release: t.release },
+        chat: { create: vi.fn(), notify: vi.fn(), addParticipant },
+      });
+      const data = { orderId: ORDER_ID, userId: REQUESTER, role: 'COURIER' };
+      if (kind === 'success')
+        await expect(
+          process(job('chat_participant', data)),
+        ).resolves.toBeUndefined();
+      else if (kind === 'permanent')
+        await expect(
+          process(job('chat_participant', data)),
+        ).rejects.toBeInstanceOf(UnrecoverableError);
+      else
+        await expect(process(job('chat_participant', data))).rejects.toThrow(
+          'transient',
+        );
+      expect(addParticipant).toHaveBeenCalledWith(data);
+      expect(t.row()?.status).toBe('accepted');
+      expect(t.outbox.createMany).not.toHaveBeenCalled();
+    },
+  );
 });

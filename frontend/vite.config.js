@@ -22,6 +22,10 @@
  * Scope: Added the /admin/audit-logs proxy to the user service, per instructions.md Stage 26e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
+ * Author review:
  */
 
 import react from "@vitejs/plugin-react";
@@ -46,7 +50,9 @@ export default defineConfig({
       "/credits":
         process.env.VITE_CREDIT_SERVICE_URL ?? "http://localhost:3003",
       "/orders": orderServiceUrl,
+      "/chat/conversations": process.env.VITE_CHAT_SERVICE_URL ?? "http://localhost:3005",
       // Order events (Socket.IO, websocket transport only).
+      "/chat-socket.io": { target: process.env.VITE_CHAT_SERVICE_URL ?? "http://localhost:3005", ws: true },
       "/socket.io": { target: orderServiceUrl, ws: true },
     },
   },

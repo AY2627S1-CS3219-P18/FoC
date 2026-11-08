@@ -39,6 +39,8 @@
  *        per George's ECS Fargate plan, Phase 1 item 5.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -46,6 +48,7 @@ import { config as loadDotenv } from 'dotenv';
 import { createPrismaClient } from './db/prisma.js';
 import { loadEnv, redisConnectionOptions } from './config/env.js';
 import { runRequestMaintenance } from './services/orders.service.js';
+import { createHttpChatClient } from './clients/chat.client.js';
 import { createHttpCreditsClient } from './clients/credits.client.js';
 import { createOutboxRepository } from './db/outbox.repository.js';
 import { createDeadLetterRepository } from './db/dead-letter.repository.js';
@@ -81,6 +84,12 @@ const queueName = 'order-request-maintenance';
 const queue = new Queue(queueName, { connection });
 const prisma = createPrismaClient(env.DATABASE_URL);
 const credits = createHttpCreditsClient(env.CREDIT_SERVICE_URL);
+if (!env.CHAT_SERVICE_API_KEY)
+  throw new Error('CHAT_SERVICE_API_KEY is required by the order worker');
+const chat = createHttpChatClient(
+  env.CHAT_SERVICE_URL,
+  env.CHAT_SERVICE_API_KEY,
+);
 const deadLetters = createDeadLetterRepository(prisma);
 const redis = new Redis(redisConnectionOptions(env));
 const events = createRedisEventPublisher(redis);
@@ -130,7 +139,7 @@ const creditWorker = new Worker(
   creditQueue.name,
   withAttemptLog(
     CREDIT_QUEUE_KEY,
-    createCreditJobProcessor({ prisma, credits, events }),
+    createCreditJobProcessor({ prisma, credits, chat, events }),
   ),
   { connection, prefix: creditQueue.prefix, concurrency: 1 },
 );
