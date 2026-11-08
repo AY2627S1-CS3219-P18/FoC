@@ -14,7 +14,7 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Reused for chat-service as requested.
- * Author review:
+ * Author review: tng wen xi
  */
 
 import {
@@ -22,8 +22,8 @@ import {
   createVerify,
   type JsonWebKey,
   type KeyObject,
-} from 'node:crypto';
-import type { RequestHandler } from 'express';
+} from "node:crypto";
+import type { RequestHandler } from "express";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -32,11 +32,11 @@ type CachedKeys = { expiresAt: number; keys: Map<string, KeyObject> };
 type JwtPayload = { sub?: unknown; exp?: unknown; role?: unknown };
 
 const unauthorized = (res: Parameters<RequestHandler>[1]): void => {
-  res.status(401).json({ message: 'Unauthorized', code: 'UNAUTHORIZED' });
+  res.status(401).json({ message: "Unauthorized", code: "UNAUTHORIZED" });
 };
 
 const decodeJson = (value: string): unknown => {
-  const decoded = Buffer.from(value, 'base64url').toString('utf8');
+  const decoded = Buffer.from(value, "base64url").toString("utf8");
   return JSON.parse(decoded) as unknown;
 };
 
@@ -48,54 +48,54 @@ const readTokenParts = (
   signature: Buffer;
   signingInput: string;
 } => {
-  const parts = token.split('.');
+  const parts = token.split(".");
   if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
-    throw new Error('Malformed token');
+    throw new Error("Malformed token");
   }
 
   const header = decodeJson(parts[0]);
   const payload = decodeJson(parts[1]);
   if (
-    typeof header !== 'object' ||
+    typeof header !== "object" ||
     header === null ||
     Array.isArray(header) ||
-    typeof payload !== 'object' ||
+    typeof payload !== "object" ||
     payload === null ||
     Array.isArray(payload)
   ) {
-    throw new Error('Malformed token');
+    throw new Error("Malformed token");
   }
 
   return {
     header: header as Record<string, unknown>,
     payload: payload as JwtPayload,
-    signature: Buffer.from(parts[2], 'base64url'),
-    signingInput: parts[0] + '.' + parts[1],
+    signature: Buffer.from(parts[2], "base64url"),
+    signingInput: parts[0] + "." + parts[1],
   };
 };
 
 const keysFromJwks = (body: unknown): Map<string, KeyObject> => {
   if (
-    typeof body !== 'object' ||
+    typeof body !== "object" ||
     body === null ||
     !Array.isArray((body as JwksResponse).keys)
   ) {
-    throw new Error('Invalid JWKS response');
+    throw new Error("Invalid JWKS response");
   }
 
   const keys = new Map<string, KeyObject>();
   for (const jwk of (body as JwksResponse).keys ?? []) {
     if (
-      typeof jwk !== 'object' ||
+      typeof jwk !== "object" ||
       jwk === null ||
-      typeof jwk.kid !== 'string' ||
-      jwk.kty !== 'RSA' ||
-      typeof jwk.n !== 'string' ||
-      typeof jwk.e !== 'string'
+      typeof jwk.kid !== "string" ||
+      jwk.kty !== "RSA" ||
+      typeof jwk.n !== "string" ||
+      typeof jwk.e !== "string"
     ) {
       continue;
     }
-    keys.set(jwk.kid, createPublicKey({ key: jwk, format: 'jwk' }));
+    keys.set(jwk.kid, createPublicKey({ key: jwk, format: "jwk" }));
   }
   return keys;
 };
@@ -125,7 +125,7 @@ export function createTokenVerifier(userServiceUrl: string): TokenVerifier {
     }
     if (!refreshPromise) {
       refreshPromise = fetch(
-        new URL('/auth/.well-known/jwks.json', userServiceUrl),
+        new URL("/auth/.well-known/jwks.json", userServiceUrl),
       )
         .then(async (response) => {
           if (!response.ok)
@@ -145,8 +145,8 @@ export function createTokenVerifier(userServiceUrl: string): TokenVerifier {
 
   return async (token) => {
     const { header, payload, signature, signingInput } = readTokenParts(token);
-    if (header.alg !== 'RS256' || typeof header.kid !== 'string') {
-      throw new Error('Unsupported token');
+    if (header.alg !== "RS256" || typeof header.kid !== "string") {
+      throw new Error("Unsupported token");
     }
 
     let keys = await fetchKeys();
@@ -155,25 +155,25 @@ export function createTokenVerifier(userServiceUrl: string): TokenVerifier {
       keys = await fetchKeys(true);
       key = keys.get(header.kid);
     }
-    if (!key) throw new Error('Unknown key id');
+    if (!key) throw new Error("Unknown key id");
 
-    const verifier = createVerify('RSA-SHA256');
+    const verifier = createVerify("RSA-SHA256");
     verifier.update(signingInput);
     verifier.end();
-    if (!verifier.verify(key, signature)) throw new Error('Invalid signature');
+    if (!verifier.verify(key, signature)) throw new Error("Invalid signature");
 
     if (
-      typeof payload.sub !== 'string' ||
+      typeof payload.sub !== "string" ||
       !payload.sub ||
-      typeof payload.exp !== 'number' ||
+      typeof payload.exp !== "number" ||
       payload.exp <= Math.floor(Date.now() / 1000)
     ) {
-      throw new Error('Invalid claims');
+      throw new Error("Invalid claims");
     }
 
     return {
       user_id: payload.sub,
-      role: typeof payload.role === 'string' ? payload.role : '',
+      role: typeof payload.role === "string" ? payload.role : "",
       exp: payload.exp,
     };
   };
@@ -185,14 +185,14 @@ export function createAuthenticate(
 ): RequestHandler {
   return async (req, res, next) => {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       unauthorized(res);
       return;
     }
 
     try {
       const { user_id, role } = await verifyToken(
-        authHeader.slice('Bearer '.length).trim(),
+        authHeader.slice("Bearer ".length).trim(),
       );
       req.user = { user_id, role };
       next();

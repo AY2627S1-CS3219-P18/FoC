@@ -10,6 +10,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -269,4 +271,63 @@ export async function listMessages(
       hasMore,
     },
   };
+}
+
+// AI-generated (edited by <name>).
+export async function sendMessage(
+  prisma: PrismaClient,
+  conversationId: string,
+  senderId: string | null,
+  validate: () => { type: "TEXT"; content: string } | 400 | 422,
+) {
+  return prisma.$transaction(async (tx) => {
+    const conversation = await tx.conversation.findUnique({
+      where: { conversationId },
+      select: {
+        status: true,
+        participants: { select: { userId: true, revokedAt: true } },
+      },
+    });
+    if (!conversation) return { status: 404 as const };
+    const participant = conversation.participants.find(
+      (p) => p.userId === senderId,
+    );
+    if (senderId !== null && !participant) return { status: 403 as const };
+    const input = validate();
+    if (typeof input === "number") return { status: input };
+    if (
+      conversation.status !== "ACTIVE" ||
+      (senderId !== null && participant!.revokedAt !== null)
+    )
+      return { status: 409 as const };
+    const now = new Date();
+    const row = await tx.message.create({
+      data: {
+        chatId: conversationId,
+        senderId,
+        type: input.type,
+        content: input.content,
+        createdAt: now,
+      },
+    });
+    await tx.conversation.update({
+      where: { conversationId },
+      data: { updatedAt: now },
+    });
+    return {
+      status: 201 as const,
+      message: {
+        messageId: row.id,
+        conversationId: row.chatId,
+        senderId: row.senderId,
+        type: row.type,
+        content: row.content,
+        metadata: row.metadata,
+        createdAt: row.createdAt.toISOString(),
+      },
+      userIds: conversation.participants
+        .filter((p) => p.revokedAt === null)
+        .map((p) => p.userId),
+    };
+  });
 }

@@ -5,17 +5,41 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented conversation listing.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
+ * Author review: tng wen xi
  */
 import "dotenv/config";
+import { createServer } from "node:http";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { Redis } from "ioredis";
 import { createApp } from "./app.js";
-import { loadEnv } from "./config/env.js";
+import { loadEnv, redisConnectionOptions } from "./config/env.js";
 import { createPrismaClient } from "./db/prisma.js";
+import { createTokenVerifier } from "./middleware/authenticate.js";
+import { createSocketServer } from "./realtime/socket-server.js";
+import { createMessagePublisher } from "./realtime/messages.js";
+// AI-generated (edited by <name>).
 const env = loadEnv();
 const prisma = createPrismaClient(env.DATABASE_URL);
-const server = createApp({ prisma, apiKey: env.CHAT_SERVICE_API_KEY, userServiceUrl: env.USER_SERVICE_URL }).listen(
-  env.PORT,
-  () => console.log(`chat-service listening on :${env.PORT}`),
+const verifyToken = createTokenVerifier(env.USER_SERVICE_URL);
+const adapterPub = new Redis(redisConnectionOptions(env));
+const adapterSub = adapterPub.duplicate();
+const server = createServer();
+const io = createSocketServer(server, { verifyToken });
+io.adapter(createAdapter(adapterPub, adapterSub, { key: "chat-socket.io" }));
+server.on(
+  "request",
+  createApp({
+    prisma,
+    apiKey: env.CHAT_SERVICE_API_KEY,
+    userServiceUrl: env.USER_SERVICE_URL,
+    verifyToken,
+    publish: createMessagePublisher(io),
+  }),
+);
+server.listen(env.PORT, () =>
+  console.log(`chat-service listening on :${env.PORT}`),
 );
 let stopping = false;
 function shutdown() {
@@ -23,10 +47,10 @@ function shutdown() {
   stopping = true;
   const timer = setTimeout(() => process.exit(1), 10000);
   timer.unref();
-  server.close(() => {
-    void prisma.$disconnect().finally(() => {
-      clearTimeout(timer);
-    });
+  void io.close(() => {
+    adapterPub.disconnect();
+    adapterSub.disconnect();
+    void prisma.$disconnect().finally(() => clearTimeout(timer));
   });
 }
 process.on("SIGTERM", shutdown);

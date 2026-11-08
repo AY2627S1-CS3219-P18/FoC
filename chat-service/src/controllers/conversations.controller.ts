@@ -10,11 +10,14 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
+  sendMessage,
   listConversations,
   listMessages,
   getConversationDetails,
@@ -237,6 +240,50 @@ export function getMessages(prisma: PrismaClient): RequestHandler {
         return;
       }
       res.status(200).json(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+const sendMessageSchema = z.object({
+  type: z.literal("TEXT"),
+  content: z.string().refine((value) => value.trim().length > 0),
+});
+export function postMessage(
+  prisma: PrismaClient,
+  publish?: import("../realtime/messages.js").MessagePublisher,
+): RequestHandler {
+  return async (req, res) => {
+    const id = z.uuid().safeParse(req.params.conversationID);
+    if (!id.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await sendMessage(
+        prisma,
+        id.data,
+        req.user?.user_id ?? null,
+        () => {
+          if (req.user && req.body?.type === "SYSTEM") return 422;
+          const parsed = sendMessageSchema.safeParse(req.body);
+          return parsed.success ? parsed.data : 400;
+        },
+      );
+      if (result.status !== 201) {
+        res.sendStatus(result.status);
+        return;
+      }
+      // The transaction has committed before any socket can receive this message.
+      try {
+        publish?.(result.message!, result.userIds!);
+      } catch (error) {
+        console.error(error);
+      }
+      res.status(201).json(result.message);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

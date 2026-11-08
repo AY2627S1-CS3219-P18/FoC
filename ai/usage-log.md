@@ -10241,3 +10241,129 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Chat service: message sending and realtime delivery
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** Team's endpoint request and subsequent chat/annotation decisions quoted below; recorded in `chat-service/README.md` under POST messages and Socket.IO. Existing `chat-service/prisma/schema.prisma` and GET message fields; order-service realtime implementation for the requested connection/authentication and Redis adapter behavior. No schema changes.
+
+**Prompts (exact):**
+
+Task request verbatim (IDE metadata omitted):
+
+> Next endpoint: `POST /chat/conversations/:conversationID/messages` - send a message
+>
+> payload:
+>
+> - type (TEXT / IMAGE / VIDEO) (for now, only text as no attachments yet)
+> - Content
+>
+> Validation rules:
+>
+> - if type is text, content must not be empty string
+> - sender: obtained from authenticated identity. if system message, make sure chat service api key is correct.&#x20;
+> - conversation must exist (404 not found, 403 forbiddden if not a participant)
+> - system messages cannot be sent by users (422)
+> - status: conversation must be active (409 conflict if archived)
+> - sender must not be revoked from chat (409 conflict if revoked)
+>
+> ```yaml
+> Receive REST request
+> |
+> v
+> Authenticate user
+> |
+> v
+> Check conversation membership
+> |
+> v
+> Validate message and attachments
+> |
+> v
+> Persist message in MySQL
+> |
+> v
+> Commit transaction
+> |
+> v
+> Broadcast through Socket.IO
+> |
+> v
+> Return 201 response
+> ```
+>
+> Returns: the message object
+
+First annotation comments verbatim, in order (payload validation; service senders; order-service inspection; updatedAt/response fields):
+
+> this payload is correct. whitespace-only should be rejected. invalid type should return 400.
+
+> all service names are allowed. payload is type: TEXT. set sender_id to null.
+
+> can u tell me what order service is using? i'll decide from there
+
+> yes, ssending udpates the conversation's `updatedAt` as well. same message fields as one message in GET messages
+
+Room/connection decisions verbatim:
+
+> event name: `message:sent`
+> connection and authentication same as order service
+> rooms:&#x20;
+> `chat:<conversationId>`&#x20;
+> Frontend requests a conversation subscription; server checks that the user is a participant before joining the socket
+>
+> `user:<userId>`
+> Server automatically joins the socket after authentication, using the verified user ID
+
+Final annotation comments verbatim, in order (deferred subscription; revoked subscription denial; broadcast rooms; Redis adapter; service membership bypass):
+
+> subscribe no need payload. unsubscribe is called when the component unmounts. for now, since no frontend yet, we can implement the subscription later.
+
+> no
+
+> broadcast to the chat room and the user room so that the list of chats shows the correct last message
+
+> follow what order service does
+
+> yes. still needs active conversation. bypass membership checks
+
+**Key responses:**
+
+- Inspected existing chat schema/controllers/authentication and described order-service's existing sockets, rooms, JWT lifecycle and Redis delivery. Asked for missing team contract decisions before implementation.
+- Implemented TEXT sends, whitespace validation, user SYSTEM rejection, service-key authentication for any service name with null sender, participant/status/revocation checks, and 201 GET-compatible message mapping. Message insert and conversation updatedAt write share one Prisma transaction/timestamp; broadcast occurs after commit.
+- Added authenticated WebSocket connections with automatic user rooms and token-expiry disconnect; `message:sent` emits once to the union of chat and non-revoked participant user rooms. Conversation subscription/unsubscription remains deferred as requested.
+- Added order-service-style Redis adapter wiring and configuration, with a chat-specific Redis prefix; Compose connects to existing order-redis. No order-worker integration added.
+- Added HTTP and actual local WebSocket tests. All 95 tests passed. Typecheck and build passed after fixing a test-helper type. Initial typecheck ran before dependency installation and reported missing modules. Initial npm installation failed on sandbox DNS; offline installation lacked cache; approved network installation succeeded. An initial test command ran from the repository root and failed because there is no root package.json; reran successfully in chat-service. HTTP tests use Prisma doubles and injected token verification; sockets use actual loopback connections. No live MySQL/JWKS or Redis replica test was run.
+- Applied the Postman API engineer skill locally. `postman status` is unsupported by this installed CLI; no Postman workspace changes or external messages were made.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/.env.example` (modified)
+- `chat-service/package.json` (modified)
+- `chat-service/package-lock.json` (modified)
+- `compose.yaml` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `chat-service/src/middleware/authenticate-message.ts` (created)
+- `chat-service/src/realtime/messages.ts` (created)
+- `chat-service/src/realtime/socket-server.ts` (created)
+- `chat-service/src/realtime/socket-server.spec.ts` (created)
+- `chat-service/src/send-message.spec.ts` (created)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified payload validation, service senders, response shape, timestamps, socket lifecycle/rooms and Redis before implementation. Team deferred conversation subscriptions; revoked participants must be excluded when that work is implemented.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

@@ -20,6 +20,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details impleme
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified message listing endpoint.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified send endpoint and realtime implementation.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -73,7 +75,7 @@ Creates an ACTIVE conversation and REQUESTER participant atomically. The initial
 - 403 FORBIDDEN: valid configured key but service name is not order-service.
 - 409 ORDER_ID_CONFLICT: same order ID with different requester or description.
 
-Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Message sending, sockets and order-worker delivery are not implemented.
+Unique orderId also handles concurrent duplicate creation. Duplicate comparison uses the stored title and requester; later title-editing work must revisit this if titles become mutable. Message sending and sockets are described below; order-worker delivery is not implemented.
 
 ## Checks
 
@@ -208,3 +210,25 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 ```
 
 Verification: 68 tests passed, including 12 message endpoint tests; typecheck and build passed. HTTP tests use Prisma doubles and injected authentication; no live MySQL or User Service was exercised.
+
+## POST /chat/conversations/:conversationID/messages
+
+Team decisions supplied in the 2026-11-08 implementation conversation:
+
+- Body: `{ "type": "TEXT", "content": "Hello" }`. Only TEXT is currently supported; missing/invalid fields, empty strings, whitespace-only strings and unsupported types return 400. Valid content is stored unchanged. User attempts to send type SYSTEM return 422.
+- Bearer authentication uses the verified subject as senderId. Body sender fields are ignored.
+- Alternatively, `X-Service-Key` must match CHAT_SERVICE_API_KEY. Any service name (or no service-name header) is allowed on this endpoint. These messages use type TEXT and senderId null. A supplied service key is checked before Bearer authentication; an incorrect key returns 401.
+- Missing conversation: 404. Non-participant user: 403. Archived conversation or revoked user: 409. Service-key senders bypass membership/revocation checks but still require an existing ACTIVE conversation.
+- The message insert and conversation updatedAt write use one Prisma transaction and the same timestamp. No schema changes.
+- Return 201 with one message object directly: messageId, conversationId, senderId, type, content, metadata and createdAt, matching the GET messages item shape.
+- After commit, broadcast `message:sent` with that same object to the union of `chat:<conversationId>` and non-revoked participants' `user:<userId>` rooms. A socket in multiple target rooms receives one event. Broadcast errors are logged; the persisted message still returns 201.
+
+### Socket.IO
+
+Connection and authentication follow order-service: same HTTP server as REST, default `/socket.io` path, WebSocket transport only, JWT in `auth.token`, existing JWKS verifier, `connect_error` with message `unauthorized` on failure, disconnect at token expiry. Authenticated sockets automatically join `user:<verifiedUserId>` and then receive `ready`.
+
+Conversation subscription/unsubscription handlers are deferred by the team until frontend work. The recorded future rule is participant verification before joining `chat:<conversationId>`, excluding revoked participants. No client-controlled room joins are implemented now.
+
+The Redis adapter follows order-service's publisher/subscriber setup. Configure REDIS_HOST, REDIS_PORT (default 6379) and REDIS_TLS (`true`/`false`, default false). Local execution defaults to localhost. Compose connects chat to the existing order-redis service. The adapter uses the `chat-socket.io` Redis key prefix. No worker pub/sub relay is needed for this REST endpoint.
+
+Verification: 95 tests passed, including message validation/access, service-key sends, post-commit broadcasting, real local WebSocket authentication, user rooms, union delivery and expiry. Typecheck and build passed. HTTP persistence tests use injected Prisma doubles; no live MySQL, JWKS server or Redis cross-replica delivery was exercised.

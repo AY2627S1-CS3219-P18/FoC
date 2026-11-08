@@ -10,7 +10,11 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message listing endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
+ * Author review: tng wen xi
  */
+import { authenticateMessage } from "../middleware/authenticate-message.js";
+import type { MessagePublisher } from "../realtime/messages.js";
 import { Router } from "express";
 import type { PrismaClient } from "../db/prisma.js";
 import { authenticateService } from "../middleware/authenticate-service.js";
@@ -19,6 +23,7 @@ import {
   type TokenVerifier,
 } from "../middleware/authenticate.js";
 import {
+  postMessage,
   getConversation,
   getMessages,
   getConversations,
@@ -29,6 +34,7 @@ export function conversationsRouter(
   apiKey: string,
   userServiceUrl: string,
   verifyToken?: TokenVerifier,
+  publish?: MessagePublisher,
 ) {
   const router = Router();
   router.get(
@@ -42,11 +48,17 @@ export function conversationsRouter(
     createAuthenticate(userServiceUrl, verifyToken),
     getConversation(prisma),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.get(
     "/:conversationID/messages",
     createAuthenticate(userServiceUrl, verifyToken),
     getMessages(prisma),
+  );
+  // AI-generated (edited by <name>).
+  router.post(
+    "/:conversationID/messages",
+    authenticateMessage(apiKey, userServiceUrl, verifyToken),
+    postMessage(prisma, publish),
   );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;

@@ -155,6 +155,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details impleme
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Added the message listing disclosure log-index row.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the message sending task to the AI log index.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -616,3 +618,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 203 | 2026-11-08 | chat-service                                                  | Chat service: conversation table names                                                                           | Renamed tables, preserved constraints, regenerated Prisma and verified the local database.                                                      |
 | 204 | 2026-11-08 | chat-service | Chat service: conversation details endpoint | Implemented participant-only details, ID validation and endpoint tests. |
 | 205 | 2026-11-08 | chat-service | Chat service: conversation messages endpoint | Implemented authenticated message history, pagination and endpoint tests. |
+| 206 | 2026-11-08 | chat-service | Chat service: message sending and realtime delivery | Implemented text sends, service authentication, transactional updates, socket broadcasts and tests. |
