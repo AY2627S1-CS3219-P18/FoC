@@ -18,9 +18,12 @@
  * Scope: Added a Bookmarked filter that sends the user's bookmark ids and clears deleted bookmarks,
  *        per the 2026-11-05 supplier-bookmarking spec. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useMemo, useState } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import SupplierCard from '../components/SupplierCard'
@@ -167,7 +170,7 @@ export default function Suppliers() {
   const sortSelect = (
     <label className="flex items-center gap-2 text-sm text-ink-70">
       <span className="shrink-0">Sort</span>
-      <select
+      <SearchableSelect
         value={sort}
         onChange={(e) => setSort(e.target.value)}
         className="h-11 cursor-pointer rounded-btn border border-line bg-surface px-2 text-sm text-ink md:h-10"
@@ -175,7 +178,7 @@ export default function Suppliers() {
         {SORTS.map((s) => (
           <option key={s}>{s}</option>
         ))}
-      </select>
+      </SearchableSelect>
     </label>
   )
 

@@ -9,7 +9,7 @@
  *        profile reload). getUser/updateUserStatus/updateUserRole, listUserOrders and the
  *        lookups hooks are mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Stage 26e - the shared ConfirmActionDialog now requires a reason to be selected
@@ -17,6 +17,8 @@
  *        it is forwarded to updateUserStatus.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated dropdown interaction tests.
+ * Author review: Congchen
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -170,7 +172,8 @@ describe('AdminUserTransactions orders section', () => {
     expect(await screen.findByRole('cell', { name: 'Completed' })).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'Open' })).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Filter by role'), { target: { value: 'courier' } })
+    fireEvent.focus(screen.getByLabelText('Filter by role'))
+    fireEvent.click(screen.getByRole('option', { name: /Courier/i }))
 
     expect(screen.queryByRole('cell', { name: 'Completed' })).not.toBeInTheDocument()
     expect(screen.getByRole('cell', { name: 'Open' })).toBeInTheDocument()
@@ -208,7 +211,8 @@ describe('AdminUserTransactions profile actions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     const suspendButtons = screen.getAllByRole('button', { name: 'Suspend' })
     fireEvent.click(suspendButtons[suspendButtons.length - 1])
 
@@ -224,7 +228,8 @@ describe('AdminUserTransactions profile actions', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     const suspendButtons = screen.getAllByRole('button', { name: 'Suspend' })
     fireEvent.click(suspendButtons[suspendButtons.length - 1])
 

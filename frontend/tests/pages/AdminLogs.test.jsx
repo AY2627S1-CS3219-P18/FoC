@@ -7,7 +7,9 @@
  *        action, reasonCode, from/to, sortDir), resetting to page 1 on a filter change, the
  *        empty state, pagination via Pager, and a failure toast. listAuditLogs is mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated dropdown interaction tests.
+ * Author review: Congchen
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -121,13 +123,9 @@ describe('AdminLogs filters and sort', () => {
     await screen.findByText('alice')
     listAuditLogs.mockClear()
 
-    const select = screen.getByLabelText('Filter by action')
-    const options = Array.from(select.options)
-    const suspendOption = options.find((o) => o.value === 'USER_SUSPEND')
-    const unlockOption = options.find((o) => o.value === 'USER_UNLOCK')
-    suspendOption.selected = true
-    unlockOption.selected = true
-    fireEvent.change(select)
+    fireEvent.focus(screen.getByLabelText('Filter by action'))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Suspend' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Unlock' }))
 
     await waitFor(() =>
       expect(listAuditLogs).toHaveBeenCalledWith(
@@ -142,7 +140,8 @@ describe('AdminLogs filters and sort', () => {
     await screen.findByText('alice')
     listAuditLogs.mockClear()
 
-    fireEvent.change(screen.getByLabelText('Filter by reason code'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Filter by reason code'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-01-01T00:00' } })
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-01-02T00:00' } })
 
@@ -177,7 +176,8 @@ describe('AdminLogs filters and sort', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     listAuditLogs.mockClear()
 
-    fireEvent.change(screen.getByLabelText('Filter by reason code'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Filter by reason code'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
 
     await waitFor(() => expect(listAuditLogs).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })))
   })

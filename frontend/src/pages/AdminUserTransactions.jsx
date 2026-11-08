@@ -8,16 +8,19 @@
  *        page ("user not found"); the orders list is its own section and fails/retries on its
  *        own. The page number lives in the URL (`page`) so a reload keeps it; filters do not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Stage 26e of instructions.md - the reused ConfirmActionDialog now requires a reason;
  *        runAction takes it through and forwards it to updateUserStatus/updateUserRole (both
  *        now require one, per Stage 26b).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
@@ -280,7 +283,7 @@ export default function AdminUserTransactions() {
         <h2 className="text-xl font-semibold text-ink">Orders</h2>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:max-w-md">
-          <select
+          <SearchableSelect
             aria-label="Filter by role"
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -289,8 +292,8 @@ export default function AdminUserTransactions() {
             <option value="">Any role</option>
             <option value="requester">Requester</option>
             <option value="courier">Courier</option>
-          </select>
-          <select
+          </SearchableSelect>
+          <SearchableSelect
             aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -302,7 +305,7 @@ export default function AdminUserTransactions() {
                 {statusLabel(s)}
               </option>
             ))}
-          </select>
+          </SearchableSelect>
         </div>
         {(roleFilter || statusFilter) && (
           <p className="mt-2 text-xs text-ink-40">Filters apply to this page of orders only.</p>

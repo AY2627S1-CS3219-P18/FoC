@@ -9,6 +9,8 @@
  * Scope: Tests the saved delivery location form per the team spec.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated dropdown display assertions.
+ * Author review: Congchen
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -36,7 +38,7 @@ it('requires details and lets the requester reuse a saved location', async () =>
   const field = screen.getByLabelText(/Exact delivery details/)
   expect(field).toHaveAttribute('maxLength', '250')
   expect(field).toHaveValue('Level 2 lobby')
-  expect(screen.getByLabelText(/Deliver to/)).toHaveValue('3')
+  expect(screen.getByLabelText(/Deliver to/)).toHaveValue('Library')
   expect(screen.queryByText('Your previous location?')).not.toBeInTheDocument()
 })
 
@@ -44,7 +46,7 @@ it('dismisses the saved location without changing the fields', async () => {
   render(<MemoryRouter><CreateRequest /></MemoryRouter>)
   fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
   expect(screen.queryByText('Your previous location?')).not.toBeInTheDocument()
-  expect(screen.getByLabelText(/Deliver to/)).toHaveValue('')
+  expect(screen.getByLabelText(/Deliver to/)).toHaveValue('Choose a drop-off point')
   expect(screen.getByLabelText(/Exact delivery details/)).toHaveValue('')
 })
 

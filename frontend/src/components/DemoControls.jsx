@@ -14,8 +14,11 @@
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Removed the demo Auth toggle and the Admin role (both now come from the real session). No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from './SearchableSelect'
 import { useState } from 'react'
 import { ChevronDown, Sliders } from 'lucide-react'
 import { useDemo, isCleanMode } from '../context/DemoContext'
@@ -71,7 +74,7 @@ export default function DemoControls() {
           </div>
 
           <p className="mt-3 text-[11px] text-ink-40">Jump a request to a status</p>
-          <select
+          <SearchableSelect
             value={targetId}
             onChange={(e) => setTargetId(e.target.value)}
             className="mt-1 h-9 w-full rounded-btn border border-line bg-surface px-2 text-xs text-ink"
@@ -82,7 +85,7 @@ export default function DemoControls() {
                 {r.id} · {qualifiedName(getSupplier(r.supplierId))} · {STATUS_LABELS[r.status]}
               </option>
             ))}
-          </select>
+          </SearchableSelect>
           <div className="mt-1.5 grid grid-cols-2 gap-1.5">
             {STATUSES.map((s) => (
               <button

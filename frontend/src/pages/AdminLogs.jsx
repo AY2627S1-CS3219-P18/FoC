@@ -6,9 +6,12 @@
  *        "Audit log" nav link. Filters (actor/target substring, action, reasonCode, from/to)
  *        reset the page to 1 and AND together; a deleted actor/target shows "user deleted".
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
@@ -125,21 +128,20 @@ export default function AdminLogs() {
           aria-label="Filter by target"
           className={inputClass}
         />
-        <select
+        <SearchableSelect
           multiple
           aria-label="Filter by action"
           value={actions}
           onChange={(e) => setActions(Array.from(e.target.selectedOptions, (o) => o.value))}
-          className={selectClass + ' h-auto py-1'}
-          size={3}
+          className={selectClass}
         >
           {AUDIT_ACTIONS.map((a) => (
             <option key={a.value} value={a.value}>
               {a.label}
             </option>
           ))}
-        </select>
-        <select
+        </SearchableSelect>
+        <SearchableSelect
           aria-label="Filter by reason code"
           value={reasonCode}
           onChange={(e) => setReasonCode(e.target.value)}
@@ -151,7 +153,7 @@ export default function AdminLogs() {
               {humanize(c.code)}
             </option>
           ))}
-        </select>
+        </SearchableSelect>
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">

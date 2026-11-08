@@ -8,14 +8,14 @@
  *        and changeUserRole). Reached via the "Manage users" nav link added to TopNav.jsx in
  *        Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added the Locked column, the `locked` filter and a per-row Unlock action calling
  *        POST /users/:id/unlock, per instructions.md Stage 18e. Unlock's visibility follows
  *        the same rule as Suspend in getRowActions, per the governing decision.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added the per-row email eye icon (Stage 20b): click calls getFullEmail to reveal the
@@ -23,14 +23,14 @@
  *        (filter/sort/page change or a row action) clears every row's unmask state and timers.
  *        No eye icon on the caller's own row or a super admin's row, per the stage's rule.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Replaced RowMenu's inline absolutely-positioned dropdown with the new ActionMenu
  *        component (Stage 21a), so the open menu is no longer clipped by the table wrapper's
  *        `overflow-x: auto`. Row action set, handlers and visibility rules unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Stage 24 of instructions.md - exported getRowActions, ACTION_SUCCESS, ACTION_DIALOG
@@ -41,7 +41,7 @@
  *        keeps opening the menu instead of navigating. Added the Credits column (useBalance),
  *        per the stage's "Summary fields" row for this table.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Stage 26e of instructions.md - ConfirmActionDialog (shared with
@@ -53,7 +53,7 @@
  *        asks nothing. Added the unlock preset-match check to getRowActions's caller contract
  *        only implicitly - no visibility rule changed, only the action handlers' signatures.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): Unlock
@@ -61,9 +61,12 @@
  *        picker for any action with no preset codes, calling onConfirm() with no payload.
  *        Unmask no longer shows a dialog at all - the eye click calls getFullEmail directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
+ * Author review: Congchen
  */
 
+import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
@@ -266,7 +269,7 @@ export function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm })
             <label htmlFor="confirm-action-reason" className="mb-1 block text-sm font-medium text-ink">
               Reason
             </label>
-            <select
+            <SearchableSelect
               id="confirm-action-reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -278,7 +281,7 @@ export function ConfirmActionDialog({ user, action, busy, onCancel, onConfirm })
                   {c.label}
                 </option>
               ))}
-            </select>
+            </SearchableSelect>
             {reason === 'OTHER' && (
               <div className="mt-3">
                 <label htmlFor="confirm-action-other-reason" className="mb-1 block text-sm font-medium text-ink">
@@ -511,7 +514,7 @@ export default function AdminUsers() {
           aria-label="Search by email"
           className={inputClass}
         />
-        <select
+        <SearchableSelect
           aria-label="Filter by status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
@@ -521,8 +524,8 @@ export default function AdminUsers() {
           <option value="pending">Pending</option>
           <option value="active">Active</option>
           <option value="suspended">Suspended</option>
-        </select>
-        <select
+        </SearchableSelect>
+        <SearchableSelect
           aria-label="Filter by role"
           value={role}
           onChange={(e) => setRole(e.target.value)}
@@ -532,8 +535,8 @@ export default function AdminUsers() {
           <option value="user">User</option>
           <option value="admin">Admin</option>
           <option value="super admin">Super admin</option>
-        </select>
-        <select
+        </SearchableSelect>
+        <SearchableSelect
           aria-label="Filter by locked"
           value={locked}
           onChange={(e) => setLocked(e.target.value)}
@@ -542,7 +545,7 @@ export default function AdminUsers() {
           <option value="">Any lock state</option>
           <option value="true">Locked</option>
           <option value="false">Not locked</option>
-        </select>
+        </SearchableSelect>
       </div>
 
       {notice}

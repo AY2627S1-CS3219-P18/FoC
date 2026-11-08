@@ -9267,7 +9267,6 @@ Accepted all changes.
 **Governing decision:** George's ECS Fargate plan, `ecs-fargate-session-prompt.md` ("Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project"), section "Phase 1: repo changes", items 1-11. The plan was supplied as a local file attachment and is not committed to this repository.
 
 **Prompts (exact):**
-
 > @"C:\Users\Aeodile\Downloads\ecs-fargate-session-prompt.md"
 > The attached file, ecs-fargate-session-prompt.md, is my full plan for moving this repo from Docker Compose to AWS ECS on Fargate. Treat it as my instructions, including its ground rules, and don't reopen its decisions unless a fact proves one wrong.
 >
@@ -9372,7 +9371,6 @@ Facts found while testing:
 **Governing decision:** George's instruction in chat, below. Supersedes the note in the entry "ECS Fargate Phase 1: repo changes for deployment" that the plan is not committed; that plan now lives at `docs/ecs-fargate-session-prompt.md`.
 
 **Prompts (exact):**
-
 > > The plan isn’t in the repo: the usage log cites ecs-fargate-session-prompt.md by name only. AGENTS.md expects decisions to be written down, so consider committing it to docs/.
 >
 > ok add it to docs
@@ -9406,7 +9404,6 @@ None.
 **Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
 
 **Prompts (exact):**
-
 > wait wait, the repo is supposed to be the teams repo not mine
 
 > Yes, use team repo
@@ -9450,7 +9447,6 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
 
 **Prompts (exact):**
-
 > this is intended, it should auto deploy on every main merge
 
 The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
@@ -9487,7 +9483,6 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 **Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
 
 **Prompts (exact):**
-
 > One PR
 
 **Key responses:**
@@ -9508,6 +9503,507 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
+
+**Prompts (exact):**
+> shouldnt i make Account Regional namespace (recommended)
+
+> User was not created.
+> User: arn:aws:sts::993173880680:assumed-role/AWSReservedSSO_nusisb_IsbUsersPS_045e734b50045e6a/[redacted] is not authorized to perform: iam:CreateUser on resource: arn:aws:iam::993173880680:user/foc-supplier-photos with an explicit deny in a service control policy: arn:aws:organizations::864899849123:policy/o-celk1f6y0n/service_control_policy/p-j6rrqzxn. Go to https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/authorization-details/9e6c0f0xs1z1gl9j9qm3qqpm2 for complete details, or call the GetRequestAuthorizationDetails API with the following authorization id: 9e6c0f0xs1z1gl9j9qm3qqpm2
+
+> the bucket is fine, but what is the IAM user for
+
+> ok lets do task role
+
+> also explain what task role involves too
+
+The email address in the second prompt is redacted, as personal data. The prompt is otherwise exact.
+
+**Key responses:**
+
+- Told George the IAM user was blocked by an organisation rule that retrying wouldn't change, and listed two options: an ECS task role, or asking NUS to allow the user. George chose the task role.
+- `createS3PhotoStorage` now passes credentials only when both keys are set. Otherwise the AWS SDK finds its own, which on ECS means the task role. `createConfiguredPhotoStorage` treats one key without the other as not configured.
+- `vitest.seed.config.ts` no longer fills in the MinIO dev keys when ECS's container credentials variables are set, because those keys would override the role.
+- Updated the plan's photo decision, Phase 2 steps 5, 7 and 15, and the teardown list, and recorded the NUS rule and bucket name.
+
+**Verification (run):**
+
+- `supplier-service`: 434/434 tests pass, with `tsc --noEmit` and `eslint .` clean.
+- A new test runs a real upload against local stand-ins for the credentials endpoint and S3, and checks the role's key and session token signed it.
+- Seed image built and run twice against throwaway MySQL and a stub. All 10 uploads were signed with the stub role's key, none with the MinIO key, and the second run uploaded nothing new. Two earlier attempts failed because of the test setup: the stub returned no image type, and MySQL wasn't ready.
+
+**Not verified:** nothing ran on real AWS or S3. The local tests set `AWS_CONTAINER_CREDENTIALS_FULL_URI`, while Fargate sets `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, whose address can't be reached locally. `compose.yaml` wasn't rerun; it still sets both keys, and the test for that path passes.
+
+**Files:**
+
+- `supplier-service/src/storage/s3PhotoStorage.ts` (modified)
+- `supplier-service/vitest.seed.config.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageRegion.test.ts` (modified)
+- `supplier-service/test/storage/s3PhotoStorageTaskRole.test.ts` (created)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/README.md` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+The plan's IAM user can't exist in this account, so the plan changed. Other AWS services may also be limited by NUS's rules. The deploy role needs `iam:PassRole` on the new role before CD can update supplier's services.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
+
+**Prompts (exact):**
+> foc namespace is added and yes 3 days for all
+
+**Key responses:**
+
+- Added these facts to the plan: MySQL 8.4 (RDS MySQL 8.0 left standard support on 2026-07-31), the `foc_admin` login on all 4 databases, `foc-user-db` needing `CREATE DATABASE user_service;` at step 16, the SSM parameter names, and the extra `/ecs/foc/one-off` log group.
+- Checked George's AWS settings through the built-in browser, read-only. No secret values were opened.
+
+**Files:**
+
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+The `foc_admin` login and the extra log group were the AI tool's small naming choices, flagged to George in chat. The login replaces Compose's `order`, `credit`, `postgres` and `root` logins on AWS only.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — ECS Fargate: ship the order supplier check
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate, docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
+
+**Prompts (exact):**
+> Ship 1fad383 now
+
+**Key responses:**
+
+- Applied `1fad383` onto the team's `main` (`1a07f90`). Six files conflicted: `app.ts`, `config/env.ts`, `constants/errors.ts`, `orders.controller.ts`, `orders.routes.ts` and `server.ts`.
+- Kept both sides. In code, `ordersRouter` now takes both `suppliers` and `userServiceUrl`. The other conflicts were disclosure headers only.
+- Recorded in the plan that `order-service` must run a task definition with `SUPPLIER_SERVICE_URL` before this deploys, because CD only swaps the image, plus the ALB rule limit and the superadmin smoke test finding.
+
+**Verification (run):**
+
+- `order-service`: `npm run typecheck` and `npm run lint` clean, and 667/667 tests pass, run on Windows.
+
+**Not verified:** the e2e suite wasn't run, as it needs Postgres and Redis and CI doesn't run it either. Nothing has run on AWS yet. `npx prisma generate` failed locally because `DATABASE_URL` was unset, so the type check used the existing generated client.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/clients/suppliers.client.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+Creating or editing an order now returns `503` when supplier-service can't answer, including on `429`. Supplier's production `PER_IP_RATE_LIMIT` is 30, and the requests come from order-service's task, so heavy order traffic could hit it. Flagged for the team, and not changed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — ECS Fargate: start and stop checklist
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
+
+**Prompts (exact):**
+> It worked
+
+**Key responses:**
+
+- Wrote the stop, start and full teardown steps, using the real resource names, and added a short troubleshooting table from problems met during setup.
+- Recorded the deployment status in the plan. `order-service:3` added `SUPPLIER_SERVICE_URL` after the first deploy of `1fad383` had gone out without it.
+
+**Verification (run):** read-only checks through the console and the load balancer during setup, listed in earlier entries. The Deploy run for `4895ef8` succeeded. George reported that posting an errand worked on `order-service:3`, and I saw that revision's image and variable. **Not verified:** the checklist's stop and start steps haven't been run in full yet, and the Redis addresses staying the same after recreation is unconfirmed.
+
+**Files:**
+
+- `docs/ecs-fargate-run-checklist.md` (created)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Precise delivery location: design spec and implementation plan
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Requirements formatting
+**Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
+
+**Prompts (exact):**
+> in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
+
+> 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
+> 2. a new table last_request will store "last_req_del_loc_id" (same as deliverLocationId of order db, integer) the and "last_req_del_loc_details" (same as deliveryDetails, free text, notnull, max 250 chars) these 2 fields will be used together to populate the request form if needed.
+> 3. two new endpoints to the new table will be created for read and update, and when the user creates a request, that endpoint will be called to read the 2 values. On request submission, the update endpoint is used to update the values. editing an existing order also invokes the same update endpoint
+> 4. where is order-service writing to user-service??
+> 5. if the location id is no longer an option, the prompt will not be shown. shown only for new requests. the click prefills both the location id selector and the free text field
+
+> 1. the user services onws the table and enpoints, as previously devided
+> 2. the UUID will be the userid, just like the user_bookmarks table
+> 3. both db level and api validation. deliveryDetails on requests is just the the last_req_del_lo_details
+> 4. existing orders gets a "Nil". This is also the default
+> 5. follow existing conventions used by the user_bookmarks flow
+> 6. if the row does not exist (which should not happen), i should get a 200 with nulls so the flows dont get blokced, and upon successful request, the row will be populated
+> 7. the authenticated user will only update their own row
+> 8. the ids are populated from the form, which is already pulled from the actual db, so there is no need to do another round of validation.
+> 9. yes, required field. this will be enforced on the frontend that prevents any extra chars after 250chars. if that is somehow bypassed , return 400 bad request
+> 10. no error. they are async. if the order fails, the user will likely want to send the request again. then the stored values will act as a recovery as well.
+>
+> Also move all changes to a new branch "add precise delivery location". start with spec and plan
+
+> 1. confirm
+> 2. delivery details are compulsory
+> 3. follow existing code name style and message text. empty and whitespace only values are gated on the frontend, and trailing spaces will be trimmed before storing to the db
+> 4. parallel call. completely unrelated, and will go ahead even if the order is rejected. Rationale is as mentioned, for the record to serve as a "last state"
+> 5. the delivery details will be displayed together with the existing deliveryLocatioId everywhere the id is used to retrieve the location name
+> 6. the prompt will be a discrete "tips" card that is displayed below the deliver to form questions and above the choose a drop off point selector. prompt heading itself can be "Delivering to the same location?", with the body containing the rendered location and details, and a "Confirm" button
+> 7. last_request is created on registration with the default "Nil" values. in the api call, receiving Nil is the same as there is no value, and the prompt will not even be rendered
+> 8. ok yes, add an updated-at timestamp as well, just like the bookmarks
+
+> 1. relax the last_req_del_loc_id to be nullable, and store null as the default
+> 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
+> 3.  the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
+
+**Key responses:**
+- First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
+- Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
+- Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
+- Second round: recorded the answers as P15-P20 in the spec. Endpoint names (`/users/me/last-request`) and the new error codes were named by the bookmark and error-code conventions and flagged for the team to check, because the reply to the endpoint question was "confirm". Three new gaps remain (Q1-Q3).
+- Third round: recorded P21-P23 (nullable id, trimming and edit-time update, display), closed all open questions, and wrote the implementation plan. Existing users are not backfilled; this follows the team's "missing row reads as nulls, first update populates it" decision (P8) and is for the team to check.
+- No code was changed. No tests were run.
+
+**Files:**
+- `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
+- `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None open. Endpoint paths (`/users/me/last-request`), error code names and messages were derived from the bookmark and error-code conventions after the reply "confirm", and need the team's check at approval.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Precise delivery location: partial user-service implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
+
+> implement it
+
+**Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
+
+**Files:**
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/db/queries/lastRequest.queries.ts` (created)
+- `user-service/src/services/lastRequest.service.ts` (created)
+- `user-service/src/controllers/lastRequest.controller.ts` (created)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/db/queries/lastRequest.queries.test.ts` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Implementation and the plan's full test coverage remain incomplete.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Precise delivery location: order service and frontend implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> finish all implementation
+
+**Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
+
+**Files:**
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/types/orders.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/realtime/order-events.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/realtime/order-events.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/test/realtime.e2e-spec.ts` (modified)
+- `frontend/src/api/lastRequest.js` (created)
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/pages/AdminOrderTransactions.jsx` (modified)
+- `frontend/tests/api/lastRequest.test.js` (created)
+- `frontend/tests/pages/CreateRequest.test.jsx` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** The planned task-by-task commits and manual browser check were not performed. Migration deployment succeeded on a scratch database; the old-row migration scenario was not separately exercised.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Saved location prompt dismissal
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
+
+**Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location prompt action alignment
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
+
+**Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> replace the confirm and dismiss words with a cross and tick icon respectively
+
+**Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Swap saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> swap the 2 icons. the tick is for confirm
+
+**Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Previous location input visibility
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
+
+> Show the fields immediately
+
+**Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked how to show fields when no previous location exists; the user chose to show them immediately.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+
+## 2026-11-08 — Searchable dropdowns
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> i want to add a purely cosmetic change to the UI - styling all dropdown input fields. Currently they look ugly - the down chevron is flushed to the right, and the dropdown options are browser defaults. I want to style them and standardise the design across the entire page
+
+> No. the policy dictates architectural designs. Not artistic UI designs.
+> Essentially the current design of the entire website is modern and sleek, favoring rounded corners and no sharp edges. For all dropdowns, i want to style them as a searchable dropdown. clicking on an empty input, it will be a serachbox with options listed below. Typing in the box will be a live filtering of the options. Hovering over the options, each of them will be a rounded-corner option i can select
+
+> what kind of implementation pattern is and interface is there??? This is just a frontend UI design that the policies does not restrict at all. Again, the policy only dictated software architecture designs. And frontend UI does not fall under that.
+
+> for multi select options, yes. It should be searchable with each of the options then coming with a styled checkbox on the left
+
+**Key responses:** Replaced frontend dropdowns with a searchable control, including checkbox multi-select and keyboard navigation. Updated affected interaction tests. The frontend build and two focused control tests passed. The initial full suite failed under parallel execution, including outdated native-select tests and timeouts; subsequent verification is reported below.
+
+**Files:**
+- `frontend/src/pages/AdminLogs.jsx` (modified)
+- `frontend/src/pages/AdminSupplierForm.jsx` (modified)
+- `frontend/src/pages/AdminSuppliers.jsx` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `frontend/src/pages/Suppliers.jsx` (modified)
+- `frontend/src/pages/Wallet.jsx` (modified)
+- `frontend/src/components/DemoControls.jsx` (modified)
+- `frontend/src/components/SearchableSelect.jsx` (created)
+- `frontend/tests/components/SearchableSelect.test.jsx` (created)
+- `frontend/tests/pages/AdminLogs.test.jsx` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked whether multi-selects should remain multi-select; user specified searchable options with checkboxes. Work applies to frontend, not the standalone mockup.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+**Verification continuation:** Full frontend suite with two workers: 146 passed, 1 failed. The remaining CreateRequest test expects maxLength 250 while the existing input in HEAD uses 200; this task did not change that limit. Browser and screen-reader testing were not performed.
+
+
+## 2026-11-08 — Searchable dropdown display fixes
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> 2 issues:
+>
+> 1. in the request pages, the deliver to dropdown's chevron is not vertically centred.&#x20;
+> 2. In the suppliers page, selecting an option in the Sort dropdown should populate the input field as well. Currently it stays blank. I also want the options area to be dismissed as soon as a choice is made for single option selectors. For multiselects, like thtat in the audit log page, should also display the selected options live after i click on the options
+
+**Key responses:** Moved request dropdown spacing outside the control, prevented label activation from reopening a single-select after a choice, and showed multi-select choices while the menu is open. Added regression tests; 17 focused tests passed. Production build succeeded before the final click-handling adjustment.
+
+**Files:**
+- `frontend/src/components/SearchableSelect.jsx` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/components/SearchableSelect.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
 
 ## 2026-11-06 — Order events: courierId on acceptance
 
@@ -9830,65 +10326,6 @@ Task request and subsequent response-annotation comments are quoted separately b
 **Deviations / questions raised for the team:**
 Missing contract decisions were requested and supplied in the exact comments above. Live database migration/listing and live User Service checks remain unperformed.
 
-## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
-
-**Tool:** Claude Code (model: claude-opus-5-5)
-**Mode:** generate, docs
-**Scope:** Implementation code | Refactor/Docs
-**Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
-
-**Prompts (exact):**
-
-> shouldnt i make Account Regional namespace (recommended)
-
-> User was not created.
-> User: arn:aws:sts::993173880680:assumed-role/AWSReservedSSO_nusisb_IsbUsersPS_045e734b50045e6a/[redacted] is not authorized to perform: iam:CreateUser on resource: arn:aws:iam::993173880680:user/foc-supplier-photos with an explicit deny in a service control policy: arn:aws:organizations::864899849123:policy/o-celk1f6y0n/service_control_policy/p-j6rrqzxn. Go to https://us-east-1.console.aws.amazon.com/iam/home?region=us-east-1#/authorization-details/9e6c0f0xs1z1gl9j9qm3qqpm2 for complete details, or call the GetRequestAuthorizationDetails API with the following authorization id: 9e6c0f0xs1z1gl9j9qm3qqpm2
-
-> the bucket is fine, but what is the IAM user for
-
-> ok lets do task role
-
-> also explain what task role involves too
-
-The email address in the second prompt is redacted, as personal data. The prompt is otherwise exact.
-
-**Key responses:**
-
-- Told George the IAM user was blocked by an organisation rule that retrying wouldn't change, and listed two options: an ECS task role, or asking NUS to allow the user. George chose the task role.
-- `createS3PhotoStorage` now passes credentials only when both keys are set. Otherwise the AWS SDK finds its own, which on ECS means the task role. `createConfiguredPhotoStorage` treats one key without the other as not configured.
-- `vitest.seed.config.ts` no longer fills in the MinIO dev keys when ECS's container credentials variables are set, because those keys would override the role.
-- Updated the plan's photo decision, Phase 2 steps 5, 7 and 15, and the teardown list, and recorded the NUS rule and bucket name.
-
-**Verification (run):**
-
-- `supplier-service`: 434/434 tests pass, with `tsc --noEmit` and `eslint .` clean.
-- A new test runs a real upload against local stand-ins for the credentials endpoint and S3, and checks the role's key and session token signed it.
-- Seed image built and run twice against throwaway MySQL and a stub. All 10 uploads were signed with the stub role's key, none with the MinIO key, and the second run uploaded nothing new. Two earlier attempts failed because of the test setup: the stub returned no image type, and MySQL wasn't ready.
-
-**Not verified:** nothing ran on real AWS or S3. The local tests set `AWS_CONTAINER_CREDENTIALS_FULL_URI`, while Fargate sets `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, whose address can't be reached locally. `compose.yaml` wasn't rerun; it still sets both keys, and the test for that path passes.
-
-**Files:**
-
-- `supplier-service/src/storage/s3PhotoStorage.ts` (modified)
-- `supplier-service/vitest.seed.config.ts` (modified)
-- `supplier-service/test/storage/s3PhotoStorageRegion.test.ts` (modified)
-- `supplier-service/test/storage/s3PhotoStorageTaskRole.test.ts` (created)
-- `supplier-service/.env.example` (modified)
-- `supplier-service/README.md` (modified)
-- `docs/ecs-fargate-session-prompt.md` (modified)
-- `ai/usage-log.md` (this entry)
-- `README.md` (log index row)
-
-**Deviations / questions raised for the team:**
-
-The plan's IAM user can't exist in this account, so the plan changed. Other AWS services may also be limited by NUS's rules. The deploy role needs `iam:PassRole` on the new role before CD can update supplier's services.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
-<<<<<<< HEAD
-
 ## 2026-11-08 — Chat service: Prisma Studio Docker connectivity
 
 **Tool:** Codex (model: GPT-6)
@@ -9921,118 +10358,6 @@ The annotation selected the previous finding that Compose chat-db had no publish
 - `ai/usage-log.md` (appended)
 
 # **Deviations / questions raised for the team:**
-
-## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
-
-**Tool:** Claude Code (model: claude-opus-5-5)
-**Mode:** docs
-**Scope:** Refactor/Docs
-**Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
-
-**Prompts (exact):**
-
-> foc namespace is added and yes 3 days for all
-
-**Key responses:**
-
-- Added these facts to the plan: MySQL 8.4 (RDS MySQL 8.0 left standard support on 2026-07-31), the `foc_admin` login on all 4 databases, `foc-user-db` needing `CREATE DATABASE user_service;` at step 16, the SSM parameter names, and the extra `/ecs/foc/one-off` log group.
-- Checked George's AWS settings through the built-in browser, read-only. No secret values were opened.
-
-**Files:**
-
-- `docs/ecs-fargate-session-prompt.md` (modified)
-- `ai/usage-log.md` (this entry)
-- `README.md` (log index row)
-
-**Deviations / questions raised for the team:**
-
-The `foc_admin` login and the extra log group were the AI tool's small naming choices, flagged to George in chat. The login replaces Compose's `order`, `credit`, `postgres` and `root` logins on AWS only.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
-## 2026-11-07 — ECS Fargate: ship the order supplier check
-
-**Tool:** Claude Code (model: claude-opus-5-5)
-**Mode:** generate, docs
-**Scope:** Implementation code | Refactor/Docs
-**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
-
-**Prompts (exact):**
-
-> Ship 1fad383 now
-
-**Key responses:**
-
-- Applied `1fad383` onto the team's `main` (`1a07f90`). Six files conflicted: `app.ts`, `config/env.ts`, `constants/errors.ts`, `orders.controller.ts`, `orders.routes.ts` and `server.ts`.
-- Kept both sides. In code, `ordersRouter` now takes both `suppliers` and `userServiceUrl`. The other conflicts were disclosure headers only.
-- Recorded in the plan that `order-service` must run a task definition with `SUPPLIER_SERVICE_URL` before this deploys, because CD only swaps the image, plus the ALB rule limit and the superadmin smoke test finding.
-
-**Verification (run):**
-
-- `order-service`: `npm run typecheck` and `npm run lint` clean, and 667/667 tests pass, run on Windows.
-
-**Not verified:** the e2e suite wasn't run, as it needs Postgres and Redis and CI doesn't run it either. Nothing has run on AWS yet. `npx prisma generate` failed locally because `DATABASE_URL` was unset, so the type check used the existing generated client.
-
-**Files:**
-
-- `compose.yaml` (modified)
-- `order-service/.env.example` (modified)
-- `order-service/src/app.ts` (modified)
-- `order-service/src/clients/suppliers.client.ts` (created)
-- `order-service/src/clients/suppliers.client.spec.ts` (created)
-- `order-service/src/config/env.ts` (modified)
-- `order-service/src/constants/errors.ts` (modified)
-- `order-service/src/controllers/orders.controller.ts` (modified)
-- `order-service/src/controllers/orders.controller.spec.ts` (modified)
-- `order-service/src/routes/orders.routes.ts` (modified)
-- `order-service/src/server.ts` (modified)
-- `order-service/src/services/orders.service.ts` (modified)
-- `order-service/src/services/orders.service.spec.ts` (modified)
-- `order-service/test/credit-saga.e2e-spec.ts` (modified)
-- `docs/ecs-fargate-session-prompt.md` (modified)
-- `ai/usage-log.md` (this entry)
-- `README.md` (log index row)
-
-**Deviations / questions raised for the team:**
-
-Creating or editing an order now returns `503` when supplier-service can't answer, including on `429`. Supplier's production `PER_IP_RATE_LIMIT` is 30, and the requests come from order-service's task, so heavy order traffic could hit it. Flagged for the team, and not changed.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
-## 2026-11-07 — ECS Fargate: start and stop checklist
-
-**Tool:** Claude Code (model: claude-opus-5-5)
-**Mode:** docs
-**Scope:** Refactor/Docs
-**Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
-
-**Prompts (exact):**
-
-> It worked
-
-**Key responses:**
-
-- Wrote the stop, start and full teardown steps, using the real resource names, and added a short troubleshooting table from problems met during setup.
-- Recorded the deployment status in the plan. `order-service:3` added `SUPPLIER_SERVICE_URL` after the first deploy of `1fad383` had gone out without it.
-
-**Verification (run):** read-only checks through the console and the load balancer during setup, listed in earlier entries. The Deploy run for `4895ef8` succeeded. George reported that posting an errand worked on `order-service:3`, and I saw that revision's image and variable. **Not verified:** the checklist's stop and start steps haven't been run in full yet, and the Redis addresses staying the same after recreation is unconfirmed.
-
-**Files:**
-
-- `docs/ecs-fargate-run-checklist.md` (created)
-- `docs/ecs-fargate-session-prompt.md` (modified)
-- `ai/usage-log.md` (this entry)
-- `README.md` (log index row)
-
-**Deviations / questions raised for the team:**
-
-**What I kept/changed/rejected:**
-
-**Author review:**
 
 ## 2026-11-08 — Chat service: conversation table names
 
@@ -11110,280 +11435,6 @@ Requested event names, room timing, payload/acknowledgements and public socket p
 
 **Author review:**
 
-## 2026-11-08 — Precise delivery location: design spec and implementation plan
-
-**Tool:** Claude Code (model: claude-sonnet-5-5)
-**Mode:** docs
-**Scope:** Requirements formatting
-**Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
-
-**Prompts (exact):**
-
-> in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
-
-> 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
-> 2. a new table last_request will store "last_req_del_loc_id" (same as deliverLocationId of order db, integer) the and "last_req_del_loc_details" (same as deliveryDetails, free text, notnull, max 250 chars) these 2 fields will be used together to populate the request form if needed.
-> 3. two new endpoints to the new table will be created for read and update, and when the user creates a request, that endpoint will be called to read the 2 values. On request submission, the update endpoint is used to update the values. editing an existing order also invokes the same update endpoint
-> 4. where is order-service writing to user-service??
-> 5. if the location id is no longer an option, the prompt will not be shown. shown only for new requests. the click prefills both the location id selector and the free text field
-
-> 1. the user services onws the table and enpoints, as previously devided
-> 2. the UUID will be the userid, just like the user_bookmarks table
-> 3. both db level and api validation. deliveryDetails on requests is just the the last_req_del_lo_details
-> 4. existing orders gets a "Nil". This is also the default
-> 5. follow existing conventions used by the user_bookmarks flow
-> 6. if the row does not exist (which should not happen), i should get a 200 with nulls so the flows dont get blokced, and upon successful request, the row will be populated
-> 7. the authenticated user will only update their own row
-> 8. the ids are populated from the form, which is already pulled from the actual db, so there is no need to do another round of validation.
-> 9. yes, required field. this will be enforced on the frontend that prevents any extra chars after 250chars. if that is somehow bypassed , return 400 bad request
-> 10. no error. they are async. if the order fails, the user will likely want to send the request again. then the stored values will act as a recovery as well.
->
-> Also move all changes to a new branch "add precise delivery location". start with spec and plan
-
-> 1. confirm
-> 2. delivery details are compulsory
-> 3. follow existing code name style and message text. empty and whitespace only values are gated on the frontend, and trailing spaces will be trimmed before storing to the db
-> 4. parallel call. completely unrelated, and will go ahead even if the order is rejected. Rationale is as mentioned, for the record to serve as a "last state"
-> 5. the delivery details will be displayed together with the existing deliveryLocatioId everywhere the id is used to retrieve the location name
-> 6. the prompt will be a discrete "tips" card that is displayed below the deliver to form questions and above the choose a drop off point selector. prompt heading itself can be "Delivering to the same location?", with the body containing the rendered location and details, and a "Confirm" button
-> 7. last_request is created on registration with the default "Nil" values. in the api call, receiving Nil is the same as there is no value, and the prompt will not even be rendered
-> 8. ok yes, add an updated-at timestamp as well, just like the bookmarks
-
-> 1. relax the last_req_del_loc_id to be nullable, and store null as the default
-> 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
-> 3. the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
-
-**Key responses:**
-
-- First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
-- Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
-- Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
-- Second round: recorded the answers as P15-P20 in the spec. Endpoint names (`/users/me/last-request`) and the new error codes were named by the bookmark and error-code conventions and flagged for the team to check, because the reply to the endpoint question was "confirm". Three new gaps remain (Q1-Q3).
-- Third round: recorded P21-P23 (nullable id, trimming and edit-time update, display), closed all open questions, and wrote the implementation plan. Existing users are not backfilled; this follows the team's "missing row reads as nulls, first update populates it" decision (P8) and is for the team to check.
-- No code was changed. No tests were run.
-
-**Files:**
-
-- `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
-- `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
-- `ai/usage-log.md` (this entry)
-- `README.md` (log index row)
-
-**Deviations / questions raised for the team:**
-None open. Endpoint paths (`/users/me/last-request`), error code names and messages were derived from the bookmark and error-code conventions after the reply "confirm", and need the team's check at approval.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-08 — Precise delivery location: partial user-service implementation
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** generate
-**Scope:** Implementation code
-**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
-
-**Prompts (exact):**
-
-> in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
-
-> implement it
-
-**Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
-
-**Files:**
-
-- `user-service/src/db/init.sql` (modified)
-- `user-service/src/db/queries/users.queries.ts` (modified)
-- `user-service/src/db/queries/lastRequest.queries.ts` (created)
-- `user-service/src/services/lastRequest.service.ts` (created)
-- `user-service/src/controllers/lastRequest.controller.ts` (created)
-- `user-service/src/routes/me.routes.ts` (modified)
-- `user-service/tests/db/queries/lastRequest.queries.test.ts` (created)
-- `user-service/tests/controllers/lastRequest.controller.test.ts` (created)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** Implementation and the plan's full test coverage remain incomplete.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
-## 2026-11-08 — Precise delivery location: order service and frontend implementation
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** generate | debug
-**Scope:** Implementation code | Debugging
-**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
-
-**Prompts (exact):**
-
-> finish all implementation
-
-**Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
-
-**Files:**
-
-- `order-service/prisma/schema.prisma` (modified)
-- `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
-- `order-service/src/constants/errors.ts` (modified)
-- `order-service/src/types/orders.ts` (modified)
-- `order-service/src/services/orders.service.ts` (modified)
-- `order-service/src/realtime/order-events.ts` (modified)
-- `order-service/src/services/orders.service.spec.ts` (modified)
-- `order-service/src/controllers/orders.controller.spec.ts` (modified)
-- `order-service/src/realtime/order-events.spec.ts` (modified)
-- `order-service/src/worker/credit-jobs.spec.ts` (modified)
-- `order-service/test/credit-saga.e2e-spec.ts` (modified)
-- `order-service/test/realtime.e2e-spec.ts` (modified)
-- `frontend/src/api/lastRequest.js` (created)
-- `frontend/src/api/orders.js` (modified)
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `frontend/src/components/RequestCard.jsx` (modified)
-- `frontend/src/pages/activityShared.jsx` (modified)
-- `frontend/src/pages/AdminOrderTransactions.jsx` (modified)
-- `frontend/tests/api/lastRequest.test.js` (created)
-- `frontend/tests/pages/CreateRequest.test.jsx` (created)
-- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** The planned task-by-task commits and manual browser check were not performed. Migration deployment succeeded on a scratch database; the old-row migration scenario was not separately exercised.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
-## 2026-11-08 — Saved location prompt dismissal
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** generate
-**Scope:** Implementation code
-**Governing decision:** User instruction in chat on 2026-11-08.
-
-**Prompts (exact):**
-
-> I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
-
-**Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
-
-**Files:**
-
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** None.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-08 — Saved location prompt action alignment
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** refactor
-**Scope:** Implementation code
-**Governing decision:** User instruction in chat on 2026-11-08.
-
-**Prompts (exact):**
-
-> align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
-
-**Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
-
-**Files:**
-
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** None.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-08 — Saved location action icons
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** refactor
-**Scope:** Implementation code
-**Governing decision:** User instruction in chat on 2026-11-08.
-
-**Prompts (exact):**
-
-> replace the confirm and dismiss words with a cross and tick icon respectively
-
-**Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
-
-**Files:**
-
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** None.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-08 — Swap saved location action icons
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** refactor
-**Scope:** Implementation code
-**Governing decision:** User instruction in chat on 2026-11-08.
-
-**Prompts (exact):**
-
-> swap the 2 icons. the tick is for confirm
-
-**Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
-
-**Files:**
-
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** None.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-08 — Previous location input visibility
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** generate
-**Scope:** Implementation code
-**Governing decision:** User instructions in chat on 2026-11-08.
-
-**Prompts (exact):**
-
-> actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
-
-> Show the fields immediately
-
-**Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
-
-**Files:**
-
-- `frontend/src/pages/CreateRequest.jsx` (modified)
-- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
-- `ai/usage-log.md` (modified)
-- `README.md` (modified)
-
-**Deviations / questions raised for the team:** Asked how to show fields when no previous location exists; the user chose to show them immediately.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
 ## 2026-11-08 — Chat service: system notification caller guide
 
 **Tool:** Codex (model: GPT-6)
@@ -12402,3 +12453,27 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Merge main disclosure conflicts
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instructions in chat on 2026-11-08; repository AGENTS.md disclosure requirements.
+
+**Prompts (exact):**
+> pull development branch and resolve merge conflicts
+
+> yes merge main
+
+**Key responses:** Fetched origin and merged origin/main into the current branch. Preserved both branches' distinct usage log entries and reconciled the README log index; removed a conflict marker already present in the incoming log by retaining the shared entry from the current branch. Frontend production build passed; 17 focused dropdown tests passed; no conflict markers remained in the resolved files.
+
+**Files:**
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** No development branch was found; the user confirmed origin/main.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

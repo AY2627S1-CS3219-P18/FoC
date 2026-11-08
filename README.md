@@ -1,5 +1,14 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-08, Codex, model: GPT-6): Resolved merge conflicts in the AI log index.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added dropdown fixes log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added searchable dropdown log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -773,3 +782,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 227 | 2026-11-08 | frontend                                                      | Floating chat unread badge                                                                                       | Moved live unread totals to the floating shortcut.                                                                                              |
 | 228 | 2026-11-08 | frontend                                                      | New message icon animation                                                                                       | Animated the floating chat icon when unread totals increase.                                                                                    |
 | 229 | 2026-11-08 | frontend                                                      | Incoming message wiggle fix                                                                                      | Triggered whole-button animation directly on incoming messages.                                                                                 |
+
+| 230 | 2026-11-08 | frontend | Searchable dropdowns | Added searchable single and multi-select dropdowns. |
+| 231 | 2026-11-08 | frontend | Searchable dropdown display fixes | Fixed chevron alignment and selection display. |
+| 232 | 2026-11-08 | repository | Merge main disclosure conflicts | Reconciled usage log and index. |

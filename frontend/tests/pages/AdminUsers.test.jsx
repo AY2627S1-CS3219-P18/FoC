@@ -6,7 +6,7 @@
  *        (Vitest fake timers, two rows unmasked independently), the failure toast, and
  *        re-masking on a table refetch. listUsers and getFullEmail are mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Stage 24 of instructions.md - renderPage now wraps in MemoryRouter (AdminUsers.jsx
@@ -16,7 +16,7 @@
  *        navigating. Mocked useBalance (api/lookups) for the new Credits column, and added a
  *        test for it, per the stage's "Summary fields" row for this table.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Stage 26e of instructions.md - revealing an email now opens a reason dialog before
@@ -25,7 +25,7 @@
  *        called with that reason. Re-masking (already-unmasked click, or the 60s timer) still
  *        sends no request and needed no test change.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment):
@@ -33,7 +33,9 @@
  *        the eye click), and its one request-shape assertion now expects no reason argument.
  *        Added a test that Unlock's dialog has no reason picker and confirms with no payload.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated dropdown interaction tests.
+ * Author review: Congchen
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -258,7 +260,8 @@ describe('AdminUsers email eye icon (Stage 20b)', () => {
     })
     expect(screen.getByText('alice@example.com')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'active' } })
+    fireEvent.focus(screen.getByLabelText('Filter by status'))
+    fireEvent.click(screen.getByRole('option', { name: /Active/i }))
 
     await waitFor(() => {
       expect(screen.getByText('a***@example.com')).toBeInTheDocument()
@@ -303,19 +306,13 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
 
     openSuspendDialog()
     const select = screen.getByLabelText('Reason')
-    const optionValues = Array.from(select.options, (o) => o.value).filter(Boolean)
-    expect(optionValues).toEqual([
-      'FRAUD_OR_SCAM',
-      'HARASSMENT',
-      'REPEATED_NO_SHOW',
-      'POLICY_VIOLATION',
-      'SUSPECTED_COMPROMISE',
-      'USER_REQUEST',
-      'OTHER',
-    ])
+    fireEvent.focus(select)
+    expect(screen.getByRole('option', { name: /Fraud or scam/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Other' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeDisabled()
 
-    fireEvent.change(select, { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(select)
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     expect(screen.getByRole('button', { name: 'Suspend' })).toBeEnabled()
   })
 
@@ -325,7 +322,8 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
     await screen.findByText('alice')
 
     openSuspendDialog()
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'OTHER' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: 'Other' }))
     const confirmButton = screen.getByRole('button', { name: 'Suspend' })
     expect(confirmButton).toBeDisabled()
 
@@ -350,7 +348,8 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
     await screen.findByText('alice')
 
     openSuspendDialog()
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
 
     await waitFor(() =>
@@ -359,7 +358,8 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
 
     updateUserStatus.mockClear()
     openSuspendDialog()
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'OTHER' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: 'Other' }))
     fireEvent.change(screen.getByLabelText('Details'), { target: { value: '  a good long reason here  ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
 
@@ -392,7 +392,8 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
     await screen.findByText('alice')
 
     openSuspendDialog()
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'FRAUD_OR_SCAM' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
     // Two elements share the "Cancel" accessible name: the dialog's own Cancel button and the
     // backdrop button (also labelled "Cancel" for screen readers). Either closes the dialog;
     // this clicks the visible button, which is listed last.
@@ -412,7 +413,8 @@ describe('AdminUsers reason dialog (Stage 26e)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Actions for alice' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Unsuspend' }))
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'ISSUE_RESOLVED' } })
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Issue resolved/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Unsuspend' }))
 
     await waitFor(() =>
