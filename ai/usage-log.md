@@ -9808,3 +9808,122 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-08 — Saved location prompt dismissal
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
+
+**Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location prompt action alignment
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
+
+**Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> replace the confirm and dismiss words with a cross and tick icon respectively
+
+**Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Swap saved location action icons
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat on 2026-11-08.
+
+**Prompts (exact):**
+> swap the 2 icons. the tick is for confirm
+
+**Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-08 — Previous location input visibility
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instructions in chat on 2026-11-08.
+
+**Prompts (exact):**
+> actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
+
+> Show the fields immediately
+
+**Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/tests/pages/CreateRequest.test.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Asked how to show fields when no previous location exists; the user chose to show them immediately.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**

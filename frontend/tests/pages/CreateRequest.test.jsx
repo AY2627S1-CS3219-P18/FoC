@@ -1,8 +1,14 @@
 /* AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated previous location prompt wording assertions.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
+ * Scope (2026-11-08, Codex, model: GPT-6): Tested reuse prompt dismissal and confirmation.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  * Tool: Codex (model: GPT-6), date: 2026-11-08
  * Scope: Tests the saved delivery location form per the team spec.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -11,24 +17,42 @@ import CreateRequest from '../../src/pages/CreateRequest'
 
 vi.mock('../../src/context/AuthContext', () => ({ useAuth: () => ({ credits: { available: 10 }, isLoggedIn: true, sessionReady: true }) }))
 vi.mock('../../src/api/suppliers', () => ({ listSuppliers: () => Promise.resolve({ data: [] }), getSupplier: () => Promise.resolve(null) }))
-vi.mock('../../src/api/lastRequest', () => ({ getLastRequest: () => Promise.resolve({ last_req_del_loc_id: 3, last_req_del_loc_details: 'Level 2 lobby' }), saveLastRequest: vi.fn(() => Promise.resolve()) }))
+vi.mock('../../src/api/lastRequest', () => ({ getLastRequest: vi.fn(() => Promise.resolve({ last_req_del_loc_id: 3, last_req_del_loc_details: 'Level 2 lobby' })), saveLastRequest: vi.fn(() => Promise.resolve()) }))
 vi.mock('../../src/api/orders', () => ({ createOrder: vi.fn(() => Promise.reject(new Error('Rejected'))), editOrder: vi.fn(() => Promise.resolve()), listMyOrders: vi.fn(() => Promise.resolve({ orders: [{ id: 'abc', supplierId: 1, description: 'Lunch', deliveryLocationId: 3, deliveryDetails: 'Lobby' }] })), reserveFailureMessage: vi.fn() }))
 vi.mock('../../src/realtime/orderSocket', () => ({ watchOrderEvents: () => ({ stop: vi.fn() }) }))
 vi.mock('../../src/api/useApi', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, useReferenceData: () => ({ locations: [{ location_id: 3, location: 'Library' }] }) }
 })
-import { saveLastRequest } from '../../src/api/lastRequest'
+import { getLastRequest, saveLastRequest } from '../../src/api/lastRequest'
 import { createOrder, editOrder } from '../../src/api/orders'
 
 it('requires details and lets the requester reuse a saved location', async () => {
   render(<MemoryRouter><CreateRequest /></MemoryRouter>)
-  const field = screen.getByLabelText(/Exact delivery details/)
-  expect(field).toHaveAttribute('maxLength', '250')
+  await screen.findByText('Your previous location?')
+  expect(screen.queryByLabelText(/Exact delivery details/)).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Post errand' })).toBeDisabled()
   fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+  const field = screen.getByLabelText(/Exact delivery details/)
+  expect(field).toHaveAttribute('maxLength', '250')
   expect(field).toHaveValue('Level 2 lobby')
   expect(screen.getByLabelText(/Deliver to/)).toHaveValue('3')
+  expect(screen.queryByText('Your previous location?')).not.toBeInTheDocument()
+})
+
+it('dismisses the saved location without changing the fields', async () => {
+  render(<MemoryRouter><CreateRequest /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+  expect(screen.queryByText('Your previous location?')).not.toBeInTheDocument()
+  expect(screen.getByLabelText(/Deliver to/)).toHaveValue('')
+  expect(screen.getByLabelText(/Exact delivery details/)).toHaveValue('')
+})
+
+it('shows the fields when there is no previous location', async () => {
+  getLastRequest.mockResolvedValueOnce(null)
+  render(<MemoryRouter><CreateRequest /></MemoryRouter>)
+  expect(await screen.findByLabelText(/Exact delivery details/)).toBeInTheDocument()
+  expect(screen.getByLabelText(/Deliver to/)).toBeInTheDocument()
 })
 
 it('saves the trimmed location independently when posting fails', async () => {
@@ -45,7 +69,7 @@ it('saves the trimmed location independently when posting fails', async () => {
 it('saves an edit without showing the reuse card', async () => {
   render(<MemoryRouter initialEntries={['/requests/abc/edit']}><Routes><Route path="/requests/:id/edit" element={<CreateRequest />} /><Route path="/my-errands" element={<p>Saved</p>} /></Routes></MemoryRouter>)
   const field = await screen.findByLabelText(/Exact delivery details/)
-  expect(screen.queryByText('Delivering to the same location?')).not.toBeInTheDocument()
+  expect(screen.queryByText('Your previous location?')).not.toBeInTheDocument()
   fireEvent.change(field, { target: { value: '  Desk  ' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   expect(saveLastRequest).toHaveBeenCalledWith('3', 'Desk')
