@@ -201,6 +201,12 @@ Scope (2026-11-08, Codex, model: GPT-6): Indexed send-button verification.
 Author review:
 Scope (2026-11-08, Codex, model: GPT-6): Indexed chat realtime integration.
 Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the system notification caller guide log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the notification message ID clarification log index row.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the service-key configuration clarification log index row.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -684,3 +690,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 204 | 2026-11-08 | frontend                                                      | Saved location action icons                                                                                      | Replaced prompt action text with icons.                                                                                                         |
 | 205 | 2026-11-08 | frontend                                                      | Swap saved location action icons                                                                                 | Swapped the confirm and dismiss icons.                                                                                                          |
 | 206 | 2026-11-08 | frontend                                                      | Previous location input visibility                                                                               | Revealed delivery inputs after the previous location prompt.                                                                                    |
+| 207 | 2026-11-08 | chat-service                                                  | Chat service: system notification caller guide                                                                   | Documented authentication, requests, responses, duplicate handling and realtime delivery.                                                       |
+| 208 | 2026-11-08 | chat-service                                                  | Chat service: notification message ID clarification                                                              | Clarified caller-generated UUIDs and reuse for retries.                                                                                         |
+| 209 | 2026-11-08 | chat-service                                                  | Chat service: service-key configuration clarification                                                            | Explained loading the .env key into the authentication header.                                                                                  |

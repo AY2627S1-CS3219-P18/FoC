@@ -31,11 +31,13 @@ Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the confirmed system notification endpoint.
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied order/chat delivery contract and disclosure index.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order participant endpoint and courier delivery.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified socket path and room events.
-Author review:
+Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Linked the system notification caller guide.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -285,6 +287,10 @@ Participant limits: each conversation permits at most one REQUESTER (including r
 
 ## POST /chat/send-system-notification
 
+<!-- AI-generated -->
+
+See the [microservice caller guide](SYSTEM-NOTIFICATIONS.md) for request examples, authentication, response codes and duplicate handling.
+
 Team decisions supplied and confirmed in the 2026-11-08 implementation conversation:
 
 - Body: `{ "orderId": "<UUID>", "messageId": "<UUID>", "message": "Order ready" }`. Invalid UUIDs, missing fields, non-string messages, empty or whitespace-only messages return 400. Valid text is stored unchanged.
@@ -295,7 +301,8 @@ Team decisions supplied and confirmed in the 2026-11-08 implementation conversat
 
 Verification: all 151 tests passed, including 19 system-notification cases; typecheck and build passed. HTTP persistence tests use injected Prisma doubles; live MySQL and Redis cross-replica delivery were not exercised.
 
-<!-- AI-generated (edited by <name>). -->
+<!-- AI-generated -->
+
 ### System notification retries
 
 The sender supplies a UUID `messageId`, generated once when creating the delivery
@@ -306,7 +313,6 @@ order ID or text returns 409; IDs belonging to non-system messages also conflict
 New messages return 201. The primary key also handles concurrent duplicate inserts;
 the losing transaction rolls back and reads the committed message. Missing or
 malformed `messageId` returns 400. No schema migration is needed.
-
 
 ## POST /chat/orders/:orderId/participants
 
@@ -319,7 +325,6 @@ No schema changes.
 
 Verification: 169 tests passed, including order-based participant endpoint cases;
 typecheck and build passed. Endpoint tests use injected Prisma doubles.
-
 
 ### Frontend realtime integration
 

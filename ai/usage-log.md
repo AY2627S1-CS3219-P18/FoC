@@ -10785,7 +10785,6 @@ Kept all changes.
 **Author review:**
 tng wen xi
 
-
 ## 2026-11-08 — Order/chat: status change notifications
 
 **Tool:** Codex (model: GPT-6)
@@ -10796,8 +10795,6 @@ tng wen xi
 **Prompts (exact):**
 
 > now i want to implement the sending of notifications every time the order status changes:
->
->
 >
 > - any status to cancelled: "The order has been cancelled"
 > - open to expireed: "The order has expired"
@@ -10839,7 +10836,6 @@ Asked for delivery mechanism, courier username source and lookup-failure behavio
 **What I kept/changed/rejected:**
 
 **Author review:**
-
 
 ## 2026-11-08 — User service: existing database OTP columns
 
@@ -10896,7 +10892,6 @@ None; applied already-recorded column definitions.
 
 **Author review:**
 
-
 ## 2026-11-08 — Frontend: chat entry points and role-filtered listing
 
 **Tool:** Codex (model: GPT-6)
@@ -10905,12 +10900,14 @@ None; applied already-recorded column definitions.
 **Governing decision:** User request quoted below; chat-service/README.md existing listing, details, messages and sending contracts; existing frontend same-origin proxy configuration.
 
 **Prompts (exact):**
+
 > Now we link it to the frontend. Currently there is a button that allows requesters to message the courier when the order has been accepted. change that to say "Open chat" when the order has been created, and the text remains as that even when the courier has accepted. then add a separate button beside the notification bell with a chat logo and upon clicking that, users will see a list of their chats called by the list chats endpoint. depending on requester/courier mode, filter the chats in the http call.
 
 **Key responses:**
 Changed activity action to Open chat, available for open orders and retained through accepted/picked-up/delivered states. Added chat icon beside desktop bell and chat link in mobile menu. Replaced mock chat screen with authenticated role-filtered HTTP list, cursor pagination, unread counts, empty/loading/error states and retry. Resolves order IDs through paginated listing to existing conversation IDs; displays a retry message when worker creation has not completed. Connected details, paginated message history and text sending to documented endpoints. Incoming messages require manual Refresh messages; no socket subscription, automatic read receipts or backend contracts were changed. Added matching narrow Vite/nginx API proxies and Compose development target, preserving SPA /chat routes. Read Postman API Simulation skill; existing order-worker simulation does not cover this UI, so used component and fetch-level tests. Initial build/test attempts failed because local dependencies were missing; offline installation failed due to cache miss; npm ci then installed locked dependencies without modifying manifests/lockfile. Build passed; frontend suite passed 145 tests in 26 files; lint passed with warnings, including state-in-effect warnings; existing AuthContext tests emitted act warnings. Final targeted verification recorded below. No live authenticated backend/browser end-to-end check was performed.
 
 **Files:**
+
 - `frontend/src/api/chat.js` (created)
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/src/pages/activityShared.jsx` (modified)
@@ -10934,7 +10931,6 @@ None. Pending credit reservation remains hidden as before; Open chat starts at e
 
 **Final verification:** After adding activity-button assertions and isolating list state on mode changes, all 13 targeted tests passed across 3 files; production build and git diff --check passed.
 
-
 ## 2026-11-08 — Frontend: chats list page
 
 **Tool:** Codex (model: GPT-6)
@@ -10943,12 +10939,14 @@ None. Pending credit reservation remains hidden as before; Open chat starts at e
 **Governing decision:** User request below; existing chat-service/README.md listing ordering and conversation-details title contract; previous requester/courier filtering instruction.
 
 **Prompts (exact):**
+
 > add a page with route /chats and this page lists all chats in order of updatedAt DESC and with the title displayed and last message, similar to how a messaging app would work. then upon clicking an individual chat, the messages appear.
 
 **Key responses:**
 Added authenticated /chats list route, retaining /chat compatibility and /chat/:id message route. Changed nav and floating chat links to /chats and added an All chats return link. Rendered full-width rows with stored title, latest-message preview, updated timestamp and unread count. Preserved backend updatedAt DESC ordering and role filtering across pagination. Existing list response omits title, so fetched existing details for each returned conversation; no backend response shape or endpoint was altered. Added click-through/order/title/preview test. Initial targeted tests failed on expectations omitting an explicit undefined cursor argument; corrected test expectations. Final frontend suite passed 146 tests in 26 files; build passed; lint passed with warnings; git diff --check passed. Existing AuthContext tests emitted act warnings. No live browser or authenticated backend verification was run.
 
 **Files:**
+
 - `frontend/src/App.jsx` (modified)
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/src/components/TopNav.jsx` (modified)
@@ -10964,7 +10962,6 @@ None. Retained the previously requested requester/courier filter and cursor pagi
 
 **Author review:**
 
-
 ## 2026-11-08 — Order/chat: courier participant delivery by order ID
 
 **Tool:** Codex (model: GPT-6)
@@ -10973,6 +10970,7 @@ None. Retained the previously requested requester/courier filter and cursor pagi
 **Governing decision:** User decisions quoted below; order-service/README.md Courier chat participation on acceptance; chat-service/README.md order participant endpoint; existing participant contract and outbox retry behavior.
 
 **Prompts (exact):**
+
 > it's not displaying the chats properly for the courier
 
 > oh yes sorry i forgot to ask you to add the courier as a chat participant using the endpoint. failure should also be retried.
@@ -10985,6 +10983,7 @@ None. Retained the previously requested requester/courier filter and cursor pagi
 Diagnosed that role filtering was correct, but the local database had one requester participant and zero courier participants. Asked the team how to obtain conversation IDs and handle repeated participant conflicts before changing inter-service behavior. User specified the order-ID endpoint, background retries and no retry for 409. Implemented the new endpoint through the shared participant handler/service, resolving by orderId in the transaction before existing locking/validation. Acceptance queues courier addition atomically with its status change and existing notification; client posts accepting userId/COURIER with existing service credentials. Worker reuses existing retry/permanent-error handling: network/5xx retry, 409 stops retries and is dead-lettered. Existing accepted orders were not modified or backfilled. Added endpoint/auth/validation/conflict, client, worker and acceptance task tests. Initial sandbox endpoint tests failed because listening sockets were unavailable; reran with permitted sockets. Four existing acceptance assertions initially failed because they omitted the new task; updated them. Final results: Chat Service 169 tests and Order Service 691 tests passed; both typechecks/builds passed; Order Service lint and git diff --check passed. Extended the existing local Postman stand-in and exercised compiled worker/client with synthetic inputs against HTTP 503 then 409; asserted retryable then final failure and no order/credit access, with both requests confirmed in simulation log. No live Redis scheduling or live cross-service database persistence tested. Postman status remains unsupported by the installed CLI (unknown command). Skills used: Postman API Engineer and API Simulation. No remote workspace publishing performed.
 
 **Files:**
+
 - `chat-service/src/services/conversations.service.ts` (modified)
 - `chat-service/src/controllers/conversations.controller.ts` (modified)
 - `chat-service/src/routes/conversations.routes.ts` (modified)
@@ -11011,7 +11010,6 @@ Stopped to request conversation-ID resolution and 409 behavior; implemented the 
 
 **Author review:**
 
-
 ## 2026-11-08 — Frontend: send message button
 
 **Tool:** Codex (model: GPT-6)
@@ -11020,6 +11018,7 @@ Stopped to request conversation-ID resolution and 409 behavior; implemented the 
 **Governing decision:** User request below; chat-service/README.md POST conversation messages contract; existing frontend sendMessage API function.
 
 **Prompts (exact):**
+
 > thanks bro, now make the sending of messages work
 
 > link the send message button to the endpoint to send a message in the chat
@@ -11028,6 +11027,7 @@ Stopped to request conversation-ID resolution and 409 behavior; implemented the 
 Inspected the existing form and found it already called sendMessage, which POSTs type TEXT/content with the session bearer to /chat/conversations/:id/messages. Made the send control an explicit submit button with visible Send text and styling, guarded submission for inactive chats, and disabled draft editing during requests so a successful response cannot clear a newly edited draft. Added tests verifying click-to-endpoint arguments, saved-message display/draft clearing, failed-send error/draft retention, and the actual fetch URL, method, bearer header and JSON body. All 149 frontend tests passed in 26 files; production build, lint (with warnings), and git diff --check passed. Existing AuthContext tests emitted act warnings. Tests used component/API doubles; no live authenticated backend or browser send was performed. No backend contract, realtime subscription or automatic retry behavior changed.
 
 **Files:**
+
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/tests/pages/Chat.test.jsx` (modified)
 - `frontend/tests/chat-api.test.js` (modified)
@@ -11041,7 +11041,6 @@ None; reused the existing send endpoint and form flow.
 
 **Author review:**
 
-
 ## 2026-11-08 — Chat: on-demand socket rooms and realtime frontend
 
 **Tool:** Codex (model: GPT-6)
@@ -11050,6 +11049,7 @@ None; reused the existing send endpoint and form flow.
 **Governing decision:** User socket path, room timing, events and acknowledgement decisions quoted below; existing chat-service/README.md JWT lifecycle, membership rule, message:sent payload and HTTP error statuses; existing frontend order socket lifecycle.
 
 **Prompts (exact):**
+
 > OKKK now make the frontend subscribe to the socketio rooms for real-time updates
 
 > /chat-socket.io
@@ -11063,6 +11063,7 @@ None; reused the existing send endpoint and form flow.
 > just conversation id.&#x20;
 >
 > response sends:
+>
 > ```yaml
 > success: true
 > conversationId: <id>
@@ -11070,9 +11071,8 @@ None; reused the existing send endpoint and form flow.
 >
 > (if successful)
 >
->
->
 > else:
+>
 > ```yaml
 > success: false
 > error: {
@@ -11088,6 +11088,7 @@ The second and third quoted items were user response annotations.
 Inspected existing order socket subscription behavior and asked for the chat event/payload/path decisions before implementation. Implemented /chat-socket.io, automatic authenticated user room, chat:join/chat:leave with conversation UUID string and success/error acknowledgements. Join checks database participation and revokedAt; errors mirror existing REST HTTP status codes/messages. Leaves permit cleanup without membership reauthorization. Room operations execute sequentially to preserve join/leave order. Production passes Prisma into the socket server; Vite/nginx proxy the separate chat socket path. Frontend connects with the existing JWT refresh/reconnect lifecycle, disconnects on logout, joins open conversations, leaves on unmount, rejoins after ready and refreshes missed history. message:sent updates threads and triggers role-filtered list reload; messages merge by ID across HTTP/socket arrivals. Added server real-socket access and delivery tests plus frontend room/reconnect/error/dedup tests. Chat Service suite passed 174 tests; typecheck and build passed. Frontend full suite passed 150 tests before the additional socket-lifecycle test; final targeted suite passed 12 tests in 2 files; frontend build and lint (with warnings) passed. git diff --check passed. Existing AuthContext tests emitted act warnings. No live authenticated browser, JWKS or cross-replica Redis check performed. No automatic read receipts or new read UI implemented.
 
 **Files:**
+
 - `chat-service/src/realtime/socket-server.ts` (modified)
 - `chat-service/src/server.ts` (modified)
 - `frontend/vite.config.js` (modified)
@@ -11117,6 +11118,7 @@ Requested event names, room timing, payload/acknowledgements and public socket p
 **Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
 
 **Prompts (exact):**
+
 > in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
 
 > 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
@@ -11149,9 +11151,10 @@ Requested event names, room timing, payload/acknowledgements and public socket p
 
 > 1. relax the last_req_del_loc_id to be nullable, and store null as the default
 > 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
-> 3.  the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
+> 3. the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
 
 **Key responses:**
+
 - First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
 - Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
 - Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
@@ -11160,6 +11163,7 @@ Requested event names, room timing, payload/acknowledgements and public socket p
 - No code was changed. No tests were run.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
 - `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
 - `ai/usage-log.md` (this entry)
@@ -11180,6 +11184,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
 
 **Prompts (exact):**
+
 > in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
 
 > implement it
@@ -11187,6 +11192,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
 
 **Files:**
+
 - `user-service/src/db/init.sql` (modified)
 - `user-service/src/db/queries/users.queries.ts` (modified)
 - `user-service/src/db/queries/lastRequest.queries.ts` (created)
@@ -11212,11 +11218,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
 
 **Prompts (exact):**
+
 > finish all implementation
 
 **Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
 
 **Files:**
+
 - `order-service/prisma/schema.prisma` (modified)
 - `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
 - `order-service/src/constants/errors.ts` (modified)
@@ -11255,11 +11263,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
 
 **Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/tests/pages/CreateRequest.test.jsx` (modified)
 - `ai/usage-log.md` (modified)
@@ -11279,11 +11289,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
 
 **Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -11302,11 +11314,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > replace the confirm and dismiss words with a cross and tick icon respectively
 
 **Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -11325,11 +11339,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > swap the 2 icons. the tick is for confirm
 
 **Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -11348,6 +11364,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instructions in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
 
 > Show the fields immediately
@@ -11355,6 +11372,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/tests/pages/CreateRequest.test.jsx` (modified)
 - `ai/usage-log.md` (modified)
@@ -11365,3 +11383,84 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-08 — Chat service: system notification caller guide
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing contract in `chat-service/README.md` sections "POST /chat/send-system-notification" and "System notification retries"; existing route, authentication, controller, service and publisher implementations.
+
+**Prompts (exact):**
+
+> can u generate a guide for other microservices on how to use my `POST /chat/send-system-notification` endpoint of chat service?
+
+**Key responses:**
+Created a microservice caller guide covering current Compose addresses, service-key authentication, required fields, cURL and TypeScript examples, direct message response, status codes and mixed error formats, stable message-ID retries and realtime behavior. Linked it from the service README. No contract or implementation changes. Parsed both JSON examples successfully. Initial test invocation at repository root failed because there is no root package.json; reran in chat-service. All 28 endpoint tests were blocked by `listen EPERM: operation not permitted 127.0.0.1`; runtime behavior was not verified. Git diff whitespace check passed.
+
+**Files:**
+
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (created)
+- `chat-service/README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Chat service: notification message ID clarification
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** User clarification below; existing caller-supplied message ID contract in `chat-service/README.md`, "System notification retries".
+
+**Prompts (exact):**
+
+> add in that the message id is a uuid generated by the service that sends the message, and that the retries should use the same message id.
+
+**Key responses:**
+Updated the guide's field table and retry section to state that the sending service generates the UUID once before delivery and reuses it on every retry. Chat Service does not generate the ID for callers. Documentation-only change; no runtime tests run. Git diff whitespace check passed.
+
+**Files:**
+
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Chat service: service-key configuration clarification
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** User clarification below and existing `CHAT_SERVICE_API_KEY` configuration and `X-Service-Key` authentication contract in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> also explain that X-Service-Key is a key in the .env file that the service has to put in the header for authentication.
+
+**Key responses:**
+Clarified that the calling service loads CHAT_SERVICE_API_KEY from its .env/backend environment and sends the matching value in the X-Service-Key header. Added placeholder configuration and header examples without reading or exposing credentials. Documentation-only change; reviewed examples against the existing authentication contract; no runtime tests run. Git diff whitespace check passed.
+
+**Files:**
+
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
