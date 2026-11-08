@@ -16,11 +16,14 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified participant addition endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
+  sendSystemNotification,
   addParticipant,
   markConversationRead,
   sendMessage,
@@ -354,6 +357,42 @@ export function postParticipant(prisma: PrismaClient): RequestHandler {
         return;
       }
       res.status(200).json(result.participant);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated
+export function postSystemNotification(
+  prisma: PrismaClient,
+  publish?: import("../realtime/messages.js").MessagePublisher,
+): RequestHandler {
+  return async (req, res) => {
+    const body = z
+      .object({
+        orderId: z.uuid(),
+        message: z.string().refine((value) => value.trim().length > 0),
+      })
+      .safeParse(req.body);
+    if (!body.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await sendSystemNotification(prisma, body.data);
+      if (result.status !== 201) {
+        res.sendStatus(result.status);
+        return;
+      }
+      // Reuse normal delivery only after the message transaction commits.
+      try {
+        publish?.(result.message!, result.userIds!);
+      } catch (error) {
+        console.error(error);
+      }
+      res.status(201).json(result.message);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

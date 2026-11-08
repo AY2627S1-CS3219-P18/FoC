@@ -18,6 +18,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Enforced the supplied requester and active courier limits.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -82,7 +84,7 @@ export async function createConversation(
   }
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export interface ListInput {
   limit: number;
   cursor?: { updatedAt: string; id: string };
@@ -284,7 +286,7 @@ export async function sendMessage(
   prisma: PrismaClient,
   conversationId: string,
   senderId: string | null,
-  validate: () => { type: "TEXT"; content: string } | 400 | 422,
+  validate: () => { type: "TEXT" | "SYSTEM"; content: string } | 400 | 422,
 ) {
   return prisma.$transaction(async (tx) => {
     const conversation = await tx.conversation.findUnique({
@@ -393,7 +395,7 @@ export async function markConversationRead(
   }
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function addParticipant(
   prisma: PrismaClient,
   conversationId: string,
@@ -438,4 +440,20 @@ export async function addParticipant(
       },
     };
   });
+}
+
+// AI-generated
+export async function sendSystemNotification(
+  prisma: PrismaClient,
+  input: { orderId: string; message: string },
+) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { orderId: input.orderId },
+    select: { conversationId: true },
+  });
+  if (!conversation) return { status: 404 as const };
+  return sendMessage(prisma, conversation.conversationId, null, () => ({
+    type: "SYSTEM",
+    content: input.message,
+  }));
 }

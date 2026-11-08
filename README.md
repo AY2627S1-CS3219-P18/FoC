@@ -628,3 +628,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 205 | 2026-11-08 | chat-service | Chat service: conversation messages endpoint | Implemented authenticated message history, pagination and endpoint tests. |
 | 206 | 2026-11-08 | chat-service | Chat service: message sending and realtime delivery | Implemented text sends, service authentication, transactional updates, socket broadcasts and tests. |
 | 207 | 2026-11-08 | chat-service | Chat service: message read endpoint | Implemented read positions, room notifications, validation and tests. |
+| 208 | 2026-11-08 | chat-service | Chat service: participant addition endpoint | Implemented system-only participant addition, validation, conflict handling and tests. |
+| 209 | 2026-11-08 | chat-service | Chat service: participant role limits | Enforced one requester and one non-revoked courier; added regression tests. |
+| 210 | 2026-11-08 | chat-service | Chat service: system notification endpoint | Implemented order-based SYSTEM messages, service authentication, realtime delivery and tests. |

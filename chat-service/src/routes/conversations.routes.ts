@@ -16,6 +16,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified participant addition endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
+ * Author review: tng wen xi
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -27,6 +29,7 @@ import {
   type TokenVerifier,
 } from "../middleware/authenticate.js";
 import {
+  postSystemNotification,
   postParticipant,
   postRead,
   postMessage,
@@ -87,5 +90,29 @@ export function conversationsRouter(
     postParticipant(prisma),
   );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
+  return router;
+}
+
+// AI-generated (edited by <name>).
+export function systemNotificationsRouter(
+  prisma: PrismaClient,
+  apiKey: string,
+  userServiceUrl: string,
+  verifyToken?: TokenVerifier,
+  publish?: MessagePublisher,
+) {
+  const router = Router();
+  router.post(
+    "/send-system-notification",
+    authenticateMessage(apiKey, userServiceUrl, verifyToken),
+    (req, res, next) => {
+      if (req.user) {
+        res.sendStatus(403);
+        return;
+      }
+      next();
+    },
+    postSystemNotification(prisma, publish),
+  );
   return router;
 }

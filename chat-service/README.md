@@ -28,6 +28,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified participa
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied participant limits.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the confirmed system notification endpoint.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -274,3 +276,15 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 Verification: 126 tests passed, including 17 participant cases; typecheck and build passed. HTTP tests use injected Prisma doubles. Live MySQL transaction/concurrency behavior was not exercised.
 
 Participant limits: each conversation permits at most one REQUESTER (including revoked requester memberships) and one non-revoked COURIER. Adding another participant of an occupied role returns 409. A revoked courier does not block a different courier; the existing same-user conflict still applies. These checks run inside the existing conversation-locked transaction; existing rows are not modified.
+
+## POST /chat/send-system-notification
+
+Team decisions supplied and confirmed in the 2026-11-08 implementation conversation:
+
+- Body: `{ "orderId": "<UUID>", "message": "Order ready" }`. Invalid UUIDs, missing fields, non-string messages, empty or whitespace-only messages return 400. Valid text is stored unchanged.
+- Same service-key authentication as participant addition: valid X-Service-Key, no service-name restriction, supplied-key precedence, 401 missing/invalid credentials and 403 valid Bearer-only users.
+- Look up the conversation by orderId; return 404 if missing and 409 if archived.
+- Reuse normal sending to insert a SYSTEM message with senderId null, text in content and metadata null, updating conversation updatedAt in the same transaction.
+- Return 201 with the normal message object. After commit, reuse `message:sent` delivery to the union of chat and active participant user rooms. Broadcast failures are logged while retaining the successful response.
+
+Verification: all 151 tests passed, including 19 system-notification cases; typecheck and build passed. HTTP persistence tests use injected Prisma doubles; live MySQL and Redis cross-replica delivery were not exercised.

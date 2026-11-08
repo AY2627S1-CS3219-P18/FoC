@@ -10,11 +10,16 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
+ * Author review: tng wen xi
  */
 import type { TokenVerifier } from "./middleware/authenticate.js";
 import express from "express";
 import type { PrismaClient } from "./db/prisma.js";
-import { conversationsRouter } from "./routes/conversations.routes.js";
+import {
+  conversationsRouter,
+  systemNotificationsRouter,
+} from "./routes/conversations.routes.js";
 export function createApp({
   prisma,
   apiKey,
@@ -42,6 +47,17 @@ export function createApp({
       verifyToken,
       publish,
       publishRead,
+    ),
+  );
+  // AI-generated (edited by <name>).
+  app.use(
+    "/chat",
+    systemNotificationsRouter(
+      prisma,
+      apiKey,
+      userServiceUrl,
+      verifyToken,
+      publish,
     ),
   );
   return app;

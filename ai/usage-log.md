@@ -10597,3 +10597,73 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Chat service: system notification endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's endpoint request and explicit contract confirmations below; recorded in `chat-service/README.md`. Existing message transaction, message object, service authentication and realtime publisher.
+
+**Prompts (exact):**
+
+> OK last endpoint for other services to send notifications:
+>
+> `POST /chat/send-system-notification`
+>
+> payload:
+>
+> - order id
+> - message
+>
+> chat service will find the conversation from the order id
+>
+> and then create a system message and send it to the respective convo. then broadcast through socketio. just like how a message is usually sent.
+
+User's inline response annotations (selected text followed by exact comment):
+
+> { "orderId": "<UUID>", "message": "..." }?
+
+> yes
+
+> same service-key rules as the participant endpoint?
+
+> yes pls
+
+> Responses: same message object and 201 status as normal sending, 400 for invalid input, 404 for missing conversation, and 409 for archived conversations?
+
+> yeps
+
+> SYSTEM message: senderId: null, message text stored as content, and metadata: null?
+
+> yeps
+
+> thanks bro
+
+**Key responses:**
+
+- Asked for unrecorded interface/security details before coding; implemented the user's confirmed contract. Added POST /chat/send-system-notification with orderId/message validation and participant-style service authentication.
+- Looks up the conversation by orderId and reuses normal message persistence with SYSTEM type and null sender. Existing schema defaults preserve metadata null. Reuses transactional timestamp update, response mapping and post-commit message publisher; existing TEXT sending remains covered.
+- Added 19 HTTP regression cases covering validation, key precedence, Bearer-only denial, missing/archived conversations, exact persisted/returned message, post-commit publishing and database/broadcast failures.
+- Initial sandbox test run could not use local listeners. Reran with permitted loopback access: all 151 tests passed. Typecheck and build passed. Live MySQL and Redis cross-replica delivery were not exercised.
+- Applied the Postman API engineer skill locally; final `postman status` failed with unknown command. No remote workspace changes.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for exact payload keys, authentication, statuses/response and SYSTEM message fields; user confirmed all four before implementation.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
