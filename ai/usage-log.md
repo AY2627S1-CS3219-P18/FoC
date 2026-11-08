@@ -10070,3 +10070,72 @@ I kept all changes.
 # **Author review:**
 
 tng wen xi
+
+## 2026-11-08 — Chat service: conversation details endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team endpoint contract and follow-up answers in this conversation, transcribed in `chat-service/README.md` § GET /chat/conversations/:conversationID; existing UUID schema and listing authentication.
+
+**Prompts (exact):**
+
+> Now we can move on to the next endpoint
+>
+> `GET /chat/conversations/:conversationID` - get conversation details
+
+> authentication: bearer token also, only participants of the chat, including revoked particpants. if unauthenticated, 401. if unauthorized, 403 forbidden. if conversation id not found, 404 not found.&#x20;
+>
+> return response:
+>
+> ```json
+> {
+>   "conversationId": "conv_123",
+>   "orderId": "order_123",
+>   "status": "ACTIVE",
+>   "title": "Alice · Coffee from Deck",
+>   "participants": [
+>     {
+>       "userId": "user_456",
+>       "role": "REQUESTER",
+>       "joinedAt": "2026-11-06T10:00:00Z"
+>     },
+>     {
+>       "userId": "user_789",
+>       "role": "COURIER",
+>       "joinedAt": "2026-11-06T10:05:00Z"
+>     }
+>   ],
+>   "createdAt": "2026-11-06T10:00:00Z",
+>   "updatedAt": "2026-11-06T10:15:00Z"
+> }
+> ```
+
+> 400!
+
+**Key responses:**
+
+- Asked for the details contract and then malformed-ID status before implementing; the team specified 400.
+- Implemented authenticated UUID validation, 404 for missing records, 403 for non-participants and direct details JSON for participants, including revoked participants. Used existing Bearer middleware and schema; selected only the supplied response fields. No schema changes.
+- Added 10 HTTP tests for authentication, ID validation, missing conversations, denied access, both participant roles, membership query without a revocation filter, archived status and database errors.
+- Initial verification was mistakenly invoked from the repository root (no package.json). The sandbox blocked Supertest listening sockets; retried with approved socket access. Regression tests caught an accidental overwrite of service code during editing; restored the original service implementation and retained the new function. Final verification: 56 tests passed, typecheck passed and build passed. No live MySQL or User Service verification.
+- Applied the Postman API engineer skill locally. `postman status` failed because the installed CLI does not support that command; no Postman workspace was used or changed.
+
+**Files:**
+
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-details.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: disclosure and log-index row)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Requested the missing contract and malformed-ID handling; the team supplied both before implementation.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

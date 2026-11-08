@@ -13,9 +13,11 @@ Scope: Documented the team-specified listing contract and verification.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented host access to Compose MySQL for Studio.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the requested table renames.
-Author review:
+Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details implementation and disclosure.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -155,3 +157,33 @@ npx prisma studio
 ```
 
 The database tables are `conversations` and `conversation_participants`. The rename migration preserves existing rows and foreign-key references. Prisma model names and existing column names remain unchanged.
+
+## GET /chat/conversations/:conversationID
+
+Team-specified contract supplied in the 2026-11-08 implementation conversation:
+
+- Reuse Bearer authentication from listing; unauthenticated requests return 401.
+- Require a UUID conversation ID; malformed IDs return 400.
+- Missing conversations return 404; existing conversations requested by a non-participant return 403.
+- Participants can access details even after their membership is revoked.
+- Return the following object directly. Participants expose only userId, role and joinedAt; dates are ISO timestamps. Titles and status are returned as stored.
+
+```json
+{
+  "conversationId": "0192f0c4-0000-7000-8000-000000000001",
+  "orderId": "0192f0c4-0000-7000-8000-000000000002",
+  "status": "ACTIVE",
+  "title": "Alice · Coffee from Deck",
+  "participants": [
+    {
+      "userId": "0192f0c4-0000-7000-8000-00000000000a",
+      "role": "REQUESTER",
+      "joinedAt": "2026-11-06T10:00:00.000Z"
+    }
+  ],
+  "createdAt": "2026-11-06T10:00:00.000Z",
+  "updatedAt": "2026-11-06T10:15:00.000Z"
+}
+```
+
+Verification: all 56 tests passed, including 10 details tests; typecheck and build passed. HTTP tests use injected Prisma doubles and the existing token-verifier injection. No live database or User Service was exercised.

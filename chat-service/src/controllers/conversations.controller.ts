@@ -5,13 +5,16 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented conversation listing.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified conversation details endpoint.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
   listConversations,
+  getConversationDetails,
   createConversation,
 } from "../services/conversations.service.js";
 const bodySchema = z.object({
@@ -124,18 +127,46 @@ export function getConversations(prisma: PrismaClient): RequestHandler {
   return async (req, res) => {
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          message: "Invalid conversation query parameters",
-          code: "VALIDATION_ERROR",
-        });
+      res.status(400).json({
+        message: "Invalid conversation query parameters",
+        code: "VALIDATION_ERROR",
+      });
       return;
     }
     try {
       res
         .status(200)
         .json(await listConversations(prisma, req.user!.user_id, parsed.data));
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+export function getConversation(prisma: PrismaClient): RequestHandler {
+  return async (req, res) => {
+    const parsed = z.uuid().safeParse(req.params.conversationID);
+    if (!parsed.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await getConversationDetails(
+        prisma,
+        parsed.data,
+        req.user!.user_id,
+      );
+      if (result === null) {
+        res.sendStatus(404);
+        return;
+      }
+      if (result === false) {
+        res.sendStatus(403);
+        return;
+      }
+      res.status(200).json(result);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

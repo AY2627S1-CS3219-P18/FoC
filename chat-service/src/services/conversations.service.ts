@@ -5,7 +5,9 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented conversation listing.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified conversation details endpoint.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -77,16 +79,27 @@ export interface ListInput {
   status?: "ACTIVE" | "ARCHIVED";
   role?: "COURIER" | "REQUESTER";
 }
-export async function listConversations(prisma: PrismaClient, userId: string, input: ListInput) {
+export async function listConversations(
+  prisma: PrismaClient,
+  userId: string,
+  input: ListInput,
+) {
   const participant = { userId, ...(input.role ? { role: input.role } : {}) };
   const rows = await prisma.conversation.findMany({
     where: {
       participants: { some: participant },
       ...(input.status ? { status: input.status } : {}),
-      ...(input.cursor ? { OR: [
-        { updatedAt: { lt: new Date(input.cursor.updatedAt) } },
-        { updatedAt: new Date(input.cursor.updatedAt), conversationId: { lt: input.cursor.id } },
-      ] } : {}),
+      ...(input.cursor
+        ? {
+            OR: [
+              { updatedAt: { lt: new Date(input.cursor.updatedAt) } },
+              {
+                updatedAt: new Date(input.cursor.updatedAt),
+                conversationId: { lt: input.cursor.id },
+              },
+            ],
+          }
+        : {}),
     },
     orderBy: [{ updatedAt: "desc" }, { conversationId: "desc" }],
     take: input.limit + 1,
@@ -97,32 +110,98 @@ export async function listConversations(prisma: PrismaClient, userId: string, in
   });
   const hasMore = rows.length > input.limit;
   const page = rows.slice(0, input.limit);
-  const conversations = await Promise.all(page.map(async (row) => {
-    const readId = row.participants[0]!.lastReadMessageId;
-    const read = readId === null ? null : await prisma.message.findFirstOrThrow({
-      where: { id: readId, chatId: row.conversationId },
-      select: { createdAt: true, id: true },
-    });
-    const unreadCount = await prisma.message.count({ where: {
-      chatId: row.conversationId,
-      // SQL NOT alone excludes NULL senders; include system messages explicitly.
-      AND: [
-        { OR: [{ senderId: null }, { senderId: { not: userId } }] },
-        ...(read ? [{ OR: [
-          { createdAt: { gt: read.createdAt } },
-          { createdAt: read.createdAt, id: { gt: read.id } },
-        ] }] : []),
-      ],
-    } });
-    const last = row.messages[0];
-    return {
-      id: row.conversationId, orderId: row.orderId,
-      lastMessage: last ? { content: last.content, type: last.type, createdAt: last.createdAt.toISOString() } : null,
-      unreadCount, updatedAt: row.updatedAt.toISOString(),
-    };
-  }));
+  const conversations = await Promise.all(
+    page.map(async (row) => {
+      const readId = row.participants[0]!.lastReadMessageId;
+      const read =
+        readId === null
+          ? null
+          : await prisma.message.findFirstOrThrow({
+              where: { id: readId, chatId: row.conversationId },
+              select: { createdAt: true, id: true },
+            });
+      const unreadCount = await prisma.message.count({
+        where: {
+          chatId: row.conversationId,
+          // SQL NOT alone excludes NULL senders; include system messages explicitly.
+          AND: [
+            { OR: [{ senderId: null }, { senderId: { not: userId } }] },
+            ...(read
+              ? [
+                  {
+                    OR: [
+                      { createdAt: { gt: read.createdAt } },
+                      { createdAt: read.createdAt, id: { gt: read.id } },
+                    ],
+                  },
+                ]
+              : []),
+          ],
+        },
+      });
+      const last = row.messages[0];
+      return {
+        id: row.conversationId,
+        orderId: row.orderId,
+        lastMessage: last
+          ? {
+              content: last.content,
+              type: last.type,
+              createdAt: last.createdAt.toISOString(),
+            }
+          : null,
+        unreadCount,
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    }),
+  );
   const last = page.at(-1);
-  return { conversations, nextCursor: hasMore && last ? {
-    updatedAt: last.updatedAt.toISOString(), id: last.conversationId,
-  } : null, hasMore };
+  return {
+    conversations,
+    nextCursor:
+      hasMore && last
+        ? {
+            updatedAt: last.updatedAt.toISOString(),
+            id: last.conversationId,
+          }
+        : null,
+    hasMore,
+  };
+}
+
+// AI-generated (edited by <name>).
+export async function getConversationDetails(
+  prisma: PrismaClient,
+  conversationId: string,
+  userId: string,
+) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { conversationId },
+    select: {
+      conversationId: true,
+      orderId: true,
+      status: true,
+      title: true,
+      participants: { select: { userId: true, role: true, joinedAt: true } },
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!conversation) return null;
+  // Revoked participants retain access to conversation details.
+  if (
+    !conversation.participants.some(
+      (participant) => participant.userId === userId,
+    )
+  )
+    return false;
+  return {
+    ...conversation,
+    participants: conversation.participants.map((participant) => ({
+      ...participant,
+      joinedAt: participant.joinedAt.toISOString(),
+    })),
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+  };
 }
