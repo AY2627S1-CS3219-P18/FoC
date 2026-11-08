@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issues #6/#59 - end-to-end Socket.IO tests against a real Postgres: handshake
  *        auth, room membership from the DB, joining the order room on accept, closing it
@@ -119,6 +122,7 @@ async function openOrder() {
       supplierId: 1,
       description: 'kopi',
       deliveryLocationId: 3,
+      deliveryDetails: 'Nil',
       credits: 2,
       status: 'open',
       version: 1,
@@ -255,7 +259,7 @@ describe('order events over sockets', () => {
     await request(app)
       .patch(`/orders/${order.id}/edit`)
       .set('authorization', `Bearer ${await keys.sign(REQUESTER)}`)
-      .send({ description: 'teh' })
+      .send({ description: 'teh', deliveryDetails: 'Nil' })
       .expect(200);
     await new Promise((r) => setTimeout(r, 100));
     expect(names(courier)).toEqual([]);

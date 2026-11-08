@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5), date: 2026-09-08
  * Scope: Generated UI mockup component CreateRequest.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
@@ -88,6 +91,7 @@ import { createOrder, editOrder, listMyOrders, reserveFailureMessage } from '../
 import { watchOrderEvents } from '../realtime/orderSocket'
 import { qualifiedName } from '../data/suppliers'
 import { useAuth } from '../context/AuthContext'
+import { getLastRequest, saveLastRequest } from '../api/lastRequest'
 
 const MAX_CHARS = 200
 const RECHECK_MS = 5000
@@ -180,6 +184,8 @@ function RequestForm({ order }) {
     isEdit ? String(order.supplierId) : params.get('supplier') || '',
   )
   const [description, setDescription] = useState(order?.description ?? '')
+  const [details, setDetails] = useState(order?.deliveryDetails ?? '')
+  const { data: last } = useApi(() => isEdit ? Promise.resolve(null) : getLastRequest().catch(() => null), [])
   const [locationId, setLocationId] = useState(isEdit ? String(order.deliveryLocationId) : '')
   const [timing, setTiming] = useState(order?.completeBy ? 'later' : 'asap')
   const [date, setDate] = useState(order?.completeBy ? localDate(order.completeBy) : today)
@@ -189,6 +195,8 @@ function RequestForm({ order }) {
   const [posting, setPosting] = useState(false)
   const [postError, setPostError] = useState(null)
   const { locations } = useReferenceData()
+  const savedLocation = !isEdit && last?.last_req_del_loc_id != null && last.last_req_del_loc_details && last.last_req_del_loc_details !== 'Nil'
+    ? locations.find((l) => Number(l.location_id) === Number(last.last_req_del_loc_id)) : null
 
   // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
   const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
@@ -200,17 +208,20 @@ function RequestForm({ order }) {
   const remaining = credits.available - offer
   const deadline = timing === 'later' ? new Date(date + 'T' + time) : null
   const deadlineInvalid = deadline !== null && Number.isNaN(deadline.getTime())
-  const complete = Boolean(supplierId && description.trim() && locationId) && !deadlineInvalid
+  const complete = Boolean(supplierId && description.trim() && locationId && details.trim()) && !deadlineInvalid
 
   // F18: PATCH /orders/:id/edit with the editable fields; credits stay as reserved.
   const onSave = async () => {
     setPosting(true)
     setPostError(null)
+    const exact = details.trim()
+    saveLastRequest(locationId, exact).catch(() => {})
     try {
       await editOrder(order.id, {
         supplierId: Number(supplierId),
         description: description.trim(),
         deliveryLocationId: Number(locationId),
+        deliveryDetails: exact,
         completeBy: deadline ? deadline.toISOString() : null,
         additionalDetails: extra.trim() || null,
       })
@@ -225,12 +236,15 @@ function RequestForm({ order }) {
   const onPost = async () => {
     setPosting(true)
     setPostError(null)
+    const exact = details.trim()
+    saveLastRequest(locationId, exact).catch(() => {})
     const watch = watchOrderEvents() // before the POST, so a fast outcome is not missed
     try {
       const order = await createOrder({
         supplierId: Number(supplierId),
         description: description.trim(),
         deliveryLocationId: Number(locationId),
+        deliveryDetails: exact,
         credits: offer,
         ...(deadline && { completeBy: deadline.toISOString() }),
         additionalDetails: extra.trim() || null,
@@ -334,6 +348,13 @@ function RequestForm({ order }) {
         {/* 3. Deliver to */}
         <section>
           {label('Deliver to', 'location', true)}
+          {savedLocation && (
+            <div className="mt-2 rounded-card border border-line p-3">
+              <p className="font-semibold">Delivering to the same location?</p>
+              <p>{savedLocation.location}<br />{last.last_req_del_loc_details}</p>
+              <Button type="button" onClick={() => { setLocationId(String(last.last_req_del_loc_id)); setDetails(last.last_req_del_loc_details) }}>Confirm</Button>
+            </div>
+          )}
           {/* Delivery locations are the Supplier Service's location reference list (ids). */}
           <select
             id="location"
@@ -348,6 +369,11 @@ function RequestForm({ order }) {
               </option>
             ))}
           </select>
+          <div className="mt-4">
+            {label('Exact delivery details', 'delivery-details', true)}
+            <input id="delivery-details" type="text" maxLength={250} value={details} onChange={(e) => setDetails(e.target.value)} className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink" />
+            <span className="tnum text-sm text-ink-40">{details.length}/250</span>
+          </div>
         </section>
 
         {/* 4. Post time: optional. When the request is sent out to the board.

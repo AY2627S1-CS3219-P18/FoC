@@ -9733,3 +9733,78 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-08 — Precise delivery location: partial user-service implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
+
+> implement it
+
+**Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
+
+**Files:**
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/db/queries/lastRequest.queries.ts` (created)
+- `user-service/src/services/lastRequest.service.ts` (created)
+- `user-service/src/controllers/lastRequest.controller.ts` (created)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/db/queries/lastRequest.queries.test.ts` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** Implementation and the plan's full test coverage remain incomplete.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Precise delivery location: order service and frontend implementation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | debug
+**Scope:** Implementation code | Debugging
+**Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
+
+**Prompts (exact):**
+> finish all implementation
+
+**Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
+
+**Files:**
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/types/orders.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/realtime/order-events.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/realtime/order-events.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/test/realtime.e2e-spec.ts` (modified)
+- `frontend/src/api/lastRequest.js` (created)
+- `frontend/src/api/orders.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/components/RequestCard.jsx` (modified)
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/pages/AdminOrderTransactions.jsx` (modified)
+- `frontend/tests/api/lastRequest.test.js` (created)
+- `frontend/tests/pages/CreateRequest.test.jsx` (created)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:** The planned task-by-task commits and manual browser check were not performed. Migration deployment succeeded on a scratch database; the old-row migration scenario was not separately exercised.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

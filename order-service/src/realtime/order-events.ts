@@ -1,5 +1,7 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Issues #6/#59 - which Socket.IO event each order change produces and which rooms
  *        it goes to, per George's decisions (2026-10-19/20): events `order:<pastTenseVerb>`
@@ -42,6 +44,7 @@ export interface ListingCard {
   supplierId: number;
   description: string;
   deliveryLocationId: number;
+  deliveryDetails: string;
   credits: number;
   completeBy: string | null;
   additionalDetails: string | null;
@@ -85,6 +88,7 @@ function listingCard(o: OrderRequest): ListingCard {
     supplierId: o.supplierId,
     description: o.description,
     deliveryLocationId: o.deliveryLocationId,
+    deliveryDetails: o.deliveryDetails,
     credits: o.credits,
     completeBy: o.completeBy?.toISOString() ?? null,
     additionalDetails: o.additionalDetails,

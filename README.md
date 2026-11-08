@@ -1,5 +1,11 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for completing precise delivery location implementation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for partial user-service implementation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -589,3 +595,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 197 | 2026-11-07 | order-service, docs | ECS Fargate: ship the order supplier check | Applied the supplier and location existence check onto main for deployment. |
 | 198 | 2026-11-07 | docs | ECS Fargate: start and stop checklist | Wrote the AWS start, stop and teardown checklist. |
 | 199 | 2026-11-08 | order-service, user-service, frontend | Precise delivery location: design spec and implementation plan | Wrote the spec and plan from the team's decisions; no code yet. |
+| 200 | 2026-11-08 | user-service | Precise delivery location: partial user-service implementation | Added last-request storage and endpoints; remaining implementation is outstanding. |
+| 201 | 2026-11-08 | order-service, frontend | Precise delivery location: order service and frontend implementation | Implemented order details, form reuse, displays and tests. |
