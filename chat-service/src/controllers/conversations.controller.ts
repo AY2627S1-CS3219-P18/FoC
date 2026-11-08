@@ -12,11 +12,14 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import type { PrismaClient } from "../db/prisma.js";
 import {
+  markConversationRead,
   sendMessage,
   listConversations,
   listMessages,
@@ -284,6 +287,42 @@ export function postMessage(
         console.error(error);
       }
       res.status(201).json(result.message);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+export function postRead(
+  prisma: PrismaClient,
+  publishRead?: import("../realtime/messages.js").ReadPublisher,
+): RequestHandler {
+  return async (req, res) => {
+    const id = z.uuid().safeParse(req.params.conversationID);
+    const body = z.object({ lastReadMessageId: z.uuid() }).safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await markConversationRead(
+        prisma,
+        id.data,
+        req.user!.user_id,
+        body.data.lastReadMessageId,
+      );
+      if (result.status !== 200) {
+        res.sendStatus(result.status);
+        return;
+      }
+      try {
+        publishRead?.(result.receipt!);
+      } catch (error) {
+        console.error(error);
+      }
+      res.status(200).json(result.receipt);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

@@ -4,11 +4,17 @@
  * Scope: Verified socket authentication, expiry, room isolation and union broadcasts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Verified read receipt room delivery and reader exclusion.
+ * Author review: tng wen xi
  */
 import { createServer } from "node:http";
 import { io as connect, type Socket } from "socket.io-client";
 import { createSocketServer } from "./socket-server.js";
-import { createMessagePublisher, type SentMessage } from "./messages.js";
+import {
+  createReadPublisher,
+  createMessagePublisher,
+  type SentMessage,
+} from "./messages.js";
 import type { TokenVerifier } from "../middleware/authenticate.js";
 async function setup(
   verifyToken: TokenVerifier = async (token) => {
@@ -119,6 +125,38 @@ it("disconnects authenticated sockets at token expiry", async () => {
       client.once("disconnect", resolve),
     );
     expect(reason).toBe("io server disconnect");
+  } finally {
+    await t.close();
+  }
+});
+
+// AI-generated (edited by <name>).
+it("delivers read receipts only to other sockets in the conversation room", async () => {
+  const t = await setup();
+  try {
+    const reader = t.client("reader");
+    const recipient = t.client("recipient");
+    const outsider = t.client("outsider");
+    await Promise.all([t.ready(reader), t.ready(recipient), t.ready(outsider)]);
+    await t.io.in("user:reader").socketsJoin("chat:conversation");
+    await t.io.in("user:recipient").socketsJoin("chat:conversation");
+    const readerEvent = vi.fn();
+    const outsiderEvent = vi.fn();
+    reader.on("messsage:read", readerEvent);
+    outsider.on("messsage:read", outsiderEvent);
+    const received = new Promise((resolve) =>
+      recipient.once("messsage:read", resolve),
+    );
+    const receipt = {
+      conversationId: "conversation",
+      userId: "reader",
+      lastReadMessageId: "message",
+    };
+    createReadPublisher(t.io)(receipt);
+    expect(await received).toEqual(receipt);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(readerEvent).not.toHaveBeenCalled();
+    expect(outsiderEvent).not.toHaveBeenCalled();
   } finally {
     await t.close();
   }

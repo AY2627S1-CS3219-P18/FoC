@@ -8,6 +8,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
+ * Author review: tng wen xi
  */
 import "dotenv/config";
 import { createServer } from "node:http";
@@ -18,7 +20,10 @@ import { loadEnv, redisConnectionOptions } from "./config/env.js";
 import { createPrismaClient } from "./db/prisma.js";
 import { createTokenVerifier } from "./middleware/authenticate.js";
 import { createSocketServer } from "./realtime/socket-server.js";
-import { createMessagePublisher } from "./realtime/messages.js";
+import {
+  createReadPublisher,
+  createMessagePublisher,
+} from "./realtime/messages.js";
 // AI-generated (edited by <name>).
 const env = loadEnv();
 const prisma = createPrismaClient(env.DATABASE_URL);
@@ -36,6 +41,7 @@ server.on(
     userServiceUrl: env.USER_SERVICE_URL,
     verifyToken,
     publish: createMessagePublisher(io),
+    publishRead: createReadPublisher(io),
   }),
 );
 server.listen(env.PORT, () =>

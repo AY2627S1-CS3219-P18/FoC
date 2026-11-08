@@ -10367,3 +10367,114 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-08 — Chat service: message read endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team contract supplied in this conversation, recorded in `chat-service/README.md` section `POST /chat/conversations/:conversationID/read`; existing message ordering and participant field in that README and `chat-service/prisma/schema.prisma`.
+
+**Prompts (exact):**
+
+Task text (IDE tab context omitted):
+
+> ok bro next endpoint:
+>
+> `POST /chat/conversations/:conversationId/read` - mark messages aas read
+>
+> payload:&#x20;
+>
+> ```json
+> {
+>   "lastReadMessageId": "message_123"
+> }
+> ```
+>
+> means that the authenticated user has read the chat up to this message.
+>
+> - Need to:
+>   - Verify user belongs to this convo
+>   - Verify message belongs to this convo
+>   - Update the user's read position.
+>   - Notify the sender through Socket.IO that their messages have been read.
+>     - Payload: conversationId, userId, lastReadMessageId
+>   - Read position cannot move backwards. If it does, return 200 ok with read position unchanged.
+
+> Response:
+>
+> ```json
+> {
+>   "conversationId": "conv_123",
+>   "userId": "user_456",
+>   "lastReadMessageId": "msg_100",
+>   "readAt": "2026-11-06T10:25:00Z"
+> }
+> ```
+>
+> event `messsage:read`
+>
+> payload: conversationId, userId, lastReadMessageId, readAt
+>
+> revoked users cannot mark messages as read
+
+Response annotation exchanges (selected text and user comment verbatim):
+
+> Which statuses apply to revoked readers and missing/wrong-conversation messages?
+
+> ?
+
+> Who receives the event: all other participants, or only senders of newly read messages? Include revoked recipients?
+
+> all other participants in the room.
+
+> lastReadMessageId does not exist.
+
+> 404
+
+> The user’s conversation membership has been revoked.
+
+> 409
+
+> The message exists but belongs to another conversation
+
+> 400
+
+> when the read position stays unchanged, should an event emit, and what should readAt contain? There is no stored read timestamp in the current schema.
+
+> sorry i think u can remove readAt from the event payload. and yes just emit the event even if position is unchanged
+
+Final reply to whether readAt should also be removed from the HTTP response:
+
+> yes remove
+
+**Key responses:**
+
+- Asked for missing response, event, recipient, revocation, error-status and unchanged-position contract details before implementation, as required by AGENTS.md. Team removed readAt from both response and event.
+- Implemented authenticated read updates with conversation membership, revocation and message ownership checks; reused existing UUID validation and message ordering. Compare-and-set update retries on concurrent cursor changes, retaining the newer position. No schema or dependency changes.
+- Return the effective conversationId, authenticated userId and lastReadMessageId. After persistence, emit the exact team-specified `messsage:read` event to the chat room excluding the reader's user room, including on unchanged positions. Existing conversation subscription handlers remain deferred; clients must already be in the room to receive this event.
+- Added 13 HTTP tests covering access, validation, retained positions and concurrent cursor retry, plus a real local Socket.IO room-delivery/exclusion test. All 109 tests passed with approved loopback access; typecheck and build passed. Initial typecheck command from root failed because no root package.json exists; rerun in chat-service passed. Initial sandbox test runs failed with listen EPERM; approved rerun passed. No live MySQL concurrency, User Service or cross-replica Redis test was run.
+- Read and applied the Postman API engineer skill locally. Final `postman status` failed because this CLI does not support the command; no remote workspace changes were made.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/realtime/messages.ts` (modified)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/read.spec.ts` (created)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified missing contract details before writing code. Team specified removal of readAt and event emission even for unchanged read positions. Existing room subscriptions remain deferred.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

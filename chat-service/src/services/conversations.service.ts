@@ -12,6 +12,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -330,4 +332,59 @@ export async function sendMessage(
         .map((p) => p.userId),
     };
   });
+}
+
+// AI-generated (edited by <name>).
+export async function markConversationRead(
+  prisma: PrismaClient,
+  conversationId: string,
+  userId: string,
+  lastReadMessageId: string,
+) {
+  // Compare-and-set retries prevent concurrent requests from moving the cursor backwards.
+  for (;;) {
+    const conversation = await prisma.conversation.findUnique({
+      where: { conversationId },
+      include: { participants: true },
+    });
+    if (!conversation) return { status: 404 as const };
+    const participant = conversation.participants.find(
+      (p) => p.userId === userId,
+    );
+    if (!participant) return { status: 403 as const };
+    if (participant.revokedAt !== null) return { status: 409 as const };
+    const target = await prisma.message.findUnique({
+      where: { id: lastReadMessageId },
+    });
+    if (!target) return { status: 404 as const };
+    if (target.chatId !== conversationId) return { status: 400 as const };
+    const currentId = participant.lastReadMessageId;
+    const currentIsLater =
+      currentId && currentId !== target.id
+        ? await prisma.message.findFirst({
+            where: {
+              id: currentId,
+              chatId: conversationId,
+              OR: [
+                { createdAt: { gt: target.createdAt } },
+                { createdAt: target.createdAt, id: { gt: target.id } },
+              ],
+            },
+          })
+        : null;
+    const retainedId = currentIsLater ? currentId! : target.id;
+    const updated = await prisma.chatParticipant.updateMany({
+      where: {
+        id: participant.id,
+        lastReadMessageId: currentId,
+        revokedAt: null,
+      },
+      data: { lastReadMessageId: retainedId },
+    });
+    if (updated.count === 0) continue;
+    return {
+      status: 200 as const,
+      receipt: { conversationId, userId, lastReadMessageId: retainedId },
+    };
+  }
 }

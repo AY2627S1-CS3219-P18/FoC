@@ -22,6 +22,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified message l
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified send endpoint and realtime implementation.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the team-specified read receipt endpoint.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -232,3 +234,16 @@ Conversation subscription/unsubscription handlers are deferred by the team until
 The Redis adapter follows order-service's publisher/subscriber setup. Configure REDIS_HOST, REDIS_PORT (default 6379) and REDIS_TLS (`true`/`false`, default false). Local execution defaults to localhost. Compose connects chat to the existing order-redis service. The adapter uses the `chat-socket.io` Redis key prefix. No worker pub/sub relay is needed for this REST endpoint.
 
 Verification: 95 tests passed, including message validation/access, service-key sends, post-commit broadcasting, real local WebSocket authentication, user rooms, union delivery and expiry. Typecheck and build passed. HTTP persistence tests use injected Prisma doubles; no live MySQL, JWKS server or Redis cross-replica delivery was exercised.
+
+## POST /chat/conversations/:conversationID/read
+
+Team decisions supplied in the 2026-11-08 implementation conversation:
+
+- Bearer authentication supplies the reader identity. Body: `{ "lastReadMessageId": "<message UUID>" }`.
+- Require UUID conversation/message IDs (400 for invalid input); 401 unauthenticated, 404 missing conversation, 403 non-participant, 409 revoked participant, 404 missing message, 400 message belonging to another conversation.
+- Advance the participant's existing lastReadMessageId using the established `createdAt`, then `id` ordering. Older or identical positions return 200 with the retained position. Concurrent writes retry against the latest stored position.
+- Return `{ "conversationId": "<UUID>", "userId": "<authenticated UUID>", "lastReadMessageId": "<retained UUID>" }` directly. No readAt field or schema change.
+- After persistence, emit **`messsage:read`** (three s characters, as specified) with that same object to `chat:<conversationId>`, excluding the reader's `user:<userId>` room. Emit even when the position stays unchanged. Socket broadcast failures are logged and do not change the successful HTTP response.
+- This targets other sockets already in the chat room. Conversation subscription handlers remain deferred as documented above; automatically joined user rooms alone do not receive this event.
+
+Verification: all 109 tests passed, including 13 read endpoint cases and a real local WebSocket receipt-delivery check. Typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency and Redis cross-replica delivery were not exercised.

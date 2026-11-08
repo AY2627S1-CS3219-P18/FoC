@@ -12,6 +12,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
+ * Author review: tng wen xi
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -23,6 +25,7 @@ import {
   type TokenVerifier,
 } from "../middleware/authenticate.js";
 import {
+  postRead,
   postMessage,
   getConversation,
   getMessages,
@@ -35,6 +38,7 @@ export function conversationsRouter(
   userServiceUrl: string,
   verifyToken?: TokenVerifier,
   publish?: MessagePublisher,
+  publishRead?: import("../realtime/messages.js").ReadPublisher,
 ) {
   const router = Router();
   router.get(
@@ -59,6 +63,12 @@ export function conversationsRouter(
     "/:conversationID/messages",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
     postMessage(prisma, publish),
+  );
+  // AI-generated (edited by <name>).
+  router.post(
+    "/:conversationID/read",
+    createAuthenticate(userServiceUrl, verifyToken),
+    postRead(prisma, publishRead),
   );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;
