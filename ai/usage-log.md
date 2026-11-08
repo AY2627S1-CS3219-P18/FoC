@@ -9267,6 +9267,7 @@ Accepted all changes.
 **Governing decision:** George's ECS Fargate plan, `ecs-fargate-session-prompt.md` ("Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project"), section "Phase 1: repo changes", items 1-11. The plan was supplied as a local file attachment and is not committed to this repository.
 
 **Prompts (exact):**
+
 > @"C:\Users\Aeodile\Downloads\ecs-fargate-session-prompt.md"
 > The attached file, ecs-fargate-session-prompt.md, is my full plan for moving this repo from Docker Compose to AWS ECS on Fargate. Treat it as my instructions, including its ground rules, and don't reopen its decisions unless a fact proves one wrong.
 >
@@ -9371,6 +9372,7 @@ Facts found while testing:
 **Governing decision:** George's instruction in chat, below. Supersedes the note in the entry "ECS Fargate Phase 1: repo changes for deployment" that the plan is not committed; that plan now lives at `docs/ecs-fargate-session-prompt.md`.
 
 **Prompts (exact):**
+
 > > The plan isn’t in the repo: the usage log cites ecs-fargate-session-prompt.md by name only. AGENTS.md expects decisions to be written down, so consider committing it to docs/.
 >
 > ok add it to docs
@@ -9404,6 +9406,7 @@ None.
 **Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
 
 **Prompts (exact):**
+
 > wait wait, the repo is supposed to be the teams repo not mine
 
 > Yes, use team repo
@@ -9447,6 +9450,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
 
 **Prompts (exact):**
+
 > this is intended, it should auto deploy on every main merge
 
 The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
@@ -9483,6 +9487,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 **Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
 
 **Prompts (exact):**
+
 > One PR
 
 **Key responses:**
@@ -9504,6 +9509,327 @@ None.
 
 **Author review:**
 
+## 2026-11-06 — Order events: courierId on acceptance
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's explicit chat instruction below; existing nullable courierId in `order-service/prisma/schema.prisma`.
+
+**Prompts (exact):**
+
+> sorry bro i said wrongly. add the courier id to the order accepted event.
+
+**Key responses:**
+
+- Added top-level `courierId` to `order:accepted` from the committed order row and documented it in the payload type. Updated the existing acceptance event assertion.
+- Verification: targeted Vitest run covering order-events, socket-sink, and credit-jobs passed (3 files, 24 tests). `npm run typecheck` passed.
+- No database migration or event transport changes were made.
+
+**Files:**
+
+- `order-service/src/realtime/order-events.ts` (modified)
+- `order-service/src/realtime/order-events.spec.ts` (modified)
+- `README.md` (modified: disclosure header and log index)
+- `ai/usage-log.md` (appended: this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-07 — Chat service: conversation creation endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate | Refactor/Docs
+**Governing decision:** Team decisions supplied in this chat for POST /chat/conversations, response/error bodies, service API-key authentication, MySQL/Prisma v7 adapter, schema fields, timestamp precision, index and duplicate handling. Implemented contract documented in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> yes. now can u implement this endpoint first? then we go thru the rest tgt
+
+> soft deletion: add nullable **`revokedAt`**
+>
+> **`@prisma/adapter-mariadb`** for Prisma v7
+
+> identical creation details 200, differing detais 409
+>
+> initial timestamp: revokedAt startst null, the rest when the row is created
+
+> ok NOW IMPLEMENT im tired
+
+**Key responses:**
+
+- Created the standalone Express/TypeScript chat-service, following order-service's routes/controllers/services/config/db structure. Added POST /chat/conversations with the confirmed orderId, requesterId and orderDescription body. No user bearer token is used or stored.
+- Service-key authentication uses timing-safe comparison of SHA-256 digests; missing/invalid keys return the supplied 401 response, and a valid key with an unpermitted service name returns the supplied 403 response.
+- Added UUID conversation/participant IDs, unique orderId, chat_title TEXT NOT NULL, ACTIVE initial status, UTC DATETIME(3) timestamps, nullable read position/revokedAt, and the confirmed updatedAt/conversationId composite index. Creation uses a nested Prisma write for the conversation and requester participant together.
+- Identical retries return 200, new rows return 201, and differing requester/description return the supplied 409. The service recovers unique-orderId races by reading the winning row. Validation uses the supplied 400 envelope.
+- Added migration, local configuration placeholders and setup instructions. No message/system notification/socket endpoints or order-service BullMQ delivery were implemented in this endpoint-only stage.
+- Verification: 13 HTTP tests passed with injected Prisma doubles (including auth, validation, duplicate/conflict and unique-constraint race recovery). Prisma generation and validation, TypeScript typecheck and build passed. Initial sandbox test attempt could not bind localhost; rerunning with permission passed. A test argument type error was corrected before final passing checks. One typecheck command was accidentally invoked at repository root (no package.json); the subsequent chat-service check passed.
+- Dependency installation and Prisma engine generation required network permission. npm audit reported zero vulnerabilities at install time. The stalled initial sandbox install was stopped after the successful install.
+- No live database integration/migration execution: Docker daemon unavailable. Migration SQL was generated with prisma migrate diff, inspected, and the Prisma schema validated. postman status was attempted but the installed CLI does not support that command; no Postman workspace was created or published.
+
+**Files:**
+
+- `chat-service/.env.example` (created)
+- `chat-service/.gitignore` (created)
+- `chat-service/README.md` (created)
+- `chat-service/package-lock.json` (created)
+- `chat-service/package.json` (created)
+- `chat-service/prisma.config.ts` (created)
+- `chat-service/prisma/migrations/20261107000000_create_conversations/migration.sql` (created)
+- `chat-service/prisma/migrations/migration_lock.toml` (created)
+- `chat-service/prisma/schema.prisma` (created)
+- `chat-service/src/app.ts` (created)
+- `chat-service/src/config/env.ts` (created)
+- `chat-service/src/controllers/conversations.controller.ts` (created)
+- `chat-service/src/conversations.spec.ts` (created)
+- `chat-service/src/db/prisma.ts` (created)
+- `chat-service/src/middleware/authenticate-service.ts` (created)
+- `chat-service/src/routes/conversations.routes.ts` (created)
+- `chat-service/src/server.ts` (created)
+- `chat-service/src/services/conversations.service.ts` (created)
+- `chat-service/tsconfig.build.json` (created)
+- `chat-service/tsconfig.json` (created)
+- `chat-service/vitest.config.ts` (created)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure header and log index)
+
+**Deviations / questions raised for the team:**
+
+- No further questions. Title/requester comparison follows the supplied creation contract; future title mutation must preserve/revisit original creation-detail comparison.
+- Only creation-related tables are included; messages, attachments and processed events are not scaffolded in this stage.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-07 — Chat service: Docker setup
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Boilerplate | Refactor/Docs
+**Governing decision:** User requested Docker setup for the existing chat service; prior chat decisions specify MySQL and service-key authentication, and matching order-service structure. Reused order-service Docker multi-stage/dev-watch conventions and supplier-service's existing MySQL 8 Compose convention.
+
+**Prompts (exact):**
+
+> set up the docker for chat service also
+
+**Key responses:**
+
+- Added dev and production image targets with Node 24, Prisma generation, automatic migration deployment, production compilation and dev-dependency pruning. Production runs as node; Docker context excludes credentials, local modules and generated output.
+- Added chat-service and persistent chat-db to root Compose, UTC MySQL configuration, database readiness dependency, service-key configuration and configurable host port (CHAT_SERVICE_PORT, default 3005). Development override uses the existing Compose Watch pattern.
+- Added safe root environment placeholders and setup commands. Existing real .env values were not read, printed or modified. No frontend routes, HTTP health endpoints or worker delivery changes were introduced.
+- Verification: base and merged development Compose configurations passed config --quiet using .env.example; production and dev image builds succeeded. Temporary isolated MySQL 8 and both API images started successfully. Production migration applied; dev detected no pending migrations. Real HTTP creation/identical retry/conflict/invalid-key returned 201/200/409/401; dev duplicate returned 200. Database inspection found one conversation, REQUESTER participant with NULL read position/revokedAt, and +00:00 server timezone.
+- Docker initially required sandbox access escalation; authorized execution succeeded. Temporary verification containers/network and their test volume were removed after checks. Verification image tags remain cached locally. The entire application stack and file-change-triggered reload were not exercised.
+
+**Files:**
+
+- `chat-service/Dockerfile` (created)
+- `chat-service/.dockerignore` (created)
+- `compose.yaml` (modified)
+- `compose.dev.yaml` (modified)
+- `.env.example` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: header and log index)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+i kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: conversation listing endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** User-supplied endpoint, schema and follow-up annotation answers in this conversation; transcribed in `chat-service/README.md` § GET /chat/conversations. JWT/JWKS behavior reused from `order-service/src/middleware/authenticate.ts` as explicitly requested.
+
+**Prompts (exact):**
+Task request and subsequent response-annotation comments are quoted separately below in conversation order; IDE metadata is not a task instruction.
+
+> ok now let's move on to the next endpoint of chat service - `GET /chat/conversations?limit=20` to get user's conversations
+>
+> - from the validated user
+> - query params: limit, cursor, status filter (active / archived), role filter (courier / requester)
+> - ordering: updatedAt DESC, conversationId DESC
+> - return the following:
+>
+> ```php
+> 200 ok
+> {
+>   "conversations": [
+>     {
+>       "id": string (uuid)
+>       "orderId": string (uuid)
+>       "lastMessage": {
+>         "content": string,
+>         "type": TEXT / IMAGE / VIDEO,
+>         "createdAt": timestamp
+>       }
+>       "unreadCount": int
+>       "updatedAt": timestamp
+>     }
+>   ]
+>   "nextCursor": {
+>     "updatedAt": timestamp,
+>     "id": string
+>   },
+>   "hasMore": boolean
+> }
+> ```
+>
+> lmk if you need anything else
+
+> yeps
+
+> oh for message table, refer to the message below
+
+> yes
+
+> base64 encoding using updatedAt and id
+> limit 20 by default. changeable through query param.
+>
+> null on last page.
+
+> when filters are off, return all chats that the user is a participant in. if revokedAt is set, then still return the chat because the user is able to see the chat but not send
+
+> implement error codes and messages similar to order service. refer to message for status codes and response format.
+
+> message schema:&#x20;
+>
+> ```xml
+> <table>
+>   <tr>
+>    <td>Field
+>    </td>
+>    <td>Type
+>    </td>
+>    <td>Description
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>id
+>    </td>
+>    <td>uuid
+>    </td>
+>    <td>Primary key
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>chat_id
+>    </td>
+>    <td>uuid
+>    </td>
+>    <td>Foreign key to chats
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>sender_id
+>    </td>
+>    <td>Uuid / null
+>    </td>
+>    <td>User id of sender, NULL if system
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>type
+>    </td>
+>    <td>enum
+>    </td>
+>    <td>TEXT / IMAGE / VIDEO / SYSTEM
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>content
+>    </td>
+>    <td>Text / null
+>    </td>
+>    <td>Message text. Null if image / video has no caption
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>metadata
+>    </td>
+>    <td>Json / null
+>    </td>
+>    <td>For system messages:
+> <ul>
+>
+> <li>eventType</li>
+>
+> <li>orderId</li>
+> </ul>
+>    </td>
+>   </tr>
+>   <tr>
+>    <td>created_at
+>    </td>
+>    <td>timestamp
+>    </td>
+>    <td>Message creation time
+>    </td>
+>   </tr>
+> </table>
+> ```
+>
+> validation:
+>
+> - user not authenticated: 401
+
+> oh yes invalid query params should return 400 as well.
+
+> yes, system messages can appear in last message. yes, if null then response can have null too
+
+> limit is maximally 50.
+
+> yes pls.
+
+> i think can exclude own messages but include system messages. if lastReadMessageId is null, all eligible messages are unread
+
+**Key responses:**
+
+- Asked the team for missing authentication, message schema, unread-count, validation and cursor decisions before coding. Implemented their supplied answers; did not supply schema/interface/security choices for the team.
+- Added authenticated GET /chat/conversations, validated limit 1–50 (default 20), base64 JSON cursor, active/archived status and courier/requester participant filters. Listing includes revoked memberships and uses updatedAt/conversationId descending, with one extra row to determine hasMore. Response uses the supplied unwrapped shape, an object nextCursor or null, and nullable lastMessage/content with SYSTEM permitted.
+- Added the supplied message fields and generated a migration. Reused the existing order-service RS256/JWKS verifier with original attribution, and added USER_SERVICE_URL configuration. Existing POST retains its service-key authentication.
+- Unread counts exclude own messages, include null system senders, and compare createdAt/id against the stored read position. Null read position counts all eligible messages. No sending endpoint was added.
+- Added HTTP tests with injected Prisma doubles and verifier tests with generated test RSA keys and stubbed fetch responses. All 46 tests passed (including 13 existing creation tests), typecheck/build passed, and Prisma schema validation passed. HTTP tests first failed with sandbox listen EPERM; rerunning with approved local socket access passed.
+- Initial Prisma generation command was run from repository root and failed because no root package.json exists; rerun from chat-service succeeded. Migration diff from migrations required a shadow database; generating the diff from the previous checked-in schema instead succeeded. Migration was generated but not applied to live MySQL. No live User Service verification or HTTP dependency simulation was run.
+- Applied the local API Engineer skill for contract/verification guidance. Installed Postman CLI rejected `postman status` as an unknown command; no Postman workspace or external service was changed.
+
+**Files:**
+
+- `chat-service/.env.example` (modified)
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261108000000_add_messages/migration.sql` (created)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/middleware/authenticate.ts` (created; copied from order-service with attribution)
+- `chat-service/src/types/express.d.ts` (created)
+- `chat-service/src/conversations-list.spec.ts` (created)
+- `chat-service/src/middleware/authenticate.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: attribution and matching log-index row)
+- `ai/usage-log.md` (appended)
+- `chat-service/src/generated/prisma/` (regenerated, ignored generated output; no comment headers added)
+
+**Deviations / questions raised for the team:**
+Missing contract decisions were requested and supplied in the exact comments above. Live database migration/listing and live User Service checks remain unperformed.
+
 ## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -9512,6 +9838,7 @@ None.
 **Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
 
 **Prompts (exact):**
+
 > shouldnt i make Account Regional namespace (recommended)
 
 > User was not created.
@@ -9560,6 +9887,41 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 
 **Author review:**
 
+<<<<<<< HEAD
+
+## 2026-11-08 — Chat service: Prisma Studio Docker connectivity
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, docs
+**Scope:** Boilerplate, Debugging, Refactor/Docs
+**Governing decision:** User explicitly requested fixing the missing Docker host port for locally running Prisma Studio. Existing local connection specified localhost:3306; existing Compose configuration specifies root credentials and chat_service database. Local binding follows the repository's existing loopback publishing convention.
+
+**Prompts (exact):**
+
+> solve this!
+
+The annotation selected the previous finding that Compose chat-db had no published host port, preventing Studio on the Mac from connecting.
+
+> yes im running through docker compose
+
+**Key responses:**
+
+- Added 127.0.0.1:3306:3306 to chat-db and documented Prisma Studio setup.
+- Validated base and combined development Compose configurations with .env.example; both passed.
+- Initial Docker execution was blocked by sandbox socket permissions. Approved execution recreated and started only chat-db with its existing named volume retained.
+- A direct MariaDB driver probe then returned ER_CANNOT_RETRIEVE_RSA_KEY. Checked local-vs-Compose credential matches using booleans only; the local configuration did not match the Compose account/password. Updated ignored chat-service/.env to use the existing Compose credentials, without printing or recording their values. No database account, password or authentication settings were changed.
+- Prisma migrate status subsequently connected to 127.0.0.1:3306/chat_service and reported two migrations with database schema up to date. No migrations were applied by this task. Studio browser UI was not exercised; an existing Studio process must be restarted to load the corrected local environment.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/.env` (modified, ignored local configuration; credentials not logged)
+- `README.md` (modified: header and matching log-index row)
+- `ai/usage-log.md` (appended)
+
+# **Deviations / questions raised for the team:**
+
 ## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -9568,6 +9930,7 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
 
 **Prompts (exact):**
+
 > foc namespace is added and yes 3 days for all
 
 **Key responses:**
@@ -9597,6 +9960,7 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
 
 **Prompts (exact):**
+
 > Ship 1fad383 now
 
 **Key responses:**
@@ -9647,6 +10011,7 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
 
 **Prompts (exact):**
+
 > It worked
 
 **Key responses:**
@@ -9665,7 +10030,1080 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 
 **Deviations / questions raised for the team:**
 
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Chat service: conversation table names
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** The user explicitly supplied the two table-name changes in the prompt below. Existing column names, models, indexes and foreign-key definitions are retained.
+
+**Prompts (exact):**
+
+> hm sorry could you change the table name chats to conversations and chat_participants to conversation_participants so that it is consistent with the url
+
+**Key responses:**
+
+- Updated Prisma table mappings to conversations and conversation_participants. Explicitly mapped existing index/constraint names so the requested table renames do not implicitly rename those objects.
+- Added a new MySQL RENAME TABLE migration, retaining earlier migrations. Updated service documentation, regenerated Prisma, and added the root README log-index row.
+- Prisma generation, typecheck, build and all 46 tests passed. Live MySQL verification through Prisma confirmed both renamed models are queryable, and both participant/message foreign keys reference conversations. Prisma migrate diff from the configured live database to the schema reported no differences.
+- The attempted pre-rename count query failed because chats no longer existed. The subsequent migrate deploy command reported all three migrations already applied and did not apply a pending migration. No claim is made about which process applied the migration. Post-rename counts were zero for conversations, participants and messages; a before/after count comparison was unavailable. The checked-in SQL only renames tables and does not delete rows.
+
+**Files:**
+
+- `chat-service/prisma/schema.prisma` (modified: mappings and disclosure)
+- `chat-service/prisma/migrations/20261108010000_rename_conversation_tables/migration.sql` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: disclosure and matching log-index row)
+- `ai/usage-log.md` (appended)
+- `chat-service/src/generated/prisma/` (regenerated, ignored generated output)
+
+**Deviations / questions raised for the team:**
+None. Pre-rename row counts could not be obtained because the migration was already recorded as applied when checked.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+# **Author review:**
+
+tng wen xi
+
+## 2026-11-08 — Chat service: conversation details endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team endpoint contract and follow-up answers in this conversation, transcribed in `chat-service/README.md` § GET /chat/conversations/:conversationID; existing UUID schema and listing authentication.
+
+**Prompts (exact):**
+
+> Now we can move on to the next endpoint
+>
+> `GET /chat/conversations/:conversationID` - get conversation details
+
+> authentication: bearer token also, only participants of the chat, including revoked particpants. if unauthenticated, 401. if unauthorized, 403 forbidden. if conversation id not found, 404 not found.&#x20;
+>
+> return response:
+>
+> ```json
+> {
+>   "conversationId": "conv_123",
+>   "orderId": "order_123",
+>   "status": "ACTIVE",
+>   "title": "Alice · Coffee from Deck",
+>   "participants": [
+>     {
+>       "userId": "user_456",
+>       "role": "REQUESTER",
+>       "joinedAt": "2026-11-06T10:00:00Z"
+>     },
+>     {
+>       "userId": "user_789",
+>       "role": "COURIER",
+>       "joinedAt": "2026-11-06T10:05:00Z"
+>     }
+>   ],
+>   "createdAt": "2026-11-06T10:00:00Z",
+>   "updatedAt": "2026-11-06T10:15:00Z"
+> }
+> ```
+
+> 400!
+
+**Key responses:**
+
+- Asked for the details contract and then malformed-ID status before implementing; the team specified 400.
+- Implemented authenticated UUID validation, 404 for missing records, 403 for non-participants and direct details JSON for participants, including revoked participants. Used existing Bearer middleware and schema; selected only the supplied response fields. No schema changes.
+- Added 10 HTTP tests for authentication, ID validation, missing conversations, denied access, both participant roles, membership query without a revocation filter, archived status and database errors.
+- Initial verification was mistakenly invoked from the repository root (no package.json). The sandbox blocked Supertest listening sockets; retried with approved socket access. Regression tests caught an accidental overwrite of service code during editing; restored the original service implementation and retained the new function. Final verification: 56 tests passed, typecheck passed and build passed. No live MySQL or User Service verification.
+- Applied the Postman API engineer skill locally. `postman status` failed because the installed CLI does not support that command; no Postman workspace was used or changed.
+
+**Files:**
+
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-details.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified: disclosure and log-index row)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Requested the missing contract and malformed-ID handling; the team supplied both before implementation.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: conversation messages endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team contract and annotation answers in chat, transcribed in `chat-service/README.md` § GET /chat/conversations/:conversationID/messages; existing schema and conversation listing/details contracts.
+
+**Prompts (exact):**
+
+> Next endpoint:
+>
+> `GET /chat/conversations/:conversationID/messages` - get conversation messages
+>
+> ordering: createdAt DESC, id DESC
+>
+> response:
+>
+> 200ok
+>
+> ```json
+> {
+>   "data": [
+>     {
+>       "messageId": "msg_098",
+>       "conversationId": "conv_123",
+>       "senderId": "user_456",
+>       "type": "TEXT",
+>       "content": "Can you get an iced latte?",
+>       "metadata": null,
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:10:00Z"
+>     },
+>     {
+>       "messageId": "msg_099",
+>       "conversationId": "conv_123",
+>       "senderId": null,
+>       "type": "SYSTEM",
+>       "content": "The courier has accepted your order.",
+>       "metadata": {
+>         "eventType": "ORDER_ACCEPTED",
+>         "orderId": "order_123"
+>       },
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:11:00Z"
+>     },
+>     {
+>       "messageId": "msg_100",
+>       "conversationId": "conv_123",
+>       "senderId": "user_789",
+>       "type": "TEXT",
+>       "content": "Sure, I'll get it!",
+>       "metadata": null,
+>       "attachments": [],
+>       "createdAt": "2026-11-06T10:12:00Z"
+>     }
+>   ],
+>   "pagination": {
+>     "nextCursor": "older_cursor_value",
+>     "hasMore": true
+>   }
+> }
+> ```
+>
+> lmk what else u need
+
+Team annotation replies, verbatim in annotation order (IDE context omitted):
+
+> yes follow the pagination rules for the other endpoint (conversation listing)
+
+> same
+
+> oh sorry ignore the attachments first! for mvp no attachments, will implement later on
+
+> oh yes sorry descending
+
+**Key responses:**
+
+- Asked the team for pagination, access/error, attachment and ordering decisions before implementation. Confirmed listing-style object-valued nextCursor, details-style access/error handling, omitted attachments and descending ordering.
+- Implemented message field mapping and exclusive createdAt/id pagination using the existing schema and Bearer middleware. Revoked participants retain access. No schema changes.
+- Added 12 HTTP tests covering authentication, validation, access denial, revoked access, empty pages, response mapping, lookahead/final-page behavior, cursor query boundaries and database errors.
+- First test-file write used an incorrect relative path and created no file; corrected it. Initial HTTP tests were blocked by sandbox socket permissions. After approved local socket access, all 68 tests passed. Typecheck and build passed. No live database or User Service verification.
+- Used the Postman API engineer skill locally; `postman status` returned unknown command. No Postman workspace changes.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified the contract before implementation; team answers supersede the initial sample ordering, cursor string and attachments.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: message sending and realtime delivery
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** Team's endpoint request and subsequent chat/annotation decisions quoted below; recorded in `chat-service/README.md` under POST messages and Socket.IO. Existing `chat-service/prisma/schema.prisma` and GET message fields; order-service realtime implementation for the requested connection/authentication and Redis adapter behavior. No schema changes.
+
+**Prompts (exact):**
+
+Task request verbatim (IDE metadata omitted):
+
+> Next endpoint: `POST /chat/conversations/:conversationID/messages` - send a message
+>
+> payload:
+>
+> - type (TEXT / IMAGE / VIDEO) (for now, only text as no attachments yet)
+> - Content
+>
+> Validation rules:
+>
+> - if type is text, content must not be empty string
+> - sender: obtained from authenticated identity. if system message, make sure chat service api key is correct.&#x20;
+> - conversation must exist (404 not found, 403 forbiddden if not a participant)
+> - system messages cannot be sent by users (422)
+> - status: conversation must be active (409 conflict if archived)
+> - sender must not be revoked from chat (409 conflict if revoked)
+>
+> ```yaml
+> Receive REST request
+> |
+> v
+> Authenticate user
+> |
+> v
+> Check conversation membership
+> |
+> v
+> Validate message and attachments
+> |
+> v
+> Persist message in MySQL
+> |
+> v
+> Commit transaction
+> |
+> v
+> Broadcast through Socket.IO
+> |
+> v
+> Return 201 response
+> ```
+>
+> Returns: the message object
+
+First annotation comments verbatim, in order (payload validation; service senders; order-service inspection; updatedAt/response fields):
+
+> this payload is correct. whitespace-only should be rejected. invalid type should return 400.
+
+> all service names are allowed. payload is type: TEXT. set sender_id to null.
+
+> can u tell me what order service is using? i'll decide from there
+
+> yes, ssending udpates the conversation's `updatedAt` as well. same message fields as one message in GET messages
+
+Room/connection decisions verbatim:
+
+> event name: `message:sent`
+> connection and authentication same as order service
+> rooms:&#x20;
+> `chat:<conversationId>`&#x20;
+> Frontend requests a conversation subscription; server checks that the user is a participant before joining the socket
+>
+> `user:<userId>`
+> Server automatically joins the socket after authentication, using the verified user ID
+
+Final annotation comments verbatim, in order (deferred subscription; revoked subscription denial; broadcast rooms; Redis adapter; service membership bypass):
+
+> subscribe no need payload. unsubscribe is called when the component unmounts. for now, since no frontend yet, we can implement the subscription later.
+
+> no
+
+> broadcast to the chat room and the user room so that the list of chats shows the correct last message
+
+> follow what order service does
+
+> yes. still needs active conversation. bypass membership checks
+
+**Key responses:**
+
+- Inspected existing chat schema/controllers/authentication and described order-service's existing sockets, rooms, JWT lifecycle and Redis delivery. Asked for missing team contract decisions before implementation.
+- Implemented TEXT sends, whitespace validation, user SYSTEM rejection, service-key authentication for any service name with null sender, participant/status/revocation checks, and 201 GET-compatible message mapping. Message insert and conversation updatedAt write share one Prisma transaction/timestamp; broadcast occurs after commit.
+- Added authenticated WebSocket connections with automatic user rooms and token-expiry disconnect; `message:sent` emits once to the union of chat and non-revoked participant user rooms. Conversation subscription/unsubscription remains deferred as requested.
+- Added order-service-style Redis adapter wiring and configuration, with a chat-specific Redis prefix; Compose connects to existing order-redis. No order-worker integration added.
+- Added HTTP and actual local WebSocket tests. All 95 tests passed. Typecheck and build passed after fixing a test-helper type. Initial typecheck ran before dependency installation and reported missing modules. Initial npm installation failed on sandbox DNS; offline installation lacked cache; approved network installation succeeded. An initial test command ran from the repository root and failed because there is no root package.json; reran successfully in chat-service. HTTP tests use Prisma doubles and injected token verification; sockets use actual loopback connections. No live MySQL/JWKS or Redis replica test was run.
+- Applied the Postman API engineer skill locally. `postman status` is unsupported by this installed CLI; no Postman workspace changes or external messages were made.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/.env.example` (modified)
+- `chat-service/package.json` (modified)
+- `chat-service/package-lock.json` (modified)
+- `compose.yaml` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `chat-service/src/middleware/authenticate-message.ts` (created)
+- `chat-service/src/realtime/messages.ts` (created)
+- `chat-service/src/realtime/socket-server.ts` (created)
+- `chat-service/src/realtime/socket-server.spec.ts` (created)
+- `chat-service/src/send-message.spec.ts` (created)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified payload validation, service senders, response shape, timestamps, socket lifecycle/rooms and Redis before implementation. Team deferred conversation subscriptions; revoked participants must be excluded when that work is implemented.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: message read endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team contract supplied in this conversation, recorded in `chat-service/README.md` section `POST /chat/conversations/:conversationID/read`; existing message ordering and participant field in that README and `chat-service/prisma/schema.prisma`.
+
+**Prompts (exact):**
+
+Task text (IDE tab context omitted):
+
+> ok bro next endpoint:
+>
+> `POST /chat/conversations/:conversationId/read` - mark messages aas read
+>
+> payload:&#x20;
+>
+> ```json
+> {
+>   "lastReadMessageId": "message_123"
+> }
+> ```
+>
+> means that the authenticated user has read the chat up to this message.
+>
+> - Need to:
+>   - Verify user belongs to this convo
+>   - Verify message belongs to this convo
+>   - Update the user's read position.
+>   - Notify the sender through Socket.IO that their messages have been read.
+>     - Payload: conversationId, userId, lastReadMessageId
+>   - Read position cannot move backwards. If it does, return 200 ok with read position unchanged.
+
+> Response:
+>
+> ```json
+> {
+>   "conversationId": "conv_123",
+>   "userId": "user_456",
+>   "lastReadMessageId": "msg_100",
+>   "readAt": "2026-11-06T10:25:00Z"
+> }
+> ```
+>
+> event `messsage:read`
+>
+> payload: conversationId, userId, lastReadMessageId, readAt
+>
+> revoked users cannot mark messages as read
+
+Response annotation exchanges (selected text and user comment verbatim):
+
+> Which statuses apply to revoked readers and missing/wrong-conversation messages?
+
+> ?
+
+> Who receives the event: all other participants, or only senders of newly read messages? Include revoked recipients?
+
+> all other participants in the room.
+
+> lastReadMessageId does not exist.
+
+> 404
+
+> The user’s conversation membership has been revoked.
+
+> 409
+
+> The message exists but belongs to another conversation
+
+> 400
+
+> when the read position stays unchanged, should an event emit, and what should readAt contain? There is no stored read timestamp in the current schema.
+
+> sorry i think u can remove readAt from the event payload. and yes just emit the event even if position is unchanged
+
+Final reply to whether readAt should also be removed from the HTTP response:
+
+> yes remove
+
+**Key responses:**
+
+- Asked for missing response, event, recipient, revocation, error-status and unchanged-position contract details before implementation, as required by AGENTS.md. Team removed readAt from both response and event.
+- Implemented authenticated read updates with conversation membership, revocation and message ownership checks; reused existing UUID validation and message ordering. Compare-and-set update retries on concurrent cursor changes, retaining the newer position. No schema or dependency changes.
+- Return the effective conversationId, authenticated userId and lastReadMessageId. After persistence, emit the exact team-specified `messsage:read` event to the chat room excluding the reader's user room, including on unchanged positions. Existing conversation subscription handlers remain deferred; clients must already be in the room to receive this event.
+- Added 13 HTTP tests covering access, validation, retained positions and concurrent cursor retry, plus a real local Socket.IO room-delivery/exclusion test. All 109 tests passed with approved loopback access; typecheck and build passed. Initial typecheck command from root failed because no root package.json exists; rerun in chat-service passed. Initial sandbox test runs failed with listen EPERM; approved rerun passed. No live MySQL concurrency, User Service or cross-replica Redis test was run.
+- Read and applied the Postman API engineer skill locally. Final `postman status` failed because this CLI does not support the command; no remote workspace changes were made.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/realtime/messages.ts` (modified)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/read.spec.ts` (created)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Clarified missing contract details before writing code. Team specified removal of readAt and event emission even for unchanged read positions. Existing room subscriptions remain deferred.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: participant addition endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** Team's endpoint request and response annotations in this conversation, recorded in `chat-service/README.md`, POST participants section; existing schema and message authentication/status conventions.
+
+**Prompts (exact):**
+
+> Next endpoint:
+>
+> `POST /chat/conversations/:conversationId/participants` - add particcipant to a conversation
+>
+> payload:
+>
+> ```json
+> {
+>   "userId": "courier_123",
+>   "role": "COURIER"
+> }
+> ```
+>
+> sent by system, so use the chat api key. and 403 if authenticated user tries to send to this endpoint. only system can call this
+
+Response annotations (selected text followed by the user's exact comment):
+
+> What success status and response body should it return?
+
+> 200 ok.
+>
+> return the participant object.
+>
+> ```bash
+> {
+>   "conversationParticipantId": id,
+>   "conversationId": id,
+>   "userId": id,
+>   "joinedAt": timestamp,
+>   "role": "COURIER"/"REQUESTER"
+> }
+> ```
+
+> What happens if the participant already exists or was revoked?
+
+> 409
+
+> Can participants be added to archived conversations?
+
+> no
+
+> Is userId any nonempty string (like courier_123), and are both REQUESTER and COURIER allowed?
+
+> both roles are allowed. userId is the user's uuid in user service. will be provided by the caller
+
+> Should any valid chat API key work without X-Service-Name, as with message sending?
+
+> yes
+
+**Key responses:**
+
+- Clarified the contract before implementation. Added system-key participant insertion returning the requested 200 object; valid Bearer-only users receive 403. Reused message authentication, including supplied-key precedence and no service-name restriction.
+- Validate UUID conversation/user IDs and the existing two roles. Reused 400/404/409 conventions for invalid input, missing conversations and archived conversations. Existing/revoked membership returns the specified 409.
+- Used an existing Prisma transaction pattern; lock the active conversation with an update before checking membership and inserting. No schema, dependency, inter-service call or socket event changes. Live database concurrency was not tested.
+- Added 17 HTTP cases covering both roles, validation, authentication, missing/archived conversations, existing/revoked membership and persistence failure. All 126 tests passed with permitted loopback access; typecheck and build passed. Initial sandbox test run failed with listen EPERM. Initial test-file write used an incorrect working-directory-relative path and failed; corrected before the successful run.
+- Used the Postman API engineer skill locally. `postman status` failed with unknown command; no external workspace changes were made.
+
+**Files:**
+
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for missing contract details before implementation; responses recorded above. Reused existing chat status conventions for archived, missing and malformed conversations.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: participant role limits
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's explicit participant limits below, recorded in `chat-service/README.md`; existing participant conflict status and conversation-locked transaction.
+
+**Prompts (exact):**
+
+> enforce that each conversation can only have 1 requester and 1 non-revoked courier.
+
+**Key responses:**
+
+- Extended the existing locked participant-addition check to reject occupied roles with the existing 409 conflict status. Any requester membership occupies the requester slot; only non-revoked courier memberships occupy the courier slot. Existing same-user conflicts remain enforced, including revoked users. No schema changes or existing data modifications.
+- Added six regression cases for active/revoked requester and courier slots and independent roles. All 132 tests passed; typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency was not tested.
+- Initial typecheck/build commands used the repository root and failed due to its missing package.json; reran successfully in chat-service. Final `postman status` is unsupported by the installed CLI. No remote workspace changes.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. No existing records were changed; enforcement applies to participant additions through this endpoint.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Chat service: system notification endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's endpoint request and explicit contract confirmations below; recorded in `chat-service/README.md`. Existing message transaction, message object, service authentication and realtime publisher.
+
+**Prompts (exact):**
+
+> OK last endpoint for other services to send notifications:
+>
+> `POST /chat/send-system-notification`
+>
+> payload:
+>
+> - order id
+> - message
+>
+> chat service will find the conversation from the order id
+>
+> and then create a system message and send it to the respective convo. then broadcast through socketio. just like how a message is usually sent.
+
+User's inline response annotations (selected text followed by exact comment):
+
+> { "orderId": "<UUID>", "message": "..." }?
+
+> yes
+
+> same service-key rules as the participant endpoint?
+
+> yes pls
+
+> Responses: same message object and 201 status as normal sending, 400 for invalid input, 404 for missing conversation, and 409 for archived conversations?
+
+> yeps
+
+> SYSTEM message: senderId: null, message text stored as content, and metadata: null?
+
+> yeps
+
+> thanks bro
+
+**Key responses:**
+
+- Asked for unrecorded interface/security details before coding; implemented the user's confirmed contract. Added POST /chat/send-system-notification with orderId/message validation and participant-style service authentication.
+- Looks up the conversation by orderId and reuses normal message persistence with SYSTEM type and null sender. Existing schema defaults preserve metadata null. Reuses transactional timestamp update, response mapping and post-commit message publisher; existing TEXT sending remains covered.
+- Added 19 HTTP regression cases covering validation, key precedence, Bearer-only denial, missing/archived conversations, exact persisted/returned message, post-commit publishing and database/broadcast failures.
+- Initial sandbox test run could not use local listeners. Reran with permitted loopback access: all 151 tests passed. Typecheck and build passed. Live MySQL and Redis cross-replica delivery were not exercised.
+- Applied the Postman API engineer skill locally; final `postman status` failed with unknown command. No remote workspace changes.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for exact payload keys, authentication, statuses/response and SYSTEM message fields; user confirmed all four before implementation.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Order/chat: reservation-success delivery and message deduplication
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-08
+Scope: Appended this task's disclosure record.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Boilerplate; Refactor/Docs
+**Governing decision:** Team's task and annotation answers in this conversation, recorded below; existing outbox/worker implementation in `order-service/src/services/orders.service.ts`, `order-service/src/worker.ts`, and `order-service/src/queue/bull-queue.ts`; existing chat contracts in `chat-service/README.md`. The supplied integration contract is documented in `order-service/README.md` and `chat-service/README.md` in this change. Root `AGENTS.md` and `order-service/AGENTS.md` apply.
+
+**Prompts (exact):**
+Task text and annotation comments, quoted verbatim in conversation order. IDE open-tab metadata is omitted.
+
+> now i wanna integrate with order service. when order is created, need to create a new chat with the chat endpoint. and send a system message saying f"Your order {order.description} has been created"
+
+> after success of reservation!
+
+> through a worker!
+
+> use bullmq to deal with this
+
+> yes. stay open.
+
+> nope duplicate system messages are not acceptable. handle it in chat service
+
+> how is it currently dealed with in order-service when it calls credit service?
+
+> oh ya then is it possible to assign each system message an id when sending, then check that id does not exist in the db before adding, if exists then dont add?
+
+> ya. it is a uuid generated when creating the bullmq job. and stored as the message id.
+
+> yeps
+
+> dont add the message, and return a 409
+
+**Key responses:**
+Initially stopped for team decisions on trigger timing, worker delivery, failure behavior and deduplication contract. Explained the existing credit client and worker, including the available-balance-before-duplicate-check caveat, without modifying Credit Service. Implemented only after the team supplied the answers quoted above.
+
+The reservation-success `pending` to `open` transaction now records a `chat_create` outbox task containing the order details and a generated UUID message ID. Existing relay/queue handling delivers it to the existing order worker; it creates the conversation and then sends `Your order ${order.description} has been created`. The UUID is retained across retries. Chat failures use the existing BullMQ retry and dead-letter flow without changing order state or releasing credits. Added worker URL/key configuration to examples and Compose. No secrets were read or recorded.
+
+Chat system notifications now require UUID `messageId`, stored in the existing message primary key. Identical ID/order/text retries return the existing message with HTTP 200 and no write or broadcast. Collisions with different order/text or non-system messages return 409. Concurrent primary-key collisions are handled after transaction rollback. New messages retain HTTP 201. No database schema or migration changes were made.
+
+Verification: Chat Service 160 tests passed; Order Service 673 tests passed. Both typechecks and builds passed; Order Service lint passed without warnings; `git diff --check` passed. Initial sandboxed HTTP tests and the first simulation start failed due to local port restrictions; permitted reruns succeeded. The formatting command initially referenced a nonexistent Chat Service Prettier binary; formatting then completed using Order Service's installed binary. An initial Order Service typecheck caught a test-double cast and was corrected before passing.
+
+Used the Postman API Engineering, API Simulation and API Mocking skills. CLI version 1.73.0 supports simulation but rejects `postman status` as an unknown command, so no owner-workspace mock search or remote operations were performed. Added a local 503 HTTP stand-in. Ran the compiled client/worker against it on attempt five; the worker threw the expected retryable HTTP_503 error and a guard verified no order database access. The simulation request log confirmed POST /chat/conversations returned 503. Synthetic IDs and key only. Database tests use injected doubles; no live MySQL/PostgreSQL persistence or Redis/BullMQ retry scheduling was exercised. Simulation evidence is in the adjacent context YAML; raw logs were not committed.
+
+**Files:**
+
+- `.env.example` (modified)
+- `README.md` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (modified)
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/README.md` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (created)
+- `order-service/src/clients/chat.client.spec.ts` (created)
+- `postman/mocks/chat-unavailable/default.js` (created)
+- `postman/simulations/order-chat-failure.sim.yaml` (created)
+- `postman/simulations/order-chat-failure.context.yaml` (created)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for the trigger, worker delivery, order failure behavior and idempotency contract before implementing. Team confirmed successful reservation, BullMQ worker, order stays open, UUID generated with the job and used as message primary key, HTTP 200 for identical repeats and 409 for differing order/text. No unresolved team decisions were implemented. Live database and Redis verification remains unperformed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-08 — Order/chat: system message wording
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User supplied the exact system message text in chat; existing delivery contract in order-service/src/clients/chat.client.ts.
+
+**Prompts (exact):**
+
+> remove the order description from the system message
+
+> Change it to "the order has been created"
+
+**Key responses:**
+Changed the notification text to exactly `the order has been created`, updated the existing client test and service documentation. Conversation metadata still uses the existing order description. Initial test command from repository root failed because there is no root package.json; the targeted client suite passed (5 tests) from order-service before the final wording adjustment. After the final wording adjustment, the targeted client suite passed again (5 tests); git diff --check passed.
+
+**Files:**
+
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
 None.
+
+**What I kept/changed/rejected:**
+Kept all changes.
+
+**Author review:**
+tng wen xi
+
+
+## 2026-11-08 — Order/chat: status change notifications
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User's notification text, BullMQ/UUID, bearer forwarding and fallback decisions in this conversation; recorded in order-service/README.md, Status change notifications. Existing delivery contract: order-service/README.md, Chat delivery after reservation; chat-service/README.md, POST /chat/send-system-notification.
+
+**Prompts (exact):**
+
+> now i want to implement the sending of notifications every time the order status changes:
+>
+>
+>
+> - any status to cancelled: "The order has been cancelled"
+> - open to expireed: "The order has expired"
+> - open to accepted: "The order has been accepted by \<name of courier>"
+> - accepted to picked up: "The order has been picked up"
+> - picked up to delivered: "The order has been delivered"
+> - delivered to completed: "The order has been marked as completed"
+
+> oh yea same thing, use bullmq to generate a unique uuid key
+
+> since the courier triggers the acceptance, he is able to forward his bearer token to the endpoint to get username from user service. use the username.
+
+> i fhtat lookup fails, then just use "The order has been accepted".
+
+**Key responses:**
+Initially stopped for team decisions on delivery and username source, then lookup-failure behavior. Implemented notifications for the six specified transitions through the existing transactional outbox and BullMQ worker. UUID message IDs persist across retries. Acceptance forwards the request bearer to GET /users/me; failed or unusable lookups use the supplied fallback. Bearer tokens are not queued. Added tests for text, fallback, HTTP forwarding, worker success/transient/permanent outcomes, and direct notification delivery; updated existing credit-task assertions. Reviewed the Postman simulation skill and existing chat-creation failure context; no simulation was run or modified.
+
+Verification: initial root npm command failed (no root package.json); initial typecheck exposed an outdated ChatClient test double, corrected. Initial tests exposed outdated outbox assertions, corrected. Initial full-suite run could not bind local HTTP ports in the sandbox. Full suite rerun with local port access: 18 files, 685 tests passed. Typecheck, build and lint passed; git diff --check passed. Live services, database, Redis scheduling and end-to-end BullMQ delivery were not exercised.
+
+**Files:**
+
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for delivery mechanism, courier username source and lookup-failure behavior; user supplied decisions before implementation. Treated “expireed” as existing `expired` status.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — User service: existing database OTP columns
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging, Implementation code
+**Governing decision:** instructions.md Stage 18 OTP send escalation storage; existing column definitions in user-service/src/db/init.sql.
+
+**Prompts (exact):**
+
+> ```javascript
+> foc-user-service      | error: column "send_escalation_level" of relation "users_otps" does not exist
+> foc-user-service      |     at /app/node_modules/pg/lib/client.js:694:17
+> foc-user-service      |     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+> foc-user-service      |     at async Module.createOtp (/app/src/db/queries/otp.queries.ts:67:18)
+> foc-user-service      |     at async issueOtp (/app/src/services/otp.service.ts:63:3)
+> foc-user-service      |     at async <anonymous> (/app/src/services/auth.service.ts:228:5)
+> foc-user-service      |     at async withTransaction (/app/src/db/transaction.ts:18:20)
+> foc-user-service      |     at async Module.register (/app/src/services/auth.service.ts:192:3)
+> foc-user-service      |     at async <anonymous> (/app/src/controllers/auth.controller.ts:75:3) {
+> foc-user-service      |   length: 144,
+> foc-user-service      |   severity: 'ERROR',
+> foc-user-service      |   code: '42703',
+> foc-user-service      |   detail: undefined,
+> foc-user-service      |   hint: undefined,
+> foc-user-service      |   position: '83',
+> foc-user-service      |   internalPosition: undefined,
+> foc-user-service      |   internalQuery: undefined,
+> foc-user-service      |   where: undefined,
+> foc-user-service      |   schema: undefined,
+> foc-user-service      |   table: undefined,
+> foc-user-service      |   column: undefined,
+> foc-user-service      |   dataType: undefined,
+> foc-user-service      |   constraint: undefined,
+> foc-user-service      |   file: 'parse_target.c',
+> foc-user-service      |   line: '1066',
+> foc-user-service      |   routine: 'checkInsertTargets'
+> foc-user-service      | }
+> ```
+
+**Key responses:**
+Identified that CREATE TABLE IF NOT EXISTS did not update the existing users_otps table. Local information_schema query confirmed both send_escalation_level and send_blocked_until absent. Added idempotent ALTER statements matching the existing Stage 18 definitions to init.sql, and applied only those two statements in a transaction to the running local user-db. Verified send_escalation_level is SMALLINT NOT NULL DEFAULT 0 and send_blocked_until is nullable TIMESTAMPTZ. Existing data retained; no reset or service restart performed. Docker inspection initially lacked socket permission and succeeded with approved access. No registration request, OTP email, tests or build were run; verification was successful SQL execution and schema inspection. git diff --check passed.
+
+**Files:**
+
+- `user-service/src/db/init.sql` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None; applied already-recorded column definitions.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Frontend: chat entry points and role-filtered listing
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code, Boilerplate
+**Governing decision:** User request quoted below; chat-service/README.md existing listing, details, messages and sending contracts; existing frontend same-origin proxy configuration.
+
+**Prompts (exact):**
+> Now we link it to the frontend. Currently there is a button that allows requesters to message the courier when the order has been accepted. change that to say "Open chat" when the order has been created, and the text remains as that even when the courier has accepted. then add a separate button beside the notification bell with a chat logo and upon clicking that, users will see a list of their chats called by the list chats endpoint. depending on requester/courier mode, filter the chats in the http call.
+
+**Key responses:**
+Changed activity action to Open chat, available for open orders and retained through accepted/picked-up/delivered states. Added chat icon beside desktop bell and chat link in mobile menu. Replaced mock chat screen with authenticated role-filtered HTTP list, cursor pagination, unread counts, empty/loading/error states and retry. Resolves order IDs through paginated listing to existing conversation IDs; displays a retry message when worker creation has not completed. Connected details, paginated message history and text sending to documented endpoints. Incoming messages require manual Refresh messages; no socket subscription, automatic read receipts or backend contracts were changed. Added matching narrow Vite/nginx API proxies and Compose development target, preserving SPA /chat routes. Read Postman API Simulation skill; existing order-worker simulation does not cover this UI, so used component and fetch-level tests. Initial build/test attempts failed because local dependencies were missing; offline installation failed due to cache miss; npm ci then installed locked dependencies without modifying manifests/lockfile. Build passed; frontend suite passed 145 tests in 26 files; lint passed with warnings, including state-in-effect warnings; existing AuthContext tests emitted act warnings. Final targeted verification recorded below. No live authenticated backend/browser end-to-end check was performed.
+
+**Files:**
+- `frontend/src/api/chat.js` (created)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/activityShared.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/nginx/default.conf` (modified)
+- `compose.dev.yaml` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (created)
+- `frontend/tests/pages/MyActivitySplit.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. Pending credit reservation remains hidden as before; Open chat starts at existing open status. No realtime subscription decisions were made.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+**Final verification:** After adding activity-button assertions and isolating list state on mode changes, all 13 targeted tests passed across 3 files; production build and git diff --check passed.
+
+
+## 2026-11-08 — Frontend: chats list page
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User request below; existing chat-service/README.md listing ordering and conversation-details title contract; previous requester/courier filtering instruction.
+
+**Prompts (exact):**
+> add a page with route /chats and this page lists all chats in order of updatedAt DESC and with the title displayed and last message, similar to how a messaging app would work. then upon clicking an individual chat, the messages appear.
+
+**Key responses:**
+Added authenticated /chats list route, retaining /chat compatibility and /chat/:id message route. Changed nav and floating chat links to /chats and added an All chats return link. Rendered full-width rows with stored title, latest-message preview, updated timestamp and unread count. Preserved backend updatedAt DESC ordering and role filtering across pagination. Existing list response omits title, so fetched existing details for each returned conversation; no backend response shape or endpoint was altered. Added click-through/order/title/preview test. Initial targeted tests failed on expectations omitting an explicit undefined cursor argument; corrected test expectations. Final frontend suite passed 146 tests in 26 files; build passed; lint passed with warnings; git diff --check passed. Existing AuthContext tests emitted act warnings. No live browser or authenticated backend verification was run.
+
+**Files:**
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/components/TopNav.jsx` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None. Retained the previously requested requester/courier filter and cursor pagination.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Order/chat: courier participant delivery by order ID
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, debug, docs
+**Scope:** Implementation code, Debugging, Refactor/Docs
+**Governing decision:** User decisions quoted below; order-service/README.md Courier chat participation on acceptance; chat-service/README.md order participant endpoint; existing participant contract and outbox retry behavior.
+
+**Prompts (exact):**
+> it's not displaying the chats properly for the courier
+
+> oh yes sorry i forgot to ask you to add the courier as a chat participant using the endpoint. failure should also be retried.
+
+> then the worker should not retry.
+
+> can you create another endpoint in chat service `POST /chat/orders/{orderId}/participants` which behaves exactly like the conversations one but uses orderId
+
+**Key responses:**
+Diagnosed that role filtering was correct, but the local database had one requester participant and zero courier participants. Asked the team how to obtain conversation IDs and handle repeated participant conflicts before changing inter-service behavior. User specified the order-ID endpoint, background retries and no retry for 409. Implemented the new endpoint through the shared participant handler/service, resolving by orderId in the transaction before existing locking/validation. Acceptance queues courier addition atomically with its status change and existing notification; client posts accepting userId/COURIER with existing service credentials. Worker reuses existing retry/permanent-error handling: network/5xx retry, 409 stops retries and is dead-lettered. Existing accepted orders were not modified or backfilled. Added endpoint/auth/validation/conflict, client, worker and acceptance task tests. Initial sandbox endpoint tests failed because listening sockets were unavailable; reran with permitted sockets. Four existing acceptance assertions initially failed because they omitted the new task; updated them. Final results: Chat Service 169 tests and Order Service 691 tests passed; both typechecks/builds passed; Order Service lint and git diff --check passed. Extended the existing local Postman stand-in and exercised compiled worker/client with synthetic inputs against HTTP 503 then 409; asserted retryable then final failure and no order/credit access, with both requests confirmed in simulation log. No live Redis scheduling or live cross-service database persistence tested. Postman status remains unsupported by the installed CLI (unknown command). Skills used: Postman API Engineer and API Simulation. No remote workspace publishing performed.
+
+**Files:**
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `chat-service/src/order-participants.spec.ts` (created)
+- `postman/mocks/chat-unavailable/default.js` (modified)
+- `postman/simulations/order-chat-failure.context.yaml` (modified)
+- `order-service/README.md` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Stopped to request conversation-ID resolution and 409 behavior; implemented the user's supplied decisions. No historical participant backfill performed.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Frontend: send message button
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, refactor
+**Scope:** Implementation code, Debugging
+**Governing decision:** User request below; chat-service/README.md POST conversation messages contract; existing frontend sendMessage API function.
+
+**Prompts (exact):**
+> thanks bro, now make the sending of messages work
+
+> link the send message button to the endpoint to send a message in the chat
+
+**Key responses:**
+Inspected the existing form and found it already called sendMessage, which POSTs type TEXT/content with the session bearer to /chat/conversations/:id/messages. Made the send control an explicit submit button with visible Send text and styling, guarded submission for inactive chats, and disabled draft editing during requests so a successful response cannot clear a newly edited draft. Added tests verifying click-to-endpoint arguments, saved-message display/draft clearing, failed-send error/draft retention, and the actual fetch URL, method, bearer header and JSON body. All 149 frontend tests passed in 26 files; production build, lint (with warnings), and git diff --check passed. Existing AuthContext tests emitted act warnings. Tests used component/API doubles; no live authenticated backend or browser send was performed. No backend contract, realtime subscription or automatic retry behavior changed.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None; reused the existing send endpoint and form flow.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+
+## 2026-11-08 — Chat: on-demand socket rooms and realtime frontend
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, refactor, docs
+**Scope:** Implementation code, Boilerplate, Refactor/Docs
+**Governing decision:** User socket path, room timing, events and acknowledgement decisions quoted below; existing chat-service/README.md JWT lifecycle, membership rule, message:sent payload and HTTP error statuses; existing frontend order socket lifecycle.
+
+**Prompts (exact):**
+> OKKK now make the frontend subscribe to the socketio rooms for real-time updates
+
+> /chat-socket.io
+
+> how does order service do it?
+
+> okk then no need payload and acknowledgement also.
+
+> **automatically join user-level rooms on connection, but join conversation rooms on demand when the user opens a chat.**
+
+> just conversation id.&#x20;
+>
+> response sends:
+> ```yaml
+> success: true
+> conversationId: <id>
+> ```
+>
+> (if successful)
+>
+>
+>
+> else:
+> ```yaml
+> success: false
+> error: {
+> ...
+> }
+> ```
+
+> `chat:join`, `chat:leave`. follow the error code and error message.
+
+The second and third quoted items were user response annotations.
+
+**Key responses:**
+Inspected existing order socket subscription behavior and asked for the chat event/payload/path decisions before implementation. Implemented /chat-socket.io, automatic authenticated user room, chat:join/chat:leave with conversation UUID string and success/error acknowledgements. Join checks database participation and revokedAt; errors mirror existing REST HTTP status codes/messages. Leaves permit cleanup without membership reauthorization. Room operations execute sequentially to preserve join/leave order. Production passes Prisma into the socket server; Vite/nginx proxy the separate chat socket path. Frontend connects with the existing JWT refresh/reconnect lifecycle, disconnects on logout, joins open conversations, leaves on unmount, rejoins after ready and refreshes missed history. message:sent updates threads and triggers role-filtered list reload; messages merge by ID across HTTP/socket arrivals. Added server real-socket access and delivery tests plus frontend room/reconnect/error/dedup tests. Chat Service suite passed 174 tests; typecheck and build passed. Frontend full suite passed 150 tests before the additional socket-lifecycle test; final targeted suite passed 12 tests in 2 files; frontend build and lint (with warnings) passed. git diff --check passed. Existing AuthContext tests emitted act warnings. No live authenticated browser, JWKS or cross-replica Redis check performed. No automatic read receipts or new read UI implemented.
+
+**Files:**
+- `chat-service/src/realtime/socket-server.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/nginx/default.conf` (modified)
+- `frontend/src/realtime/chatSocket.js` (created)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/realtime/chatSocket.test.jsx` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Requested event names, room timing, payload/acknowledgements and public socket path; user supplied decisions.
 
 **What I kept/changed/rejected:**
 

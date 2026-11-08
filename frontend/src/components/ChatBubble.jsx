@@ -11,6 +11,8 @@
  *        instructions.md Stage 16b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
+ * Author review:
  */
 
 import { Link, useLocation } from 'react-router-dom'
@@ -30,7 +32,7 @@ export default function ChatBubble() {
 
   return (
     <Link
-      to="/chat"
+      to="/chats"
       aria-label={unread > 0 ? `Messages, ${unread} unread` : 'Messages'}
       className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-pill bg-ink text-white shadow-modal transition-colors duration-150 hover:bg-ink-70"
     >

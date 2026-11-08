@@ -4,6 +4,14 @@ Tool: Codex (model: GPT-6), date: 2026-11-05
 Scope: Documented the team-specified admin user order history endpoint.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied order/chat delivery contract and disclosure index.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Updated system message wording per user instruction.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified status notifications.
+Author review:
+Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order participant endpoint and courier delivery.
+Author review:
 -->
 
 # order-service
@@ -154,3 +162,71 @@ Errors use the existing `{ "message": "..." }` envelope:
 
 The enum names above are internal; response bodies contain the message, following
 existing order-controller conventions.
+
+<!-- AI-generated -->
+
+## Chat delivery after reservation
+
+After successful credit reservation, the `pending` to `open` transaction writes
+one `chat_create` task into the existing outbox. Its payload contains `orderId`,
+`requesterId`, `orderDescription` and a UUID `messageId` generated once and retained
+across delivery retries. The existing order-side BullMQ worker consumes it from
+`queue:order:credit`, first calling `POST /chat/conversations`, then
+`POST /chat/send-system-notification` with the exact text
+`The order has been created`.
+
+The existing five-attempt retry settings apply (1, 2, 4 and 8 second delays).
+Network errors and HTTP 5xx are retryable; other unsuccessful HTTP responses are
+permanent failures. Final failures enter the existing dead-letter handling. Chat
+failures do not change the order status or release its credits. Identical chat
+creation and notification retries return success without duplicate records.
+
+The worker requires `CHAT_SERVICE_API_KEY` matching Chat Service's key.
+`CHAT_SERVICE_URL` defaults to `http://localhost:3005` for host execution; Compose
+sets `http://chat-service:3000`. Set these in the deployed worker environment too.
+
+<!-- AI-generated (edited by <name>). -->
+## Status change notifications
+
+The team specified these messages in the 2026-11-08 implementation conversation:
+
+| Transition | System message |
+| --- | --- |
+| Any allowed transition to cancelled | The order has been cancelled |
+| open → expired | The order has expired |
+| open → accepted | The order has been accepted by &lt;username&gt; |
+| accepted → picked_up | The order has been picked up |
+| picked_up → delivered | The order has been delivered |
+| delivered → completed | The order has been marked as completed |
+
+Each successful transition writes a `chat_notification` outbox task in the same
+transaction as the status change, alongside any existing credit tasks. Its payload
+is `{ orderId, messageId, message }`. A UUID `messageId` is generated once and
+retained through BullMQ retries. The existing order-side queue, retry settings,
+failure classification and dead-letter handling apply. Automatic expiry and
+completion use the same transition path. Existing allowed transitions are unchanged.
+
+For acceptance, order-service forwards the courier's Authorization header to
+`GET /users/me` using `USER_SERVICE_URL`, and uses the returned `username`.
+An unsuccessful lookup, network error, malformed response or missing username
+uses `The order has been accepted`. Only the final text is queued; the bearer
+token is not stored in the outbox. Delivery uses the existing
+`POST /chat/send-system-notification` endpoint.
+
+
+## Courier chat participation on acceptance
+
+Team decisions supplied on 2026-11-08: accepting an order adds its courier as a
+chat participant through `POST /chat/orders/:orderId/participants`, with body
+`{ "userId": "<accepting courier UUID>", "role": "COURIER" }` and existing service-key
+authentication. The acceptance transaction writes a `chat_participant` outbox task
+before its existing notification task. The order remains accepted if delivery fails.
+The worker uses the existing order-side queue, five attempts and exponential
+backoff for network/5xx failures. A 409 is permanent and stops retries; existing
+permanent-error/dead-letter handling applies to other 4xx responses too.
+
+This affects new acceptances; existing accepted orders are not backfilled.
+Verification: 691 tests passed; typecheck, build and lint passed. A local Postman
+HTTP simulation returned 503 then 409 to the compiled client/worker: the first
+error was retryable, the second was final, and neither accessed order or credit
+state. No real Redis retry scheduling or live cross-service persistence was tested.

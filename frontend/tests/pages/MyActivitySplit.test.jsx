@@ -8,6 +8,8 @@
  *        mocked logged-in.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Verified Open chat before and after acceptance.
+ * Author review:
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
@@ -68,12 +70,14 @@ describe('My errands / My deliveries split', () => {
     renderPage(MyErrands)
     await waitFor(() => expect(screen.getByText('Chicken rice')).toBeInTheDocument())
     expect(screen.queryByText('Laksa')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
   })
 
   it('My deliveries shows the delivery, not the errand', async () => {
     renderPage(MyDeliveries)
     await waitFor(() => expect(screen.getByText('Laksa')).toBeInTheDocument())
     expect(screen.queryByText('Chicken rice')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument()
   })
 
   it('My errands empty state reads "No errands yet"', async () => {

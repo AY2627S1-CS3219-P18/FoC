@@ -60,11 +60,15 @@
  *        visibility as the other admin links (isAdmin, both views).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
-import { Bell, LogOut, Menu, X } from 'lucide-react'
+import { Bell, LogOut, Menu, MessageCircle, X } from 'lucide-react'
 import Logo from './Logo'
 import Button from './Button'
 import CreditPill from './CreditPill'
@@ -128,6 +132,9 @@ export default function TopNav() {
                 <ActiveViewToggle />
                 <Link to="/wallet" aria-label={credits.available + ' credits available'}>
                   <CreditPill value={credits.available} size="md" />
+                </Link>
+                <Link to="/chats" aria-label="Chats" className="flex h-10 w-10 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt">
+                  <MessageCircle size={18} aria-hidden="true" />
                 </Link>
                 <button
                   type="button"
@@ -203,6 +210,7 @@ export default function TopNav() {
             {isLoggedIn && (
               <>
                 <ActiveViewToggle className="self-start" />
+                <Link to="/chats" className="flex items-center gap-2"><MessageCircle size={18} aria-hidden="true" /> Chats</Link>
                 <Link to="/wallet" className="flex items-center gap-3 rounded-card border border-line p-3">
                   <CreditPill value={credits.available} size="md" />
                   <span className="text-sm text-ink-70">available</span>

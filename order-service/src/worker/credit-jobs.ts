@@ -28,9 +28,24 @@
  *        order:failed (George, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
+ * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review:
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
+import type { ChatClient } from '../clients/chat.client.js';
+import type { ChatCreatePayload } from '../queue/tasks.js';
+import {
+  CHAT_NOTIFICATION_TASK,
+  CHAT_PARTICIPANT_TASK,
+  type ChatParticipantPayload,
+  type ChatNotificationPayload,
+  CHAT_CREATE_TASK,
+} from '../queue/tasks.js';
 import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import { SYSTEM_ACTOR } from '../domain/order-status.js';
@@ -52,6 +67,7 @@ export const TRANSIENT_RELEASE_FAILURE = 'Credit release failed (transient)';
 export interface CreditJobDeps {
   prisma: PrismaClient;
   credits: CreditsClient;
+  chat?: ChatClient;
   events?: OrderEventPublisher;
   clock?: () => Date;
   log?: (message: string) => void;
@@ -70,6 +86,7 @@ function isLastAttempt(job: CreditJob): boolean {
 export function createCreditJobProcessor({
   prisma,
   credits,
+  chat,
   events,
   clock = () => new Date(),
   log = console.error,
@@ -162,6 +179,77 @@ export function createCreditJobProcessor({
 
   return async function processCreditJob(job: CreditJob): Promise<void> {
     switch (job.name) {
+      // AI-generated (edited by <name>).
+      case CHAT_PARTICIPANT_TASK: {
+        const input = job.data as Partial<ChatParticipantPayload> | null;
+        if (
+          !input ||
+          typeof input.orderId !== 'string' ||
+          typeof input.userId !== 'string' ||
+          input.role !== 'COURIER'
+        )
+          throw new UnrecoverableError('Invalid chat_participant payload.');
+        if (!chat)
+          throw new UnrecoverableError('Chat client is not configured.');
+        const result = await chat.addParticipant(
+          input as ChatParticipantPayload,
+        );
+        if (!result.ok) {
+          if (result.kind === 'permanent')
+            throw new UnrecoverableError(
+              `Chat participant rejected: ${result.code}`,
+            );
+          throw new Error(
+            `Chat participant failed (transient): ${result.code}`,
+          );
+        }
+        return;
+      }
+      case CHAT_NOTIFICATION_TASK: {
+        const input = job.data as Partial<ChatNotificationPayload> | null;
+        if (
+          !input ||
+          !['orderId', 'messageId', 'message'].every(
+            (key) =>
+              typeof input[key as keyof ChatNotificationPayload] === 'string',
+          )
+        )
+          throw new UnrecoverableError('Invalid chat_notification payload.');
+        if (!chat)
+          throw new UnrecoverableError('Chat client is not configured.');
+        const result = await chat.notify(input as ChatNotificationPayload);
+        if (!result.ok) {
+          if (result.kind === 'permanent')
+            throw new UnrecoverableError(
+              `Chat notification rejected: ${result.code}`,
+            );
+          throw new Error(
+            `Chat notification failed (transient): ${result.code}`,
+          );
+        }
+        return;
+      }
+      case CHAT_CREATE_TASK: {
+        const input = job.data as Partial<ChatCreatePayload> | null;
+        if (
+          !input ||
+          !['orderId', 'requesterId', 'orderDescription', 'messageId'].every(
+            (key) => typeof input[key as keyof ChatCreatePayload] === 'string',
+          )
+        )
+          throw new UnrecoverableError('Invalid chat_create payload.');
+        if (!chat)
+          throw new UnrecoverableError('Chat client is not configured.');
+        const result = await chat.create(input as ChatCreatePayload);
+        if (!result.ok) {
+          if (result.kind === 'permanent')
+            throw new UnrecoverableError(
+              `Chat creation rejected: ${result.code}`,
+            );
+          throw new Error(`Chat creation failed (transient): ${result.code}`);
+        }
+        return;
+      }
       case CREDIT_RESERVE_TASK:
         return reserve(job);
       case CREDIT_RELEASE_TASK:

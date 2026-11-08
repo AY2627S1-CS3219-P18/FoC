@@ -61,6 +61,8 @@
  *        SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND -> 422 (George, 2026-10-23).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -247,6 +249,7 @@ export const transitionOrder =
     prisma: PrismaClient,
     newStatus: RequestStatus,
     events?: OrderEventPublisher,
+    userServiceUrl = 'http://localhost:3001',
   ): RequestHandler =>
   async (req, res) => {
     const actorId = req.user?.user_id;
@@ -266,7 +269,26 @@ export const transitionOrder =
       newStatus,
       actorId,
       new Date(),
-      { events },
+      {
+        events,
+        // AI-generated (edited by <name>).
+        acceptanceUsername: async () => {
+          const authorization = req.get('authorization');
+          if (!authorization) return undefined;
+          const response = await fetch(new URL('/users/me', userServiceUrl), {
+            headers: { authorization },
+          });
+          if (!response.ok) {
+            await response.body?.cancel();
+            return undefined;
+          }
+          const profile = (await response.json()) as { username?: unknown };
+          return typeof profile?.username === 'string' &&
+            profile.username.trim()
+            ? profile.username
+            : undefined;
+        },
+      },
     );
 
     if (response.ok) {

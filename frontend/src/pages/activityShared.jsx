@@ -13,6 +13,8 @@
  *        ActivityCard, Timeline and the action/role constants are unchanged from Activity.jsx.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
+ * Author review:
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -40,8 +42,7 @@ import { useOrderEvents, useSocketReady } from '../realtime/orderSocket'
 
 export const CLOSED = ['completed', 'cancelled', 'expired']
 export const ACTIVE = ['open', 'accepted', 'picked_up', 'delivered']
-// A courier and a requester can only talk while the errand is still in flight.
-const MESSAGEABLE = ['accepted', 'picked_up', 'delivered']
+const MESSAGEABLE = ['open', 'accepted', 'picked_up', 'delivered']
 const ROLE_REQUESTER = 'You requested'
 const ROLE_COURIER = 'You are delivering'
 const ACTIONS = {
@@ -135,7 +136,7 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
   const [actionError, setActionError] = useState(null)
   const dimmed = request.status === 'cancelled' || request.status === 'expired'
   const showTimeline = !CLOSED.includes(request.status)
-  const canMessage = Boolean(request.courierId) && MESSAGEABLE.includes(request.status)
+  const canMessage = MESSAGEABLE.includes(request.status)
   // F17.2: an ongoing errand can be cancelled by its requester only after its deliver-by time.
   const [loadedAt] = useState(() => Date.now())
   const pastDeadline = Boolean(request.completeBy) && Date.parse(request.completeBy) <= loadedAt
@@ -159,8 +160,8 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
   )
 
   const messageButton = canMessage && (
-    <Button variant="secondary" size="sm" onClick={() => navigate('/chat/' + request.id)}>
-      Message {other ?? (asCourier ? 'requester' : 'courier')}
+    <Button variant="secondary" size="sm" onClick={() => navigate('/chat?orderId=' + encodeURIComponent(request.id))}>
+      Open chat
     </Button>
   )
 
@@ -177,6 +178,7 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
               Edit
             </Button>
             {actionButton('cancel', 'Cancel errand', 'danger')}
+            {messageButton}
           </div>
         )
       }
