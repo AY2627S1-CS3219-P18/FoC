@@ -59,6 +59,11 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Tested the Auto-translate switch, translated display and Show original/Translate controls.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-09, Codex, model: GPT-6): Tested translation control above the timestamp.
+ * Author review:
+ * Scope (2026-11-09, Codex, model: GPT-6): Tested message metadata placement.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -850,6 +855,23 @@ describe("Chat translation", () => {
   };
   const toggle = () => screen.findByRole("switch", { name: "Auto-translate" });
 
+  // AI-generated (edited by <name>).
+  it("places translation above the received time outside the bubble", async () => {
+    open([received({ translatedContent: "Hola" }), received({ messageId: "mine", senderId: "me", content: "My message" })], "es");
+    const receivedText = await screen.findByText("Hola");
+    const ownText = screen.getByText("My message");
+    const receivedRow = receivedText.closest("li");
+    const ownRow = ownText.closest("li");
+    const receivedTime = receivedRow.querySelectorAll("time")[1];
+    const ownTime = ownRow.querySelector("time");
+    const control = screen.getByRole("button", { name: /Show original/ });
+    expect(receivedText.parentElement).not.toContainElement(receivedTime);
+    expect(ownText.parentElement).not.toContainElement(ownTime);
+    expect(receivedText.parentElement).not.toContainElement(control);
+    expect(control.compareDocumentPosition(receivedTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(ownTime.parentElement.parentElement).toHaveClass("justify-end");
+  });
+
   it("shows the saved switch state and the translated text with Show original", async () => {
     open([received({ translatedContent: "Hola" })], "es");
     expect(await screen.findByText("Hola")).toBeInTheDocument();
@@ -1016,7 +1038,7 @@ it("shows system-chat notifications as incoming FoC messages and prevents sendin
   const content = await screen.findByText("Schedule failed");
   expect(content.parentElement).toHaveTextContent("FoC");
   expect(content.parentElement).toHaveClass("rounded-bl-sm");
-  expect(content.parentElement.parentElement).toHaveClass("justify-start");
+  expect(content.parentElement.parentElement.parentElement).toHaveClass("justify-start");
   expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   expect(chatApi.sendMessage).not.toHaveBeenCalled();

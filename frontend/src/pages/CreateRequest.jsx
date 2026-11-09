@@ -100,6 +100,9 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Aligned dropdown chevrons by moving field spacing outside the control.
  * Author review: Congchen
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Raised the delivery details input maxLength from 200 to 250 to match the existing 250 limit (order-service validation and the on-screen counter).
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -403,7 +406,7 @@ function RequestForm({ order }) {
             {label('Exact delivery details', 'delivery-details', true)}
             <input 
               id="delivery-details"
-              type="text" maxLength={200}
+              type="text" maxLength={250}
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               placeholder="e.g. Meet at the side entrance."

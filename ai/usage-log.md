@@ -13207,3 +13207,79 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — frontend: Delivery details input length
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing 250-character delivery details limit (`order-service/src/services/orders.service.ts`, `order-service/prisma/schema.prisma`) and the `/250` counter in `frontend/src/pages/CreateRequest.jsx`.
+
+**Prompts (exact):**
+> quick fix for createrequest in frontend, restart chat-service so i can check the current ui
+
+**Key responses:**
+Ran the failing `CreateRequest.test.jsx` test: it expected the delivery details input to have `maxLength` 250, but the input had 200 while the counter and the order-service limit were already 250. Changed the input to 250; the file's 5 tests pass. Rebuilt and restarted chat-service in the dev Compose stack; it applied the `system_chats` migration and started.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Chat message metadata layout
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's layout instruction and `foc-mockup/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+> apply an ui update to how the text bubbles are rendered. currently the the timestamps are inside the speech bubbles. Shift them outside and below, like the original foc-mockup's. For my texts, the timestamp is aligned right, while the other person's is aligned left. For the translate/show original selector, it will be the same as foc-mockup's, but now in line with the time stamp on the right instead of above
+
+**Key responses:**
+Moved timestamps and read receipts below the bubble, aligned by sender, and placed the existing translation control to the right of the received timestamp. Kept system notice metadata centered. Added a regression test and updated an existing DOM assertion. The new test first failed on the old placement; all 37 Chat tests passed after the change. `npm run build` passed. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Translation control placement
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction and `foc-mockup/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+> nevermind, move the translate above the timestamp like the mockup
+
+**Key responses:**
+Moved the translation control above the timestamp outside the message bubble. Updated the placement test; it failed before the change and all 37 chat tests passed afterward. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

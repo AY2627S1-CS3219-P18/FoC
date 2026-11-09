@@ -300,6 +300,11 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added the chat message metadata log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Codex, model: GPT-6): Added translation placement log index row.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -822,3 +827,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 242 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
 | 243 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
 | 244 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
+| 245 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
+
+| 246 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
+| 247 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |

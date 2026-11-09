@@ -90,6 +90,11 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified Auto-translate switch, per-message Show original/Translate control and translated message display.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-09, Codex, model: GPT-6): Moved translation control above the timestamp.
+ * Author review:
+ * Scope (2026-11-09, Codex, model: GPT-6): Moved message metadata below chat bubbles.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -762,11 +767,13 @@ function Thread({ id, user, onRead, errandReturnTo }) {
               <div
                 className={`flex ${system ? "justify-center" : own ? "justify-end" : "justify-start"}`}
               >
-                <div
+                <div className="min-w-0 max-w-[85%]">
+                  {/* AI-generated (edited by <name>). */}
+                  <div
                   className={
                     system
-                      ? "max-w-[85%] rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
-                      : `min-w-0 max-w-[85%] rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
+                      ? "rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
+                      : `min-w-0 rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
                   }
                 >
                   {systemChat && (
@@ -777,6 +784,7 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                   <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                     {showTranslated ? translation : message.content}
                   </p>
+                  </div>
                   {hasTranslation && (
                     <button
                       type="button"
@@ -786,21 +794,22 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                           [message.messageId]: showTranslated ? "original" : "translated",
                         }))
                       }
-                      className="mt-1 flex min-h-6 items-center gap-1 text-xs font-medium text-blue hover:underline"
+                      className="mt-1 flex min-h-[44px] items-center gap-1 text-xs font-medium text-blue hover:underline md:min-h-0"
                     >
                       <Languages size={13} aria-hidden="true" />
                       {showTranslated ? "Show original" : "Translate"}
                     </button>
                   )}
+                  <div className={`mt-1 flex items-center gap-2 ${system ? "justify-center" : own ? "justify-end" : "justify-start"} text-ink-40`}>
                   <div
-                    className={`mt-1 flex items-center gap-1.5 whitespace-nowrap ${system ? "justify-center" : "justify-end"}`}
+                    className="flex items-center gap-1.5 whitespace-nowrap"
                   >
                     <time
                       dateTime={message.createdAt}
                       className={
                         system
                           ? "shrink-0 text-[10px] leading-4 text-ink-40"
-                          : "shrink-0 text-xs leading-5 opacity-60"
+                          : "shrink-0 text-xs leading-5 text-ink-40"
                       }
                     >
                       {date.toLocaleTimeString(undefined, {
@@ -834,6 +843,8 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                         )}
                       </span>
                     )}
+                  </div>
+
                   </div>
                 </div>
               </div>
