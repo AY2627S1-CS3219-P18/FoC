@@ -298,6 +298,8 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the orderless notification call
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -821,3 +823,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 239 | 2026-11-09 | chat-service | Orderless notification caller instructions | Documented orderless payloads, routing, migration and retry examples. |
 
 | 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |
+
+| 241 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
