@@ -12612,3 +12612,40 @@ Asked where the frontend learns the saved toggle state; answered above. Open: th
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-09 — user-service: Prisma migrations for the user database
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Boilerplate
+**Governing decision:** Team decision in chat on 2026-11-09: use Prisma migrate (order/chat style) for user-service.
+
+**Prompts (exact):**
+> * gemini is tested and works
+> * update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
+> * blank log entries are accepted
+>
+>
+> after updating the database, generate a PR message
+
+Answer to a multiple-choice question (via the question dialog): "Prisma migrate (order/chat style)", chosen over a supplier-style re-runnable migrate script and applying the ALTER by hand.
+
+**Key responses:**
+Stopped to ask which migration tooling to use (§2.1; the other services differ: order and chat use Prisma migrate, supplier uses a `migrate.ts` script, credit uses only `init.sql`). Added Prisma as a dev dependency with a model-less `prisma/schema.prisma`, `prisma.config.ts` reading `DATABASE_URL`, `npm run db:deploy`, a baseline migration (a copy of `init.sql` before `preferred_lang`) and a second migration adding `users.preferred_lang`. Verified on scratch databases that an empty database migrates fully, and that a database built from `init.sql` migrates after `prisma migrate resolve --applied 20261109000000_baseline`; a second deploy reported no pending migrations. Applied the same baseline-resolve and deploy to the local dev `user_service` database (5 existing users kept); scratch databases were dropped. Typecheck and ESLint of the config passed. Not done: wiring `db:deploy` into the Compose or ECS startup, and removing `init.sql` (the test database, CI and fresh Compose volumes still use it, so it must keep every migrated column).
+
+**Files:**
+- `user-service/prisma/schema.prisma` (created)
+- `user-service/prisma.config.ts` (created)
+- `user-service/prisma/migrations/20261109000000_baseline/migration.sql` (created)
+- `user-service/prisma/migrations/20261109010000_add_preferred_lang/migration.sql` (created)
+- `user-service/prisma/migrations/migration_lock.toml` (created; no header possible)
+- `user-service/package.json`, `user-service/package-lock.json` (modified; JSON, no header)
+- `user-service/.env.example`, `user-service/README.md` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked which migration approach to use; answered above. Open: `prisma migrate dev` and `db push` must not be used (no models, so they would propose dropping tables); `init.sql` and the migrations are two places to keep in step; deployments (Compose, ECS) do not yet run `db:deploy`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
