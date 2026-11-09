@@ -43,6 +43,8 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Documented the team-specified system conversations.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Documented the approved health endpoint.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -61,6 +63,14 @@ npm run dev
 ```
 
 `DATABASE_URL` supplies the MySQL host, port, user, password and database. `CHAT_SERVICE_API_KEY` is required and must match the order worker's configured secret. Never commit real credentials.
+
+## GET /health
+
+<!-- AI-generated -->
+
+Matches order-service's health endpoint. No authentication is required. Runs `SELECT 1`
+against the chat database; returns `200` with `{"status":"ok","database":"up"}`
+on success, or `503` with `{"status":"error","database":"down"}` on query failure.
 
 ## POST /chat/conversations
 
