@@ -296,6 +296,8 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the local authentication startu
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Indexed the orderless notification caller guide update.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -817,3 +819,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 238 | 2026-11-09 | user-service | Local authentication startup fix | Set the recorded elevation TTL and restored the frontend auth proxy. |
 
 | 239 | 2026-11-09 | chat-service | Orderless notification caller instructions | Documented orderless payloads, routing, migration and retry examples. |
+
+| 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |

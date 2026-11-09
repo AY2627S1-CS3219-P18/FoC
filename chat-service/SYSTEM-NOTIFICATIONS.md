@@ -10,6 +10,8 @@ Scope (2026-11-08, Codex, model: GPT-6): Explained .env key configuration and th
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Documented the implemented orderless notification payload, routing, retries and setup.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added an orderless JSON example directly under Request body.
+Author review: tng wen xi
 -->
 
 # Sending system notifications from another microservice
@@ -68,11 +70,24 @@ configuration; do not put it in frontend code or commit its value.
 
 ## Request body
 
+With an associated order:
+
 ```json
 {
   "orderId": "0192f0c4-0000-7000-8000-000000000001",
   "messageId": "0192f0c4-0000-7000-8000-000000000002",
   "message": "The order has been created"
+}
+```
+
+Without an associated order, supply `orderId: null` and the recipient's user UUID:
+
+```json
+{
+  "orderId": null,
+  "recipient": "0192f0c4-0000-7000-8000-00000000000a",
+  "messageId": "0192f0c4-0000-7000-8000-000000000004",
+  "message": "Your scheduled order could not be created."
 }
 ```
 

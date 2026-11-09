@@ -12970,3 +12970,32 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — Orderless request body example
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing orderless endpoint contract documented in chat-service/SYSTEM-NOTIFICATIONS.md.
+
+**Prompts (exact):**
+
+> in SYSTEM-NOTIFICATIONS.md, request body, add another example for when orderId is null and there is a recepient
+
+**Key responses:**
+Added an orderless JSON example directly under Request body with null orderId, recipient UUID, messageId and message. Labelled the existing order-linked example. All JSON examples parsed successfully; no application tests run for this documentation-only update.
+
+**Files:**
+
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
