@@ -34,6 +34,12 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Removed the credit_reserve job and its retry / retries-exhausted
+ *        handling; createOrder now reserves synchronously (George, 2026-11-09). Release
+ *        and chat jobs are unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
@@ -48,18 +54,10 @@ import {
 } from '../queue/tasks.js';
 import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
-import { SYSTEM_ACTOR } from '../domain/order-status.js';
-import type { OrderRequest } from '../generated/prisma/client.js';
-import type { OrderEventPublisher } from '../realtime/order-events.js';
-import { transitionOrder } from '../services/orders.service.js';
 import {
   CREDIT_RELEASE_TASK,
-  CREDIT_RESERVE_TASK,
   isReleasePayload,
-  isReservePayload,
 } from '../queue/tasks.js';
-
-export const RESERVE_RETRIES_EXHAUSTED = 'RESERVE_RETRIES_EXHAUSTED';
 
 /** Start of the error a transient release failure throws; the re-drive matches on it. */
 export const TRANSIENT_RELEASE_FAILURE = 'Credit release failed (transient)';
@@ -68,9 +66,7 @@ export interface CreditJobDeps {
   prisma: PrismaClient;
   credits: CreditsClient;
   chat?: ChatClient;
-  events?: OrderEventPublisher;
   clock?: () => Date;
-  log?: (message: string) => void;
 }
 
 /** The subset of a BullMQ job the handlers read; keeps them testable without Redis. */
@@ -79,82 +75,12 @@ export type CreditJob = Pick<
   'id' | 'name' | 'data' | 'attemptsMade' | 'opts'
 >;
 
-function isLastAttempt(job: CreditJob): boolean {
-  return job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-}
-
 export function createCreditJobProcessor({
   prisma,
   credits,
   chat,
-  events,
   clock = () => new Date(),
-  log = console.error,
 }: CreditJobDeps) {
-  /** Moves a pending order to `to`; resolves to the updated order, or null if it had moved on. */
-  /** Publishes the order event (with `reason` on a failure) once committed. */
-  async function settle(
-    orderId: string,
-    to: 'open' | 'failed',
-    {
-      releaseCredits = false,
-      reason,
-    }: { releaseCredits?: boolean; reason?: string } = {},
-  ): Promise<OrderRequest | null> {
-    const result = await transitionOrder(
-      prisma,
-      orderId,
-      to,
-      SYSTEM_ACTOR,
-      clock(),
-      { releaseCredits, events, reason },
-    );
-    if (result.ok) return result.order;
-    // Not pending any more (a duplicate job already settled it) or the order is gone.
-    log(`Reservation for ${orderId} not applied (${to}): ${result.error}`);
-    return null;
-  }
-
-  async function reserve(job: CreditJob): Promise<void> {
-    if (!isReservePayload(job.data)) {
-      throw new UnrecoverableError(`Invalid ${CREDIT_RESERVE_TASK} payload.`);
-    }
-    const { requestId } = job.data;
-
-    const order = await prisma.orderRequest.findUnique({
-      where: { id: requestId },
-    });
-    if (!order)
-      throw new UnrecoverableError(`Order ${requestId} does not exist.`);
-    if (order.status !== 'pending') return; // already settled by an earlier run
-
-    const result = await credits.reserve(job.data);
-
-    if (result.ok) {
-      await settle(requestId, 'open');
-      return;
-    }
-
-    if (result.kind === 'permanent') {
-      // Nothing was reserved, so nothing to release.
-      await settle(requestId, 'failed', { reason: result.code });
-      return;
-    }
-
-    if (!isLastAttempt(job)) {
-      throw new Error(`Credit reserve failed (transient): ${result.code}`);
-    }
-
-    // Out of retries. The reserve may still have committed on credit-service's side
-    // without us hearing back, so queue a release with the failure.
-    await settle(requestId, 'failed', {
-      releaseCredits: true,
-      reason: RESERVE_RETRIES_EXHAUSTED,
-    });
-    // Fail the job so the dead-letter handler records it.
-    throw new Error(`Credit reserve retries exhausted: ${result.code}`);
-  }
-
   async function release(job: CreditJob): Promise<void> {
     if (!isReleasePayload(job.data)) {
       throw new UnrecoverableError(`Invalid ${CREDIT_RELEASE_TASK} payload.`);
@@ -250,8 +176,6 @@ export function createCreditJobProcessor({
         }
         return;
       }
-      case CREDIT_RESERVE_TASK:
-        return reserve(job);
       case CREDIT_RELEASE_TASK:
         return release(job);
       default:

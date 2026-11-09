@@ -13052,3 +13052,63 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: order creation reserves credits synchronously with no retry, so the client learns the outcome in the response; a create while the requester has a `pending` order is rejected 409 with the message "Another order request is currently pending, please try again."; answers to the agent's questions (below) fix the status codes, the failed-row handling and the release on a transient failure.
+
+**Prompts (exact):**
+
+> no, continue working on this branch,
+>
+> remove the retry mechanism when an order is created, so its fully sync now,
+> when creation fails, the client knows immediately
+>
+> and when an order in "pending" state exists, any requests to create an new order is rejected 409 conflict with message "Another order request is currently pending, please try again."
+
+> (Agent questions) When the synchronous credit reserve succeeds, what should POST /orders return? / When the reserve fails, what happens to the order row and the response? / Which HTTP statuses for a failed reserve? / The 409 check: whose pending orders count?
+> (Answers) 201 with the open order / Keep row as failed / 422 / 503 / Same requester only
+
+> (Agent question) If credit-service is unreachable or returns 5xx, the reserve may still have gone through on its side. Today the worker then queues a credit release. Keep that?
+> (Answer) Queue a release
+
+**Key responses:**
+- `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
+- New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
+- The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
+- Error messages reuse the existing order-service texts for `INSUFFICIENT_CREDITS` and `CREDIT_SERVICE_UNAVAILABLE`; `CREDIT_RESERVE_REJECTED` reads "Your credits could not be reserved. Please try again." (agent wording, modelled on the frontend's former generic text).
+- Frontend `CreateRequest.jsx`: Post awaits the response and shows its message on failure; the socket wait and `/orders/mine` re-check are removed. `reserveFailureMessage` in `api/orders.js` is removed (no other users). `watchOrderEvents` in `realtime/orderSocket.js` is left in place, now unused by this page.
+- Points raised for the team (not decided by the agent): `credits.client.ts` has no request timeout ("by decision"), so a hung credit-service call keeps the request open and the order `pending`, during which the requester gets 409; if the API process dies between writing the pending row and settling it, the order stays `pending` and blocks that requester's creates, with nothing that settles it (the worker's reserve job used to cover this). ECS task definitions are not in the repo, so `CREDIT_SERVICE_URL` must be added to the order-service API task by hand.
+
+Verification: order-service `npm run typecheck` and `npm run lint` clean; `npm test` 18 files, 707 tests passed. The e2e suite (`test/credit-saga.e2e-spec.ts`, rewritten for the synchronous flow, with new sequential and concurrent pending-order tests) typechecks but was **not run**: no Postgres was available. Frontend `npm test`: 222 passed, 1 failed, the same pre-existing `CreateRequest.test.jsx` `maxLength` failure noted in the previous entry.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked the success status, failed-row handling, failure status codes, 409 scope and transient-failure release (answers above). Open for the team: request timeout on the reserve call, and recovery of an order left `pending` by a crash (see Key responses). The advisory lock is an agent implementation choice for the team to confirm.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

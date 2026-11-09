@@ -302,6 +302,10 @@ Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #24
        order-service default complete-by. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #242 for
+       synchronous order creation and the pending-order 409. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -827,3 +831,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |
 
 | 241 | 2026-11-09 | order-service | order-service: Default complete-by of one hour | One-hour default complete-by; edit null keeps it; ASAP relabelled. |
+
+| 242 | 2026-11-09 | order-service | order-service: Synchronous order creation and pending-order 409 | Create reserves credits in the request; 409 while a pending order exists. |

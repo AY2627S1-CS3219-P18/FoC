@@ -13,6 +13,11 @@
  * Scope: Added the frontend client for creating orders with the existing POST /orders contract.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): createOrder's comment describes the synchronous POST /orders (George,
+ *        2026-11-09); reserveFailureMessage, used only by the removed socket wait, is gone.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 /*
@@ -52,7 +57,8 @@
 
 import { request } from './http'
 
-// 202 with the `pending` order; the outcome arrives later as order:created / order:failed.
+// 201 with the open order: credits are reserved before the response. 409 while another order of
+// the caller's is pending, 422 / 503 when the reserve is refused / credit-service is down.
 // payload: { supplierId, description, deliveryLocationId, deliveryDetails, credits, completeBy?, additionalDetails? }
 export const createOrder = (payload) => request('/orders', { method: 'POST', json: payload })
 
@@ -114,14 +120,3 @@ export function orderErrorMessage(error, action) {
   const table = action === 'accept' ? ACCEPT_TEXT : ERROR_TEXT
   return (typeof code === 'string' && table[code]) || error?.message || 'Something went wrong.'
 }
-
-// order:failed `reason` when the credit reservation failed (credit-service code, or the
-// worker's own code after its retries ran out).
-const REASON_TEXT = {
-  INSUFFICIENT_UNRESERVED_CREDITS: 'You don’t have enough unreserved credits for this offer.',
-  RESERVE_RETRIES_EXHAUSTED: 'The credit service couldn’t be reached. Please try again.',
-}
-
-export const reserveFailureMessage = (reason) =>
-  REASON_TEXT[reason] ||
-  'Your credits couldn’t be reserved' + (reason ? ' (' + reason + ')' : '') + '. Please try again.'

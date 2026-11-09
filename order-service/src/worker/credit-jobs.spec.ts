@@ -25,6 +25,12 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Added tests for order-based participant delivery.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): credit_reserve is no longer a worker job (createOrder reserves
+ *        synchronously, George 2026-11-09); its cases are replaced by one asserting a
+ *        leftover job fails without retries.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError } from 'bullmq';
@@ -34,10 +40,6 @@ import type {
 } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
 import type { OrderRequest } from '../generated/prisma/client.js';
-import type {
-  OrderEvent,
-  OrderEventPublisher,
-} from '../realtime/order-events.js';
 import {
   createCreditJobProcessor,
   isFinalFailure,
@@ -110,155 +112,30 @@ function setup(
 
   const reserve = vi.fn(async () => reserveResult);
   const release = vi.fn(async () => releaseResult);
-  const published: OrderEvent[] = [];
-  const publish = vi.fn(async (events: OrderEvent[]) => {
-    published.push(...events);
-  });
   const credits: CreditsClient = { reserve, release };
-  const events: OrderEventPublisher = { publish };
   const processJob = createCreditJobProcessor({
     prisma: prisma as unknown as PrismaClient,
     credits,
-    events,
     clock: () => NOW,
-    log: () => {},
   });
   return {
     processJob,
     prisma,
     reserve,
     release,
-    published,
     outbox,
     orderRequest,
     row: () => row,
   };
 }
 
-describe('credit_reserve', () => {
-  it('opens the order and notifies the requester when credits are reserved', async () => {
+describe('credit_reserve (removed 2026-11-09)', () => {
+  it('is no longer handled: a leftover job fails without retries', async () => {
     const t = setup('pending');
-    await t.processJob(job('credit_reserve', reservePayload));
-
-    expect(t.reserve).toHaveBeenCalledWith(reservePayload);
-    expect(t.row()?.status).toBe('open');
-    expect(t.published).toEqual([
-      expect.objectContaining({
-        name: 'order:created',
-        rooms: [`user:${REQUESTER}`, 'listing'],
-        payload: expect.objectContaining({
-          orderId: ORDER_ID,
-          status: 'open',
-          version: 1,
-          occurredAt: NOW.toISOString(),
-          order: expect.objectContaining({
-            deliveryLocationId: 12,
-            deliveryDetails: 'Nil',
-            credits: 4,
-          }),
-        }),
-      }),
-    ]);
-    expect(t.outbox.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          taskName: 'chat_create',
-          version: 1,
-          payload: {
-            orderId: ORDER_ID,
-            requesterId: REQUESTER,
-            orderDescription: '1x chicken rice',
-            messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
-          },
-        },
-      ],
-    });
-    await t.processJob(job('credit_reserve', reservePayload));
-    expect(t.outbox.createMany).toHaveBeenCalledTimes(1);
-  });
-
-  it('fails the order without a release and passes the reason on a permanent failure', async () => {
-    const t = setup('pending', {
-      ok: false,
-      kind: 'permanent',
-      status: 422,
-      code: 'INSUFFICIENT_UNRESERVED_CREDITS',
-    });
-    await t.processJob(job('credit_reserve', reservePayload));
-
-    expect(t.row()?.status).toBe('failed');
-    expect(t.outbox.createMany).not.toHaveBeenCalled();
-    expect(t.published).toEqual([
-      expect.objectContaining({
-        name: 'order:failed',
-        rooms: [`user:${REQUESTER}`],
-        payload: expect.objectContaining({
-          reason: 'INSUFFICIENT_UNRESERVED_CREDITS',
-        }),
-      }),
-    ]);
-  });
-
-  it('throws to retry a transient failure, leaving the order pending', async () => {
-    const t = setup('pending', {
-      ok: false,
-      kind: 'transient',
-      code: 'fetch failed',
-    });
-    await expect(
-      t.processJob(job('credit_reserve', reservePayload, { attemptsMade: 2 })),
-    ).rejects.toThrow('transient');
-
-    expect(t.row()?.status).toBe('pending');
-    expect(t.published).toEqual([]);
-  });
-
-  it('on the last attempt fails the order, queues a release, notifies, and fails the job', async () => {
-    const t = setup('pending', {
-      ok: false,
-      kind: 'transient',
-      status: 503,
-      code: 'X',
-    });
-    await expect(
-      t.processJob(job('credit_reserve', reservePayload, { attemptsMade: 4 })),
-    ).rejects.toThrow('retries exhausted');
-
-    expect(t.row()?.status).toBe('failed');
-    expect(t.outbox.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          taskName: 'credit_release',
-          payload: { requestId: ORDER_ID },
-          version: 1,
-        },
-      ],
-    });
-    expect(t.published).toEqual([
-      expect.objectContaining({
-        name: 'order:failed',
-        payload: expect.objectContaining({
-          reason: 'RESERVE_RETRIES_EXHAUSTED',
-        }),
-      }),
-    ]);
-  });
-
-  it('does nothing when the order was already settled (duplicate job)', async () => {
-    const t = setup('open');
-    await t.processJob(job('credit_reserve', reservePayload));
-    expect(t.reserve).not.toHaveBeenCalled();
-    expect(t.published).toEqual([]);
-  });
-
-  it('rejects a bad payload or a missing order without retries', async () => {
-    const t = setup(null);
-    await expect(
-      t.processJob(job('credit_reserve', { requestId: ORDER_ID })),
-    ).rejects.toBeInstanceOf(UnrecoverableError);
     await expect(
       t.processJob(job('credit_reserve', reservePayload)),
     ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(t.reserve).not.toHaveBeenCalled();
   });
 });
 

@@ -88,6 +88,13 @@
  *        2026-11-09). Existing NULL rows are not touched.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-09): createOrder reserves credits synchronously (one credit-service call,
+ *        no retry) and settles the order to open / failed before returning; the outbox
+ *        credit_reserve task is gone. A requester with a pending order gets
+ *        ORDER_PENDING_EXISTS; a per-requester advisory lock guards the check (George,
+ *        2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -97,7 +104,6 @@ import {
   buildChatNotificationTask,
   buildChatParticipantTask,
   buildReleaseTask,
-  buildReserveTask,
   buildTransferTask,
   type OutboxTask,
 } from '../queue/tasks.js';
@@ -113,6 +119,7 @@ import {
 } from '../domain/order-status.js';
 import { canViewOrder, type Viewer } from '../domain/order-access.js';
 import type { SuppliersClient } from '../clients/suppliers.client.js';
+import type { CreditsClient } from '../clients/credits.client.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import {
   eventsForEdit,
@@ -219,6 +226,8 @@ export const createOrder = async (
   requesterId: string,
   requestPayload: CreateOrderPayload,
   refs: ReferenceCheck,
+  credits: CreditsClient,
+  events?: OrderEventPublisher,
 ): Promise<CreateOrderResult> => {
   const errors: ErrorCode[] = [];
 
@@ -270,13 +279,20 @@ export const createOrder = async (
   });
   if (missing.length) return { ok: false, errors: missing };
 
-  // Issue #4: the order starts `pending` and is hidden until credit-service confirms
-  // the reservation. The reserve call itself happens in the worker; here we only
-  // commit the order and its outbox task together, so neither can exist without
-  // the other. The order id is the reservation's idempotency key (requestId).
+  // The order is written `pending`, then credit-service is called once, in this request,
+  // with no retry; the order settles to `open` or `failed` before the response (George,
+  // 2026-11-09). A requester with a `pending` order cannot create another until it settles.
+  // The advisory lock serialises one requester's creates, so two at once cannot both pass
+  // the pending check. The order id is the reservation's idempotency key (requestId).
   console.log('CREATING REQUEST');
-  const order = await prisma.$transaction(async (tx) => {
-    const created = await tx.orderRequest.create({
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${requesterId}))`;
+    const pending = await tx.orderRequest.findFirst({
+      where: { requesterId, status: 'pending' },
+      select: { id: true },
+    });
+    if (pending) return null;
+    return tx.orderRequest.create({
       data: {
         requesterId,
         supplierId: requestPayload.supplierId,
@@ -291,17 +307,70 @@ export const createOrder = async (
         status: 'pending',
       },
     });
-    await insertOutboxRows(tx, created.version, [
-      buildReserveTask({
-        requestId: created.id,
-        userId: requesterId,
-        amount: created.credits,
-      }),
-    ]);
-    return created;
   });
-  return { ok: true, order };
+  if (!created) return { ok: false, errors: [ErrorCode.ORDER_PENDING_EXISTS] };
+
+  const reserved = await credits.reserve({
+    requestId: created.id,
+    userId: requesterId,
+    amount: created.credits,
+  });
+
+  if (reserved.ok) {
+    const order = await settleReservation(prisma, created.id, 'open', { events });
+    return { ok: true, order };
+  }
+
+  if (reserved.kind === 'permanent') {
+    // credit-service refused, so nothing was reserved and nothing needs releasing.
+    await settleReservation(prisma, created.id, 'failed', {
+      events,
+      reason: reserved.code,
+    });
+    return {
+      ok: false,
+      errors: [
+        reserved.code === INSUFFICIENT_UNRESERVED_CREDITS
+          ? ErrorCode.INSUFFICIENT_CREDITS
+          : ErrorCode.CREDIT_RESERVE_REJECTED,
+      ],
+    };
+  }
+
+  // Unreachable or 5xx: the reserve may still have committed on credit-service's side
+  // without us hearing back, so the failure also queues a release (George, 2026-11-09).
+  await settleReservation(prisma, created.id, 'failed', {
+    events,
+    reason: ErrorCode.CREDIT_SERVICE_UNAVAILABLE,
+    releaseCredits: true,
+  });
+  return { ok: false, errors: [ErrorCode.CREDIT_SERVICE_UNAVAILABLE] };
 };
+
+/** credit-service's code for a requester without enough unreserved credits. */
+const INSUFFICIENT_UNRESERVED_CREDITS = 'INSUFFICIENT_UNRESERVED_CREDITS';
+
+/** Moves a just-created `pending` order to its reservation outcome, as the system. */
+async function settleReservation(
+  prisma: PrismaClient,
+  orderId: string,
+  to: 'open' | 'failed',
+  options: TransitionOptions,
+): Promise<OrderRequest> {
+  const result = await transitionOrder(
+    prisma,
+    orderId,
+    to,
+    SYSTEM_ACTOR,
+    new Date(),
+    options,
+  );
+  // Only this request moves its own pending order, so a refusal here is a bug.
+  if (!result.ok) {
+    throw new Error(`Order ${orderId} could not move to ${to}: ${result.error}`);
+  }
+  return result.order;
+}
 
 export type GetOrderResult =
   | { ok: true; order: OrderRequest }
@@ -499,9 +568,9 @@ const FUNDED_STATUSES: ReadonlySet<RequestStatus> = new Set([
 
 export interface TransitionOptions {
   /**
-   * Queue a credit release even though the order is not yet funded. Used by the
-   * reservation saga when it gives up after transient failures: the reserve may have
-   * committed on credit-service's side without us hearing back (George, 2026-10-19).
+   * Queue a credit release even though the order is not yet funded. Used by createOrder
+   * when the reserve call fails transiently: the reserve may have committed on
+   * credit-service's side without us hearing back (George, 2026-10-19 / 2026-11-09).
    */
   releaseCredits?: boolean;
   /** Courier username lookup supplied by the acceptance request; never persisted. */
