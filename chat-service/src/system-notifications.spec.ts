@@ -5,7 +5,7 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: Congchen
  */
 import request from "supertest";
 import { createApp } from "./app.js";
