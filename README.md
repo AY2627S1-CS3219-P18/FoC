@@ -288,6 +288,16 @@ Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #23
        frontend Stage 27c (Elevate button/timer, OTP modal, retry flow). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-09, Codex, model: GPT-6): Added the system conversations disclosure index row.
+Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added the system chat frontend disclosure index row.
+Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Indexed the local authentication startup fix.
+Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Indexed the orderless notification caller guide update.
+Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -801,3 +811,13 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 233 | 2026-11-09 | user-service | Stage 27a: Admin OTP routes and elevation token | Added admin elevation OTP routes and a per-device elevation token (access token now carries sid/typ). |
 | 234 | 2026-11-09 | user-service | Stage 27b: Enforcing elevation on status and role changes | Suspend/unsuspend and promote/demote now require a valid Elevated-Token, checked last. |
 | 235 | 2026-11-09 | frontend | Stage 27c: Frontend (Elevate button/timer, OTP modal, retry flow) | Added the admin elevation UI: Elevate button/timer, OTP modal, kept-reason retry flow. |
+
+| 236 | 2026-11-09 | chat-service/frontend | System conversations | Implemented lazy system chats, notification routing, read-only UI and tests. |
+
+| 237 | 2026-11-09 | frontend | System chat frontend linkage | Pinned FoC chats and displayed incoming notifications with disabled sending. |
+
+| 238 | 2026-11-09 | user-service | Local authentication startup fix | Set the recorded elevation TTL and restored the frontend auth proxy. |
+
+| 239 | 2026-11-09 | chat-service | Orderless notification caller instructions | Documented orderless payloads, routing, migration and retry examples. |
+
+| 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |

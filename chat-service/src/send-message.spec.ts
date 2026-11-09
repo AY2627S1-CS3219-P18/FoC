@@ -4,6 +4,8 @@
  * Scope: Tested the team-specified message sending contract and post-commit broadcasts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -216,4 +218,13 @@ it("returns the committed message if broadcasting throws", async () => {
   } finally {
     log.mockRestore();
   }
+});
+
+// AI-generated (edited by <name>).
+it("forbids participant sends to an orderless system conversation", async () => {
+  const t = setup();
+  t.findUnique.mockResolvedValue({ ...t.row, orderId: null });
+  expect((await t.post()).status).toBe(403);
+  expect(t.create).not.toHaveBeenCalled();
+  expect(t.publish).not.toHaveBeenCalled();
 });

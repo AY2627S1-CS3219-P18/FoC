@@ -27,6 +27,8 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified participant read positions in message history.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -103,7 +105,17 @@ export async function listConversations(
   userId: string,
   input: ListInput,
 ) {
-  const participant = { userId, ...(input.role ? { role: input.role } : {}) };
+  const participant = {
+    userId,
+    ...(input.role
+      ? {
+          OR: [
+            { role: input.role },
+            { role: null, conversation: { orderId: null } },
+          ],
+        }
+      : {}),
+  };
   const rows = await prisma.conversation.findMany({
     where: {
       participants: { some: participant },
@@ -316,6 +328,7 @@ export async function sendMessage(
       where: { conversationId },
       select: {
         status: true,
+        orderId: true,
         participants: { select: { userId: true, revokedAt: true } },
       },
     });
@@ -324,6 +337,8 @@ export async function sendMessage(
       (p) => p.userId === senderId,
     );
     if (senderId !== null && !participant) return { status: 403 as const };
+    if (senderId !== null && conversation.orderId === null)
+      return { status: 403 as const };
     const input = validate();
     if (typeof input === "number") return { status: input };
     if (
@@ -478,16 +493,25 @@ export async function addParticipant(
 // AI-generated
 export async function sendSystemNotification(
   prisma: PrismaClient,
-  input: { orderId: string; message: string; messageId: string },
+  input: {
+    orderId: string | null;
+    recipient?: string;
+    message: string;
+    messageId: string;
+  },
 ) {
   const existingResult = async () => {
     const row = await prisma.message.findUnique({
       where: { id: input.messageId },
-      include: { conversation: { select: { orderId: true } } },
+      include: {
+        conversation: { select: { orderId: true, systemChat: true } },
+      },
     });
     if (!row) return null;
     if (
       row.conversation.orderId !== input.orderId ||
+      (input.orderId === null &&
+        row.conversation.systemChat?.userId !== input.recipient) ||
       row.content !== input.message ||
       row.type !== "SYSTEM" ||
       row.senderId !== null
@@ -508,10 +532,13 @@ export async function sendSystemNotification(
   };
   const existing = await existingResult();
   if (existing) return existing;
-  const conversation = await prisma.conversation.findUnique({
-    where: { orderId: input.orderId },
-    select: { conversationId: true },
-  });
+  const conversation =
+    input.orderId === null
+      ? await getSystemConversation(prisma, input.recipient!)
+      : await prisma.conversation.findUnique({
+          where: { orderId: input.orderId },
+          select: { conversationId: true },
+        });
   if (!conversation) return { status: 404 as const };
   try {
     return await sendMessage(
@@ -534,6 +561,39 @@ export async function sendSystemNotification(
       error.code === "P2002"
     ) {
       const winner = await existingResult();
+      if (winner) return winner;
+    }
+    throw error;
+  }
+}
+
+// AI-generated (edited by <name>).
+async function getSystemConversation(prisma: PrismaClient, userId: string) {
+  const find = () => prisma.systemChat.findUnique({ where: { userId } });
+  const existing = await find();
+  if (existing) return existing;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const conversation = await tx.conversation.create({
+        data: {
+          orderId: null,
+          title: "FoC",
+          participants: { create: { userId, role: null } },
+        },
+      });
+      return tx.systemChat.create({
+        data: { userId, conversationId: conversation.conversationId },
+      });
+    });
+  } catch (error) {
+    // The unique user key arbitrates races; the loser rolls back its conversation.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      const winner = await find();
       if (winner) return winner;
     }
     throw error;

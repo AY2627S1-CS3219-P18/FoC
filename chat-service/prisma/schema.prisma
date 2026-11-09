@@ -5,9 +5,11 @@
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review: tng wen xi
 // Scope (2026-11-08, Codex, model: GPT-6): Added the supplied message schema.
-// Author review:
+// Author review: tng wen xi
 // Scope (2026-11-08, Codex, model: GPT-6): Renamed the two tables as requested; retained existing constraint names.
-// Author review:
+// Author review: tng wen xi
+// Scope (2026-11-09, Codex, model: GPT-6): Implemented the team-specified system conversations.
+// Author review: tng wen xi
 
 generator client {
   provider = "prisma-client"
@@ -28,12 +30,13 @@ enum ParticipantRole {
 }
 model Conversation {
   conversationId String @id @default(uuid()) @map("conversation_id") @db.Char(36)
-  orderId String @unique(map: "chats_order_id_key") @map("order_id") @db.Char(36)
+  orderId String? @unique(map: "chats_order_id_key") @map("order_id") @db.Char(36)
   title String @map("chat_title") @db.Text
   status ConversationStatus @default(ACTIVE)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime @default(now()) @map("updated_at") @db.DateTime(3)
   participants ChatParticipant[]
+  systemChat SystemChat?
   messages Message[]
   @@index([updatedAt, conversationId], map: "chats_updated_at_conversation_id_idx")
   @@map("conversations")
@@ -42,7 +45,7 @@ model ChatParticipant {
   id String @id @default(uuid()) @db.Char(36)
   chatId String @map("chat_id") @db.Char(36)
   userId String @map("user_id") @db.Char(36)
-  role ParticipantRole
+  role ParticipantRole?
   lastReadMessageId String? @map("last_read_message_id") @db.Char(36)
   joinedAt DateTime @default(now()) @map("joined_at") @db.DateTime(3)
   revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
@@ -66,4 +69,11 @@ model Message {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   conversation Conversation @relation(fields: [chatId], references: [conversationId], onDelete: Restrict, onUpdate: Restrict)
   @@map("messages")
+}
+
+model SystemChat {
+  userId String @id @map("user_id") @db.Char(36)
+  conversationId String @unique @map("conversation_id") @db.Char(36)
+  conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade, onUpdate: Cascade)
+  @@map("system_chats")
 }

@@ -5,7 +5,9 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import { STATUS_CODES } from "node:http";
 import { z } from "zod";
@@ -42,6 +44,8 @@ export function createSocketServer(
     }
     try {
       socket.data.user = await verifyToken(token);
+      if (socket.data.user.user_id === "SYSTEM")
+        throw new Error("unauthorized");
       next();
     } catch {
       next(new Error("unauthorized"));
