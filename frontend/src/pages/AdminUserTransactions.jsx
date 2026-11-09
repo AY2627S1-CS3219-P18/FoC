@@ -18,12 +18,25 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - this page's Suspend/Unsuspend/Promote/Demote buttons
+ *        call the same updateUserStatus/updateUserRole that AdminUsers.jsx does, which Stage
+ *        27b now gates behind elevation, so they need the same gate even though the stage's
+ *        Elevate button/timer are /admin/users-only. Reused useElevatedActionFlow
+ *        (utils/elevation.js) rather than duplicating that logic: not elevated opens
+ *        ElevationOtpModal before ConfirmActionDialog, elevated opens it straight away, and
+ *        runAction's catch retries through the same open dialog on a mid-submit
+ *        ELEVATION_REQUIRED, identically to AdminUsers.jsx.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
+import ElevationOtpModal from '../components/ElevationOtpModal'
 import EmptyState from '../components/EmptyState'
 import { Pager } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
@@ -34,6 +47,7 @@ import { listUserOrders } from '../api/orders'
 import { useUserName, useSupplier } from '../api/lookups'
 import { describeError } from '../api/errorMessages'
 import { ACTION_SUCCESS, ConfirmActionDialog, getRowActions } from './AdminUsers'
+import { useElevatedActionFlow } from '../utils/elevation'
 
 const STATUS_OPTIONS = [
   'pending',
@@ -149,6 +163,7 @@ export default function AdminUserTransactions() {
   const navigate = useNavigate()
   const { user: viewer } = useAuth()
   const { showToast } = useToast()
+  const elevation = useElevatedActionFlow()
   const [searchParams, setSearchParams] = useSearchParams()
   const page = Number(searchParams.get('page')) || 1
 
@@ -195,6 +210,10 @@ export default function AdminUserTransactions() {
       setConfirm(null)
       showToast(ACTION_SUCCESS[action](shownProfile.username), 'success')
     } catch (err) {
+      if (err.code === 'ELEVATION_REQUIRED') {
+        elevation.withElevation(() => runAction(action, reasonPayload))
+        return
+      }
       setConfirm(null)
       showToast(describeError(err).message, 'error')
       reloadProfile()
@@ -258,22 +277,30 @@ export default function AdminUserTransactions() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         {actions.suspend === 'suspend' && (
-          <Button size="sm" variant="danger" onClick={() => setConfirm('suspend')}>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => elevation.withElevation(() => setConfirm('suspend'))}
+          >
             Suspend
           </Button>
         )}
         {actions.suspend === 'unsuspend' && (
-          <Button size="sm" onClick={() => setConfirm('unsuspend')}>
+          <Button size="sm" onClick={() => elevation.withElevation(() => setConfirm('unsuspend'))}>
             Unsuspend
           </Button>
         )}
         {actions.role === 'promote' && (
-          <Button size="sm" onClick={() => setConfirm('promote')}>
+          <Button size="sm" onClick={() => elevation.withElevation(() => setConfirm('promote'))}>
             Promote to admin
           </Button>
         )}
         {actions.role === 'demote' && (
-          <Button size="sm" variant="danger" onClick={() => setConfirm('demote')}>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => elevation.withElevation(() => setConfirm('demote'))}
+          >
             Demote to user
           </Button>
         )}
@@ -387,6 +414,13 @@ export default function AdminUserTransactions() {
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={(reasonPayload) => runAction(confirm, reasonPayload)}
+        />
+      )}
+
+      {elevation.elevationModalOpen && (
+        <ElevationOtpModal
+          onClose={elevation.closeElevationModal}
+          onVerified={elevation.handleElevated}
         />
       )}
     </div>

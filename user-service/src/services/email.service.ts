@@ -21,6 +21,10 @@
 //   reuse it; this file now imports it. Output unchanged. No requirements, architecture,
 //   schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27a - add the "Admin Action" entry to PURPOSE_COPY, per instructions.md
+//   Stage 27's OTP table (exact subject line given there). No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
@@ -51,6 +55,10 @@ const PURPOSE_COPY: Record<string, { subject: string; intro: string }> = {
   "Change Password": {
     subject: "Confirm your FoC password change",
     intro: "Use the code below to confirm your password change.",
+  },
+  "Admin Action": {
+    subject: "Your FoC admin privileges elevation verification code",
+    intro: "Use the code below to elevate your admin privileges.",
   },
 };
 

@@ -8,12 +8,25 @@
 //   the GET /auth/.well-known/jwks.json controller test and signWithOtherKey (which conflates
 //   "no kid" with "wrong key entirely" since it never sets a kid at all).
 // Author review:
+// 2026-11-09: Stage 27a - signAccessToken/verifyAccessToken now also carry `sid` and header
+//   `typ: at+JWT`; added coverage for the new header `typ` rejection (elevation token, plain
+//   JWT) and for signElevationToken/verifyElevationToken (RS256, sub/role/sid/iat/exp, sid
+//   mismatch). Governing decision: instructions.md Stage 27. No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 import jwt from 'jsonwebtoken';
 import { describe, expect, it } from 'vitest';
-import { getJwks, signAccessToken, verifyAccessToken } from '../../src/utils/jwt.js';
+import {
+  getJwks,
+  signAccessToken,
+  signElevationToken,
+  verifyAccessToken,
+  verifyElevationToken,
+} from '../../src/utils/jwt.js';
 import {
   privateKey,
   publicKey,
+  signElevationToken as signTestElevationToken,
   signExpiredToken,
   signToken,
   signWithOtherKey,
@@ -21,29 +34,32 @@ import {
 } from '../helpers/keys.js';
 
 describe('signAccessToken', () => {
-  it('produces an RS256 token with claims { sub, role } and a ~15 minute expiry', () => {
-    const token = signAccessToken({ userId: 'abc', role: 'admin' });
+  it('produces an RS256 token (header typ: at+JWT) with claims { sub, role, sid } and a ~15 minute expiry', () => {
+    const token = signAccessToken({ userId: 'abc', role: 'admin', sid: 'sid-1' });
     const decoded = jwt.decode(token, { complete: true })!;
     const payload = decoded.payload as jwt.JwtPayload;
 
     expect(decoded.header.alg).toBe('RS256');
+    expect(decoded.header.typ).toBe('at+JWT');
     expect(payload.sub).toBe('abc');
     expect(payload.role).toBe('admin');
+    expect(payload.sid).toBe('sid-1');
     expect(payload.exp! - payload.iat!).toBe(15 * 60);
-    expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'role', 'sub']);
+    expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'role', 'sid', 'sub']);
   });
 
   it('is verifiable with the public key', () => {
-    const token = signAccessToken({ userId: 'abc', role: 'user' });
+    const token = signAccessToken({ userId: 'abc', role: 'user', sid: 'sid-1' });
     expect(() => jwt.verify(token, publicKey(), { algorithms: ['RS256'] })).not.toThrow();
   });
 });
 
 describe('verifyAccessToken', () => {
-  it('returns { user_id, role } from a valid token', () => {
-    expect(verifyAccessToken(signToken({ sub: 'u1', role: 'super admin' }))).toEqual({
+  it('returns { user_id, role, sid } from a valid token', () => {
+    expect(verifyAccessToken(signToken({ sub: 'u1', role: 'super admin', sid: 'sid-9' }))).toEqual({
       user_id: 'u1',
       role: 'super admin',
+      sid: 'sid-9',
     });
   });
 
@@ -65,10 +81,11 @@ describe('verifyAccessToken', () => {
   });
 
   it('rejects an HS256 token signed with the public key (algorithm pinned to RS256)', () => {
-    const forged = jwt.sign({ role: 'super admin' }, publicKey(), {
+    const forged = jwt.sign({ role: 'super admin', sid: 'sid-1' }, publicKey(), {
       algorithm: 'HS256',
       subject: 'attacker',
       expiresIn: '15m',
+      header: { alg: 'HS256', typ: 'at+JWT' },
     });
     expect(() => verifyAccessToken(forged)).toThrow();
   });
@@ -77,28 +94,98 @@ describe('verifyAccessToken', () => {
     const forged = jwt.sign({ role: 'super admin' }, '', {
       algorithm: 'none',
       subject: 'attacker',
+      header: { alg: 'none', typ: 'at+JWT' },
     });
     expect(() => verifyAccessToken(forged)).toThrow();
   });
 
   it('throws on a token with no kid header at all, even when signed by the real key', () => {
-    const noKid = jwt.sign({ role: 'user' }, privateKey(), {
+    const noKid = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
       algorithm: 'RS256',
       subject: 'u1',
       expiresIn: '15m',
+      header: { alg: 'RS256', typ: 'at+JWT' },
     });
     expect(jwt.decode(noKid, { complete: true })!.header.kid).toBeUndefined();
     expect(() => verifyAccessToken(noKid)).toThrow();
   });
 
   it('throws on a token whose kid matches neither known key, even when signed by the real key', () => {
-    const unknownKid = jwt.sign({ role: 'user' }, privateKey(), {
+    const unknownKid = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
       algorithm: 'RS256',
       subject: 'u1',
       expiresIn: '15m',
       keyid: 'some-other-kid',
+      header: { alg: 'RS256', typ: 'at+JWT', kid: 'some-other-kid' },
     });
     expect(() => verifyAccessToken(unknownKid)).toThrow();
+  });
+
+  it('rejects an elevation token (typ: ep+JWT)', () => {
+    expect(() => verifyAccessToken(signTestElevationToken())).toThrow();
+  });
+
+  it("rejects a plain JWT (jsonwebtoken's default header typ: 'JWT')", () => {
+    const plain = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
+      algorithm: 'RS256',
+      subject: 'u1',
+      expiresIn: '15m',
+      keyid: process.env.JWT_KEY_ID,
+    });
+    expect(jwt.decode(plain, { complete: true })!.header.typ).toBe('JWT');
+    expect(() => verifyAccessToken(plain)).toThrow();
+  });
+});
+
+describe('signElevationToken', () => {
+  it('produces an RS256 token (header typ: ep+JWT) with claims { sub, role, sid } and the configured expiry', () => {
+    const token = signElevationToken({ userId: 'abc', role: 'admin', sid: 'sid-1' });
+    const decoded = jwt.decode(token, { complete: true })!;
+    const payload = decoded.payload as jwt.JwtPayload;
+
+    expect(decoded.header.alg).toBe('RS256');
+    expect(decoded.header.typ).toBe('ep+JWT');
+    expect(payload.sub).toBe('abc');
+    expect(payload.role).toBe('admin');
+    expect(payload.sid).toBe('sid-1');
+    expect(payload.exp! - payload.iat!).toBe(15 * 60);
+    expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'role', 'sid', 'sub']);
+  });
+});
+
+describe('verifyElevationToken', () => {
+  it('returns { user_id, role, sid } from a valid token', () => {
+    expect(
+      verifyElevationToken(signTestElevationToken({ sub: 'u1', role: 'admin', sid: 'sid-9' })),
+    ).toEqual({ user_id: 'u1', role: 'admin', sid: 'sid-9' });
+  });
+
+  it('rejects an access token (typ: at+JWT)', () => {
+    expect(() => verifyElevationToken(signToken())).toThrow();
+  });
+
+  it("rejects a plain JWT (jsonwebtoken's default header typ: 'JWT')", () => {
+    const plain = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
+      algorithm: 'RS256',
+      subject: 'u1',
+      expiresIn: '15m',
+      keyid: process.env.JWT_KEY_ID,
+    });
+    expect(() => verifyElevationToken(plain)).toThrow();
+  });
+
+  it('throws on an expired elevation token', () => {
+    const expired = jwt.sign(
+      { role: 'admin', sid: 'sid-1', exp: Math.floor(Date.now() / 1000) - 60 },
+      privateKey(),
+      {
+        algorithm: 'RS256',
+        subject: 'u1',
+        keyid: process.env.JWT_KEY_ID,
+        header: { alg: 'RS256', typ: 'ep+JWT' },
+      },
+    );
+    expect(() => verifyElevationToken(expired)).toThrow();
   });
 });
 

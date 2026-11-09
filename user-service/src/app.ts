@@ -15,10 +15,14 @@
 // 2026-11-06: Stage 26d - mount the audit log router at /admin/audit-logs.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27a - mount the admin OTP router at /admin.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { ZodError } from 'zod';
+import adminOtpRouter from './routes/adminOtp.routes.js';
 import auditLogRouter from './routes/auditLog.routes.js';
 import authRouter from './routes/auth.routes.js';
 import meRouter from './routes/me.routes.js';
@@ -40,6 +44,7 @@ app.use('/auth', authRouter);
 app.use('/users/me', meRouter);
 app.use('/users', usersRouter);
 app.use('/admin/audit-logs', auditLogRouter);
+app.use('/admin', adminOtpRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {

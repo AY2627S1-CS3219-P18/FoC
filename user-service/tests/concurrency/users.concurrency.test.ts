@@ -18,10 +18,19 @@
  *        request cannot have added a link to.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Both requests now also send a matching Elevated-Token header, since both routes now
+ *        require elevation (Stage 27b). Fixture value, not a new assertion: these tests are
+ *        about the concurrent-write race, not elevation itself.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import app from '../../src/app.js';
+import { signElevationToken } from '../../src/utils/jwt.js';
 import { CONCURRENT_REQUESTS as N, LOOP_ITERATIONS } from '../helpers/constants.js';
 import {
   getAuditLogRowsForTarget,
@@ -46,6 +55,8 @@ describe('concurrent PUT /users/:id/status', () => {
   it('different target statuses on the same user: no deadlock, no 500, one status wins', async () => {
     const admin = await createUserWithRole('admin', 'admin');
     const token = await accessTokenFor(admin);
+    const { sub, sid } = jwt.decode(token) as { sub: string; sid: string };
+    const elevation = signElevationToken({ userId: sub, role: 'admin', sid });
 
     for (let i = 0; i < LOOP_ITERATIONS; i++) {
       const target = await createActiveUser(`target${i}`);
@@ -58,6 +69,7 @@ describe('concurrent PUT /users/:id/status', () => {
           request(app)
             .put(`/users/${target.id}/status`)
             .set('Authorization', bearer(token))
+            .set('Elevated-Token', elevation)
             .send({ status, reason: reasonFor[status] }),
         ),
       );
@@ -93,6 +105,8 @@ describe('concurrent PUT /users/:id/role', () => {
   it('different roles on the same target: no deadlock, no 500, one role wins', async () => {
     const superAdmin = await createUserWithRole('sa', 'super admin');
     const token = await accessTokenFor(superAdmin);
+    const { sub, sid } = jwt.decode(token) as { sub: string; sid: string };
+    const elevation = signElevationToken({ userId: sub, role: 'super admin', sid });
 
     for (let i = 0; i < LOOP_ITERATIONS; i++) {
       const target = await createActiveUser(`roletarget${i}`);
@@ -105,6 +119,7 @@ describe('concurrent PUT /users/:id/role', () => {
           request(app)
             .put(`/users/${target.id}/role`)
             .set('Authorization', bearer(token))
+            .set('Elevated-Token', elevation)
             .send({ role, reason: reasonFor[role] }),
         ),
       );
