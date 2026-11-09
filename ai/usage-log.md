@@ -13112,3 +13112,37 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: switching view while on a page of the old view goes to the new view's main page instead of showing "This is only available in ... mode". This replaces, for the toggle only, `instructions.md` Stage 22's "Toggling the view" row ("The user stays on the current page").
+
+**Prompts (exact):**
+
+> ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
+
+**Key responses:**
+- "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
+- `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
+- `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
+- Implementation choice by the agent: the redirect lives in the toggle, not in `ViewGate`, because a `ViewGate` redirect would fire on the optimistic flip and leave the user on the wrong page after a failed switch. Opening another view's page directly still shows the blocked-page message.
+
+Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both directions, shared page, failed switch, `viewForPath` cases) passes; full frontend suite 235 passed, 1 failed (the pre-existing `CreateRequest.test.jsx` `maxLength` failure); oxlint clean on the changed files. Checked in the in-app browser against a throwaway local mock API (scratch file outside the repo): Suppliers -> Courier landed on Find errands, My deliveries -> Requester landed on Suppliers.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+`instructions.md` Stage 22 still describes the old toggle behaviour; the team may want to update it. The page-to-view list now exists in `views.js` and in `App.jsx`'s `ViewGate` props.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
