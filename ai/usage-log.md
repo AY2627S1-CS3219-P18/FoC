@@ -13114,3 +13114,75 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — Scheduled Errands Stage 28 c1: supplier-service service-key access (PR, not merged)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage c1: supplier-service service-key access (PR for Congchen to review)"
+
+**Prompts (exact):**
+> let's go to c1
+> ok go for it
+> continue where you left off
+
+**Key responses:**
+Added a `Supplier-Order-Service-Key` fallback to `GET /api/v1/suppliers/:id` and
+`GET /api/v1/suppliers/reference/location` only, as an alternative to a user JWT, per
+instructions.md Stage 28 c1. Implementation: `authenticate.ts` tries the existing JWT flow first
+(unchanged; a valid JWT still works even if a wrong key is also sent); only when there is no
+valid JWT does it check the key, scoped by request path to the two routes named above, using a
+new constant-time comparison helper (`constantTimeEqual.ts`, sha256 + `timingSafeEqual`).
+`requireRole.ts` skips the role check when the request was authenticated via the key
+(`req.supplierServiceKeyAuthenticated`). Added `SUPPLIER_ORDER_SERVICE_API_KEY` to
+supplier-service's config loader, `.env.example`, `vitest.config.ts`'s test env, the root
+`.env.example`, and `compose.yaml`'s supplier-service environment block (not the worker, which
+never serves these routes).
+
+Stop-and-ask raised: instructions.md explicitly asks the agent to flag it if the service's error
+envelope has no `code` field, since supplier-service's envelope is `{status_code, error, message,
+timestamp, details?}` with no `code`. Asked the user; they chose to put the code in `error`
+(`{error: "INVALID_SERVICE_KEY"}`), reusing the slot that otherwise holds human strings like
+"Unauthorized"/"Forbidden", rather than changing the envelope shape or overloading `message`.
+
+Also asked the user how to sequence this against the still-uncommitted Stage 28a/28b work before
+branching (a workflow question, not a design one): they chose to commit 28a+28b together as one
+PR (#172, merged) before branching fresh off `main` for this stage.
+
+Updated `supplier-service/PROJECT_STATE.md` (new workstream W9, decision C54, Last
+updated/Branch lines) and `docs/project-state/done-ledger.md`, per that service's
+`maintaining-project-state` skill, noting this is a PR for Congchen's review, not merged.
+
+**Verification:** `npx tsc --noEmit`, `npm run lint`, `npm run build` all clean; full suite
+`npx vitest run` — 444/444 tests pass (46 files), including a new end-to-end test file
+(`test/routes/supplier.serviceKey.test.ts`, 9 tests covering every case instructions.md Stage 28
+c1 lists: valid key on both routes, wrong key with/without a JWT, a valid JWT unaffected by a
+wrong key, no key and no JWT, the key rejected on two other routes, and that the secret is never
+logged) plus one added case in `requireRole.test.ts`.
+
+**Files:**
+- `supplier-service/src/middleware/authenticate.ts` (modified)
+- `supplier-service/src/middleware/requireRole.ts` (modified)
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/types/express.d.ts` (modified)
+- `supplier-service/src/utils/constantTimeEqual.ts` (created)
+- `supplier-service/.env.example` (modified)
+- `supplier-service/vitest.config.ts` (modified)
+- `supplier-service/test/routes/supplier.serviceKey.test.ts` (created)
+- `supplier-service/test/middleware/requireRole.test.ts` (modified)
+- `supplier-service/PROJECT_STATE.md` (modified)
+- `supplier-service/docs/project-state/done-ledger.md` (modified)
+- `.env.example` (modified, root)
+- `compose.yaml` (modified, root)
+
+**Deviations / questions raised for the team:**
+The error-shape question and the commit-sequencing question above, both answered by the user.
+Otherwise none — this stage's behaviour table in instructions.md was followed exactly, including
+leaving `openapi.yaml` (already uncommitted per that service's own Q5) untouched.
+
+**What I kept/changed/rejected:**
+
+
+**Author review:**
+

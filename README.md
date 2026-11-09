@@ -828,3 +828,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 
 | 242 | 2026-11-09 | user-service | Scheduled Errands Stage 28b: User-service worker endpoint | Added GET /users/worker/:id behind a new service-key check, returning status/lockedUntil. |
 | 243 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
+| 244 | 2026-11-09 | supplier-service | Scheduled Errands Stage 28 c1: supplier-service service-key access (PR, not merged) | Added a service-key alternative to a JWT on 2 supplier read routes, for order-service's worker. |

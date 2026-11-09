@@ -18,6 +18,10 @@
   * Scope (2026-11-04, Claude Code, model: claude-sonnet-5-5): excluded *.apidemo.test.ts (live-stack suite) from the default run.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): added SUPPLIER_ORDER_SERVICE_API_KEY,
+ *        per instructions.md Stage 28 c1. No requirements, architecture, schema, or API decisions
+ *        were made by the AI tool.
+ * Author review:
  */
 import { configDefaults, defineConfig } from 'vitest/config';
 
@@ -36,6 +40,7 @@ export default defineConfig({
       REDIS_HOST: 'supplier-redis',
       REDIS_PORT: '6379',
       USER_SERVICE_URL: 'http://user-service:3001',
+      SUPPLIER_ORDER_SERVICE_API_KEY: 'test-supplier-order-service-key',
     },
   },
 });

@@ -5,22 +5,46 @@
  *        local RS256 verification per user-service/docs/jwks-verification-guide.md. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): added a Supplier-Order-Service-Key
+ *        fallback, scoped to GET /suppliers/:id and GET /suppliers/reference/location only, per
+ *        instructions.md Stage 28 c1. A valid JWT still wins when both are sent; the key is
+ *        checked only when there is no valid JWT. No requirements, architecture, schema, or API
+ *        decisions were made by the AI tool.
+ * Author review:
  */
 import { createPublicKey, createVerify, type JsonWebKey } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "../config.js";
 import { AppError } from "../utils/AppError.js";
+import { constantTimeEqual } from "../utils/constantTimeEqual.js";
 
 type Jwks = { keys: JsonWebKey[] };
 
 let cachedJwks: Jwks | undefined;
 let jwksRequest: Promise<Jwks> | undefined;
 
+const SERVICE_KEY_HEADER = "supplier-order-service-key";
+
+// GET /suppliers/:id and GET /suppliers/reference/location only (instructions.md Stage 28 c1).
+// `req.path` here is relative to the apiV1 router, e.g. "/suppliers/reference/location" or
+// "/suppliers/<id>".
+function acceptsServiceKey(path: string): boolean {
+  return path === "/suppliers/reference/location" || /^\/suppliers\/[^/]+$/.test(path);
+}
+
 function unauthorized(): AppError {
   return new AppError(
     401,
     "Unauthorized",
     "Bearer token is missing or invalid.",
+  );
+}
+
+function invalidServiceKey(): AppError {
+  return new AppError(
+    401,
+    "INVALID_SERVICE_KEY",
+    "Supplier service key is missing or invalid.",
   );
 }
 
@@ -137,6 +161,24 @@ function verifyAccessToken(
   return { user_id: payloadValues.sub, role: payloadValues.role };
 }
 
+// Falls back to the Supplier-Order-Service-Key on the two routes that accept it, when there is
+// no valid JWT. Any other route, or a missing key, gets the original "no valid JWT" error.
+function fallbackToServiceKeyOrUnauthorized(req: Request, next: NextFunction): void {
+  const suppliedKey = req.headers[SERVICE_KEY_HEADER];
+  if (!acceptsServiceKey(req.path) || typeof suppliedKey !== "string") {
+    next(unauthorized());
+    return;
+  }
+
+  if (!constantTimeEqual(suppliedKey, config.supplierOrderServiceApiKey)) {
+    next(invalidServiceKey());
+    return;
+  }
+
+  req.supplierServiceKeyAuthenticated = true;
+  next();
+}
+
 export async function authenticate(
   req: Request,
   _res: Response,
@@ -148,7 +190,7 @@ export async function authenticate(
     !authHeader.startsWith("Bearer ") ||
     authHeader.length <= "Bearer ".length
   ) {
-    next(unauthorized());
+    fallbackToServiceKeyOrUnauthorized(req, next);
     return;
   }
 
@@ -166,13 +208,13 @@ export async function authenticate(
 
     const key = await getKey(headerValues.kid);
     if (!key) {
-      next(unauthorized());
+      fallbackToServiceKeyOrUnauthorized(req, next);
       return;
     }
 
     req.user = verifyAccessToken(token, key);
     next();
   } catch {
-    next(unauthorized());
+    fallbackToServiceKeyOrUnauthorized(req, next);
   }
 }

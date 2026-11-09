@@ -1,4 +1,10 @@
 # AI Assistance Disclosure:
+# Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+# Scope: Added SUPPLIER_ORDER_SERVICE_API_KEY to supplier-service's environment, per
+#        instructions.md Stage 28 c1. No requirements, architecture, schema, or API decisions
+#        were made by the AI tool.
+# Author review:
+# AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-11-08
 # Scope: Configured the team-specified order worker Chat Service connection.
 # No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -462,6 +468,7 @@ services:
       REDIS_HOST: supplier-redis
       REDIS_PORT: 6379
       USER_SERVICE_URL: http://user-service:3001
+      SUPPLIER_ORDER_SERVICE_API_KEY: ${SUPPLIER_ORDER_SERVICE_API_KEY:?set SUPPLIER_ORDER_SERVICE_API_KEY in .env}
       PHOTO_STORE_ENDPOINT: ${PHOTO_STORE_ENDPOINT:-http://host.docker.internal:9000}
       PHOTO_STORE_BUCKET: ${PHOTO_STORE_BUCKET:-supplier-photos}
       PHOTO_STORE_ACCESS_KEY: ${PHOTO_STORE_ACCESS_KEY:-photostoredev}
