@@ -13605,3 +13605,127 @@ tables is implemented as specified.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 g: Frontend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage g: Frontend"
+
+**Prompts (exact):**
+
+> let's go to g
+
+(Continuing the same task from the Stage 28 f session: "read through instructions.md. i have
+finished up to 28e. let's start with f. dont forget the git workflow". Before implementing,
+asked and the user confirmed: the series create/edit route (`/series/new` and
+`/series/:id/edit`, as instructions.md requires proposing before adding) and that this stage
+ships as one PR, not split.)
+
+> for the yearly thing, can you only allow users to pick one month per year
+
+**Key responses:**
+Added `domain/seriesRule.js`: converts the recurrence picker's own state to and from the plain
+RRULE text order-service stores, using the `rrule` npm package (added to `package.json`, per
+the stage's "Add rrule to frontend/package.json") - the same library order-service's
+`domain/series-rule.ts` uses, so both sides interpret a stored rule identically. Covers
+daily/weekly/monthly (on a date, or the Nth weekday/day/weekend day via BYSETPOS)/yearly (in
+chosen months, same Nth form) and the end condition (never/on date/after N), plus a
+human-readable summary for the Scheduled section. `components/RecurrencePicker.jsx` is the
+iOS-style picker UI over that state (frequency chips, an "every N ..." stepper, weekly day
+chips, monthly's two sub-modes, yearly's month chips, the end-condition controls).
+
+`api/series.js` mirrors `api/orders.js`'s shape exactly for the series endpoints
+(create/list-mine/get/edit/delete); series errors carry only `{ message }` (no code), so
+`seriesErrorMessage` just falls back to it.
+
+`CreateRequest.jsx` gained `seriesMode`: the same form now also creates/edits a recurring
+errand, sharing every common field and adding series-only sections - Start (now/later, startAt
+sent only on create since `editSeries` has no such field) and Repeat (RecurrencePicker). The
+"deliver by" section becomes a plain date/time pair (series mode never has "ASAP"); the gap
+between it and the start time is sent as `durationMinutes` (capped at 1440), per the stage's
+"completeBy picked as date/time, sent as durationMinutes" line. Credits stay editable in series
+mode (unlike a normal order's fixed-once-posted offer), per the API table ("all fields
+editable, including credits"). Added `/series/new` and `/series/:id/edit` to `App.jsx`
+(`RequireAuth` + `ViewGate requiredView REQUESTER`, same wrapping as `/requests/new` and
+`/requests/:id/edit`) and to `routing/views.js`'s `PAGE_VIEW` as `VIEWS.REQUESTER` (see
+Deviations: Stage 29 had explicitly flagged this gap).
+
+Added the "Scheduled" section (`components/ScheduledSeriesSection.jsx`) above "Active now" in
+`MyErrands.jsx`: lists the requester's series (paused included; a one-time series shows until
+it posts) with a status chip, the rule summary, and the next 3 dates (`series.upcomingDates`,
+already computed by order-service), plus pause/resume/edit/delete actions. Each of
+pause/resume/delete opens a reminder dialog (mirroring `AdminUsers.jsx`'s
+`ConfirmActionDialog` shape) naming `series.activeOrderCount` (already computed server-side,
+no extra fetch) - "N errands ... won't be affected." This section also carries the "+ New"
+button that opens `/series/new` (see Deviations: where the stage's revived "Schedule for
+later" stub lands).
+
+Added the `failed` order status: `STATUS_LABELS`/`StatusChip` styling, `FAILURE_REASON_LABELS`
+in `data/requests.js` mapping every `SeriesFailureReason` value (series.service.ts/
+series-worker.ts) to a human sentence (unrecognised codes fall back to a generic line), `failed`
+joining `CLOSED` in `activityShared.jsx` (dimmed, in History, no "Open chat" - already excluded
+from `MESSAGEABLE`) with the reason shown instead of the usual "credits returned" line (a
+failed series row never had a reservation). Orders with a `seriesId` get a "From a recurring
+errand" tag, which disappears once the series is deleted (order-service's FK `ON DELETE SET
+NULL` already clears it - no frontend logic needed beyond checking the field). Removed the dead
+`postAt` mock field and the unused `postAtLabel` helper from `data/requests.js` (the mock
+`requests` array, `getRequest`, `minutesUntil` and `expiryLabel` are still imported elsewhere,
+so kept, even though `getRequest` itself has no call sites either - out of this stage's asked
+scope).
+
+**Verification:** `npx oxlint src tests` clean (pre-existing warnings elsewhere in the
+codebase, none in the new/touched files). `npx vitest run` - 264/265 tests pass (39 files),
+including 4 new test files (`tests/domain/seriesRule.test.js`: 21 tests, the RRULE build/parse
+round-trip and summaries; `tests/components/ScheduledSeriesSection.test.jsx`: 5 tests, the rule
+summary/next-dates display and the pause/resume/delete reminder dialogs' text and API calls;
+`tests/pages/CreateRequestSeries.test.jsx`: 2 tests, series create (startAt, rrule,
+durationMinutes) and edit (rebuilt rrule, no startAt sent); `tests/pages/
+MyErrandsFailedStatus.test.jsx`: 1 test, the Failed chip/reason/series-tag/no-Open-chat). The
+one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion) is pre-existing on
+`main` before this stage's changes (confirmed by running the suite against the unmodified
+tree) and unrelated to this work - not touched.
+
+**Files:**
+
+- `frontend/src/api/series.js` (created)
+- `frontend/src/components/RecurrencePicker.jsx` (created)
+- `frontend/src/components/ScheduledSeriesSection.jsx` (created)
+- `frontend/src/domain/seriesRule.js` (created)
+- `frontend/tests/domain/seriesRule.test.js` (created)
+- `frontend/tests/components/ScheduledSeriesSection.test.jsx` (created)
+- `frontend/tests/pages/CreateRequestSeries.test.jsx` (created)
+- `frontend/tests/pages/MyErrandsFailedStatus.test.jsx` (created)
+- `frontend/package.json` / `package-lock.json` (added the `rrule` dependency)
+- `frontend/src/App.jsx` (modified: `/series/new`, `/series/:id/edit` routes)
+- `frontend/src/components/StatusChip.jsx` (modified: `failed` style)
+- `frontend/src/data/requests.js` (modified: `failed` status, `FAILURE_REASON_LABELS`, removed
+  dead `postAt`/`postAtLabel`)
+- `frontend/src/pages/CreateRequest.jsx` (modified: `seriesMode`)
+- `frontend/src/pages/MyErrands.jsx` (modified: renders `ScheduledSeriesSection`)
+- `frontend/src/pages/activityShared.jsx` (modified: `failed` in `CLOSED`, reason text,
+  "from series" tag)
+- `frontend/src/routing/views.js` (modified: `PAGE_VIEW` entries for the two new routes)
+
+**Deviations / questions raised for the team:**
+`routing/views.js`'s `PAGE_VIEW` gap: Stage 29's own text explicitly said "the series edit
+route from Stage 28g, if it exists -> stop and ask me." Added both new routes as
+`VIEWS.REQUESTER` (the same mapping as every other requester-only create/edit route already in
+the list) rather than pausing, since there was nothing to decide beyond that obvious
+consistency; flagged here for the team to confirm instead. The "Schedule for later" stub this
+stage says to revive is repurposed as the series' own Start now/later toggle (there is no
+separate single-post scheduling feature to revive it for), and the entry point into `/series/new`
+is a "+ New" button on the Scheduled section rather than a link from the normal order form - my
+call, since instructions.md names what to revive but not where the entry point into series mode
+lives. Yearly recurrence only lets the picker choose a single month (not several): BYSETPOS
+(used for "the Nth weekday/day/weekend day") counts across all chosen months combined for one
+year, not per month - an RFC 5545 property of BYSETPOS the picker can't work around, so
+`seriesRule.js`/`RecurrencePicker.jsx` enforce one month per yearly rule rather than leaving the
+ambiguity exposed in the UI (per a follow-up request from the user after the initial review).
+Otherwise every item in the stage's bullets is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
