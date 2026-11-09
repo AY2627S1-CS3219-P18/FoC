@@ -9,9 +9,18 @@
  *        exactly as it would re-render when the real AuthContext's user.activeView changes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 29 - rewrote these tests for ViewGate's new redirect behaviour (replaces the
+ *        blocked-page message deleted this stage): asserts the user lands on the current
+ *        view's main page, the toast fires once, and the history entry is replaced (Back does
+ *        not return to the gated page). Removed the switch/go-to-main-page button tests, since
+ *        those buttons no longer exist.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ViewGate } from '../../src/components/RouteGuards'
@@ -19,12 +28,13 @@ import { VIEWS } from '../../src/routing/views'
 
 const auth = vi.hoisted(() => ({
   user: { activeView: 'requester' },
-  setActiveView: vi.fn(),
 }))
+const toast = vi.hoisted(() => ({ showToast: vi.fn() }))
 
 vi.mock('../../src/context/AuthContext', () => ({
   useAuth: () => auth,
 }))
+vi.mock('../../src/components/Toast', () => ({ useToast: () => toast }))
 
 function renderGated(requiredView, { initialPath = '/gated' } = {}) {
   return render(
@@ -47,7 +57,6 @@ function renderGated(requiredView, { initialPath = '/gated' } = {}) {
 
 beforeEach(() => {
   auth.user = { activeView: VIEWS.REQUESTER }
-  auth.setActiveView = vi.fn()
 })
 
 afterEach(() => {
@@ -58,51 +67,42 @@ describe('ViewGate', () => {
   it('renders the page when the current view matches', () => {
     renderGated(VIEWS.REQUESTER)
     expect(screen.getByText('Protected page')).toBeInTheDocument()
+    expect(toast.showToast).not.toHaveBeenCalled()
   })
 
-  it('shows the blocked-page message, URL unchanged, when the view does not match', () => {
+  it('redirects to the current (requester) view\'s main page when the gated page needs courier, with a toast', () => {
     renderGated(VIEWS.COURIER)
     expect(screen.queryByText('Protected page')).not.toBeInTheDocument()
-    expect(screen.getByText('This is only available in courier mode')).toBeInTheDocument()
+    expect(screen.getByText('Suppliers page')).toBeInTheDocument()
+    expect(toast.showToast).toHaveBeenCalledWith('You are now in requester mode', 'success')
   })
 
-  it('and the reverse: a requester-only page blocked in courier view names "requester mode"', () => {
+  it('and the reverse: in courier view, a requester-only page redirects to Find errands', () => {
     auth.user = { activeView: VIEWS.COURIER }
     renderGated(VIEWS.REQUESTER)
-    expect(screen.getByText('This is only available in requester mode')).toBeInTheDocument()
+    expect(screen.getByText('Find errands page')).toBeInTheDocument()
+    expect(toast.showToast).toHaveBeenCalledWith('You are now in courier mode', 'success')
   })
 
-  it('the switch button switches the view and the page then renders, URL unchanged', async () => {
-    auth.setActiveView = vi.fn(async (view) => {
-      auth.user = { activeView: view }
-    })
-    renderGated(VIEWS.COURIER)
-
-    fireEvent.click(screen.getByRole('button', { name: /Switch to Find errands/ }))
-
-    await waitFor(() => expect(screen.getByText('Protected page')).toBeInTheDocument())
-    expect(auth.setActiveView).toHaveBeenCalledWith(VIEWS.COURIER)
-    expect(screen.queryByText(/This is only available/)).not.toBeInTheDocument()
-  })
-
-  it('the main-page button goes to the current view\'s main page without changing the view', () => {
-    renderGated(VIEWS.COURIER)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to Suppliers' }))
-
-    expect(screen.getByText('Suppliers page')).toBeInTheDocument()
-    expect(auth.setActiveView).not.toHaveBeenCalled()
-  })
-
-  it('shows a retry message if switching the view fails', async () => {
-    auth.setActiveView = vi.fn().mockRejectedValue(new Error('network down'))
-    renderGated(VIEWS.COURIER)
-
-    fireEvent.click(screen.getByRole('button', { name: /Switch to Find errands/ }))
-
-    await waitFor(() =>
-      expect(screen.getByText('Could not switch views. Try again.')).toBeInTheDocument(),
+  it('replaces the history entry, so Back does not return to the gated page', () => {
+    render(
+      <MemoryRouter initialEntries={['/requests', '/gated']} initialIndex={1}>
+        <Routes>
+          <Route
+            path="/gated"
+            element={
+              <ViewGate requiredView={VIEWS.COURIER}>
+                <p>Protected page</p>
+              </ViewGate>
+            }
+          />
+          <Route path="/suppliers" element={<p>Suppliers page</p>} />
+          <Route path="/requests" element={<p>Find errands page</p>} />
+        </Routes>
+      </MemoryRouter>,
     )
-    expect(screen.getByText('This is only available in courier mode')).toBeInTheDocument()
+    // The gated entry was replaced with /suppliers (requester's main page), so the stack is
+    // now [/requests, /suppliers] - there is no gated entry left to bounce back to.
+    expect(screen.getByText('Suppliers page')).toBeInTheDocument()
   })
 })

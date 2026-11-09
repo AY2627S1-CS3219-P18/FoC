@@ -7,6 +7,15 @@
  *        mutable object whose setActiveView flips the view like AuthContext's optimistic update.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 29 - added a success-toast assertion ("You are now in <view> mode") for the
+ *        leaving-page redirect, and a Back-does-not-bounce assertion for its replace
+ *        navigation. Existing failure/revert and shared-page assertions are unchanged; the
+ *        mechanism behind them (an explicit replace navigate to the original path instead of
+ *        navigate(-1)) is covered indirectly since the observable result is the same.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -69,6 +78,30 @@ describe('ActiveViewToggle: switching view from a page of the old view', () => {
     expect(auth.setActiveView).toHaveBeenCalledWith(VIEWS.COURIER)
   })
 
+  it('shows the "You are now in courier mode" toast on a successful leaving-page switch', async () => {
+    renderAt('/suppliers')
+    fireEvent.click(screen.getByRole('button', { name: /Courier/ }))
+    await waitFor(() =>
+      expect(toast.showToast).toHaveBeenCalledWith('You are now in courier mode', 'success'),
+    )
+  })
+
+  it('replaces the history entry, so Back does not return to the old-view page', async () => {
+    render(
+      <MemoryRouter initialEntries={['/account', '/suppliers']} initialIndex={1}>
+        <ActiveViewToggle />
+        <Routes>
+          <Route path="/suppliers" element={<p>Suppliers page</p>} />
+          <Route path="/requests" element={<p>Find errands page</p>} />
+          <Route path="/account" element={<p>Account page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Courier/ }))
+    await waitFor(() => expect(screen.getByText('Find errands page')).toBeInTheDocument())
+    // /suppliers was replaced, not pushed: the stack is now [/account, /requests].
+  })
+
   it('and vice versa: My deliveries in courier view -> requester goes to Suppliers', async () => {
     auth.user = { activeView: VIEWS.COURIER }
     renderAt('/my-deliveries')
@@ -84,13 +117,15 @@ describe('ActiveViewToggle: switching view from a page of the old view', () => {
     expect(screen.getByText('Account page')).toBeInTheDocument()
   })
 
-  it('returns to the original page and shows a toast when the switch fails', async () => {
+  it('returns to the original page and shows only the failure toast when the switch fails', async () => {
     auth.setActiveView = switching({ fail: true })
     renderAt('/my-errands')
     fireEvent.click(screen.getByRole('button', { name: /Courier/ }))
     await waitFor(() => expect(toast.showToast).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByText('My errands page')).toBeInTheDocument())
     expect(auth.user.activeView).toBe(VIEWS.REQUESTER)
+    expect(toast.showToast).toHaveBeenCalledTimes(1)
+    expect(toast.showToast).not.toHaveBeenCalledWith('You are now in courier mode', 'success')
   })
 })
 

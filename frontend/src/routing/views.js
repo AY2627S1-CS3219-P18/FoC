@@ -23,6 +23,13 @@
  *        requester-only create/edit route already in this list.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 29 - VIEW_MODE_LABEL's comment updated: it is now the text ViewGate and
+ *        ActiveViewToggle use for the "You are now in <view> mode" redirect toast, not the
+ *        removed blocked-page message. No value changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { matchPath } from 'react-router-dom'
@@ -34,7 +41,7 @@ export const MAIN_PAGE = {
   [VIEWS.COURIER]: '/requests',
 }
 
-// "This is only available in <view> mode" (Stage 22's blocked-page wording).
+// "You are now in <view> mode" - the redirect toast's wording (Stage 29).
 export const VIEW_MODE_LABEL = {
   [VIEWS.REQUESTER]: 'requester mode',
   [VIEWS.COURIER]: 'courier mode',
