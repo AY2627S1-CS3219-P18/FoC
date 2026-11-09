@@ -38,6 +38,16 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): POST /orders gets the credits client and event sink for the synchronous
+ *        reserve (George, 2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - mounted seriesRouter at /series, before GET /:id, per
+ *        the stage's API table ("registered BEFORE /:id"). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -45,13 +55,17 @@ import type { RequestStatus } from '../generated/prisma/client.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
 import type { PrismaClient } from '../db/prisma.js';
 import type { SuppliersClient } from '../clients/suppliers.client.js';
+import type { CreditsClient } from '../clients/credits.client.js';
 import * as ordersController from '../controllers/orders.controller.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
+import { seriesRouter } from './series.routes.js';
 
 export interface OrdersRouterDeps {
   /** supplier-service, for the create / edit existence check. */
   suppliers: SuppliersClient;
+  /** credit-service, for the reserve made while creating an order. */
+  credits: CreditsClient;
   events?: OrderEventPublisher;
   userServiceUrl?: string;
 }
@@ -60,6 +74,7 @@ export function ordersRouter(
   prisma: PrismaClient,
   {
     suppliers,
+    credits,
     events,
     userServiceUrl = 'http://localhost:3001',
   }: OrdersRouterDeps,
@@ -80,8 +95,13 @@ export function ordersRouter(
     '/admin/users/:userId',
     ordersController.getAdminUserOrders(prisma, userServiceUrl),
   );
+  // Stage 28 e: registered before /:id so "series" is never captured as an order id.
+  router.use('/series', seriesRouter(prisma));
   router.get('/:id', ordersController.getOrderById(prisma));
-  router.post('/', ordersController.createOrder(prisma, suppliers));
+  router.post(
+    '/',
+    ordersController.createOrder(prisma, suppliers, credits, events),
+  );
   router.post('/:id/accept', transition('accepted'));
   router.post('/:id/pickup', transition('picked_up'));
   router.post('/:id/deliver', transition('delivered'));

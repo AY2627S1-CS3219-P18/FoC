@@ -1,4 +1,21 @@
 // AI Assistance Disclosure:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+// Scope: Stage 28 f (instructions.md) - made OrderSeries.nextFireAt nullable (it was
+//        created NOT NULL in Stage 28a's migration, which disagreed with instructions.md's
+//        "nextFireAt (nullable)" and "finished series: deleted ... when nextFireAt is null"
+//        rules; the team chose a follow-up migration over a sentinel value, 2026-11-09).
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// AI Assistance Disclosure:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+// Scope: Stage 28a (Scheduled Errands), per instructions.md's design-decisions tables -
+//        added OrderSeries model (SeriesStatus, RetryType enums; retry-state columns null
+//        when nothing is retrying) and nullable seriesId (FK, ON DELETE SET NULL) /
+//        failureReason columns on requests. durationMinutes left nullable with no default:
+//        the default-vs-required decision is still open, pending George's completeBy change.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+// AI Assistance Disclosure:
 // Scope (2026-11-08, Codex, model: GPT-6): Implemented precise delivery details per the team spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
 // Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
@@ -38,6 +55,18 @@ enum RequestStatus {
   failed
 }
 
+enum SeriesStatus {
+  active
+  inactive
+}
+
+// Which fire-time check was retrying when the series stopped making progress.
+enum RetryType {
+  user_service_unreachable
+  supplier_service_unreachable
+  supplier_closed
+}
+
 model OrderRequest {
   id                 String        @id @default(uuid(7)) @db.Uuid
   requesterId        String        @db.Uuid
@@ -50,6 +79,8 @@ model OrderRequest {
   additionalDetails  String?
   courierId          String?       @db.Uuid
   status             RequestStatus @default(open)
+  seriesId           String?       @db.Uuid // null once the series is edited/deleted or for non-series orders
+  failureReason      String?       // set only for series-fire-time failures/skips; credit-reservation failures leave this null
   createdAt          DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
   acceptedAt         DateTime?     @db.Timestamptz(3)
@@ -57,13 +88,51 @@ model OrderRequest {
   creditReleasedAt   DateTime?     @db.Timestamptz(3)
   version            Int           @default(0)
 
+  series OrderSeries? @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+
   @@index([status, createdAt])
   @@index([requesterId])
   @@index([courierId])
   @@index([credits])
   @@index([completeBy])
   @@index([deliveryLocationId])
+  @@index([seriesId])
   @@map("requests")
+}
+
+// A recurring errand rule; occurrences are posted into `requests` (seriesId set) by the
+// worker's scheduler. completeBy is replaced here by durationMinutes (minutes from the
+// scheduled fire time), per the design decisions table.
+model OrderSeries {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  requesterId        String       @db.Uuid
+  supplierId         Int
+  description        String
+  deliveryLocationId Int // supplier-service location_id
+  deliveryDetails    String       @default("Nil") @db.VarChar(250)
+  credits            Int
+  durationMinutes    Int? // null until the omitted-default-vs-required decision is made
+  additionalDetails  String?
+  rrule              String // RFC 5545 RRULE text; end condition (UNTIL/COUNT/never) lives inside it
+  startAt            DateTime     @db.Timestamptz(3) // DTSTART
+  nextFireAt         DateTime?    @db.Timestamptz(3) // null = no further occurrences (finished series)
+  status             SeriesStatus @default(active)
+
+  // Retry state: all null when nothing is retrying.
+  currentOccurrenceAt DateTime?  @db.Timestamptz(3) // the scheduled time being retried
+  retryType           RetryType?
+  attemptCount        Int?
+  nextRetryAt         DateTime?  @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  version   Int      @default(0)
+
+  orders OrderRequest[]
+
+  @@index([nextFireAt, status])
+  @@index([requesterId])
+  @@map("order_series")
 }
 
 // Background tasks committed in the same transaction as the order write; the

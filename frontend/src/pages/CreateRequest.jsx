@@ -103,6 +103,19 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Raised the delivery details input maxLength from 200 to 250 to match the existing 250 limit (order-service validation and the on-screen counter).
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Complete-by toggle - the ASAP option reads "ASAP" / "By 1 hour from
+ *        now" (George, 2026-11-09); order-service fills in the one-hour default.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-09): POST /orders is synchronous (George, 2026-11-09) - Post waits for the
+ *        response and shows its message on failure; the socket wait and /orders/mine re-check
+ *        for the reservation outcome are removed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts in disclosure headers.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -113,50 +126,12 @@ import Button from '../components/Button'
 import SupplierImage from '../components/SupplierImage'
 import { useApi, useReferenceData } from '../api/useApi'
 import { getSupplier, listSuppliers } from '../api/suppliers'
-import { createOrder, editOrder, listMyOrders, reserveFailureMessage } from '../api/orders'
-import { watchOrderEvents } from '../realtime/orderSocket'
+import { createOrder, editOrder, listMyOrders } from '../api/orders'
 import { qualifiedName } from '../data/suppliers'
 import { useAuth } from '../context/AuthContext'
 import { getLastRequest, saveLastRequest } from '../api/lastRequest'
 
 const MAX_CHARS = 200
-const RECHECK_MS = 5000
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-// The reservation runs asynchronously after the 202. Its outcome normally arrives as an order event;
-// if the socket is down or the event was missed, the caller's own orders are re-checked every few
-// seconds until the order leaves `pending`.
-async function reservationOutcome(orderId, watch) {
-  let done = false
-  const viaSocket = watch
-    .next(
-      (name, p) =>
-        p?.orderId === orderId && (name === 'order:created' || name === 'order:failed'),
-    )
-    .then(({ payload }) => ({ status: payload.status, reason: payload.reason }))
-  const viaRecheck = (async () => {
-    while (!done) {
-      await sleep(RECHECK_MS)
-      if (done) break
-      try {
-        const { orders } = await listMyOrders('requester')
-        const order = orders.find((o) => o.id === orderId)
-        // /orders/mine leaves failed orders out, so a just-created order missing from it has failed.
-        if (!order) return { status: 'failed' }
-        if (order.status !== 'pending') return { status: order.status }
-      } catch {
-        // keep waiting; the socket may still deliver
-      }
-    }
-    return new Promise(() => {})
-  })()
-  try {
-    return await Promise.race([viaSocket, viaRecheck])
-  } finally {
-    done = true
-  }
-}
 
 // Defaults follow the clock rather than a hardcoded date that goes stale overnight.
 const today = () => new Date().toISOString().slice(0, 10)
@@ -265,9 +240,10 @@ function RequestForm({ order }) {
     setPostError(null)
     const exact = details.trim()
     saveLastRequest(locationId, exact).catch(() => {})
-    const watch = watchOrderEvents() // before the POST, so a fast outcome is not missed
+    // POST /orders reserves the credits before it answers: 201 means the errand is open, and a
+    // failure (409 pending order, 422 refused, 503 credit-service down) carries its message.
     try {
-      const order = await createOrder({
+      await createOrder({
         supplierId: Number(supplierId),
         description: description.trim(),
         deliveryLocationId: Number(locationId),
@@ -276,16 +252,10 @@ function RequestForm({ order }) {
         ...(deadline && { completeBy: deadline.toISOString() }),
         additionalDetails: extra.trim() || null,
       })
-      const outcome = await reservationOutcome(order.id, watch)
-      if (outcome.status === 'failed') {
-        setPostError(reserveFailureMessage(outcome.reason))
-      } else {
-        navigate('/my-errands')
-      }
+      navigate('/my-errands')
     } catch (e) {
       setPostError(e.message)
     } finally {
-      watch.stop()
       setPosting(false)
     }
   }
@@ -477,21 +447,32 @@ function RequestForm({ order }) {
             When do you need it by?
           </span>
           <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
+            {/* ASAP sends no complete-by, so order-service sets it to an hour from now
+                (George, 2026-11-09). */}
             {[
-              ['asap', 'As soon as possible'],
-              ['later', 'By a specific time'],
-            ].map(([value, text]) => (
+              ['asap', 'ASAP', 'By 1 hour from now'],
+              ['later', 'By a specific time', null],
+            ].map(([value, text, hint]) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setTiming(value)}
                 aria-pressed={timing === value}
                 className={
-                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
+                  'min-h-11 md:min-h-10 flex-1 rounded-[7px] px-3 py-1 text-sm font-medium leading-tight transition-colors duration-150 ' +
                   (timing === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
                 }
               >
-                {text}
+                <span className="block">{text}</span>
+                {hint && (
+                  <span
+                    className={
+                      'block text-xs font-normal ' + (timing === value ? 'text-white/80' : 'text-ink-40')
+                    }
+                  >
+                    {hint}
+                  </span>
+                )}
               </button>
             ))}
           </div>

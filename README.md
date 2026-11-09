@@ -305,6 +305,21 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review:
 Scope (2026-11-09, Codex, model: GPT-6): Added translation placement log index row.
 Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #246 for the
+       order-service default complete-by. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #247 for
+       synchronous order creation and the pending-order 409. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #248 for the
+       view-switch redirect. No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
+Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -823,11 +838,27 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 238 | 2026-11-09 | user-service | Local authentication startup fix | Set the recorded elevation TTL and restored the frontend auth proxy. |
 | 239 | 2026-11-09 | chat-service | Orderless notification caller instructions | Documented orderless payloads, routing, migration and retry examples. |
 | 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |
-| 241 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
-| 242 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
-| 243 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
-| 244 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
-| 245 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
 
-| 246 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
-| 247 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
+| 241 | 2026-11-09 | order-service | Scheduled Errands Stage 28a: Schema and migration | Added OrderSeries table, SeriesStatus/RetryType enums, and seriesId/failureReason on requests. |
+
+| 242 | 2026-11-09 | user-service | Scheduled Errands Stage 28b: User-service worker endpoint | Added GET /users/worker/:id behind a new service-key check, returning status/lockedUntil. |
+| 243 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
+| 245 | 2026-11-09 | order-service | Scheduled Errands Stage 28 c2: order-service supplier client | Added a service-key path to the supplier client for the worker's closed/next-opening checks. |
+| 246 | 2026-11-09 | order-service | Scheduled Errands Stage 28 d: order-service user client | Added a user-service client for the worker's fire-time status/lock check. |
+| 247 | 2026-11-09 | order-service | order-service: Default complete-by of one hour | One-hour default complete-by; edit null keeps it; ASAP relabelled. |
+
+| 248 | 2026-11-09 | order-service | order-service: Synchronous order creation and pending-order 409 | Create reserves credits in the request; 409 while a pending order exists. |
+
+| 249 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+| 250 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+
+| 25` | 2026-11-09 | order-service | Scheduled Errands Stage 28 e: Series API and failed rows | Added series create/get/list/edit/delete endpoints and failed-row/notice handling. |
+| 252 | 2026-11-09 | order-service | Scheduled Errands Stage 28 f: Worker | Added the 1-second scheduler that fires series occurrences, retries, and failures. |
+
+| 253 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
+| 254 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
+| 255 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
+| 256 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
+| 257 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
+| 258 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
+| 259 | 2026-11-09 | frontend | Merge main into message translation branch | Resolved conflicts and verified frontend. |

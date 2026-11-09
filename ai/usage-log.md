@@ -1,3 +1,11 @@
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-09
+Scope: Resolved merge conflicts and appended the merge record.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
 ## 2026-09-24 — Stage 1: Project Scaffold
 
 **Tool:** Claude Code (claude-sonnet-5)
@@ -12508,178 +12516,6 @@ tng wen xi
 
 **Author review: Congchen**
 
-## 2026-11-09 — chat-service/user-service: Message auto-translation
-
-**Tool:** Claude Code (model: claude-sonnet-5-5)
-**Mode:** generate | docs
-**Scope:** Implementation code | Boilerplate
-**Governing decision:** Team decisions given in chat on 2026-11-09 (quoted below) and the interface names the user confirmed with "Use these". Mockup behaviour: `MockupBlueprint.md` §7.6.
-
-**Prompts (exact):**
-> A new message service has been added into the application. I want to build the translation feature within the chat service. How it works:
->
-> * within the user settings, the user will store their preferred language (use a standard language list as the list of options)
-> * by default, no translation will be applied
-> * just as the mockup page suggest, all chat windows will come with an  "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
-> * if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
-> * The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
-> * translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
-> * this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each  message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
-> * The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
-
-> are the conversation stored based on the user or the order?; new user-service col, and fetched when the message tab is launched; BullMQ on shared Redis; gemini key. are we even operating with an event driven architecture thus far in the messaging service? i was thinking when the model returns, the db gets updated and would that by default lead to the ui updating?
-
-> 1. in this case,
->
-> * conversation_participants will store an additional "auto_translate" bool
-> * messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
->
-> the idea is that messages sent by the courier will be default contain "NA" for "translated_for_courier" since they are the courier, but "translated_for_requester" is where translated versions will be kept in the requester's preferred language if invoked, and vice versa. if a courier is switched half way, all requester messages' "translated_for_courier" cols will be cleared, so if the new courier has auto translate on, the past messages will be regenerated accordingly
->
-> 2. the user-db will store an additional "preferred_lang" col, stored as ISO 639-1 codes, and will be interacted with in the same flow as all other user-level settings and configs.
->
-> 3. when is user data queried in the entire flow? i think it is good if the lang was just sent together and kept on the client side - it will only be 2 chars, very small overhead to keep around, and saves an additional dedicated endpoint call during translation invocation.
->
-> 4. Since we are already using event-driven architecture, lets follow and have a socket event to signal completion of translation to notify UI
->
-> 5. gemini 3.1 flash-lite. i will link it with a single api key from google ai studio. pros and cons of sdk vs http calls? recommended for this application?
->
-> 6. 1 changes things slightly
-> 7. 1 changes this
-
-> let me change up how the data is stored. instead of using 2 additional cols, which limit the translation supported to 2, add a new translated_messages table keyed by the message id and user_id to support future expansion os the conversation to more roles. this also allows each row to just contain the translated content, instead of tracking a bunch of nulls.
->
-> SDK will be used
->
-> conversation_participants will store an extra col for translate_to (storing the preferred language only if the toggle is on) based on the respective user settings, updated on the toggle call, and that can be read when one party sends a message. A non null value will signal that we need an event in bullmq to prepare the translation in that language for that user
->
-> 1. remove or replace-courier route shall be for future. disregard the clearing logic, just log as a future enhancement
-> 2. in the new design, these wont be necessary, as each row maps to a translation exactly
-> 3. in the new design, the API will just return the result of the requested translation
-> 4. follow existing convention
-> 5. follow existing convention and the new design
-> 6. preferred_lang is not null, and just defaulted to english "en". Use a subset of the language list only containing english, chinese, hindi, tamil, malay, spanish, arabic
-> 7. model id is just "gemini-3.1-flash-lite", stored as TRANSLATION_LLM_MODEL. this and TRANSLATION_LLM_KEY are new env vars in chat-service
-
-Answers to two multiple-choice questions (via the question dialog): store a `translated_messages` row with content "SAME" when the model returns SAME; "Use these" for the proposed interface names (table `translated_messages(id, message_id, user_id, content, created_at; unique message_id+user_id)`, column `conversation_participants.translate_to`, route `POST /chat/conversations/:conversationId/translation` with body `{enabled, language}`, socket event `message:translated` to the user's `user:<id>` room with `{messageId, conversationId, translatedContent}`, message objects gaining `translatedContent`).
-
-**Key responses:**
-Declined the SDK-vs-HTTP pros/cons and recommendation as prohibited architecture/design work (AGENTS.md §2.2) and asked for the team's choice; stopped to ask for unrecorded schema/interface decisions (§2.1) before writing code. After the decisions were given: added `translate_to` and `translated_messages` (Prisma schema + hand-written migration); `POST /chat/conversations/:conversationID/translation` (Bearer auth; 400/401/404/403/409 as the read endpoint; stores or clears `translate_to`, queues a backfill on enable); BullMQ queue on the shared Redis (prefix `queue:chat`, name `translation`, order-service's default retry options); a per-message job queued after commit for every active, non-sender participant with `translate_to` set (user messages and system notifications); a job processor that re-checks `translate_to` before spending anything, skips already-translated and own messages, batches 20 per Gemini call (`@google/genai`, `responseMimeType: application/json`), stores one row per message (including "SAME") and emits `message:translated`; `translatedContent` in `GET .../messages` scoped to the requester; `TRANSLATION_LLM_KEY` (required) and `TRANSLATION_LLM_MODEL` (default `gemini-3.1-flash-lite`) env vars; user-service `users.preferred_lang VARCHAR(2) NOT NULL DEFAULT 'en'`, `PUT /users/me/preferred-lang` (same shape as active-view, body `{preferredLang}`, subset en/zh/hi/ta/ms/es/ar) and `preferredLang` in user responses and `GET /users/me`.
-Choices made within the delegated "follow existing convention" (for the team to confirm): the worker runs inside the chat-service API process (so it can emit through Socket.IO); SYSTEM messages with content are translated like TEXT; changing language while on deletes the user's stored translations for that chat before the backfill; the send response and `message:sent` payload are unchanged (no `translatedContent`); a failed enqueue is logged and does not fail the request (like broadcast failures).
-Future enhancement (recorded as instructed): remove/replace-courier route and clearing the outgoing courier's translations are not implemented.
-Verification: chat-service 192 tests passed (23 new), typecheck and build passed. user-service: typecheck passed; me/users controller and service suites (262 tests) passed against the local test database. Not run: live Redis/BullMQ, live Gemini calls, live MySQL migration, the rest of the user-service suite, and any frontend (the frontend toggle, show-original/Translate controls, language setting and `message:translated` handling are not built).
-
-**Files:**
-- `chat-service/prisma/schema.prisma` (modified)
-- `chat-service/prisma/migrations/20261109000000_add_translation/migration.sql` (created)
-- `chat-service/src/translation/languages.ts` (created)
-- `chat-service/src/translation/gemini.ts` (created)
-- `chat-service/src/translation/queue.ts` (created)
-- `chat-service/src/translation/worker.ts` (created)
-- `chat-service/src/translation.spec.ts` (created)
-- `chat-service/src/conversation-messages.spec.ts` (modified)
-- `chat-service/src/services/conversations.service.ts` (modified)
-- `chat-service/src/controllers/conversations.controller.ts` (modified)
-- `chat-service/src/routes/conversations.routes.ts` (modified)
-- `chat-service/src/app.ts` (modified)
-- `chat-service/src/server.ts` (modified)
-- `chat-service/src/realtime/messages.ts` (modified)
-- `chat-service/src/config/env.ts` (modified)
-- `chat-service/.env.example` (modified)
-- `chat-service/README.md` (modified)
-- `chat-service/package.json`, `chat-service/package-lock.json` (modified; JSON and lockfile, no header)
-- `compose.yaml`, `.env.example` (modified)
-- `user-service/src/db/init.sql` (modified)
-- `user-service/src/db/queries/users.queries.ts` (modified)
-- `user-service/src/services/userResponse.ts` (modified)
-- `user-service/src/services/me.service.ts` (modified)
-- `user-service/src/controllers/me.controller.ts` (modified)
-- `user-service/src/routes/me.routes.ts` (modified)
-- `user-service/tests/controllers/me.controller.test.ts`, `users.controller.test.ts` (modified)
-- `user-service/tests/services/me.service.test.ts`, `users.service.test.ts` (modified)
-- `ai/usage-log.md`, `README.md` (modified)
-
-**Deviations / questions raised for the team:**
-Asked for and received the toggle storage, language storage, queue, SDK, socket event, route and field decisions above. Open for the team: (1) a language change while the toggle is off leaves old-language rows because `translated_messages` has no language column; (2) the worker shares the API process; (3) whether SYSTEM notifications should be translated; (4) when the user lowers `preferred_lang`, nothing updates `translate_to` until the toggle is called again; (5) the frontend work.
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-09 — frontend/chat-service: Translation UI and participant translateTo
-
-**Tool:** Claude Code (model: claude-sonnet-5-5)
-**Mode:** generate
-**Scope:** Implementation code
-**Governing decision:** The translation decisions recorded in the previous entry (2026-11-09, chat-service/user-service: Message auto-translation); `MockupBlueprint.md` §7.6 and `foc-mockup/src/pages/Chat.jsx` for the switch and Translate/Show original controls.
-
-**Prompts (exact):**
-> Yes, build it
-
-Answer to a multiple-choice question (via the question dialog): the saved Auto-translate state is learned by adding a nullable `translateTo` to each entry of `participants` in `GET /chat/conversations/:id/messages` (chosen over adding it to chat details or keeping it browser-side).
-
-**Key responses:**
-Stopped to ask before changing the chat-service API contract (§2.1), then added `translateTo` to the history `participants` entries. Frontend: an Auto-translate switch in the thread header (disabled until the preferred language has been read from `GET /users/me` when the chat opens; sends `{enabled, language}` to the toggle route); received messages show their translation when the switch is on, with a "Show original" control per message; when the switch is off originals are shown and messages that already have a translation offer "Translate", which only swaps the display and never calls the API; messages with no translation, `SAME`, system and own messages get no control; `message:translated` events (new `useChatTranslations` hook) fill in translations live; a Preferred language section on the Account page (`PUT /users/me/preferred-lang`) using the seven-language subset.
-Verification: chat-service 193 tests passed, typecheck/build passed earlier in the stage. Frontend: 187 of 188 tests passed and the production build passed; the one failure, `CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", also fails with these changes stashed, so it is not caused by this work. New tests cover the switch, translated display, Show original/Translate, no control for SAME/untranslated/own messages, the socket event, failure handling and the Account language section. Not exercised: a real browser, live sockets, a live Gemini call.
-
-**Files:**
-- `chat-service/src/services/conversations.service.ts` (modified)
-- `chat-service/src/conversation-messages.spec.ts` (modified)
-- `chat-service/README.md` (modified)
-- `frontend/src/constants/languages.js` (created)
-- `frontend/src/api/chat.js` (modified)
-- `frontend/src/api/profile.js` (modified)
-- `frontend/src/realtime/chatSocket.js` (modified)
-- `frontend/src/pages/Chat.jsx` (modified)
-- `frontend/src/pages/Account.jsx` (modified)
-- `frontend/tests/pages/Chat.test.jsx` (modified)
-- `frontend/tests/pages/Account.test.jsx` (modified)
-- `ai/usage-log.md`, `README.md` (modified)
-
-**Deviations / questions raised for the team:**
-Asked where the frontend learns the saved toggle state; answered above. Open: the chat list's last-message preview still shows the original text; the switch does not reflect a language change made on another device until the chat reloads; the Translate/Show original buttons are 24px tall on desktop (the mockup uses a 44px target on mobile only).
-
-**What I kept/changed/rejected:**
-
-**Author review: Congchen**
-
-## 2026-11-09 — user-service: Prisma migrations for the user database
-
-**Tool:** Claude Code (model: claude-sonnet-5-5)
-**Mode:** generate | docs
-**Scope:** Boilerplate
-**Governing decision:** Team decision in chat on 2026-11-09: use Prisma migrate (order/chat style) for user-service.
-
-**Prompts (exact):**
-> * gemini is tested and works
-> * update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
-> * blank log entries are accepted
->
->
-> after updating the database, generate a PR message
-
-Answer to a multiple-choice question (via the question dialog): "Prisma migrate (order/chat style)", chosen over a supplier-style re-runnable migrate script and applying the ALTER by hand.
-
-**Key responses:**
-Stopped to ask which migration tooling to use (§2.1; the other services differ: order and chat use Prisma migrate, supplier uses a `migrate.ts` script, credit uses only `init.sql`). Added Prisma as a dev dependency with a model-less `prisma/schema.prisma`, `prisma.config.ts` reading `DATABASE_URL`, `npm run db:deploy`, a baseline migration (a copy of `init.sql` before `preferred_lang`) and a second migration adding `users.preferred_lang`. Verified on scratch databases that an empty database migrates fully, and that a database built from `init.sql` migrates after `prisma migrate resolve --applied 20261109000000_baseline`; a second deploy reported no pending migrations. Applied the same baseline-resolve and deploy to the local dev `user_service` database (5 existing users kept); scratch databases were dropped. Typecheck and ESLint of the config passed. Not done: wiring `db:deploy` into the Compose or ECS startup, and removing `init.sql` (the test database, CI and fresh Compose volumes still use it, so it must keep every migrated column).
-
-**Files:**
-- `user-service/prisma/schema.prisma` (created)
-- `user-service/prisma.config.ts` (created)
-- `user-service/prisma/migrations/20261109000000_baseline/migration.sql` (created)
-- `user-service/prisma/migrations/20261109010000_add_preferred_lang/migration.sql` (created)
-- `user-service/prisma/migrations/migration_lock.toml` (created; no header possible)
-- `user-service/package.json`, `user-service/package-lock.json` (modified; JSON, no header)
-- `user-service/.env.example`, `user-service/README.md` (modified)
-- `ai/usage-log.md`, `README.md` (modified)
-
-**Deviations / questions raised for the team:**
-Asked which migration approach to use; answered above. Open: `prisma migrate dev` and `db push` must not be used (no models, so they would propose dropping tables); `init.sql` and the migrations are two places to keep in step; deployments (Compose, ECS) do not yet run `db:deploy`.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
-
 ## 2026-11-09 — Stage 27a: Admin OTP Routes and Elevation Token
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -13172,6 +13008,86 @@ I kept all changes.
 **Author review:**
 tng wen xi
 
+## 2026-11-09 — Scheduled Errands Stage 28a: Schema and migration (order-service)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — Design decisions tables (Model, completeBy, API, Error codes, Firing and failures, Failed rows, Notifications) and "Stage a: Schema and migration (order-service)".
+
+**Prompts (exact):**
+
+> read through stage 28. if all's clear, impelment stage a
+
+**Key responses:**
+Read instructions.md Stage 28 in full. One `[DECIDE]` blocking Stage a was still open: whether an omitted `durationMinutes` on a series should be required or default to 1440, pending George's (not yet merged) completeBy-default change — confirmed unmerged by reading order-service's schema/service code directly. Per the file's own rule ("stop and ask... do not pick a value yourself"), asked the user; they chose to leave `durationMinutes` nullable with no default logic for now and decide later.
+
+Implemented in order-service/prisma/schema.prisma: `SeriesStatus` (active/inactive) and `RetryType` (user_service_unreachable/supplier_service_unreachable/supplier_closed) enums; `OrderSeries` model mirroring `OrderRequest`'s order fields (supplierId, description, deliveryLocationId, deliveryDetails, credits, additionalDetails), plus `durationMinutes` (nullable), `rrule`, `startAt`, `nextFireAt`, `status`, the four nullable retry-state columns (`currentOccurrenceAt`, `retryType`, `attemptCount`, `nextRetryAt`, all null together), `version` for optimistic locking, and `requesterId` for ownership (needed for the owner-only API and worker lookups, not itself a new design choice). Added nullable `seriesId` (FK to `order_series.id`, `ON DELETE SET NULL`) and `failureReason` on `requests`. Indexed `nextFireAt`+`status`, `requesterId`, and `seriesId`, mirroring existing index conventions.
+
+Generated migration `20261109073127_scheduled_errands_series` via `npm run db:migrate` against the local order-db container and applied it; added the disclosure header to the generated SQL afterward and reconciled its stored checksum in `_prisma_migrations` so `prisma migrate status` reports no drift.
+
+Verification: `npm run typecheck`, `npm run test` (699 passed), and `npm run test:e2e` all run. Wrote `test/order-series-schema.e2e-spec.ts` (real database) covering: deleting a series sets `seriesId` null on its orders; a nonexistent `seriesId` is rejected by the FK; retry-state columns default to null and `failureReason` is independent of `seriesId` — all 3 pass. One pre-existing e2e suite, `test/credit-saga.e2e-spec.ts` (5 tests), fails on `main` before any of this change too (confirmed by stashing this work and rerunning against the unmodified schema) — its expectations predate the recently merged system-chat lifecycle notifications (PR #170) and are unrelated to Stage 28a.
+
+`npm run format` (prettier --write) also reformatted 4 pre-existing, unrelated files (whitespace/style only, confirmed via `git diff --stat`); the user asked to leave those reformats in place rather than reverting them.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261109073127_scheduled_errands_series/migration.sql` (created)
+- `order-service/test/order-series-schema.e2e-spec.ts` (created)
+- `order-service/package-lock.json` (modified — `npm install`)
+- `order-service/src/constants/errors.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+
+**Deviations / questions raised for the team:**
+Asked whether `durationMinutes` should be required or default to 1440 when omitted; user deferred the decision, so the column is nullable with no default logic. No other deviations.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28b: User-service worker endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — "Stage b: User-service worker endpoint", and the Firing-and-failures table's "User" check.
+
+**Prompts (exact):**
+
+> let's go to stage b
+
+**Key responses:**
+Added `GET /users/worker/:id` for order-service's scheduler. New `authenticateServiceKey` middleware (`src/middleware/authenticateServiceKey.ts`) checks the `User-Order-Service-Key` header against `config.userOrderService.apiKey` using the existing `hashesMatch`/`sha256` pair (same pattern `otp.service.ts` uses), returning `401 { message: 'Invalid service key', code: 'INVALID_SERVICE_KEY' }` on a missing or wrong key. Added `USER_ORDER_SERVICE_API_KEY` to `config.ts`'s Zod schema and exported config, `.env.example`, `.env` (local, gitignored; random dev value), and `.env.test` (fixed dummy value, no real secret). Added `workerStatus` controller and `getWorkerStatus` service function, returning only `{ status, lockedUntil }` from the existing `findById` query/`UserRow` — a pending user is returned normally with `status: 'pending'`, not blocked. Registered the route in `users.routes.ts` before `POST /:id/full-email` and `GET /:id`, with no `authenticate`/`authorize`.
+
+Verification: `npx tsc --noEmit` and `npx eslint .` clean. Full test suite: 991 tests, 989 passed; the 2 failures (`auth.controller.test.ts`, `me.controller.test.ts`, socket hang up/ECONNRESET) are unrelated to this change — confirmed by rerunning just those two files in isolation, where both pass cleanly (236/236); this is pre-existing flakiness under full-suite load, not caused by Stage 28b. Added `tests/controllers/users.worker.controller.test.ts` (9 tests, all pass): missing key, wrong key, right key for an active/pending/suspended/locked user, unknown id (404 `USER_NOT_FOUND`), non-UUID id (400 `VALIDATION_ERROR`), and that the route needs no Bearer token (route-order coverage). Added `USER_ORDER_SERVICE_API_KEY` to `tests/config.test.ts`'s missing-required-variable list.
+
+No `[DECIDE]` placeholders were open for this stage.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/middleware/authenticateServiceKey.ts` (created)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified — gitignored, local only, listed for disclosure completeness)
+- `user-service/.env.test` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (created)
+- `user-service/tests/config.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
 ## 2026-11-09 — Chat service health endpoint
 
 **Tool:** Codex (model: GPT-6)
@@ -13207,6 +13123,667 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — Scheduled Errands Stage 28 c2: order-service supplier client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage c2: order-service supplier client"
+
+**Prompts (exact):**
+
+> while waiting for congchen to approve, let's move on to c2
+
+**Key responses:**
+Added the service-key path for the scheduled-errands worker to `suppliers.client.ts`, reusing
+the same two GET endpoints (`/api/v1/suppliers/:id`, `/api/v1/suppliers/reference/location`) and
+their existing status-code mapping. Kept `supplierExists`/`locationExists` (Authorization header,
+plain `Existence` return) completely unchanged for createOrder/editOrder, and added two new
+interface members instead of overloading them, since the worker call carries no user token and
+needs richer information back (closed flag, next opening time) that the normal-order path has no
+use for — this is a minor implementation-detail choice, not a design decision, and is recorded as
+a deviation below.
+
+New pure module `openingHours.ts` computes `{closed, nextOpeningAt}` from a supplier's
+`openingHours` rows and a `now: Date`, mirroring supplier-service's own `isOpen.ts` conventions
+(day 1–7 Mon–Sun, day 8 = open 24/7, close exclusive, overnight windows, the `00:00`/`23:59`
+all-day pair, `is_24h` ignored) but extended to also find the next future opening instant, since
+the worker needs to schedule a retry, not just a boolean. Computed independently of
+supplier-service's own `isOpen` field so it is driven by the worker's injected `now`, not
+supplier-service's wall clock (keeping Stage f's "every time-dependent function takes `now: Date`"
+testable).
+
+`supplierStatusForWorker` treats an empty `openingHours` array as `hasNoOpeningHours: true`
+(distinct from merely `closed`), for the worker (Stage f) to translate into the "fail, failed row,
+notice" outcome instructions.md specifies for that case.
+
+Added `SUPPLIER_ORDER_SERVICE_API_KEY` to `config/env.ts` as optional (matching the existing
+`CHAT_SERVICE_API_KEY` pattern: only the worker will use it, once Stage f builds it) and to
+`.env.example`. Did not wire it into `compose.yaml`'s `order-worker` or into `app.ts`, since no
+caller exists yet; that wiring belongs to Stage f, which actually constructs the worker and its
+`SuppliersClient`.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 715/715 tests pass (19 files), including a new
+`openingHours.spec.ts` (10 tests: empty list, day 8, the 00:00/23:59 pair, no row for a day,
+exact open/close minute boundaries, overnight windows, and picking the nearest of several future
+openings) and new cases in `suppliers.client.spec.ts` (service-key header sent instead of
+Authorization, the key-not-configured error, not_found/unavailable mapping, the empty-hours
+case, closed/nextOpeningAt mapping, and `locationExistsForWorker`). Two existing spec files
+(`orders.service.spec.ts`, `orders.controller.spec.ts`) needed their fake `SuppliersClient`
+objects extended with the two new interface members to keep compiling; no test logic in them
+changed. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage, which touches no schema or migration.
+
+**Files:**
+
+- `order-service/src/clients/suppliers.client.ts` (modified)
+- `order-service/src/clients/openingHours.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (modified)
+- `order-service/src/clients/openingHours.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified, fake client only)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, fake client only)
+
+**Deviations / questions raised for the team:**
+Added `supplierStatusForWorker` / `locationExistsForWorker` as new `SuppliersClient` methods
+rather than overloading `supplierExists` / `locationExists` with a union auth parameter — the
+instruction said "reusing supplierExists and locationExists," which this follows at the HTTP-call
+and status-mapping level, but not as the literal same exported function signature, to keep the
+existing normal-order call sites and their return type completely untouched. Not raised to the
+team as a stop-and-ask since it is an internal client interface, not a schema/API/architecture
+decision. Otherwise none.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 d: order-service user client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage d: User client (order-service)"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+
+**Key responses:**
+Added `user.client.ts`: `createHttpUserClient(baseUrl, serviceKey, fetchImpl?, timeoutMs?)`
+calls `GET {USER_ORDER_SERVICE_URL}/users/worker/:id` with header `User-Order-Service-Key`
+(secret `USER_ORDER_SERVICE_API_KEY`), returning `{ existence, status, lockedUntil }` —
+`existence` reuses the `Existence` type from `suppliers.client.ts` (`found`/`not_found`/
+`unavailable`), `status` is `'pending' | 'active' | 'suspended'` (null unless found), `lockedUntil`
+is parsed to a `Date` or null. 404 maps to `not_found`; any other non-2xx, a network error, a
+timeout, or an unexpected response body maps to `unavailable`. 3 s timeout, matching
+`suppliers.client.ts`'s convention. Added `USER_ORDER_SERVICE_URL` (defaulted, like the existing
+`SUPPLIER_SERVICE_URL`) and `USER_ORDER_SERVICE_API_KEY` (optional, like
+`SUPPLIER_ORDER_SERVICE_API_KEY` and `CHAT_SERVICE_API_KEY`: only the worker will use it) to
+`config/env.ts` and `.env.example`. Did not wire either into `app.ts` or `compose.yaml`'s
+`order-worker` — no caller exists yet; that is Stage f's job.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build all clean. `npx vitest
+run` — 728/728 tests pass (20 files), including a new `user.client.spec.ts` (13 tests: the
+service-key header, active/pending/suspended mapping, a locked user's `lockedUntil` parsed to a
+`Date`, 404, four other HTTP statuses, an unexpected body, a network failure, and a timeout — the
+full "mock fetch for each result" list the stage asks for).
+
+**Files:**
+
+- `order-service/src/clients/user.client.ts` (created)
+- `order-service/src/clients/user.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+
+**Deviations / questions raised for the team:**
+None. Reused suppliers.client.ts's `Existence` type rather than redefining the same three-value
+union, which is an implementation detail, not a design choice.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — order-service: Default complete-by of one hour
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09 (new FR, to be added to `docs/FoC-ProductBacklog.md` by the team): a new order with no complete-by gets now + 1 hour and then behaves like a requester-set deadline; existing orders are untouched; an edit sending `completeBy: null` keeps the stored value.
+
+**Prompts (exact):**
+
+> ok tell him all decided approved, and he can add them, also for the completeBy issue, it will default to 24 hours instead of NULL, so we are making this as a new FR, to fix these issues
+
+> we decided to make it +1 hr instead to represent the ASAPness
+
+> do the same behaviour as completeBy is set by user, but its 1hr
+> existing orders are untouched
+
+> (Agent question) Editing an open order with completeBy: null currently clears the deadline to NULL (and the edit page sends null when 'ASAP' is picked). What should edit do with completeBy: null after this change?
+> (Answer) Keep current value
+
+> for the frontend, remove the ASAP option, and completeBy will default to 1hr to show it explicitly
+
+> actually, just change the ASAP button text to
+>
+> ASAP
+> By 1 hour from now
+>
+> then screenshot the frontend to show me when youre done
+
+**Key responses:**
+Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+
+- `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
+- `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
+- No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
+- Tests: create with completeBy absent / null stores now + 1 h (fake Date); a chosen completeBy is kept; edit with null omits completeBy from the write; edit with a value writes it. Removed "null = indefinite" from an existing test name.
+- Frontend (`CreateRequest.jsx`): the agent started removing the ASAP option, then the user replaced that instruction; the only change kept is the ASAP button label, now "ASAP" with a second line "By 1 hour from now". The button grows to fit two lines. Behaviour is unchanged: ASAP still sends no completeBy on create (order-service applies the one-hour default) and null on edit (keeps the stored value).
+
+Verification: order-service `npm run typecheck` passed, `npm run lint` reported nothing, `npm test` passed (18 files, 704 tests). `prettier --check` flags both service files, but both were already unformatted on `main` before this change, so they were not reformatted. E2E tests were not run. Frontend `npm test`: 222 passed, 1 failed (`CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", a `maxLength` assertion); the same test also fails with the unmodified `CreateRequest.jsx` from `main`. Frontend lint showed only existing warnings in other files. Screenshotted the form in the in-app browser against a throwaway local mock API (scratch file outside the repo) in both toggle states.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked how edit should treat `completeBy: null` (answered: keep current value). Asked how the edit form should treat legacy NULL deadlines once ASAP was removed; superseded when the user chose to keep ASAP with a new label. Pre-existing frontend test failure noted above. The new FR text itself still needs to be written into the backlog by the team.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: order creation reserves credits synchronously with no retry, so the client learns the outcome in the response; a create while the requester has a `pending` order is rejected 409 with the message "Another order request is currently pending, please try again."; answers to the agent's questions (below) fix the status codes, the failed-row handling and the release on a transient failure.
+
+**Prompts (exact):**
+
+> no, continue working on this branch,
+>
+> remove the retry mechanism when an order is created, so its fully sync now,
+> when creation fails, the client knows immediately
+>
+> and when an order in "pending" state exists, any requests to create an new order is rejected 409 conflict with message "Another order request is currently pending, please try again."
+
+> (Agent questions) When the synchronous credit reserve succeeds, what should POST /orders return? / When the reserve fails, what happens to the order row and the response? / Which HTTP statuses for a failed reserve? / The 409 check: whose pending orders count?
+> (Answers) 201 with the open order / Keep row as failed / 422 / 503 / Same requester only
+
+> (Agent question) If credit-service is unreachable or returns 5xx, the reserve may still have gone through on its side. Today the worker then queues a credit release. Keep that?
+> (Answer) Queue a release
+
+**Key responses:**
+
+- `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
+- New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
+- The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
+- Error messages reuse the existing order-service texts for `INSUFFICIENT_CREDITS` and `CREDIT_SERVICE_UNAVAILABLE`; `CREDIT_RESERVE_REJECTED` reads "Your credits could not be reserved. Please try again." (agent wording, modelled on the frontend's former generic text).
+- Frontend `CreateRequest.jsx`: Post awaits the response and shows its message on failure; the socket wait and `/orders/mine` re-check are removed. `reserveFailureMessage` in `api/orders.js` is removed (no other users). `watchOrderEvents` in `realtime/orderSocket.js` is left in place, now unused by this page.
+- Points raised for the team (not decided by the agent): `credits.client.ts` has no request timeout ("by decision"), so a hung credit-service call keeps the request open and the order `pending`, during which the requester gets 409; if the API process dies between writing the pending row and settling it, the order stays `pending` and blocks that requester's creates, with nothing that settles it (the worker's reserve job used to cover this). ECS task definitions are not in the repo, so `CREDIT_SERVICE_URL` must be added to the order-service API task by hand.
+
+Verification: order-service `npm run typecheck` and `npm run lint` clean; `npm test` 18 files, 707 tests passed. The e2e suite (`test/credit-saga.e2e-spec.ts`, rewritten for the synchronous flow, with new sequential and concurrent pending-order tests) typechecks but was **not run**: no Postgres was available. Frontend `npm test`: 222 passed, 1 failed, the same pre-existing `CreateRequest.test.jsx` `maxLength` failure noted in the previous entry.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked the success status, failed-row handling, failure status codes, 409 scope and transient-failure release (answers above). Open for the team: request timeout on the reserve call, and recovery of an order left `pending` by a crash (see Key responses). The advisory lock is an agent implementation choice for the team to confirm.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: switching view while on a page of the old view goes to the new view's main page instead of showing "This is only available in ... mode". This replaces, for the toggle only, `instructions.md` Stage 22's "Toggling the view" row ("The user stays on the current page").
+
+**Prompts (exact):**
+
+> ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
+
+**Key responses:**
+
+- "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
+- `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
+- `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
+- Implementation choice by the agent: the redirect lives in the toggle, not in `ViewGate`, because a `ViewGate` redirect would fire on the optimistic flip and leave the user on the wrong page after a failed switch. Opening another view's page directly still shows the blocked-page message.
+
+Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both directions, shared page, failed switch, `viewForPath` cases) passes; full frontend suite 235 passed, 1 failed (the pre-existing `CreateRequest.test.jsx` `maxLength` failure); oxlint clean on the changed files. Checked in the in-app browser against a throwaway local mock API (scratch file outside the repo): Suppliers -> Courier landed on Find errands, My deliveries -> Requester landed on Suppliers.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+`instructions.md` Stage 22 still describes the old toggle behaviour; the team may want to update it. The page-to-view list now exists in `views.js` and in `App.jsx`'s `ViewGate` props.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage e: Series API and failed rows"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+> once done, go for stage f
+> ok let's finish up stage e. ignore my msg to go for f. finish up whatever you need for e then stop.
+
+**Key responses:**
+Implemented the full series API (`POST /orders/series`, `GET /orders/series/mine`,
+`GET /orders/series/:seriesId`, `PATCH /orders/series/:seriesId/edit`,
+`DELETE /orders/series/:seriesId`), mirroring `createOrder`/`editOrder`'s validation and
+optimistic-lock patterns: `series.service.ts`, `series.controller.ts`, `series.routes.ts`
+(mounted at `/orders/series`, before `GET /orders/:id`), `types/series.ts`. Added the stage's
+error codes to `constants/errors.ts` and `statusFor` mapping (404/409 for
+`SERIES_NOT_FOUND`/`SERIES_CONFLICT`, everything else 400).
+
+Added `domain/series-rule.ts`: a thin wrapper over the `rrule` npm package (per the stage's
+"Library: rrule (npm)" decision) that parses the series' stored RRULE text against its
+DTSTART, using the same Singapore-wall-clock-shift trick as `clients/openingHours.ts` (stage
+c2), since `rrule` otherwise treats JS `Date`s as literal UTC. Used to validate a submitted
+rule, compute the initial `nextFireAt` (the first occurrence at/after DTSTART, inclusive), and
+the "next 3 upcoming dates" GET responses expose.
+
+Extended `queue/tasks.ts`'s `ChatNotificationPayload` with a nullable `orderId` and an optional
+`recipient` (required when `orderId` is null), per the Notifications section's already-approved
+(George, Wen Xi) extension, and added `notifySeriesEvent`/`isChatNotificationPayload`; updated
+`worker/credit-jobs.ts`'s `chat_notification` validator to use the new type guard. Series
+failure/skip rows are inserted directly into `requests` (status `failed`, `failureReason` set,
+no credit reservation, no outbox row except the notice) via a small shared helper in
+`series.service.ts`, used by `editSeries`/`deleteSeries` when a retry was stopped (see below) and
+exported for Stage f's worker to reuse.
+
+Implemented "series edited/paused/deleted while retrying stops the retry, writes a failed row and
+a notice" for both `editSeries` (any successful edit while `currentOccurrenceAt` is set) and
+`deleteSeries` (same, in the same transaction as the delete). The two notice messages were
+drafted and shown to the user for approval before use, per the stage's explicit instruction, and
+used verbatim once approved.
+
+`editSeries` resets DTSTART to the edit time and recomputes `nextFireAt` only when the submitted
+`rrule` text differs from the stored one (a byte-for-byte change, per "only when the RRULE ...
+changes"); resuming a paused series (`status: inactive -> active`) recomputes `nextFireAt` from
+the resume time without touching DTSTART, so missed occurrences during the pause are dropped
+without restarting the recurrence pattern's day/weekday alignment.
+
+`listMyOrders` (order-listing.service.ts) now includes `failed` rows that carry a
+`failureReason` (series outcomes) while still hiding credit-reservation failures
+(`failureReason` null), per the stage's "Failed rows" table; its one existing test case
+(`orders.controller.spec.ts`, `GET /orders/mine`) was updated for the new where-clause, not
+added to.
+
+**`[DECIDE]` resolved during this stage:** the design table's open placeholder — "If
+`durationMinutes` is omitted on a series: default 1440 or required; waiting for George's
+completeBy change" — was raised to the user, who first said default to 1440 pending later
+confirmation. Mid-stage, `git fetch` showed George's completeBy-default change (commit
+`98ee3e3`) had since merged to main with a **1-hour** default for normal orders, not the 24
+hours instructions.md assumed. Raised this discrepancy to the user, who then said to match it:
+`durationMinutes` omitted on create defaults to 60 minutes (`DEFAULT_DURATION_MINUTES` in
+`series.service.ts`), not 1440. The 1440-minute **maximum** (24h cap) from the stage's own table
+is unchanged and still enforced.
+
+**Branching note:** work was originally done on the `feat/stage-d-order-service-user-client`
+branch (PR #176, unmerged), which was itself based on an older `main`. Partway through, `main`
+was found to have merged a second relevant change — `5f17a93` "reserve credits synchronously on
+create" (removes the worker's `credit_reserve` job; `POST /orders` now reserves inline) — which
+touched `orders.routes.ts` and `worker/credit-jobs.ts`, two files this stage also edits. Per the
+user's direction, the Stage-d-only usage-log sign-off was committed and pushed to PR #176
+separately, and this stage's work was redone from scratch on a fresh branch cut from current
+`main` (`feat/stage-e-order-service-series-api`), reapplying the same edits against the new file
+versions.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 785/785 tests pass (23 files), including new
+`domain/series-rule.spec.ts` (8 tests), `queue/tasks.spec.ts` (9 tests),
+`services/series.service.spec.ts` (32 tests: create validation incl. durationMinutes
+default/startNow/startAt rules, getSeries/listMySeries ownership and public shape — no retry
+state or `nextFireAt` exposed, edit semantics incl. DTSTART reset/resume/stop-retry-and-notify,
+delete incl. stop-retry-and-notify), `controllers/series.controller.spec.ts` (12 HTTP-level
+tests: status-code mapping, route order, ownership), and one new case each in
+`worker/credit-jobs.spec.ts` and `queue/tasks.spec.ts` for the extended `chat_notification`
+payload. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage.
+
+**Files:**
+
+- `order-service/src/services/series.service.ts` (created)
+- `order-service/src/services/series.service.spec.ts` (created)
+- `order-service/src/controllers/series.controller.ts` (created)
+- `order-service/src/controllers/series.controller.spec.ts` (created)
+- `order-service/src/routes/series.routes.ts` (created)
+- `order-service/src/types/series.ts` (created)
+- `order-service/src/domain/series-rule.ts` (created)
+- `order-service/src/domain/series-rule.spec.ts` (created)
+- `order-service/src/queue/tasks.spec.ts` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, one fixture assertion only)
+- `order-service/package.json` / `package-lock.json` (added the `rrule` dependency)
+
+**Deviations / questions raised for the team:**
+The `durationMinutes` default (see above) — resolved with the user mid-stage, flagged here since
+it reverses an earlier "default 1440" answer. A series created without a rule that yields any
+occurrence at/after its own start time (e.g. `UNTIL` already in the past) is rejected as
+`INVALID_RULE` at create time; instructions.md does not say what should happen here, but the
+`nextFireAt` column is non-nullable (matches the real Stage a migration, not the design table's
+"nullable" note — already flagged during Stage a), so a series that could never fire cannot be
+stored. Otherwise none; every other item in the design tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 f: Worker
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage f: Worker"
+
+**Prompts (exact):**
+
+> read through instructions.md. i have finished up to 28e. let's start with f. dont forget the git workflow
+
+**Key responses:**
+Implemented `worker/series-worker.ts`: a 1-second BullMQ job scheduler (`startScheduledTask`,
+same pattern as `release-redrive.ts`) that each tick claims every due series (`nextFireAt <= now`
+OR `nextRetryAt <= now`, `updateMany`/`deleteMany` guarded by `version`) and runs instructions.md's
+fire-time checks, retry, catch-up/skip and finished-series-deletion rules: user check
+(`user.client.ts`'s `statusForWorker`), supplier/location/opening-hours check
+(`suppliers.client.ts`'s worker methods from Stage c2), the "completeBy already past at fire
+time" skip, the "one retry slot per series" (a due next occurrence drops a stale retry, writing
+its own failed row), and "posted late" notes (> 1 minute after the scheduled time) added to the
+order's chat once it opens. Posting an occurrence reuses `orders.service.ts`'s `createOrder`
+request path, extracted into a new exported `createPendingOrderAndSettle` (same advisory lock,
+same pending-order exclusivity, same synchronous reserve-then-settle; `createOrder` itself is
+behaviourally unchanged) with a `seriesId` attached, per "each occurrence is created through
+the normal create path."
+
+The retry backoff (user/supplier-service-unreachable: up to 4 attempts, waits capped 1/2/4s
+with full jitter) follows the "Stage 19 shape" instructions.md points to
+(`user-service/src/services/email.service.ts`), but — since the scheduler must not block one
+series while others are due — is persisted across ticks via the series row's own retry columns
+rather than a blocking loop; the stage's 30s overall deadline has no dedicated timestamp column,
+so it is satisfied structurally by the 4-attempt cap together with each call's own 3s timeout
+and the 1/2/4s backoff caps (worst case well under 30s) rather than tracked directly. Notices:
+one sent immediately on entering `user_service_unreachable`/`supplier_closed` retry (and again
+on exhaustion/failure); `supplier_service_unreachable` sends only the exhaustion/failure notice,
+per "notify only when exhausted." `SeriesFailureReason` (series.service.ts) gained the worker's
+own reasons; `formatSgDateTime`, `DEFAULT_DURATION_MINUTES` and the failed-row/notice builder
+(renamed `buildStoppedOccurrenceWrite`, now taking an explicit `scheduledAt` so the worker can
+reuse it for occurrences that were never in retry) were exported from Stage e's
+`series.service.ts` for this purpose, with no change to their existing callers' behaviour.
+
+**Schema fix (stopped to ask the user):** Stage f's design requires `OrderSeries.nextFireAt` to
+be nullable (null = no further occurrences, used to trigger the finished-series delete), but
+Stage a's already-merged migration had created it `NOT NULL` — a discrepancy Stage e's own log
+entry had already flagged but left unresolved. Asked the user how to proceed (new migration vs.
+a NOT-NULL sentinel value); they chose a new migration. Added
+`prisma/migrations/20261109130642_nextfireat_nullable` (`ALTER COLUMN "nextFireAt" DROP NOT
+NULL`) and the matching `schema.prisma` change, then regenerated the Prisma client. Applied it
+to the locally running dev stack's `order-db` (the only Postgres instance available in this
+environment) rather than a disposable one, since reaching the already-running `order-db`
+container required reusing its persisted volume; the running `order-service`/`order-worker`
+containers were not restarted and stayed healthy throughout.
+
+**Deviation (not one of instructions.md's listed outcomes):** a requester already having
+another `pending` order at the exact moment a scheduled occurrence fires (an interaction with
+George's 2026-11-09 synchronous-reserve + one-pending-order-at-a-time change, which postdates
+this stage's text) is treated like any other post-time failure — failed row + notice, not
+retried, reason `SERIES_PENDING_ORDER_CONFLICT` — since the series has already advanced past
+that occurrence by the time posting is attempted. Flagged in the code and here for the team to
+confirm.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 816/816 tests pass (25 files), including the
+new `worker/series-worker.spec.ts` (18 tests: posting + the late-note threshold on both sides,
+the completeBy-already-past skip, every fire-time-check failure/retry outcome (user
+suspended/pending/not-found/locked, user- and supplier-service-unreachable entering and
+exhausting retry, supplier closed entering retry and failing past its deadline), one retry slot
+per series (a due next occurrence drops a stale retry), catch-up across four ticks, finished-
+series deletion, and exactly-once posting under two simulated concurrent claims of the same
+stale row) and no regressions in the existing `orders.service.spec.ts` / `series.service.spec.ts`
+suites after the `createPendingOrderAndSettle` extraction. `npm run db:migrate`'s underlying
+`prisma migrate dev` applied the new migration against the running dev `order-db` cleanly.
+
+**Files:**
+
+- `order-service/src/worker/series-worker.ts` (created)
+- `order-service/src/worker/series-worker.spec.ts` (created)
+- `order-service/prisma/migrations/20261109130642_nextfireat_nullable/migration.sql` (created)
+- `order-service/prisma/schema.prisma` (modified: `OrderSeries.nextFireAt` now nullable)
+- `order-service/src/services/orders.service.ts` (modified: extracted `createPendingOrderAndSettle`)
+- `order-service/src/services/series.service.ts` (modified: exported `formatSgDateTime`,
+  `DEFAULT_DURATION_MINUTES`, `buildStoppedOccurrenceWrite`; extended `SeriesFailureReason`)
+- `order-service/src/worker.ts` (modified: wires up the new scheduler and its service-key clients)
+
+**Deviations / questions raised for the team:**
+The `nextFireAt` nullability fix and the pending-order-conflict handling, both above. Otherwise
+every row of the stage's "Firing and failures" / "Fire-time checks" / "Next opening time"
+tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+## 2026-11-09 — chat-service/user-service: Message auto-translation
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decisions given in chat on 2026-11-09 (quoted below) and the interface names the user confirmed with "Use these". Mockup behaviour: `MockupBlueprint.md` §7.6.
+
+**Prompts (exact):**
+> A new message service has been added into the application. I want to build the translation feature within the chat service. How it works:
+>
+> * within the user settings, the user will store their preferred language (use a standard language list as the list of options)
+> * by default, no translation will be applied
+> * just as the mockup page suggest, all chat windows will come with an  "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
+> * if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
+> * The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
+> * translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
+> * this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each  message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
+> * The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
+
+> are the conversation stored based on the user or the order?; new user-service col, and fetched when the message tab is launched; BullMQ on shared Redis; gemini key. are we even operating with an event driven architecture thus far in the messaging service? i was thinking when the model returns, the db gets updated and would that by default lead to the ui updating?
+
+> 1. in this case,
+>
+> * conversation_participants will store an additional "auto_translate" bool
+> * messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
+>
+> the idea is that messages sent by the courier will be default contain "NA" for "translated_for_courier" since they are the courier, but "translated_for_requester" is where translated versions will be kept in the requester's preferred language if invoked, and vice versa. if a courier is switched half way, all requester messages' "translated_for_courier" cols will be cleared, so if the new courier has auto translate on, the past messages will be regenerated accordingly
+>
+> 2. the user-db will store an additional "preferred_lang" col, stored as ISO 639-1 codes, and will be interacted with in the same flow as all other user-level settings and configs.
+>
+> 3. when is user data queried in the entire flow? i think it is good if the lang was just sent together and kept on the client side - it will only be 2 chars, very small overhead to keep around, and saves an additional dedicated endpoint call during translation invocation.
+>
+> 4. Since we are already using event-driven architecture, lets follow and have a socket event to signal completion of translation to notify UI
+>
+> 5. gemini 3.1 flash-lite. i will link it with a single api key from google ai studio. pros and cons of sdk vs http calls? recommended for this application?
+>
+> 6. 1 changes things slightly
+> 7. 1 changes this
+
+> let me change up how the data is stored. instead of using 2 additional cols, which limit the translation supported to 2, add a new translated_messages table keyed by the message id and user_id to support future expansion os the conversation to more roles. this also allows each row to just contain the translated content, instead of tracking a bunch of nulls.
+>
+> SDK will be used
+>
+> conversation_participants will store an extra col for translate_to (storing the preferred language only if the toggle is on) based on the respective user settings, updated on the toggle call, and that can be read when one party sends a message. A non null value will signal that we need an event in bullmq to prepare the translation in that language for that user
+>
+> 1. remove or replace-courier route shall be for future. disregard the clearing logic, just log as a future enhancement
+> 2. in the new design, these wont be necessary, as each row maps to a translation exactly
+> 3. in the new design, the API will just return the result of the requested translation
+> 4. follow existing convention
+> 5. follow existing convention and the new design
+> 6. preferred_lang is not null, and just defaulted to english "en". Use a subset of the language list only containing english, chinese, hindi, tamil, malay, spanish, arabic
+> 7. model id is just "gemini-3.1-flash-lite", stored as TRANSLATION_LLM_MODEL. this and TRANSLATION_LLM_KEY are new env vars in chat-service
+
+Answers to two multiple-choice questions (via the question dialog): store a `translated_messages` row with content "SAME" when the model returns SAME; "Use these" for the proposed interface names (table `translated_messages(id, message_id, user_id, content, created_at; unique message_id+user_id)`, column `conversation_participants.translate_to`, route `POST /chat/conversations/:conversationId/translation` with body `{enabled, language}`, socket event `message:translated` to the user's `user:<id>` room with `{messageId, conversationId, translatedContent}`, message objects gaining `translatedContent`).
+
+**Key responses:**
+Declined the SDK-vs-HTTP pros/cons and recommendation as prohibited architecture/design work (AGENTS.md §2.2) and asked for the team's choice; stopped to ask for unrecorded schema/interface decisions (§2.1) before writing code. After the decisions were given: added `translate_to` and `translated_messages` (Prisma schema + hand-written migration); `POST /chat/conversations/:conversationID/translation` (Bearer auth; 400/401/404/403/409 as the read endpoint; stores or clears `translate_to`, queues a backfill on enable); BullMQ queue on the shared Redis (prefix `queue:chat`, name `translation`, order-service's default retry options); a per-message job queued after commit for every active, non-sender participant with `translate_to` set (user messages and system notifications); a job processor that re-checks `translate_to` before spending anything, skips already-translated and own messages, batches 20 per Gemini call (`@google/genai`, `responseMimeType: application/json`), stores one row per message (including "SAME") and emits `message:translated`; `translatedContent` in `GET .../messages` scoped to the requester; `TRANSLATION_LLM_KEY` (required) and `TRANSLATION_LLM_MODEL` (default `gemini-3.1-flash-lite`) env vars; user-service `users.preferred_lang VARCHAR(2) NOT NULL DEFAULT 'en'`, `PUT /users/me/preferred-lang` (same shape as active-view, body `{preferredLang}`, subset en/zh/hi/ta/ms/es/ar) and `preferredLang` in user responses and `GET /users/me`.
+Choices made within the delegated "follow existing convention" (for the team to confirm): the worker runs inside the chat-service API process (so it can emit through Socket.IO); SYSTEM messages with content are translated like TEXT; changing language while on deletes the user's stored translations for that chat before the backfill; the send response and `message:sent` payload are unchanged (no `translatedContent`); a failed enqueue is logged and does not fail the request (like broadcast failures).
+Future enhancement (recorded as instructed): remove/replace-courier route and clearing the outgoing courier's translations are not implemented.
+Verification: chat-service 192 tests passed (23 new), typecheck and build passed. user-service: typecheck passed; me/users controller and service suites (262 tests) passed against the local test database. Not run: live Redis/BullMQ, live Gemini calls, live MySQL migration, the rest of the user-service suite, and any frontend (the frontend toggle, show-original/Translate controls, language setting and `message:translated` handling are not built).
+
+**Files:**
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261109000000_add_translation/migration.sql` (created)
+- `chat-service/src/translation/languages.ts` (created)
+- `chat-service/src/translation/gemini.ts` (created)
+- `chat-service/src/translation/queue.ts` (created)
+- `chat-service/src/translation/worker.ts` (created)
+- `chat-service/src/translation.spec.ts` (created)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/realtime/messages.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/.env.example` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/package.json`, `chat-service/package-lock.json` (modified; JSON and lockfile, no header)
+- `compose.yaml`, `.env.example` (modified)
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts`, `users.controller.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts`, `users.service.test.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked for and received the toggle storage, language storage, queue, SDK, socket event, route and field decisions above. Open for the team: (1) a language change while the toggle is off leaves old-language rows because `translated_messages` has no language column; (2) the worker shares the API process; (3) whether SYSTEM notifications should be translated; (4) when the user lowers `preferred_lang`, nothing updates `translate_to` until the toggle is called again; (5) the frontend work.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-09 — frontend/chat-service: Translation UI and participant translateTo
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The translation decisions recorded in the previous entry (2026-11-09, chat-service/user-service: Message auto-translation); `MockupBlueprint.md` §7.6 and `foc-mockup/src/pages/Chat.jsx` for the switch and Translate/Show original controls.
+
+**Prompts (exact):**
+> Yes, build it
+
+Answer to a multiple-choice question (via the question dialog): the saved Auto-translate state is learned by adding a nullable `translateTo` to each entry of `participants` in `GET /chat/conversations/:id/messages` (chosen over adding it to chat details or keeping it browser-side).
+
+**Key responses:**
+Stopped to ask before changing the chat-service API contract (§2.1), then added `translateTo` to the history `participants` entries. Frontend: an Auto-translate switch in the thread header (disabled until the preferred language has been read from `GET /users/me` when the chat opens; sends `{enabled, language}` to the toggle route); received messages show their translation when the switch is on, with a "Show original" control per message; when the switch is off originals are shown and messages that already have a translation offer "Translate", which only swaps the display and never calls the API; messages with no translation, `SAME`, system and own messages get no control; `message:translated` events (new `useChatTranslations` hook) fill in translations live; a Preferred language section on the Account page (`PUT /users/me/preferred-lang`) using the seven-language subset.
+Verification: chat-service 193 tests passed, typecheck/build passed earlier in the stage. Frontend: 187 of 188 tests passed and the production build passed; the one failure, `CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", also fails with these changes stashed, so it is not caused by this work. New tests cover the switch, translated display, Show original/Translate, no control for SAME/untranslated/own messages, the socket event, failure handling and the Account language section. Not exercised: a real browser, live sockets, a live Gemini call.
+
+**Files:**
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `frontend/src/constants/languages.js` (created)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/src/api/profile.js` (modified)
+- `frontend/src/realtime/chatSocket.js` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/pages/Account.test.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked where the frontend learns the saved toggle state; answered above. Open: the chat list's last-message preview still shows the original text; the switch does not reflect a language change made on another device until the chat reloads; the Translate/Show original buttons are 24px tall on desktop (the mockup uses a 44px target on mobile only).
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-09 — user-service: Prisma migrations for the user database
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Boilerplate
+**Governing decision:** Team decision in chat on 2026-11-09: use Prisma migrate (order/chat style) for user-service.
+
+**Prompts (exact):**
+> * gemini is tested and works
+> * update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
+> * blank log entries are accepted
+>
+>
+> after updating the database, generate a PR message
+
+Answer to a multiple-choice question (via the question dialog): "Prisma migrate (order/chat style)", chosen over a supplier-style re-runnable migrate script and applying the ALTER by hand.
+
+**Key responses:**
+Stopped to ask which migration tooling to use (§2.1; the other services differ: order and chat use Prisma migrate, supplier uses a `migrate.ts` script, credit uses only `init.sql`). Added Prisma as a dev dependency with a model-less `prisma/schema.prisma`, `prisma.config.ts` reading `DATABASE_URL`, `npm run db:deploy`, a baseline migration (a copy of `init.sql` before `preferred_lang`) and a second migration adding `users.preferred_lang`. Verified on scratch databases that an empty database migrates fully, and that a database built from `init.sql` migrates after `prisma migrate resolve --applied 20261109000000_baseline`; a second deploy reported no pending migrations. Applied the same baseline-resolve and deploy to the local dev `user_service` database (5 existing users kept); scratch databases were dropped. Typecheck and ESLint of the config passed. Not done: wiring `db:deploy` into the Compose or ECS startup, and removing `init.sql` (the test database, CI and fresh Compose volumes still use it, so it must keep every migrated column).
+
+**Files:**
+- `user-service/prisma/schema.prisma` (created)
+- `user-service/prisma.config.ts` (created)
+- `user-service/prisma/migrations/20261109000000_baseline/migration.sql` (created)
+- `user-service/prisma/migrations/20261109010000_add_preferred_lang/migration.sql` (created)
+- `user-service/prisma/migrations/migration_lock.toml` (created; no header possible)
+- `user-service/package.json`, `user-service/package-lock.json` (modified; JSON, no header)
+- `user-service/.env.example`, `user-service/README.md` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked which migration approach to use; answered above. Open: `prisma migrate dev` and `db push` must not be used (no models, so they would propose dropping tables); `init.sql` and the migrations are two places to keep in step; deployments (Compose, ECS) do not yet run `db:deploy`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 
 ## 2026-11-09 — frontend: Delivery details input length
 
@@ -13276,6 +13853,31 @@ Moved the translation control above the timestamp outside the message bubble. Up
 - `frontend/tests/pages/Chat.test.jsx` (modified)
 - `README.md` (modified)
 - `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Merge main into message translation branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to merge main, retaining both branches' existing changes.
+
+**Prompts (exact):**
+> pull changes from main and merge again to resolve conflicts
+
+**Key responses:**
+Fetched and merged origin/main, resolved conflicts in the request page attribution and the disclosure log and index while retaining both branches' entries. Frontend build passed; the chat, request creation and view toggle tests passed (55 tests).
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (merge conflict resolved)
+- `ai/usage-log.md` (merge conflict resolved and entry appended)
+- `README.md` (merge conflict resolved and index updated)
 
 **Deviations / questions raised for the team:**
 None.
