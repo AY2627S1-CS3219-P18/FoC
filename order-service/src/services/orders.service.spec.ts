@@ -75,6 +75,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
+ *        worker-only stub methods to the fake client in the supplier-service reference check
+ *        tests, per Stage 28 c2's interface change; no test logic changed. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -674,6 +679,13 @@ describe('supplier-service reference check (create / edit)', () => {
     const client = {
       supplierExists: vi.fn(async () => supplier),
       locationExists: vi.fn(async () => location),
+      supplierStatusForWorker: vi.fn(async () => ({
+        existence: supplier,
+        hasNoOpeningHours: false,
+        closed: false,
+        nextOpeningAt: null,
+      })),
+      locationExistsForWorker: vi.fn(async () => location),
     } satisfies SuppliersClient;
     return { client, refs: { suppliers: client, authorization: 'Bearer abc' } };
   }
