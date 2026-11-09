@@ -100,6 +100,27 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Aligned dropdown chevrons by moving field spacing outside the control.
  * Author review: Congchen
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Complete-by toggle - the ASAP option reads "ASAP" / "By 1 hour from
+ *        now" (George, 2026-11-09); order-service fills in the one-hour default.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-09): POST /orders is synchronous (George, 2026-11-09) - Post waits for the
+ *        response and shows its message on failure; the socket wait and /orders/mine re-check
+ *        for the reservation outcome are removed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - added `seriesMode`: the same form now also creates/
+ *        edits a recurring errand (/series/new, /series/:id/edit), reusing every shared
+ *        field (supplier, description, location, details, credits, additional details) and
+ *        adding series-only sections: Start (now/later - revives and repurposes the
+ *        commented-out "Schedule for later" stub below, since there is no separate
+ *        single-post scheduling feature), Repeat (RecurrencePicker), and a "deliver by"
+ *        date/time picker whose gap from the start time becomes durationMinutes. The normal
+ *        order path (seriesMode omitted/false) is unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -108,52 +129,17 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Check, Loader2, Minus, Plus, X } from 'lucide-react'
 import Button from '../components/Button'
 import SupplierImage from '../components/SupplierImage'
+import RecurrencePicker from '../components/RecurrencePicker'
 import { useApi, useReferenceData } from '../api/useApi'
 import { getSupplier, listSuppliers } from '../api/suppliers'
-import { createOrder, editOrder, listMyOrders, reserveFailureMessage } from '../api/orders'
-import { watchOrderEvents } from '../realtime/orderSocket'
+import { createOrder, editOrder, listMyOrders } from '../api/orders'
+import { createSeries, editSeries, getSeries, seriesErrorMessage } from '../api/series'
+import { buildRuleText, defaultRuleState, parseRuleText } from '../domain/seriesRule'
 import { qualifiedName } from '../data/suppliers'
 import { useAuth } from '../context/AuthContext'
 import { getLastRequest, saveLastRequest } from '../api/lastRequest'
 
 const MAX_CHARS = 200
-const RECHECK_MS = 5000
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-// The reservation runs asynchronously after the 202. Its outcome normally arrives as an order event;
-// if the socket is down or the event was missed, the caller's own orders are re-checked every few
-// seconds until the order leaves `pending`.
-async function reservationOutcome(orderId, watch) {
-  let done = false
-  const viaSocket = watch
-    .next(
-      (name, p) =>
-        p?.orderId === orderId && (name === 'order:created' || name === 'order:failed'),
-    )
-    .then(({ payload }) => ({ status: payload.status, reason: payload.reason }))
-  const viaRecheck = (async () => {
-    while (!done) {
-      await sleep(RECHECK_MS)
-      if (done) break
-      try {
-        const { orders } = await listMyOrders('requester')
-        const order = orders.find((o) => o.id === orderId)
-        // /orders/mine leaves failed orders out, so a just-created order missing from it has failed.
-        if (!order) return { status: 'failed' }
-        if (order.status !== 'pending') return { status: order.status }
-      } catch {
-        // keep waiting; the socket may still deliver
-      }
-    }
-    return new Promise(() => {})
-  })()
-  try {
-    return await Promise.race([viaSocket, viaRecheck])
-  } finally {
-    done = true
-  }
-}
 
 // Defaults follow the clock rather than a hardcoded date that goes stale overnight.
 const today = () => new Date().toISOString().slice(0, 10)
@@ -171,23 +157,47 @@ const localTime = (iso) => {
 
 // Order F18 (Wen Xi's edit page, carried over): /requests/:id/edit reuses the form for one of the
 // requester's errands. The form mounts once that order is loaded, so its fields start from it.
-export default function CreateRequest() {
+// Stage 28 g: /series/new and /series/:id/edit reuse the same form in series mode (seriesMode),
+// loading a series (getSeries) instead of an order.
+export default function CreateRequest({ seriesMode = false }) {
   const { id: editId } = useParams()
-  const { data, loading, error } = useApi(
-    () => (editId ? listMyOrders('requester') : Promise.resolve(null)),
-    [editId],
+  const { data: orderData, loading: orderLoading, error: orderError } = useApi(
+    () => (!seriesMode && editId ? listMyOrders('requester') : Promise.resolve(null)),
+    [seriesMode, editId],
   )
-  if (!editId) return <RequestForm order={null} />
-  const order = data?.orders?.find((o) => o.id === editId)
-  if (order) return <RequestForm key={order.id} order={order} />
+  const { data: seriesData, loading: seriesLoading, error: seriesError } = useApi(
+    () => (seriesMode && editId ? getSeries(editId) : Promise.resolve(null)),
+    [seriesMode, editId],
+  )
+
+  if (!editId) return <RequestForm order={null} series={null} seriesMode={seriesMode} />
+
+  if (seriesMode) {
+    if (seriesData) return <RequestForm key={seriesData.id} order={null} series={seriesData} seriesMode />
+    return (
+      <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
+        <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Edit recurring errand</h1>
+        {seriesLoading || (!seriesData && !seriesError) ? (
+          <p className="mt-4 text-sm text-ink-70">Loading…</p>
+        ) : (
+          <p role="alert" className="mt-4 text-sm text-alert">
+            {seriesError ? seriesErrorMessage(seriesError) : 'This recurring errand was not found.'}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  const order = orderData?.orders?.find((o) => o.id === editId)
+  if (order) return <RequestForm key={order.id} order={order} series={null} seriesMode={false} />
   return (
     <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Edit errand</h1>
-      {loading || (!data && !error) ? (
+      {orderLoading || (!orderData && !orderError) ? (
         <p className="mt-4 text-sm text-ink-70">Loading errand…</p>
       ) : (
         <p role="alert" className="mt-4 text-sm text-alert">
-          {error ? error.message : 'This errand was not found.'}
+          {orderError ? orderError.message : 'This errand was not found.'}
         </p>
       )}
     </div>
@@ -196,25 +206,28 @@ export default function CreateRequest() {
 
 // Order F1.1.1 — supplier, description, delivery location, credits offered, expiration,
 // additional details. Plus the scheduled-errand and bookmarked-location nice-to-haves.
-// `order` is the errand being edited (F18), or null when posting a new one.
-function RequestForm({ order }) {
+// `order` is the errand being edited (F18), `series` the recurring errand being edited
+// (Stage 28 g), or both null when posting/creating a new one.
+function RequestForm({ order, series, seriesMode }) {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const { credits } = useAuth()
-  const isEdit = order !== null
+  const isEditOrder = order !== null
+  const isEditSeries = series !== null
+  const isEdit = seriesMode ? isEditSeries : isEditOrder
 
   const [supplierId, setSupplierId] = useState(
-    isEdit ? String(order.supplierId) : params.get('supplier') || '',
+    isEdit ? String((series ?? order).supplierId) : params.get('supplier') || '',
   )
-  const [description, setDescription] = useState(order?.description ?? '')
-  const [details, setDetails] = useState(order?.deliveryDetails ?? '')
+  const [description, setDescription] = useState((series ?? order)?.description ?? '')
+  const [details, setDetails] = useState((series ?? order)?.deliveryDetails ?? '')
   const { data: last, loading: lastLoading } = useApi(() => isEdit ? Promise.resolve(null) : getLastRequest().catch(() => null), [])
-  const [locationId, setLocationId] = useState(isEdit ? String(order.deliveryLocationId) : '')
+  const [locationId, setLocationId] = useState(isEdit ? String((series ?? order).deliveryLocationId) : '')
   const [timing, setTiming] = useState(order?.completeBy ? 'later' : 'asap')
   const [date, setDate] = useState(order?.completeBy ? localDate(order.completeBy) : today)
   const [time, setTime] = useState(order?.completeBy ? localTime(order.completeBy) : '15:30')
-  const [offer, setOffer] = useState(4)
-  const [extra, setExtra] = useState(order?.additionalDetails ?? '')
+  const [offer, setOffer] = useState(series?.credits ?? 4)
+  const [extra, setExtra] = useState((series ?? order)?.additionalDetails ?? '')
   const [posting, setPosting] = useState(false)
   const [postError, setPostError] = useState(null)
   const [dismissedLocation, setDismissedLocation] = useState(false)
@@ -222,17 +235,61 @@ function RequestForm({ order }) {
   const savedLocation = !isEdit && last?.last_req_del_loc_id != null && last.last_req_del_loc_details && last.last_req_del_loc_details !== 'Nil'
     ? locations.find((l) => Number(l.location_id) === Number(last.last_req_del_loc_id)) : null
 
+  // Stage 28 g: series-only fields. `startAt` can't be edited once created (editSeries has no
+  // such field), so the start toggle only shows when creating.
+  const [startMode, setStartMode] = useState('now')
+  const [startDate, setStartDate] = useState(today)
+  const [startTime, setStartTime] = useState('09:00')
+  const [ruleState, setRuleState] = useState(() => {
+    if (!seriesMode) return null
+    return isEditSeries ? parseRuleText(series.rrule, new Date(series.startAt)) : defaultRuleState(new Date())
+  })
+  const [deliverByDate, setDeliverByDate] = useState(() => {
+    if (!seriesMode) return today()
+    const anchorMs = isEditSeries ? new Date(series.startAt).getTime() : Date.now()
+    const durationMs = (isEditSeries ? series.durationMinutes ?? 60 : 60) * 60_000
+    return localDate(new Date(anchorMs + durationMs).toISOString())
+  })
+  const [deliverByTime, setDeliverByTime] = useState(() => {
+    if (!seriesMode) return '10:00'
+    const anchorMs = isEditSeries ? new Date(series.startAt).getTime() : Date.now()
+    const durationMs = (isEditSeries ? series.durationMinutes ?? 60 : 60) * 60_000
+    return localTime(new Date(anchorMs + durationMs).toISOString())
+  })
+  const seriesAnchor = !seriesMode
+    ? null
+    : isEditSeries
+      ? new Date(series.startAt)
+      : startMode === 'now'
+        ? new Date()
+        : new Date(startDate + 'T' + startTime)
+  const seriesAnchorInvalid = seriesMode && Number.isNaN(seriesAnchor.getTime())
+  const seriesDeliverBy = seriesMode ? new Date(deliverByDate + 'T' + deliverByTime) : null
+  const seriesDeliverByInvalid = seriesMode && Number.isNaN(seriesDeliverBy.getTime())
+  const seriesDeliverByTooEarly =
+    seriesMode && !seriesAnchorInvalid && !seriesDeliverByInvalid && seriesDeliverBy.getTime() <= seriesAnchor.getTime()
+  const durationMinutes =
+    seriesMode && !seriesAnchorInvalid && !seriesDeliverByInvalid && !seriesDeliverByTooEarly
+      ? Math.min(1440, Math.round((seriesDeliverBy.getTime() - seriesAnchor.getTime()) / 60_000))
+      : null
+
   // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
   const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
   const { data: chosen } = useApi(() => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)), [supplierId])
   const suppliers = supplierPage?.data ?? []
   const supplier = supplierId ? chosen : null
 
-  const insufficient = !isEdit && offer > credits.available
+  // Series credits stay editable (instructions.md: "all fields editable, including credits"),
+  // unlike a normal order's offer, which is fixed once posted.
+  const insufficient = (!isEdit || seriesMode) && offer > credits.available
   const remaining = credits.available - offer
   const deadline = timing === 'later' ? new Date(date + 'T' + time) : null
   const deadlineInvalid = deadline !== null && Number.isNaN(deadline.getTime())
-  const complete = Boolean(supplierId && description.trim() && locationId && details.trim()) && !deadlineInvalid
+  const complete =
+    Boolean(supplierId && description.trim() && locationId && details.trim()) &&
+    (seriesMode
+      ? !seriesAnchorInvalid && !seriesDeliverByInvalid && !seriesDeliverByTooEarly
+      : !deadlineInvalid)
 
   // F18: PATCH /orders/:id/edit with the editable fields; credits stay as reserved.
   const onSave = async () => {
@@ -262,9 +319,10 @@ function RequestForm({ order }) {
     setPostError(null)
     const exact = details.trim()
     saveLastRequest(locationId, exact).catch(() => {})
-    const watch = watchOrderEvents() // before the POST, so a fast outcome is not missed
+    // POST /orders reserves the credits before it answers: 201 means the errand is open, and a
+    // failure (409 pending order, 422 refused, 503 credit-service down) carries its message.
     try {
-      const order = await createOrder({
+      await createOrder({
         supplierId: Number(supplierId),
         description: description.trim(),
         deliveryLocationId: Number(locationId),
@@ -273,19 +331,66 @@ function RequestForm({ order }) {
         ...(deadline && { completeBy: deadline.toISOString() }),
         additionalDetails: extra.trim() || null,
       })
-      const outcome = await reservationOutcome(order.id, watch)
-      if (outcome.status === 'failed') {
-        setPostError(reserveFailureMessage(outcome.reason))
-      } else {
-        navigate('/my-errands')
-      }
+      navigate('/my-errands')
     } catch (e) {
       setPostError(e.message)
     } finally {
-      watch.stop()
       setPosting(false)
     }
   }
+
+  // Stage 28 g: PATCH /orders/series/:id/edit. startAt can't change, so it isn't sent.
+  const onSaveSeries = async () => {
+    setPosting(true)
+    setPostError(null)
+    const exact = details.trim()
+    saveLastRequest(locationId, exact).catch(() => {})
+    try {
+      await editSeries(series.id, {
+        supplierId: Number(supplierId),
+        description: description.trim(),
+        deliveryLocationId: Number(locationId),
+        deliveryDetails: exact,
+        credits: offer,
+        rrule: buildRuleText(ruleState),
+        durationMinutes,
+        additionalDetails: extra.trim() || null,
+      })
+      navigate('/my-errands')
+    } catch (e) {
+      setPostError(seriesErrorMessage(e))
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  // Stage 28 g: POST /orders/series. Each occurrence reserves its own credits when it posts.
+  const onPostSeries = async () => {
+    setPosting(true)
+    setPostError(null)
+    const exact = details.trim()
+    saveLastRequest(locationId, exact).catch(() => {})
+    try {
+      await createSeries({
+        supplierId: Number(supplierId),
+        description: description.trim(),
+        deliveryLocationId: Number(locationId),
+        deliveryDetails: exact,
+        credits: offer,
+        rrule: buildRuleText(ruleState),
+        durationMinutes,
+        additionalDetails: extra.trim() || null,
+        ...(startMode === 'now' ? { startNow: true } : { startAt: seriesAnchor.toISOString() }),
+      })
+      navigate('/my-errands')
+    } catch (e) {
+      setPostError(seriesErrorMessage(e))
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  const onSubmit = seriesMode ? (isEdit ? onSaveSeries : onPostSeries) : isEdit ? onSave : onPost
 
   const requiredMark = (
     <>
@@ -304,7 +409,9 @@ function RequestForm({ order }) {
   return (
     <div className="page-gutter mx-auto w-full max-w-[640px] py-8 pb-32 md:py-10 md:pb-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
-        {isEdit ? 'Edit errand' : 'Post an errand'}
+        {seriesMode
+          ? isEdit ? 'Edit recurring errand' : 'Create a recurring errand'
+          : isEdit ? 'Edit errand' : 'Post an errand'}
       </h1>
 
       <div className="mt-8 space-y-8">
@@ -413,93 +520,81 @@ function RequestForm({ order }) {
           </>}
         </section>
 
-        {/* 4. Post time: optional. When the request is sent out to the board.
-            Hidden for now (George, 2026-10-20); restore postMode/postDate/postTime state with it.
-        <section>
-          <span className="block text-base font-semibold text-ink">
-            When should this go out?{' '}
-            <span className="font-normal text-ink-40">Optional</span>
-          </span>
-          <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
-            {[
-              ['now', 'Send it out now'],
-              ['schedule', 'Schedule for later'],
-            ].map(([value, text]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setPostMode(value)}
-                aria-pressed={postMode === value}
-                className={
-                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
-                  (postMode === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
-                }
-              >
-                {text}
-              </button>
-            ))}
-          </div>
-          {postMode === 'schedule' && (
-            <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-sm text-ink-70">Date</span>
-                <input
-                  type="date"
-                  value={postDate}
-                  onChange={(e) => setPostDate(e.target.value)}
-                  className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm text-ink-70">Time</span>
-                <input
-                  type="time"
-                  value={postTime}
-                  onChange={(e) => setPostTime(e.target.value)}
-                  className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
-                />
-              </label>
+        {/* 4. Start (series mode only): when the recurrence itself begins. Revives the
+            "Schedule for later" stub this section used to be (now vs. later), repurposed
+            for the series' own startNow/startAt (George agreed; there is no separate
+            single-post scheduling feature). Not editable once created: editSeries has no
+            startAt field, so DTSTART only changes when the rule itself changes. */}
+        {seriesMode && !isEdit && (
+          <section>
+            <span className="block text-base font-semibold text-ink">When should this start?</span>
+            <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
+              {[
+                ['now', 'Start now'],
+                ['later', 'Start later'],
+              ].map(([value, text]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStartMode(value)}
+                  aria-pressed={startMode === value}
+                  className={
+                    'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
+                    (startMode === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                  }
+                >
+                  {text}
+                </button>
+              ))}
             </div>
-          )}
-          <p className="mt-1.5 max-w-prose text-sm text-ink-40">
-            {postMode === 'schedule'
-              ? 'Nobody sees this errand until then. It appears on the board at that time and the countdown below starts from there.'
-              : 'Your errand goes on the board as soon as you post it.'}
-          </p>
-        </section> */}
+            {startMode === 'later' && (
+              <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm text-ink-70">Date</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-ink-70">Time</span>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                  />
+                </label>
+              </div>
+            )}
+          </section>
+        )}
 
-        {/* 5. Complete-by: the deadline for the food to arrive. */}
-        <section>
-          <span className="block text-base font-semibold text-ink">
-            When do you need it by?
-          </span>
-          <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
-            {[
-              ['asap', 'As soon as possible'],
-              ['later', 'By a specific time'],
-            ].map(([value, text]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTiming(value)}
-                aria-pressed={timing === value}
-                className={
-                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
-                  (timing === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
-                }
-              >
-                {text}
-              </button>
-            ))}
-          </div>
-          {timing === 'later' && (
-            <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
+        {/* 4b. Repeat (series mode only). */}
+        {seriesMode && (
+          <section>
+            <span className="block text-base font-semibold text-ink">Repeat</span>
+            <div className="mt-2">
+              <RecurrencePicker value={ruleState} onChange={setRuleState} />
+            </div>
+          </section>
+        )}
+
+        {/* 5. Complete-by (normal orders): ASAP vs. a specific deadline. Series mode instead
+            always asks for an absolute "deliver by" date/time for the first occurrence, from
+            which durationMinutes (applied to every future occurrence) is computed. */}
+        {seriesMode ? (
+          <section>
+            <span className="block text-base font-semibold text-ink">When do you need it by?</span>
+            <div className="foc-fade mt-2 grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-sm text-ink-70">Date</span>
                 <input
                   type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  value={deliverByDate}
+                  onChange={(e) => setDeliverByDate(e.target.value)}
                   className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                 />
               </label>
@@ -507,17 +602,85 @@ function RequestForm({ order }) {
                 <span className="text-sm text-ink-70">Time</span>
                 <input
                   type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  value={deliverByTime}
+                  onChange={(e) => setDeliverByTime(e.target.value)}
                   className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                 />
               </label>
             </div>
-          )}
-          <p className="mt-1.5 max-w-prose text-sm text-ink-40">
-            This is when the food should reach you. Your courier sees it before accepting.
-          </p>
-        </section>
+            {seriesDeliverByTooEarly ? (
+              <p className="mt-1.5 max-w-prose text-sm text-alert">
+                This has to be after when the errand starts.
+              </p>
+            ) : (
+              <p className="mt-1.5 max-w-prose text-sm text-ink-40">
+                The gap between this and the start time becomes the deadline for every future
+                occurrence (capped at 24 hours).
+              </p>
+            )}
+          </section>
+        ) : (
+          <section>
+            <span className="block text-base font-semibold text-ink">
+              When do you need it by?
+            </span>
+            <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
+              {/* ASAP sends no complete-by, so order-service sets it to an hour from now
+                  (George, 2026-11-09). */}
+              {[
+                ['asap', 'ASAP', 'By 1 hour from now'],
+                ['later', 'By a specific time', null],
+              ].map(([value, text, hint]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTiming(value)}
+                  aria-pressed={timing === value}
+                  className={
+                    'min-h-11 md:min-h-10 flex-1 rounded-[7px] px-3 py-1 text-sm font-medium leading-tight transition-colors duration-150 ' +
+                    (timing === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                  }
+                >
+                  <span className="block">{text}</span>
+                  {hint && (
+                    <span
+                      className={
+                        'block text-xs font-normal ' + (timing === value ? 'text-white/80' : 'text-ink-40')
+                      }
+                    >
+                      {hint}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {timing === 'later' && (
+              <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm text-ink-70">Date</span>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-ink-70">Time</span>
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                  />
+                </label>
+              </div>
+            )}
+            <p className="mt-1.5 max-w-prose text-sm text-ink-40">
+              This is when the food should reach you. Your courier sees it before accepting.
+            </p>
+          </section>
+        )}
 
         {/* 6. Expiration: how long the request stays on the board unaccepted.
             Hidden for now (George, 2026-10-20); restore EXPIRY_CHOICES, expiry state and
@@ -558,8 +721,9 @@ function RequestForm({ order }) {
           )}
         </section> */}
 
-        {/* 7. Offer: fixed once posted, so not shown when editing. */}
-        {!isEdit && (
+        {/* 7. Offer: fixed once posted for a normal order, so hidden when editing one. A
+            series' credits stay editable, so it is always shown in series mode. */}
+        {(!isEdit || seriesMode) && (
           <section>
             <span className="block text-base font-semibold text-ink">
               Offer
@@ -629,7 +793,16 @@ function RequestForm({ order }) {
         <div className="page-gutter mx-auto flex max-w-[640px] flex-col gap-3 md:flex-row md:items-center md:justify-between md:px-0">
           <div className="space-y-1">
             <p className="max-w-prose text-sm text-ink-70">
-              {isEdit ? (
+              {seriesMode ? (
+                isEdit ? (
+                  'Changes apply to future occurrences only; orders already posted are unaffected.'
+                ) : (
+                  <>
+                    Each occurrence reserves <span className="tnum">{offer}</span> credits when it
+                    is posted.
+                  </>
+                )
+              ) : isEdit ? (
                 'Update the details of this open errand.'
               ) : (
                 <>
@@ -651,10 +824,14 @@ function RequestForm({ order }) {
             <Button
               className="flex-1 md:flex-none"
               disabled={insufficient || !complete || posting}
-              onClick={isEdit ? onSave : onPost}
+              onClick={onSubmit}
             >
               {posting && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
-              {isEdit ? (posting ? 'Saving…' : 'Save changes') : posting ? 'Posting…' : 'Post errand'}
+              {isEdit
+                ? posting ? 'Saving…' : 'Save changes'
+                : seriesMode
+                  ? posting ? 'Creating…' : 'Create recurring errand'
+                  : posting ? 'Posting…' : 'Post errand'}
             </Button>
           </div>
         </div>

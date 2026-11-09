@@ -76,6 +76,13 @@
  *        instructions.md Stage 28b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F3 - unlockUser decides lock vs no-op from the DB-computed is_locked on the row it
+ *        locks FOR UPDATE (same IS_LOCKED_SQL as the list filter and the isLocked field), and
+ *        the synthesized post-unlock row carries is_locked: false.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as auditLogQueries from '../db/queries/auditLog.queries.js';
@@ -331,10 +338,13 @@ export async function changeUserRole(
 // POST /users/:id/unlock. Permission rules mirror changeUserStatus's: SUPER_ADMIN_IMMUTABLE on
 // a super-admin target, FORBIDDEN when an admin targets another admin (Stage 18d).
 //
-// Stage 26b: only acts on a target that is currently login-locked (same `login_locked_until >
-// NOW()` definition the `locked` filter on listUsersPage uses, read against the database clock
-// rather than the app server's). A non-locked target is a no-op: no clearing, no audit row. The
-// Verify-first report for this stage found the previous version had no such check at all.
+// Stage 26b: only acts on a target that is currently login-locked. A non-locked target is a
+// no-op: no clearing, no audit row. The Verify-first report for this stage found the previous
+// version had no such check at all.
+//
+// Fix F3: lock vs no-op is decided by the DB-computed is_locked on the row locked FOR UPDATE
+// (IS_LOCKED_SQL in users.queries.ts), the same expression the `locked` list filter and the
+// isLocked response field use, so the three can never disagree.
 export async function unlockUser(
   requesterId: string,
   requestorRole: string,
@@ -354,8 +364,7 @@ export async function unlockUser(
       throw new AppError(403, 'Only a super admin may unlock an admin', 'FORBIDDEN');
     }
 
-    const isLocked = locked.login_locked_until !== null && locked.login_locked_until.getTime() > locked.db_now.getTime();
-    if (!isLocked) {
+    if (!locked.is_locked) {
       return toUserResponse(locked, requesterId);
     }
 
@@ -384,6 +393,7 @@ export async function unlockUser(
         login_failure_window_start: null,
         login_locked_until: null,
         login_lock_level: 0,
+        is_locked: false,
       },
       requesterId,
     );

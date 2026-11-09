@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - added the `failed` status style (same alert border
+ *        used elsewhere, e.g. FormBanner.jsx, for a problem state).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Check } from 'lucide-react'
@@ -18,6 +23,7 @@ const STYLES = {
   completed: 'bg-surface border border-line text-ink-40',
   cancelled: 'bg-surface-alt border border-surface-alt text-ink-40',
   expired: 'bg-surface-alt border border-surface-alt text-ink-40',
+  failed: 'bg-surface border border-alert text-alert',
 }
 
 // `sm` is used where the chip sits on top of a photo and has to fit a small thumbnail.

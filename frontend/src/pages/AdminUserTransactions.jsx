@@ -30,6 +30,16 @@
  *        ELEVATION_REQUIRED, identically to AdminUsers.jsx.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Stage 30 of instructions.md - the profile section's email gets the same eye-icon
+ *        unmask as /admin/users, via the shared useEmailUnmask hook (utils/emailUnmask.js) and
+ *        EmailUnmaskButton extracted from AdminUsers.jsx. The icon is hidden for the caller's
+ *        own page and a super admin's (canUnmaskEmail). Whenever the page replaces the profile
+ *        object (initial load, an action's response, the failure-path refetch) the email
+ *        re-masks and the timer clears, via an effect on shownProfile.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -37,6 +47,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
 import ElevationOtpModal from '../components/ElevationOtpModal'
+import EmailUnmaskButton from '../components/EmailUnmaskButton'
 import EmptyState from '../components/EmptyState'
 import { Pager } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
@@ -48,6 +59,7 @@ import { useUserName, useSupplier } from '../api/lookups'
 import { describeError } from '../api/errorMessages'
 import { ACTION_SUCCESS, ConfirmActionDialog, getRowActions } from './AdminUsers'
 import { useElevatedActionFlow } from '../utils/elevation'
+import { canUnmaskEmail, useEmailUnmask } from '../utils/emailUnmask'
 
 const STATUS_OPTIONS = [
   'pending',
@@ -182,6 +194,14 @@ export default function AdminUserTransactions() {
   useEffect(() => setProfileOverride(null), [profile])
   const shownProfile = profileOverride ?? profile
 
+  // Profile email eye icon (Stage 30). Any replacement of the profile object (retry, an
+  // action's response, a stale-state refetch) re-masks the email and clears its timer.
+  const unmask = useEmailUnmask()
+  const { remaskAll } = unmask
+  useEffect(() => {
+    remaskAll()
+  }, [shownProfile, remaskAll])
+
   const {
     data: ordersData,
     error: ordersError,
@@ -255,7 +275,12 @@ export default function AdminUserTransactions() {
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-ink-40">Email</dt>
-          <dd className="text-ink-70">{shownProfile.email}</dd>
+          <dd className="inline-flex items-center gap-1.5 text-ink-70">
+            <span>{unmask.unmaskedEmails[shownProfile.id] ?? shownProfile.email}</span>
+            {canUnmaskEmail(viewer, shownProfile) && (
+              <EmailUnmaskButton user={shownProfile} unmask={unmask} />
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-ink-40">Status</dt>

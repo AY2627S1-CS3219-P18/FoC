@@ -7,6 +7,13 @@
  *        down with fake timers, and 0 leaving the button enabled immediately.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Finding F1 - updated the OTP_RESEND_LIMIT test for the err.message-based display
+ *        (mocked rejection now includes a message), and added cases for "about an hour",
+ *        "about 4 hours" and "about a day" to show any server wording renders verbatim.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createRef } from 'react'
@@ -39,8 +46,9 @@ describe('ResendButton (Stage 25 regression)', () => {
     expect(screen.getByRole('button')).not.toBeDisabled()
   })
 
-  it('on OTP_RESEND_LIMIT, shows the limit text with no countdown', async () => {
-    const onResend = vi.fn().mockRejectedValue({ code: 'OTP_RESEND_LIMIT' })
+  it('on OTP_RESEND_LIMIT, shows err.message with no countdown', async () => {
+    const message = "You've reached the resend limit. Please try again in about an hour."
+    const onResend = vi.fn().mockRejectedValue({ code: 'OTP_RESEND_LIMIT', message })
     render(<ResendButton onResend={onResend} />)
 
     await act(async () => {
@@ -48,7 +56,22 @@ describe('ResendButton (Stage 25 regression)', () => {
     })
 
     expect(screen.queryByRole('button')).toBeNull()
-    expect(screen.getByText(/resend limit/i)).toBeInTheDocument()
+    expect(screen.getByText(message)).toBeInTheDocument()
+  })
+
+  it.each([
+    "You've reached the resend limit. Please try again in about an hour.",
+    "You've reached the resend limit. Please try again in about 4 hours.",
+    "You've reached the resend limit. Please try again in about a day.",
+  ])('on OTP_RESEND_LIMIT, renders the server message %s verbatim', async (message) => {
+    const onResend = vi.fn().mockRejectedValue({ code: 'OTP_RESEND_LIMIT', message })
+    render(<ResendButton onResend={onResend} />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button'))
+    })
+
+    expect(screen.getByText(message)).toBeInTheDocument()
   })
 
   it('hands any other error to onError', async () => {

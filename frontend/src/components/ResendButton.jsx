@@ -30,11 +30,17 @@
  *        unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Finding F1 - replaced the `limitReached` boolean with `limitMessage` state holding
+ *        the server's own err.message, so the displayed text matches whatever wait the backend
+ *        reports instead of the hardcoded "about an hour" string in errorMessages.js.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import Button from './Button'
-import { errorMessages } from '../api/errorMessages'
 
 const DEFAULT_COOLDOWN_SECONDS = 60
 
@@ -43,7 +49,7 @@ const ResendButton = forwardRef(function ResendButton(
   ref,
 ) {
   const [cooldown, setCooldown] = useState(initialCooldown)
-  const [limitReached, setLimitReached] = useState(false)
+  const [limitMessage, setLimitMessage] = useState(null)
   const [busy, setBusy] = useState(false)
   const timer = useRef(null)
 
@@ -65,7 +71,7 @@ const ResendButton = forwardRef(function ResendButton(
       if (err.code === 'OTP_RESEND_COOLDOWN') {
         setCooldown(err.retryAfterSeconds ?? DEFAULT_COOLDOWN_SECONDS)
       } else if (err.code === 'OTP_RESEND_LIMIT') {
-        setLimitReached(true)
+        setLimitMessage(err.message)
       } else {
         onError?.(err)
       }
@@ -74,8 +80,8 @@ const ResendButton = forwardRef(function ResendButton(
     }
   }
 
-  if (limitReached) {
-    return <p className="text-sm text-ink-40">{errorMessages.OTP_RESEND_LIMIT.message}</p>
+  if (limitMessage) {
+    return <p className="text-sm text-ink-40">{limitMessage}</p>
   }
 
   return (

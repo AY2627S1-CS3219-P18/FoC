@@ -21,6 +21,15 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md), Notifications section - extended
+ *        ChatNotificationPayload with a nullable `orderId` and a `recipient` (required when
+ *        `orderId` is null), and added notifySeriesEvent / buildSeriesNotificationTask so
+ *        series failure/skip notices go through the existing chat_notification outbox task,
+ *        per the already-decided (George, Wen Xi approved) outbox/BullMQ path. Existing
+ *        buildChatNotificationTask (order-scoped notices) is unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { randomUUID } from 'node:crypto';
@@ -142,7 +151,10 @@ export function buildChatCreateTask(order: {
 
 // AI-generated (edited by <name>).
 export interface ChatNotificationPayload {
-  orderId: string;
+  /** null for a series notice (no order chat exists for it); recipient is then required. */
+  orderId: string | null;
+  /** The user id to notify; required when orderId is null. */
+  recipient?: string;
   messageId: string;
   message: string;
 }
@@ -154,5 +166,37 @@ export function buildChatNotificationTask(
   return {
     taskName: CHAT_NOTIFICATION_TASK,
     payload: { orderId, messageId: randomUUID(), message },
+  };
+}
+
+export function isChatNotificationPayload(
+  p: unknown,
+): p is ChatNotificationPayload {
+  const v = p as Partial<ChatNotificationPayload> | null;
+  if (!v || typeof v.messageId !== 'string' || typeof v.message !== 'string')
+    return false;
+  if (v.orderId === null) return typeof v.recipient === 'string';
+  return typeof v.orderId === 'string';
+}
+
+/**
+ * The ONE function series failure/skip notices go through (instructions.md,
+ * Notifications): a system-chat notice to `userId`, with no order id or series id. The
+ * caller generates `messageId` once and reuses it on every retry, so it is the
+ * idempotency key.
+ */
+export function notifySeriesEvent(params: {
+  userId: string;
+  messageId: string;
+  message: string;
+}): OutboxTask {
+  return {
+    taskName: CHAT_NOTIFICATION_TASK,
+    payload: {
+      orderId: null,
+      recipient: params.userId,
+      messageId: params.messageId,
+      message: params.message,
+    },
   };
 }

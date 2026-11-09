@@ -17,6 +17,12 @@
  *        starts a fresh, nothing-sent 'ready' step, per the stage's rule.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Finding F1 - handleSend's OTP_RESEND_LIMIT branch now shows err.message instead of
+ *        errorMessages.OTP_RESEND_LIMIT.message, so the wait it names matches the server's.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -64,7 +70,7 @@ export default function ElevationOtpModal({ onClose, onVerified }) {
       } else if (err.code === 'OTP_RESEND_COOLDOWN') {
         setSendError(cooldownText(err))
       } else if (err.code === 'OTP_RESEND_LIMIT') {
-        setSendError(errorMessages.OTP_RESEND_LIMIT.message)
+        setSendError(err.message)
       } else {
         setSendError(describeError(err).message)
       }

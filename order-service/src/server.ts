@@ -27,6 +27,11 @@
  * Scope (2026-10-23): passes SUPPLIER_SERVICE_URL to the app.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Passes CREDIT_SERVICE_URL to the app for the synchronous reserve (George,
+ *        2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createServer } from 'node:http';
@@ -73,6 +78,7 @@ const app = createApp({
   prisma,
   userServiceUrl: env.USER_SERVICE_URL,
   supplierServiceUrl: env.SUPPLIER_SERVICE_URL,
+  creditServiceUrl: env.CREDIT_SERVICE_URL,
   events,
 });
 httpServer.on('request', app);

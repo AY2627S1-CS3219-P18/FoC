@@ -13188,3 +13188,818 @@ leaving `openapi.yaml` (already uncommitted per that service's own Q5) untouched
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 c2: order-service supplier client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage c2: order-service supplier client"
+
+**Prompts (exact):**
+
+> while waiting for congchen to approve, let's move on to c2
+
+**Key responses:**
+Added the service-key path for the scheduled-errands worker to `suppliers.client.ts`, reusing
+the same two GET endpoints (`/api/v1/suppliers/:id`, `/api/v1/suppliers/reference/location`) and
+their existing status-code mapping. Kept `supplierExists`/`locationExists` (Authorization header,
+plain `Existence` return) completely unchanged for createOrder/editOrder, and added two new
+interface members instead of overloading them, since the worker call carries no user token and
+needs richer information back (closed flag, next opening time) that the normal-order path has no
+use for — this is a minor implementation-detail choice, not a design decision, and is recorded as
+a deviation below.
+
+New pure module `openingHours.ts` computes `{closed, nextOpeningAt}` from a supplier's
+`openingHours` rows and a `now: Date`, mirroring supplier-service's own `isOpen.ts` conventions
+(day 1–7 Mon–Sun, day 8 = open 24/7, close exclusive, overnight windows, the `00:00`/`23:59`
+all-day pair, `is_24h` ignored) but extended to also find the next future opening instant, since
+the worker needs to schedule a retry, not just a boolean. Computed independently of
+supplier-service's own `isOpen` field so it is driven by the worker's injected `now`, not
+supplier-service's wall clock (keeping Stage f's "every time-dependent function takes `now: Date`"
+testable).
+
+`supplierStatusForWorker` treats an empty `openingHours` array as `hasNoOpeningHours: true`
+(distinct from merely `closed`), for the worker (Stage f) to translate into the "fail, failed row,
+notice" outcome instructions.md specifies for that case.
+
+Added `SUPPLIER_ORDER_SERVICE_API_KEY` to `config/env.ts` as optional (matching the existing
+`CHAT_SERVICE_API_KEY` pattern: only the worker will use it, once Stage f builds it) and to
+`.env.example`. Did not wire it into `compose.yaml`'s `order-worker` or into `app.ts`, since no
+caller exists yet; that wiring belongs to Stage f, which actually constructs the worker and its
+`SuppliersClient`.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 715/715 tests pass (19 files), including a new
+`openingHours.spec.ts` (10 tests: empty list, day 8, the 00:00/23:59 pair, no row for a day,
+exact open/close minute boundaries, overnight windows, and picking the nearest of several future
+openings) and new cases in `suppliers.client.spec.ts` (service-key header sent instead of
+Authorization, the key-not-configured error, not_found/unavailable mapping, the empty-hours
+case, closed/nextOpeningAt mapping, and `locationExistsForWorker`). Two existing spec files
+(`orders.service.spec.ts`, `orders.controller.spec.ts`) needed their fake `SuppliersClient`
+objects extended with the two new interface members to keep compiling; no test logic in them
+changed. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage, which touches no schema or migration.
+
+**Files:**
+
+- `order-service/src/clients/suppliers.client.ts` (modified)
+- `order-service/src/clients/openingHours.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (modified)
+- `order-service/src/clients/openingHours.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified, fake client only)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, fake client only)
+
+**Deviations / questions raised for the team:**
+Added `supplierStatusForWorker` / `locationExistsForWorker` as new `SuppliersClient` methods
+rather than overloading `supplierExists` / `locationExists` with a union auth parameter — the
+instruction said "reusing supplierExists and locationExists," which this follows at the HTTP-call
+and status-mapping level, but not as the literal same exported function signature, to keep the
+existing normal-order call sites and their return type completely untouched. Not raised to the
+team as a stop-and-ask since it is an internal client interface, not a schema/API/architecture
+decision. Otherwise none.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 d: order-service user client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage d: User client (order-service)"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+
+**Key responses:**
+Added `user.client.ts`: `createHttpUserClient(baseUrl, serviceKey, fetchImpl?, timeoutMs?)`
+calls `GET {USER_ORDER_SERVICE_URL}/users/worker/:id` with header `User-Order-Service-Key`
+(secret `USER_ORDER_SERVICE_API_KEY`), returning `{ existence, status, lockedUntil }` —
+`existence` reuses the `Existence` type from `suppliers.client.ts` (`found`/`not_found`/
+`unavailable`), `status` is `'pending' | 'active' | 'suspended'` (null unless found), `lockedUntil`
+is parsed to a `Date` or null. 404 maps to `not_found`; any other non-2xx, a network error, a
+timeout, or an unexpected response body maps to `unavailable`. 3 s timeout, matching
+`suppliers.client.ts`'s convention. Added `USER_ORDER_SERVICE_URL` (defaulted, like the existing
+`SUPPLIER_SERVICE_URL`) and `USER_ORDER_SERVICE_API_KEY` (optional, like
+`SUPPLIER_ORDER_SERVICE_API_KEY` and `CHAT_SERVICE_API_KEY`: only the worker will use it) to
+`config/env.ts` and `.env.example`. Did not wire either into `app.ts` or `compose.yaml`'s
+`order-worker` — no caller exists yet; that is Stage f's job.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build all clean. `npx vitest
+run` — 728/728 tests pass (20 files), including a new `user.client.spec.ts` (13 tests: the
+service-key header, active/pending/suspended mapping, a locked user's `lockedUntil` parsed to a
+`Date`, 404, four other HTTP statuses, an unexpected body, a network failure, and a timeout — the
+full "mock fetch for each result" list the stage asks for).
+
+**Files:**
+
+- `order-service/src/clients/user.client.ts` (created)
+- `order-service/src/clients/user.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+
+**Deviations / questions raised for the team:**
+None. Reused suppliers.client.ts's `Existence` type rather than redefining the same three-value
+union, which is an implementation detail, not a design choice.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — order-service: Default complete-by of one hour
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09 (new FR, to be added to `docs/FoC-ProductBacklog.md` by the team): a new order with no complete-by gets now + 1 hour and then behaves like a requester-set deadline; existing orders are untouched; an edit sending `completeBy: null` keeps the stored value.
+
+**Prompts (exact):**
+
+> ok tell him all decided approved, and he can add them, also for the completeBy issue, it will default to 24 hours instead of NULL, so we are making this as a new FR, to fix these issues
+
+> we decided to make it +1 hr instead to represent the ASAPness
+
+> do the same behaviour as completeBy is set by user, but its 1hr
+> existing orders are untouched
+
+> (Agent question) Editing an open order with completeBy: null currently clears the deadline to NULL (and the edit page sends null when 'ASAP' is picked). What should edit do with completeBy: null after this change?
+> (Answer) Keep current value
+
+> for the frontend, remove the ASAP option, and completeBy will default to 1hr to show it explicitly
+
+> actually, just change the ASAP button text to
+>
+> ASAP
+> By 1 hour from now
+>
+> then screenshot the frontend to show me when youre done
+
+**Key responses:**
+Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+
+- `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
+- `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
+- No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
+- Tests: create with completeBy absent / null stores now + 1 h (fake Date); a chosen completeBy is kept; edit with null omits completeBy from the write; edit with a value writes it. Removed "null = indefinite" from an existing test name.
+- Frontend (`CreateRequest.jsx`): the agent started removing the ASAP option, then the user replaced that instruction; the only change kept is the ASAP button label, now "ASAP" with a second line "By 1 hour from now". The button grows to fit two lines. Behaviour is unchanged: ASAP still sends no completeBy on create (order-service applies the one-hour default) and null on edit (keeps the stored value).
+
+Verification: order-service `npm run typecheck` passed, `npm run lint` reported nothing, `npm test` passed (18 files, 704 tests). `prettier --check` flags both service files, but both were already unformatted on `main` before this change, so they were not reformatted. E2E tests were not run. Frontend `npm test`: 222 passed, 1 failed (`CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", a `maxLength` assertion); the same test also fails with the unmodified `CreateRequest.jsx` from `main`. Frontend lint showed only existing warnings in other files. Screenshotted the form in the in-app browser against a throwaway local mock API (scratch file outside the repo) in both toggle states.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked how edit should treat `completeBy: null` (answered: keep current value). Asked how the edit form should treat legacy NULL deadlines once ASAP was removed; superseded when the user chose to keep ASAP with a new label. Pre-existing frontend test failure noted above. The new FR text itself still needs to be written into the backlog by the team.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: order creation reserves credits synchronously with no retry, so the client learns the outcome in the response; a create while the requester has a `pending` order is rejected 409 with the message "Another order request is currently pending, please try again."; answers to the agent's questions (below) fix the status codes, the failed-row handling and the release on a transient failure.
+
+**Prompts (exact):**
+
+> no, continue working on this branch,
+>
+> remove the retry mechanism when an order is created, so its fully sync now,
+> when creation fails, the client knows immediately
+>
+> and when an order in "pending" state exists, any requests to create an new order is rejected 409 conflict with message "Another order request is currently pending, please try again."
+
+> (Agent questions) When the synchronous credit reserve succeeds, what should POST /orders return? / When the reserve fails, what happens to the order row and the response? / Which HTTP statuses for a failed reserve? / The 409 check: whose pending orders count?
+> (Answers) 201 with the open order / Keep row as failed / 422 / 503 / Same requester only
+
+> (Agent question) If credit-service is unreachable or returns 5xx, the reserve may still have gone through on its side. Today the worker then queues a credit release. Keep that?
+> (Answer) Queue a release
+
+**Key responses:**
+
+- `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
+- New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
+- The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
+- Error messages reuse the existing order-service texts for `INSUFFICIENT_CREDITS` and `CREDIT_SERVICE_UNAVAILABLE`; `CREDIT_RESERVE_REJECTED` reads "Your credits could not be reserved. Please try again." (agent wording, modelled on the frontend's former generic text).
+- Frontend `CreateRequest.jsx`: Post awaits the response and shows its message on failure; the socket wait and `/orders/mine` re-check are removed. `reserveFailureMessage` in `api/orders.js` is removed (no other users). `watchOrderEvents` in `realtime/orderSocket.js` is left in place, now unused by this page.
+- Points raised for the team (not decided by the agent): `credits.client.ts` has no request timeout ("by decision"), so a hung credit-service call keeps the request open and the order `pending`, during which the requester gets 409; if the API process dies between writing the pending row and settling it, the order stays `pending` and blocks that requester's creates, with nothing that settles it (the worker's reserve job used to cover this). ECS task definitions are not in the repo, so `CREDIT_SERVICE_URL` must be added to the order-service API task by hand.
+
+Verification: order-service `npm run typecheck` and `npm run lint` clean; `npm test` 18 files, 707 tests passed. The e2e suite (`test/credit-saga.e2e-spec.ts`, rewritten for the synchronous flow, with new sequential and concurrent pending-order tests) typechecks but was **not run**: no Postgres was available. Frontend `npm test`: 222 passed, 1 failed, the same pre-existing `CreateRequest.test.jsx` `maxLength` failure noted in the previous entry.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked the success status, failed-row handling, failure status codes, 409 scope and transient-failure release (answers above). Open for the team: request timeout on the reserve call, and recovery of an order left `pending` by a crash (see Key responses). The advisory lock is an agent implementation choice for the team to confirm.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: switching view while on a page of the old view goes to the new view's main page instead of showing "This is only available in ... mode". This replaces, for the toggle only, `instructions.md` Stage 22's "Toggling the view" row ("The user stays on the current page").
+
+**Prompts (exact):**
+
+> ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
+
+**Key responses:**
+
+- "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
+- `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
+- `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
+- Implementation choice by the agent: the redirect lives in the toggle, not in `ViewGate`, because a `ViewGate` redirect would fire on the optimistic flip and leave the user on the wrong page after a failed switch. Opening another view's page directly still shows the blocked-page message.
+
+Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both directions, shared page, failed switch, `viewForPath` cases) passes; full frontend suite 235 passed, 1 failed (the pre-existing `CreateRequest.test.jsx` `maxLength` failure); oxlint clean on the changed files. Checked in the in-app browser against a throwaway local mock API (scratch file outside the repo): Suppliers -> Courier landed on Find errands, My deliveries -> Requester landed on Suppliers.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+`instructions.md` Stage 22 still describes the old toggle behaviour; the team may want to update it. The page-to-view list now exists in `views.js` and in `App.jsx`'s `ViewGate` props.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage e: Series API and failed rows"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+> once done, go for stage f
+> ok let's finish up stage e. ignore my msg to go for f. finish up whatever you need for e then stop.
+
+**Key responses:**
+Implemented the full series API (`POST /orders/series`, `GET /orders/series/mine`,
+`GET /orders/series/:seriesId`, `PATCH /orders/series/:seriesId/edit`,
+`DELETE /orders/series/:seriesId`), mirroring `createOrder`/`editOrder`'s validation and
+optimistic-lock patterns: `series.service.ts`, `series.controller.ts`, `series.routes.ts`
+(mounted at `/orders/series`, before `GET /orders/:id`), `types/series.ts`. Added the stage's
+error codes to `constants/errors.ts` and `statusFor` mapping (404/409 for
+`SERIES_NOT_FOUND`/`SERIES_CONFLICT`, everything else 400).
+
+Added `domain/series-rule.ts`: a thin wrapper over the `rrule` npm package (per the stage's
+"Library: rrule (npm)" decision) that parses the series' stored RRULE text against its
+DTSTART, using the same Singapore-wall-clock-shift trick as `clients/openingHours.ts` (stage
+c2), since `rrule` otherwise treats JS `Date`s as literal UTC. Used to validate a submitted
+rule, compute the initial `nextFireAt` (the first occurrence at/after DTSTART, inclusive), and
+the "next 3 upcoming dates" GET responses expose.
+
+Extended `queue/tasks.ts`'s `ChatNotificationPayload` with a nullable `orderId` and an optional
+`recipient` (required when `orderId` is null), per the Notifications section's already-approved
+(George, Wen Xi) extension, and added `notifySeriesEvent`/`isChatNotificationPayload`; updated
+`worker/credit-jobs.ts`'s `chat_notification` validator to use the new type guard. Series
+failure/skip rows are inserted directly into `requests` (status `failed`, `failureReason` set,
+no credit reservation, no outbox row except the notice) via a small shared helper in
+`series.service.ts`, used by `editSeries`/`deleteSeries` when a retry was stopped (see below) and
+exported for Stage f's worker to reuse.
+
+Implemented "series edited/paused/deleted while retrying stops the retry, writes a failed row and
+a notice" for both `editSeries` (any successful edit while `currentOccurrenceAt` is set) and
+`deleteSeries` (same, in the same transaction as the delete). The two notice messages were
+drafted and shown to the user for approval before use, per the stage's explicit instruction, and
+used verbatim once approved.
+
+`editSeries` resets DTSTART to the edit time and recomputes `nextFireAt` only when the submitted
+`rrule` text differs from the stored one (a byte-for-byte change, per "only when the RRULE ...
+changes"); resuming a paused series (`status: inactive -> active`) recomputes `nextFireAt` from
+the resume time without touching DTSTART, so missed occurrences during the pause are dropped
+without restarting the recurrence pattern's day/weekday alignment.
+
+`listMyOrders` (order-listing.service.ts) now includes `failed` rows that carry a
+`failureReason` (series outcomes) while still hiding credit-reservation failures
+(`failureReason` null), per the stage's "Failed rows" table; its one existing test case
+(`orders.controller.spec.ts`, `GET /orders/mine`) was updated for the new where-clause, not
+added to.
+
+**`[DECIDE]` resolved during this stage:** the design table's open placeholder — "If
+`durationMinutes` is omitted on a series: default 1440 or required; waiting for George's
+completeBy change" — was raised to the user, who first said default to 1440 pending later
+confirmation. Mid-stage, `git fetch` showed George's completeBy-default change (commit
+`98ee3e3`) had since merged to main with a **1-hour** default for normal orders, not the 24
+hours instructions.md assumed. Raised this discrepancy to the user, who then said to match it:
+`durationMinutes` omitted on create defaults to 60 minutes (`DEFAULT_DURATION_MINUTES` in
+`series.service.ts`), not 1440. The 1440-minute **maximum** (24h cap) from the stage's own table
+is unchanged and still enforced.
+
+**Branching note:** work was originally done on the `feat/stage-d-order-service-user-client`
+branch (PR #176, unmerged), which was itself based on an older `main`. Partway through, `main`
+was found to have merged a second relevant change — `5f17a93` "reserve credits synchronously on
+create" (removes the worker's `credit_reserve` job; `POST /orders` now reserves inline) — which
+touched `orders.routes.ts` and `worker/credit-jobs.ts`, two files this stage also edits. Per the
+user's direction, the Stage-d-only usage-log sign-off was committed and pushed to PR #176
+separately, and this stage's work was redone from scratch on a fresh branch cut from current
+`main` (`feat/stage-e-order-service-series-api`), reapplying the same edits against the new file
+versions.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 785/785 tests pass (23 files), including new
+`domain/series-rule.spec.ts` (8 tests), `queue/tasks.spec.ts` (9 tests),
+`services/series.service.spec.ts` (32 tests: create validation incl. durationMinutes
+default/startNow/startAt rules, getSeries/listMySeries ownership and public shape — no retry
+state or `nextFireAt` exposed, edit semantics incl. DTSTART reset/resume/stop-retry-and-notify,
+delete incl. stop-retry-and-notify), `controllers/series.controller.spec.ts` (12 HTTP-level
+tests: status-code mapping, route order, ownership), and one new case each in
+`worker/credit-jobs.spec.ts` and `queue/tasks.spec.ts` for the extended `chat_notification`
+payload. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage.
+
+**Files:**
+
+- `order-service/src/services/series.service.ts` (created)
+- `order-service/src/services/series.service.spec.ts` (created)
+- `order-service/src/controllers/series.controller.ts` (created)
+- `order-service/src/controllers/series.controller.spec.ts` (created)
+- `order-service/src/routes/series.routes.ts` (created)
+- `order-service/src/types/series.ts` (created)
+- `order-service/src/domain/series-rule.ts` (created)
+- `order-service/src/domain/series-rule.spec.ts` (created)
+- `order-service/src/queue/tasks.spec.ts` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, one fixture assertion only)
+- `order-service/package.json` / `package-lock.json` (added the `rrule` dependency)
+
+**Deviations / questions raised for the team:**
+The `durationMinutes` default (see above) — resolved with the user mid-stage, flagged here since
+it reverses an earlier "default 1440" answer. A series created without a rule that yields any
+occurrence at/after its own start time (e.g. `UNTIL` already in the past) is rejected as
+`INVALID_RULE` at create time; instructions.md does not say what should happen here, but the
+`nextFireAt` column is non-nullable (matches the real Stage a migration, not the design table's
+"nullable" note — already flagged during Stage a), so a series that could never fire cannot be
+stored. Otherwise none; every other item in the design tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 f: Worker
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage f: Worker"
+
+**Prompts (exact):**
+
+> read through instructions.md. i have finished up to 28e. let's start with f. dont forget the git workflow
+
+**Key responses:**
+Implemented `worker/series-worker.ts`: a 1-second BullMQ job scheduler (`startScheduledTask`,
+same pattern as `release-redrive.ts`) that each tick claims every due series (`nextFireAt <= now`
+OR `nextRetryAt <= now`, `updateMany`/`deleteMany` guarded by `version`) and runs instructions.md's
+fire-time checks, retry, catch-up/skip and finished-series-deletion rules: user check
+(`user.client.ts`'s `statusForWorker`), supplier/location/opening-hours check
+(`suppliers.client.ts`'s worker methods from Stage c2), the "completeBy already past at fire
+time" skip, the "one retry slot per series" (a due next occurrence drops a stale retry, writing
+its own failed row), and "posted late" notes (> 1 minute after the scheduled time) added to the
+order's chat once it opens. Posting an occurrence reuses `orders.service.ts`'s `createOrder`
+request path, extracted into a new exported `createPendingOrderAndSettle` (same advisory lock,
+same pending-order exclusivity, same synchronous reserve-then-settle; `createOrder` itself is
+behaviourally unchanged) with a `seriesId` attached, per "each occurrence is created through
+the normal create path."
+
+The retry backoff (user/supplier-service-unreachable: up to 4 attempts, waits capped 1/2/4s
+with full jitter) follows the "Stage 19 shape" instructions.md points to
+(`user-service/src/services/email.service.ts`), but — since the scheduler must not block one
+series while others are due — is persisted across ticks via the series row's own retry columns
+rather than a blocking loop; the stage's 30s overall deadline has no dedicated timestamp column,
+so it is satisfied structurally by the 4-attempt cap together with each call's own 3s timeout
+and the 1/2/4s backoff caps (worst case well under 30s) rather than tracked directly. Notices:
+one sent immediately on entering `user_service_unreachable`/`supplier_closed` retry (and again
+on exhaustion/failure); `supplier_service_unreachable` sends only the exhaustion/failure notice,
+per "notify only when exhausted." `SeriesFailureReason` (series.service.ts) gained the worker's
+own reasons; `formatSgDateTime`, `DEFAULT_DURATION_MINUTES` and the failed-row/notice builder
+(renamed `buildStoppedOccurrenceWrite`, now taking an explicit `scheduledAt` so the worker can
+reuse it for occurrences that were never in retry) were exported from Stage e's
+`series.service.ts` for this purpose, with no change to their existing callers' behaviour.
+
+**Schema fix (stopped to ask the user):** Stage f's design requires `OrderSeries.nextFireAt` to
+be nullable (null = no further occurrences, used to trigger the finished-series delete), but
+Stage a's already-merged migration had created it `NOT NULL` — a discrepancy Stage e's own log
+entry had already flagged but left unresolved. Asked the user how to proceed (new migration vs.
+a NOT-NULL sentinel value); they chose a new migration. Added
+`prisma/migrations/20261109130642_nextfireat_nullable` (`ALTER COLUMN "nextFireAt" DROP NOT
+NULL`) and the matching `schema.prisma` change, then regenerated the Prisma client. Applied it
+to the locally running dev stack's `order-db` (the only Postgres instance available in this
+environment) rather than a disposable one, since reaching the already-running `order-db`
+container required reusing its persisted volume; the running `order-service`/`order-worker`
+containers were not restarted and stayed healthy throughout.
+
+**Deviation (not one of instructions.md's listed outcomes):** a requester already having
+another `pending` order at the exact moment a scheduled occurrence fires (an interaction with
+George's 2026-11-09 synchronous-reserve + one-pending-order-at-a-time change, which postdates
+this stage's text) is treated like any other post-time failure — failed row + notice, not
+retried, reason `SERIES_PENDING_ORDER_CONFLICT` — since the series has already advanced past
+that occurrence by the time posting is attempted. Flagged in the code and here for the team to
+confirm.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 816/816 tests pass (25 files), including the
+new `worker/series-worker.spec.ts` (18 tests: posting + the late-note threshold on both sides,
+the completeBy-already-past skip, every fire-time-check failure/retry outcome (user
+suspended/pending/not-found/locked, user- and supplier-service-unreachable entering and
+exhausting retry, supplier closed entering retry and failing past its deadline), one retry slot
+per series (a due next occurrence drops a stale retry), catch-up across four ticks, finished-
+series deletion, and exactly-once posting under two simulated concurrent claims of the same
+stale row) and no regressions in the existing `orders.service.spec.ts` / `series.service.spec.ts`
+suites after the `createPendingOrderAndSettle` extraction. `npm run db:migrate`'s underlying
+`prisma migrate dev` applied the new migration against the running dev `order-db` cleanly.
+
+**Files:**
+
+- `order-service/src/worker/series-worker.ts` (created)
+- `order-service/src/worker/series-worker.spec.ts` (created)
+- `order-service/prisma/migrations/20261109130642_nextfireat_nullable/migration.sql` (created)
+- `order-service/prisma/schema.prisma` (modified: `OrderSeries.nextFireAt` now nullable)
+- `order-service/src/services/orders.service.ts` (modified: extracted `createPendingOrderAndSettle`)
+- `order-service/src/services/series.service.ts` (modified: exported `formatSgDateTime`,
+  `DEFAULT_DURATION_MINUTES`, `buildStoppedOccurrenceWrite`; extended `SeriesFailureReason`)
+- `order-service/src/worker.ts` (modified: wires up the new scheduler and its service-key clients)
+
+**Deviations / questions raised for the team:**
+The `nextFireAt` nullability fix and the pending-order-conflict handling, both above. Otherwise
+every row of the stage's "Firing and failures" / "Fire-time checks" / "Next opening time"
+tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 g: Frontend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage g: Frontend"
+
+**Prompts (exact):**
+
+> let's go to g
+
+(Continuing the same task from the Stage 28 f session: "read through instructions.md. i have
+finished up to 28e. let's start with f. dont forget the git workflow". Before implementing,
+asked and the user confirmed: the series create/edit route (`/series/new` and
+`/series/:id/edit`, as instructions.md requires proposing before adding) and that this stage
+ships as one PR, not split.)
+
+> for the yearly thing, can you only allow users to pick one month per year
+
+**Key responses:**
+Added `domain/seriesRule.js`: converts the recurrence picker's own state to and from the plain
+RRULE text order-service stores, using the `rrule` npm package (added to `package.json`, per
+the stage's "Add rrule to frontend/package.json") - the same library order-service's
+`domain/series-rule.ts` uses, so both sides interpret a stored rule identically. Covers
+daily/weekly/monthly (on a date, or the Nth weekday/day/weekend day via BYSETPOS)/yearly (in
+chosen months, same Nth form) and the end condition (never/on date/after N), plus a
+human-readable summary for the Scheduled section. `components/RecurrencePicker.jsx` is the
+iOS-style picker UI over that state (frequency chips, an "every N ..." stepper, weekly day
+chips, monthly's two sub-modes, yearly's month chips, the end-condition controls).
+
+`api/series.js` mirrors `api/orders.js`'s shape exactly for the series endpoints
+(create/list-mine/get/edit/delete); series errors carry only `{ message }` (no code), so
+`seriesErrorMessage` just falls back to it.
+
+`CreateRequest.jsx` gained `seriesMode`: the same form now also creates/edits a recurring
+errand, sharing every common field and adding series-only sections - Start (now/later, startAt
+sent only on create since `editSeries` has no such field) and Repeat (RecurrencePicker). The
+"deliver by" section becomes a plain date/time pair (series mode never has "ASAP"); the gap
+between it and the start time is sent as `durationMinutes` (capped at 1440), per the stage's
+"completeBy picked as date/time, sent as durationMinutes" line. Credits stay editable in series
+mode (unlike a normal order's fixed-once-posted offer), per the API table ("all fields
+editable, including credits"). Added `/series/new` and `/series/:id/edit` to `App.jsx`
+(`RequireAuth` + `ViewGate requiredView REQUESTER`, same wrapping as `/requests/new` and
+`/requests/:id/edit`) and to `routing/views.js`'s `PAGE_VIEW` as `VIEWS.REQUESTER` (see
+Deviations: Stage 29 had explicitly flagged this gap).
+
+Added the "Scheduled" section (`components/ScheduledSeriesSection.jsx`) above "Active now" in
+`MyErrands.jsx`: lists the requester's series (paused included; a one-time series shows until
+it posts) with a status chip, the rule summary, and the next 3 dates (`series.upcomingDates`,
+already computed by order-service), plus pause/resume/edit/delete actions. Each of
+pause/resume/delete opens a reminder dialog (mirroring `AdminUsers.jsx`'s
+`ConfirmActionDialog` shape) naming `series.activeOrderCount` (already computed server-side,
+no extra fetch) - "N errands ... won't be affected." This section also carries the "+ New"
+button that opens `/series/new` (see Deviations: where the stage's revived "Schedule for
+later" stub lands).
+
+Added the `failed` order status: `STATUS_LABELS`/`StatusChip` styling, `FAILURE_REASON_LABELS`
+in `data/requests.js` mapping every `SeriesFailureReason` value (series.service.ts/
+series-worker.ts) to a human sentence (unrecognised codes fall back to a generic line), `failed`
+joining `CLOSED` in `activityShared.jsx` (dimmed, in History, no "Open chat" - already excluded
+from `MESSAGEABLE`) with the reason shown instead of the usual "credits returned" line (a
+failed series row never had a reservation). Orders with a `seriesId` get a "From a recurring
+errand" tag, which disappears once the series is deleted (order-service's FK `ON DELETE SET
+NULL` already clears it - no frontend logic needed beyond checking the field). Removed the dead
+`postAt` mock field and the unused `postAtLabel` helper from `data/requests.js` (the mock
+`requests` array, `getRequest`, `minutesUntil` and `expiryLabel` are still imported elsewhere,
+so kept, even though `getRequest` itself has no call sites either - out of this stage's asked
+scope).
+
+**Verification:** `npx oxlint src tests` clean (pre-existing warnings elsewhere in the
+codebase, none in the new/touched files). `npx vitest run` - 264/265 tests pass (39 files),
+including 4 new test files (`tests/domain/seriesRule.test.js`: 21 tests, the RRULE build/parse
+round-trip and summaries; `tests/components/ScheduledSeriesSection.test.jsx`: 5 tests, the rule
+summary/next-dates display and the pause/resume/delete reminder dialogs' text and API calls;
+`tests/pages/CreateRequestSeries.test.jsx`: 2 tests, series create (startAt, rrule,
+durationMinutes) and edit (rebuilt rrule, no startAt sent); `tests/pages/
+MyErrandsFailedStatus.test.jsx`: 1 test, the Failed chip/reason/series-tag/no-Open-chat). The
+one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion) is pre-existing on
+`main` before this stage's changes (confirmed by running the suite against the unmodified
+tree) and unrelated to this work - not touched.
+
+**Files:**
+
+- `frontend/src/api/series.js` (created)
+- `frontend/src/components/RecurrencePicker.jsx` (created)
+- `frontend/src/components/ScheduledSeriesSection.jsx` (created)
+- `frontend/src/domain/seriesRule.js` (created)
+- `frontend/tests/domain/seriesRule.test.js` (created)
+- `frontend/tests/components/ScheduledSeriesSection.test.jsx` (created)
+- `frontend/tests/pages/CreateRequestSeries.test.jsx` (created)
+- `frontend/tests/pages/MyErrandsFailedStatus.test.jsx` (created)
+- `frontend/package.json` / `package-lock.json` (added the `rrule` dependency)
+- `frontend/src/App.jsx` (modified: `/series/new`, `/series/:id/edit` routes)
+- `frontend/src/components/StatusChip.jsx` (modified: `failed` style)
+- `frontend/src/data/requests.js` (modified: `failed` status, `FAILURE_REASON_LABELS`, removed
+  dead `postAt`/`postAtLabel`)
+- `frontend/src/pages/CreateRequest.jsx` (modified: `seriesMode`)
+- `frontend/src/pages/MyErrands.jsx` (modified: renders `ScheduledSeriesSection`)
+- `frontend/src/pages/activityShared.jsx` (modified: `failed` in `CLOSED`, reason text,
+  "from series" tag)
+- `frontend/src/routing/views.js` (modified: `PAGE_VIEW` entries for the two new routes)
+
+**Deviations / questions raised for the team:**
+`routing/views.js`'s `PAGE_VIEW` gap: Stage 29's own text explicitly said "the series edit
+route from Stage 28g, if it exists -> stop and ask me." Added both new routes as
+`VIEWS.REQUESTER` (the same mapping as every other requester-only create/edit route already in
+the list) rather than pausing, since there was nothing to decide beyond that obvious
+consistency; flagged here for the team to confirm instead. The "Schedule for later" stub this
+stage says to revive is repurposed as the series' own Start now/later toggle (there is no
+separate single-post scheduling feature to revive it for), and the entry point into `/series/new`
+is a "+ New" button on the Scheduled section rather than a link from the normal order form - my
+call, since instructions.md names what to revive but not where the entry point into series mode
+lives. Yearly recurrence only lets the picker choose a single month (not several): BYSETPOS
+(used for "the Nth weekday/day/weekend day") counts across all chosen months combined for one
+year, not per month - an RFC 5545 property of BYSETPOS the picker can't work around, so
+`seriesRule.js`/`RecurrencePicker.jsx` enforce one month per yearly rule rather than leaving the
+ambiguity exposed in the UI (per a follow-up request from the user after the initial review).
+Otherwise every item in the stage's bullets is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Finding F1 (pasted task); display text source was already decided by errorMessages.js's existing display-type convention (field-level message string)
+
+**Prompts (exact):**
+
+> Implement finding F1. Keep changes minimal.
+>
+> 1. frontend/src/components/ResendButton.jsx: replace the `limitReached` boolean with `limitMessage` state (string|null). In the OTP_RESEND_LIMIT branch of handleClick, call setLimitMessage(err.message). Render <p className="text-sm text-ink-40">{limitMessage}</p> when it is set. Remove the errorMessages import if now unused.
+> 2. frontend/src/pages/ForgotPassword.jsx (~line 84) and frontend/src/components/ElevationOtpModal.jsx (~line 66): in the OTP_RESEND_LIMIT handling for the initial send-code action, use err.message instead of errorMessages.OTP_RESEND_LIMIT.message. Keep the existing display type and surrounding behaviour.
+> 3. frontend/src/api/errorMessages.js: change OTP_RESEND_LIMIT's message to "You've reached the resend limit. Please try again later." (keep display type).
+> 4. Update frontend/tests/components/ResendButton.test.jsx so the mocked rejection includes a `message`, and assert the rendered text equals it. Add cases for "about an hour", "about 4 hours" and "about a day". Add or adjust tests for ForgotPassword and ElevationOtpModal if they assert the old limit text.
+> 5. Add a new AI Assistance Disclosure entry to the header of every file you edit (tool: Claude Code, model: claude-sonnet-5-5, date: 2026-11-09, scope, author review blank, no requirements/architecture/schema/API decisions made by the AI tool), and give me the entry to paste into /ai/usage-log.md.
+> 6. Run the frontend tests and lint. Report changed files and results. Do not change anything under user-service/.
+
+**Key responses:**
+Replaced ResendButton's `limitReached` boolean with `limitMessage` (string|null) sourced from `err.message`, so the displayed wait reflects whatever the server actually reports, rather than a string hardcoded in errorMessages.js. Applied the same `err.message` substitution to ForgotPassword's and ElevationOtpModal's initial-send OTP_RESEND_LIMIT branches. Reworded errorMessages.js's OTP_RESEND_LIMIT entry to a generic fallback since callers no longer read it for this code's display text. Checked ForgotPassword.test.jsx and ElevationOtpModal.test.jsx for assertions on the old "about an hour" text — found none, so no changes were needed there (confirmed via grep). Updated ResendButton.test.jsx's limit test to assert against `err.message` and added three parametrized cases for different wait phrasings. Ran the three affected test files (21/21 passed), then the full suite (267/268 passed; one pre-existing, unrelated failure in CreateRequest.test.jsx over a maxLength mismatch, left untouched), then `npm run lint` (oxlint, exit 0, no findings in the edited files).
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/components/ResendButton.jsx` (modified)
+- `frontend/src/pages/ForgotPassword.jsx` (modified)
+- `frontend/src/components/ElevationOtpModal.jsx` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/tests/components/ResendButton.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 29: Auto-redirect instead of the blocked-page message
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 29 ("Auto-Redirect Instead of the Blocked-Page Message")
+
+**Prompts (exact):**
+
+> read through instructions.md. let's start on stage 29. don't forget the git workflow.
+
+**Key responses:**
+Read through the Stage 22 and Stage 28g code to confirm the page-to-view list (`routing/views.js`'s `PAGE_VIEW`) already covered `/series/new` and `/series/:id/edit` (the exact gap Stage 29's own text flagged), so there was nothing to stop and ask about there.
+
+Rewrote `ViewGate` (`components/RouteGuards.jsx`) from a blocked-page `EmptyState` with switch/go-to-main-page buttons into a `<Navigate replace>` redirect to the current view's main page, firing the "You are now in `<view>` mode" toast once per redirect via a `useEffect`. This one change covers the stage's typed-URL, Back, and landing-after-login cases, since `ViewGate` already sits on every requester-only/courier-only route and `Login.jsx`'s post-login navigate already re-enters the same route tree.
+
+Updated `ActiveViewToggle.jsx`'s existing leaving-page redirect (added 2026-11-09, outside this stage) to match Stage 29's two explicit rules: the forward navigate is now `{ replace: true }` instead of a push, and the toggle-failure revert now explicitly navigates back to the original pathname with `{ replace: true }` (only if the user is still on the main page the toggle sent them to, tracked via a `locationRef` since the async closure's own `location` is stale by the time the revert runs) instead of relying on `navigate(-1)`, which would have popped past the replaced entry. Added the success toast on a successful leaving-page switch; confirmed the failure path still shows only the failure toast (no success toast fires if `setActiveView` rejects).
+
+Rewrote `tests/components/RouteGuards.test.jsx` (redirect + toast + no-bounce-on-Back, replacing the removed switch/go-to-main-page-button tests) and extended `tests/components/ActiveViewToggle.test.jsx` (success toast, no-bounce-on-Back, and an explicit "only the failure toast" assertion on the failure path). Ran the full frontend Vitest suite: 267/268 passed, including both rewritten/extended files; the one failure (`CreateRequest.test.jsx`'s saved-location maxLength assertion) is pre-existing and unrelated — confirmed via `git stash` that it fails identically on `main` before this change. Ran `npm run lint` (oxlint): no findings in any file this stage touched.
+
+Did not implement the "Notes for later" (notifications) item or the backlog edit, per the stage's own "do not implement now" / "for the team to make" notes. Did not run the app in a real browser against a live backend (would need the user-service, order-service, etc. running); the Verification bullets are covered by the Vitest suite's component-level simulation of AuthContext/router/toast instead.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/components/RouteGuards.jsx` (modified)
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified: comments only, no value changes)
+- `frontend/src/App.jsx` (modified: disclosure header only, no route changes)
+- `frontend/tests/components/RouteGuards.test.jsx` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None — the one gap the stage's text flagged (the series edit route) was already resolved in Stage 28g's changes to `routing/views.js`.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 30: Email unmask on the admin user page
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 30 ("Email Unmask on the Admin User Page (NFR3.1.1, F5.3.2)"), building on Stage 20b, the Stage 26 "Reasons" amendment and Stage 27
+
+**Prompts (exact):**
+
+> let's start stage 30. dont forget the git workflow.
+
+**Key responses:**
+Verify-first findings (reported, nothing changed at that point): in `AdminUsers.jsx` the unmasked values lived in a per-row `unmaskedEmails` state object, the 60 s timers in a `useRef` map, re-mask-on-refetch in a `useEffect` on the `useApi` `data` object, and reveals called `getFullEmail` from `api/users.js` (already a `POST /users/:id/full-email` with an empty JSON body, no reason, no elevation). On the user page, the profile comes from `getUser` (`GET /users/:id`, masked by the backend) and the profile object is replaced in exactly three places: the initial `useApi` load, `setProfileOverride(updated)` after a successful action, and `reloadProfile()` after a failed action; the derived `shownProfile` changes identity in all three cases. Nothing in the stage text disagreed with the code, so no stop-and-ask was needed.
+
+Extracted the inline logic into a shared hook `useEmailUnmask` plus `canUnmaskEmail`/`UNMASK_TIMEOUT_MS` in a new `frontend/src/utils/emailUnmask.js` (same folder pattern as Stage 27c's `utils/elevation.js`), and the eye/eye-off button into a new `components/EmailUnmaskButton.jsx` (identical markup, aria-labels, classes, size and `stopPropagation`). `AdminUsers.jsx` now uses both; its refetch effect still re-masks every row. `AdminUserTransactions.jsx` renders the email with the same button, hidden via `canUnmaskEmail` for the caller's own page and a super admin's, and re-masks through an effect on `shownProfile`, which covers all three replacement paths above. No API, route, backend, or protocol change.
+
+Tests: added an 11-case describe block to `tests/pages/AdminUserTransactions.test.jsx` covering every Verification bullet that does not need a browser or backend: icon shown for pending/suspended/admin users, hidden on own page and super admin's page, reveal with one id-only `getFullEmail` call and the "hide" label, re-mask on second click with no request, 60 s auto re-mask with fake timers, no reason dialog/OTP modal even when not elevated, failure toast with email still masked, re-mask after a suspend replaces the profile, and re-mask after navigating to an order and back (via a stub order route with a back button). The existing `AdminUsers.test.jsx` Stage 20b tests pass unchanged.
+
+Verification run: full frontend Vitest suite 278/279 passed; the one failure (`CreateRequest.test.jsx` saved-location maxLength assertion) is the same pre-existing failure recorded in the Stage 29 entry and is unrelated to this change. `npm run lint` (oxlint): no errors; the warning set is identical to `main` (only line numbers shifted), none introduced by this stage. Not verified in a real browser: the visual check of the icon beside the email, the phone-width tap target, the Network-tab request body, and the `EMAIL_UNMASK` audit row at `/admin/logs` are left for manual verification. Did not make the backlog edits listed under "Backlog edit (for the team to make)".
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/utils/emailUnmask.js` (created)
+- `frontend/src/components/EmailUnmaskButton.jsx` (created)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None. One observation, not a deviation: the stage's Network bullet says the unmask POST has "no body", while the pre-existing `getFullEmail` sends an empty JSON object `{}`. The stage says the protocol is unchanged and to use the same API function, so this was left as is.
+
+**What I kept/changed/rejected:**
+Accepted all changes
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Fix F3: isLocked uses the DB clock (convention 5)
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F3 fix note pasted in chat on 2026-11-10 (quoted below), implementing instructions.md "Conventions established in the code" item 5 (time comes from the database clock; compare against `clock_timestamp()`; no `Date.now()` outside JWT iat/exp)
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F3: isLocked must use the DB clock (convention 5).
+>
+> - In every query whose row reaches toUserResponse (findUserById, listUsersPage,
+>   the status/role/active-view/unlock UPDATE ... RETURNING paths, and any others —
+>   grep for callers), select
+>   (login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp()) AS is_locked
+>   For RETURNING, append it: RETURNING \*, (...) AS is_locked.
+> - Use the same SQL expression for the `locked` filter in listUsersPage, so filter and
+>   field cannot disagree. Factor it into one shared SQL fragment constant.
+> - toUserResponse reads row.is_locked. Make is_locked a required field on the row type,
+>   so a query that omits it fails to compile instead of returning undefined.
+> - Remove Date.now() from userResponse.ts. Grep src/ for any other Date.now() use and
+>   report each one (JWT iat/exp are the only allowed exception).
+> - If the unlock service decides lock vs no-op from anything other than SQL, switch it to
+>   the same expression, evaluated on the row it locks FOR UPDATE.
+> - Test: backdate login_locked_until to 1 s in the future and 1 s in the past. Assert
+>   isLocked and the locked=true|false filter agree in both cases, and that unlock on the
+>   just-expired row is a no-op with no audit row.
+
+**Key responses:**
+Grepped for every `toUserResponse` caller: `users.service.ts` (listUsers via `listUsersPage`; getUserById via `findById`; changeUserStatus/changeUserRole no-op returns via `lockUserById` and real changes via `updateUserStatus`/`updateUserRole` RETURNING; unlockUser via `lockUserByIdWithNow` plus a synthesized post-unlock row) and `me.service.ts` (changeActiveView via `updateActiveView` RETURNING). `updateUsername`/`updateEmail` never reach the mapper and were left unchanged.
+
+In `users.queries.ts`, added the exported `IS_LOCKED_SQL` constant (`(login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp())`) and a private `IS_LOCKED_COLUMN` (`... AS is_locked`). `findById`, `findByIdWithNow`, `lockUserById`, `lockUserByIdWithNow`, `listUsersPage`'s SELECT, and the `updateUserStatus`/`updateUserRole`/`updateActiveView` RETURNING clauses all select it. `listUsersPage`'s `locked` filter now uses `IS_LOCKED_SQL` / `NOT IS_LOCKED_SQL` (replacing the two hand-written `NOW()` comparisons); `NOT (...)` is true for a NULL `login_locked_until` since `(false AND NULL)` is false in SQL.
+
+Row type: added `UserRowWithLock = UserRow & { is_locked: boolean }` and made `UserRowWithNow` extend it; every query above returns `UserRowWithLock`. `toUserResponse` now takes `UserRowWithLock` and returns `isLocked: row.is_locked`; `Date.now()` is gone from `userResponse.ts`. Within-decision choice: `is_locked` is required on the type the mapper accepts rather than on `UserRow` itself, because `UserRow` is also the result type of `SELECT *`/`RETURNING *` queries that never reach the mapper (`createUser`, `findByUsername`, `findByEmail`, `findSuperAdmin`, `createSuperAdmin`, `updateUsername`, `updateEmail`, and the test helpers); putting `is_locked` on `UserRow` would have made those types claim a column they do not select. The compile-time guarantee asked for holds: passing a row from a query that omits `is_locked` to `toUserResponse` is a type error.
+
+`unlockUser` now decides lock vs no-op from `locked.is_locked` on the row it locks FOR UPDATE (`lockUserByIdWithNow`), replacing the JS comparison of `login_locked_until` against `db_now`; the synthesized post-unlock row carries `is_locked: false`.
+
+`Date.now()` report for `src/`: after this change the only remaining uses are two in `src/services/email.service.ts` (lines 220 and 241), which bound the SMTP retry loop's overall wall-clock deadline (elapsed time between send attempts). They are not JWT iat/exp and were not changed; they do not touch any persisted expiry or lock. Flagged for the team under Deviations.
+
+Tests: extended `tests/helpers/db.ts`'s `setLoginLockState` with an optional `lockedUntilSecondsFromNow` (the lock end is now `clock_timestamp() + make_interval(secs => ...)`), and added a four-case describe "isLocked and the locked filter use the DB clock (fix F3)" to `tests/services/users.service.test.ts`: lock ending 1 s in the future (isLocked true, in locked=true, not in locked=false); lock ended 1 s ago (isLocked false, lockedUntil still set, in locked=false, not in locked=true); unlock on the just-expired row is a no-op (lock columns, failed-attempt count and updated_at unchanged, no audit row); unlock on the 1 s-future lock clears it and writes exactly one USER_UNLOCK row.
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. Vitest: the five lock-related files (users.service, users.controller, me.service, auth.service, lockout.concurrency) 288/288 passed, then the full user-service suite 38 files / 995 tests passed (the `Error: insert failed` and `SMTP down` stderr lines are from pre-existing forced-failure tests). `npm run lint` (eslint): no findings.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- `is_locked` was made required on the mapper's input type (`UserRowWithLock`) rather than on `UserRow` itself, for the reason given above. If the team wants it on `UserRow`, every `SELECT *`/`RETURNING *` query and the test helpers would need to select it too.
+- Two `Date.now()` uses remain in `src/services/email.service.ts` (SMTP retry deadline). They are outside the JWT exception but also outside convention 5's stated scope (OTPs, refresh tokens, persisted expiries). Left as is for the team to decide.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+
+## 2026-11-10 — Merge main into PR 173 branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
+
+**Prompts (exact):**
+> switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
+
+**Key responses:**
+Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+- `ai/usage-log.md` (conflict resolved and entry appended)
+- `README.md` (conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

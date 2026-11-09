@@ -63,6 +63,11 @@
 # Author review: tng wen xi
 # Scope (2026-11-08, Codex, model: GPT-6): Wired the chat Socket.IO adapter to Compose Redis.
 # Author review: tng wen xi
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+# Scope (2026-11-09): CREDIT_SERVICE_URL on order-service - POST /orders now reserves
+#        credits in the request (George, 2026-11-09).
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 name: foc
 
 services:
@@ -145,6 +150,8 @@ services:
       USER_SERVICE_URL: http://user-service:3001
       # Create / edit check supplier and delivery-location ids here (503 if it is down).
       SUPPLIER_SERVICE_URL: http://supplier-service:3002
+      # POST /orders reserves credits here before answering (503 if it is down).
+      CREDIT_SERVICE_URL: http://credit-service:3003
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"
     depends_on:
@@ -178,8 +185,8 @@ services:
       DATABASE_URL: postgresql://${ORDER_DB_USER}:${ORDER_DB_PASSWORD}@order-db:5432/${ORDER_DB_NAME}
       REDIS_HOST: order-redis
       REDIS_PORT: 6379
-      # Issue #4: the worker calls credit-service for reserve/release. No depends_on:
-      # failed calls are retried by BullMQ, so a cold start recovers on its own.
+      # The worker calls credit-service for releases (reserve is synchronous in the API).
+      # No depends_on: failed releases are retried by BullMQ.
       CREDIT_SERVICE_URL: http://credit-service:3003
       CHAT_SERVICE_URL: http://chat-service:3000
       CHAT_SERVICE_API_KEY: ${CHAT_SERVICE_API_KEY:?set CHAT_SERVICE_API_KEY in .env}

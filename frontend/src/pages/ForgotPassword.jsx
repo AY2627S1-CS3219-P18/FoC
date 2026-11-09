@@ -27,6 +27,12 @@
  *        resend re-enables and clears the boxes.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Finding F1 - requestOtpEmail's OTP_RESEND_LIMIT branch now shows err.message instead
+ *        of errorMessages.OTP_RESEND_LIMIT.message, so the wait it names matches the server's.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useRef, useState } from 'react'
@@ -82,7 +88,7 @@ export default function ForgotPassword() {
       } else if (err.code === 'OTP_RESEND_COOLDOWN') {
         setEmailFormError(cooldownText(err))
       } else if (err.code === 'OTP_RESEND_LIMIT') {
-        setEmailFormError(errorMessages.OTP_RESEND_LIMIT.message)
+        setEmailFormError(err.message)
       } else {
         setEmailFormError(describeError(err).message)
       }

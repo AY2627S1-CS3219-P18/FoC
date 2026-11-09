@@ -75,6 +75,21 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
+ *        worker-only stub methods to the fake client in the supplier-service reference check
+ *        tests, per Stage 28 c2's interface change; no test logic changed. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Default complete-by - create with completeBy absent or null stores
+ *        now + 1 hour; edit with completeBy: null leaves it out of the write.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-09): Synchronous reservation - createOrder fakes keep the order in memory
+ *        and take a credits client; the outbox reserve-task cases are replaced by open /
+ *        insufficient / rejected / unavailable outcomes and the pending-order 409 check.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -83,12 +98,7 @@ import { ErrorCode } from '../constants/errors.js';
 it('requires delivery details when creating an order', async () => {
   const { prisma } = fakes();
   const { deliveryDetails: _details, ...withoutDetails } = valid;
-  const result = await createOrder(
-    prisma,
-    REQUESTER,
-    withoutDetails as CreateOrderPayload,
-    REFS,
-  );
+  const result = await createOrder(prisma, REQUESTER, withoutDetails as CreateOrderPayload, REFS, CREDITS);
   expect(result).toEqual({ ok: false, errors: ['MISSING_DELIVERY_DETAILS'] });
 });
 import type { PrismaClient } from '../db/prisma.js';
@@ -98,6 +108,11 @@ import {
   type OrderRequest,
 } from '../generated/prisma/client.js';
 import type { CreateOrderPayload } from '../types/orders.js';
+import {
+  createStubCreditsClient,
+  type CreditCallResult,
+  type CreditsClient,
+} from '../clients/credits.client.js';
 import {
   createStubSuppliersClient,
   type Existence,
@@ -122,44 +137,16 @@ it.each([
   [12, ErrorCode.INVALID_DELIVERY_DETAILS],
   ['x'.repeat(251), ErrorCode.INVALID_DELIVERY_DETAILS],
 ])('validates delivery details %s', async (deliveryDetails, code) => {
-  const result = await createOrder(
-    fakes().prisma,
-    REQUESTER,
-    { ...valid, deliveryDetails } as CreateOrderPayload,
-    REFS,
-  );
+  const result = await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails } as CreateOrderPayload, REFS, CREDITS);
   expect(result).toEqual({ ok: false, errors: [code] });
 });
 
 it('trims delivery details on create and requires them on edit', async () => {
   const { prisma, create } = fakes();
-  expect(
-    (
-      await createOrder(
-        prisma,
-        REQUESTER,
-        { ...valid, deliveryDetails: '  Lobby  ' },
-        REFS,
-      )
-    ).ok,
-  ).toBe(true);
-  expect(create).toHaveBeenCalledWith({
-    data: expect.objectContaining({ deliveryDetails: 'Lobby' }),
-  });
-  expect(
-    (
-      await createOrder(
-        prisma,
-        REQUESTER,
-        { ...valid, deliveryDetails: 'x'.repeat(250) },
-        REFS,
-      )
-    ).ok,
-  ).toBe(true);
-  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({
-    ok: false,
-    errors: [ErrorCode.MISSING_DELIVERY_DETAILS],
-  });
+  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: '  Lobby  ' }, REFS, CREDITS)).ok).toBe(true);
+  expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) });
+  expect((await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails: 'x'.repeat(250) }, REFS, CREDITS)).ok).toBe(true);
+  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({ ok: false, errors: [ErrorCode.MISSING_DELIVERY_DETAILS] });
 });
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
@@ -172,6 +159,8 @@ const REFS = {
   suppliers: createStubSuppliersClient(),
   authorization: 'Bearer test',
 };
+/** credit-service that always reserves. */
+const CREDITS = createStubCreditsClient();
 const SUPPLIER = 1;
 const OTHER_USER = '0192f0c4-7a1e-7c3a-9b2d-4f5e6a7b8c9d';
 
@@ -184,28 +173,55 @@ const valid: CreateOrderPayload = {
   additionalDetails: null,
 };
 
+/**
+ * Prisma fake for createOrder: keeps the created order in memory so the synchronous
+ * settle (pending -> open / failed via transitionOrder) can read and update it.
+ */
 function fakes({
-  create = async ({ data }: { data: object }): Promise<object> => ({
-    id: 'generated',
-    version: 0,
-    ...data,
-  }),
-  createOutbox = async (): Promise<{ count: number }> => ({ count: 1 }),
+  pendingExists = false,
+  reserve = async (): Promise<CreditCallResult> => ({ ok: true }),
 }: {
-  create?: (args: { data: object }) => Promise<object>;
-  createOutbox?: (args: { data: object[] }) => Promise<{ count: number }>;
+  /** The requester already has a pending order. */
+  pendingExists?: boolean;
+  reserve?: CreditsClient['reserve'];
 } = {}) {
-  const orderRequest = { create: vi.fn(create) };
-  const outbox = { createMany: vi.fn(createOutbox) };
+  let row: Record<string, unknown> | null = null;
+  const create = vi.fn(async ({ data }: { data: object }) => {
+    row = { id: 'generated', version: 0, ...data };
+    return row;
+  });
+  const findFirst = vi.fn(async () => (pendingExists ? { id: 'other' } : null));
+  const orderRequest = {
+    create,
+    findFirst,
+    findUnique: vi.fn(async () => row),
+    findUniqueOrThrow: vi.fn(async () => row),
+    updateMany: vi.fn(async ({ data }: { data: { status: string } }) => {
+      row = { ...row, status: data.status, version: Number(row?.version) + 1 };
+      return { count: 1 };
+    }),
+  };
+  const outbox = { createMany: vi.fn(async () => ({ count: 1 })) };
+  const $executeRaw = vi.fn(async () => 1);
   const $transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
     fn(prisma),
   );
-  const prisma = { orderRequest, outbox, $transaction };
+  const prisma = { orderRequest, outbox, $transaction, $executeRaw };
+  const reserveMock = vi.fn(reserve);
+  const credits: CreditsClient = {
+    reserve: reserveMock,
+    release: vi.fn(async (): Promise<CreditCallResult> => ({ ok: true })),
+  };
   return {
     prisma: prisma as unknown as PrismaClient,
     outbox,
     $transaction,
-    create: orderRequest.create,
+    $executeRaw,
+    findFirst,
+    create,
+    credits,
+    reserve: reserveMock,
+    row: () => row,
   };
 }
 
@@ -236,6 +252,7 @@ async function run(payload: object, deps: ReturnType<typeof fakes> = fakes()) {
     REQUESTER,
     payload as unknown as CreateOrderPayload,
     REFS,
+    deps.credits,
   );
   return { result, ...deps };
 }
@@ -354,7 +371,7 @@ describe('createOrder: validation', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('accepts null optional fields (completeBy null = indefinite)', async () => {
+  it('accepts null optional fields', async () => {
     const { result } = await run({
       ...valid,
       completeBy: null,
@@ -362,37 +379,137 @@ describe('createOrder: validation', () => {
     });
     expect(result.ok).toBe(true);
   });
+
+  describe('default complete-by (2026-11-09)', () => {
+    const CREATED_AT = new Date('2026-11-09T08:00:00.000Z');
+    const ONE_HOUR_LATER = new Date('2026-11-09T09:00:00.000Z');
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(CREATED_AT);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([
+      ['absent', {}],
+      ['null', { completeBy: null }],
+    ])('stores now + 1 hour when completeBy is %s', async (_name, override) => {
+      // `valid` has no completeBy of its own.
+      const { result, create } = await run({ ...valid, ...override });
+      expect(result.ok).toBe(true);
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ completeBy: ONE_HOUR_LATER }),
+      });
+    });
+
+    it('keeps a requester-chosen completeBy as given', async () => {
+      const { create } = await run({ ...valid, completeBy: LATER });
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ completeBy: new Date(LATER) }),
+      });
+    });
+  });
 });
 
-describe('createOrder: pending order + reserve task (issue #4)', () => {
-  it('creates the order as pending and queues its reservation in the same transaction', async () => {
+describe('createOrder: synchronous credit reservation (2026-11-09)', () => {
+  it('reserves in the request and returns the order already open', async () => {
     const deps = fakes();
     const { result } = await run(valid, deps);
 
-    expect(result.ok).toBe(true);
-    expect(deps.$transaction).toHaveBeenCalledTimes(1);
     expect(deps.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ status: 'pending', credits: 4 }),
     });
-    // F9.1.2: approval waits on credit-service; the order id is the requestId.
-    expect(deps.outbox.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          taskName: 'credit_reserve',
-          payload: { requestId: 'generated', userId: REQUESTER, amount: 4 },
-          version: 0,
-        },
-      ],
+    // The order id is the reservation's requestId (idempotency key).
+    expect(deps.reserve).toHaveBeenCalledWith({
+      requestId: 'generated',
+      userId: REQUESTER,
+      amount: 4,
+    });
+    expect(result).toMatchObject({ ok: true, order: { status: 'open' } });
+    // No reserve task goes through the outbox any more.
+    const tasks = deps.outbox.createMany.mock.calls.flatMap((call: unknown[]) =>
+      (call[0] as { data: { taskName: string }[] }).data.map((t) => t.taskName),
+    );
+    expect(tasks).not.toContain('credit_reserve');
+  });
+
+  it('takes the per-requester lock before checking for a pending order', async () => {
+    const deps = fakes();
+    await run(valid, deps);
+    expect(deps.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(deps.$executeRaw.mock.calls[0]).toContain(REQUESTER);
+    expect(deps.findFirst).toHaveBeenCalledWith({
+      where: { requesterId: REQUESTER, status: 'pending' },
+      select: { id: true },
     });
   });
 
-  it('surfaces a failed outbox write (the transaction rolls the order back)', async () => {
-    const deps = fakes({
-      createOutbox: async () => {
-        throw new Error('db down');
-      },
+  it('rejects with ORDER_PENDING_EXISTS while the requester has a pending order', async () => {
+    const deps = fakes({ pendingExists: true });
+    const { result } = await run(valid, deps);
+    expect(result).toEqual({
+      ok: false,
+      errors: [ErrorCode.ORDER_PENDING_EXISTS],
     });
-    await expect(run(valid, deps)).rejects.toThrow('db down');
+    expect(deps.create).not.toHaveBeenCalled();
+    expect(deps.reserve).not.toHaveBeenCalled();
+  });
+
+  it('fails the order with INSUFFICIENT_CREDITS when credit-service says so, without a release', async () => {
+    const deps = fakes({
+      reserve: async () => ({
+        ok: false,
+        kind: 'permanent',
+        status: 422,
+        code: 'INSUFFICIENT_UNRESERVED_CREDITS',
+      }),
+    });
+    const { result } = await run(valid, deps);
+    expect(result).toEqual({
+      ok: false,
+      errors: [ErrorCode.INSUFFICIENT_CREDITS],
+    });
+    expect(deps.row()).toMatchObject({ status: 'failed' });
+    expect(deps.outbox.createMany).not.toHaveBeenCalled();
+  });
+
+  it('fails the order with CREDIT_RESERVE_REJECTED for any other refusal', async () => {
+    const deps = fakes({
+      reserve: async () => ({
+        ok: false,
+        kind: 'permanent',
+        status: 400,
+        code: 'VALIDATION_ERROR',
+      }),
+    });
+    const { result } = await run(valid, deps);
+    expect(result).toEqual({
+      ok: false,
+      errors: [ErrorCode.CREDIT_RESERVE_REJECTED],
+    });
+    expect(deps.row()).toMatchObject({ status: 'failed' });
+  });
+
+  it('fails the order and queues a release when credit-service is unreachable, with no retry', async () => {
+    const deps = fakes({
+      reserve: async () => ({
+        ok: false,
+        kind: 'transient',
+        code: 'ECONNREFUSED',
+      }),
+    });
+    const { result } = await run(valid, deps);
+    expect(result).toEqual({
+      ok: false,
+      errors: [ErrorCode.CREDIT_SERVICE_UNAVAILABLE],
+    });
+    expect(deps.reserve).toHaveBeenCalledTimes(1);
+    expect(deps.row()).toMatchObject({ status: 'failed' });
+    expect(deps.outbox.createMany).toHaveBeenCalledWith(
+      releaseRow('generated', 1),
+    );
   });
 });
 
@@ -566,6 +683,43 @@ describe('editOrder', () => {
     expect(findUniqueOrThrow).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the stored completeBy when the edit sends completeBy: null (2026-11-09)', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editWithDetails(
+        prisma,
+        REQUESTER,
+        order.id,
+        { description: 'Updated description', completeBy: null },
+        REFS,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version, status: 'open' },
+      data: {
+        description: 'Updated description',
+        deliveryDetails: 'Nil',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('writes a new completeBy when the edit sends one', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editWithDetails(prisma, REQUESTER, order.id, { completeBy: LATER }, REFS),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ completeBy: LATER }),
+      }),
+    );
+  });
+
   it('returns FORBIDDEN when the actor is not the requester', async () => {
     const { prisma, updateMany, order } = prismaWithEdit();
 
@@ -674,6 +828,13 @@ describe('supplier-service reference check (create / edit)', () => {
     const client = {
       supplierExists: vi.fn(async () => supplier),
       locationExists: vi.fn(async () => location),
+      supplierStatusForWorker: vi.fn(async () => ({
+        existence: supplier,
+        hasNoOpeningHours: false,
+        closed: false,
+        nextOpeningAt: null,
+      })),
+      locationExistsForWorker: vi.fn(async () => location),
     } satisfies SuppliersClient;
     return { client, refs: { suppliers: client, authorization: 'Bearer abc' } };
   }
@@ -696,7 +857,7 @@ describe('supplier-service reference check (create / edit)', () => {
   it('create checks both ids with the caller token, then writes', async () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const deps = fakes();
-    const result = await createOrder(deps.prisma, REQUESTER, valid, refs);
+    const result = await createOrder(deps.prisma, REQUESTER, valid, refs, deps.credits);
     expect(result.ok).toBe(true);
     expect(client.supplierExists).toHaveBeenCalledWith(SUPPLIER, 'Bearer abc');
     expect(client.locationExists).toHaveBeenCalledWith(12, 'Bearer abc');
@@ -720,7 +881,7 @@ describe('supplier-service reference check (create / edit)', () => {
       const { refs } = suppliersAnswering(supplier, location);
       const deps = fakes();
       await expect(
-        createOrder(deps.prisma, REQUESTER, valid, refs),
+        createOrder(deps.prisma, REQUESTER, valid, refs, deps.credits),
       ).resolves.toEqual({ ok: false, errors });
       expect(deps.$transaction).not.toHaveBeenCalled();
     },
@@ -734,6 +895,7 @@ describe('supplier-service reference check (create / edit)', () => {
       REQUESTER,
       { ...valid, supplierId: -1 } as CreateOrderPayload,
       refs,
+      deps.credits,
     );
     expect(client.supplierExists).not.toHaveBeenCalled();
     expect(client.locationExists).not.toHaveBeenCalled();

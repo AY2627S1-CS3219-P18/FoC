@@ -14,6 +14,13 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - added /series/new and /series/:id/edit (proposed to
+ *        and confirmed with the user before adding, per the stage's instruction), reusing
+ *        CreateRequest in series mode, wrapped the same way as /requests/new and
+ *        /requests/:id/edit (RequireAuth, ViewGate requiredView REQUESTER).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 /*
@@ -77,6 +84,13 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Added /admin/logs behind RequireAuth + RequireRole(minimum="admin"), per
  *        instructions.md Stage 26e.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 29 - no route wiring changed here; ViewGate (components/RouteGuards.jsx) now
+ *        redirects instead of showing the blocked-page message, so every <ViewGate
+ *        requiredView={...}> wrapper below picks up the new behaviour automatically.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -200,6 +214,26 @@ export default function App() {
               <RequireAuth>
                 <ViewGate requiredView={VIEWS.REQUESTER}>
                   <CreateRequest />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/series/new"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <CreateRequest seriesMode />
+                </ViewGate>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/series/:id/edit"
+            element={
+              <RequireAuth>
+                <ViewGate requiredView={VIEWS.REQUESTER}>
+                  <CreateRequest seriesMode />
                 </ViewGate>
               </RequireAuth>
             }
