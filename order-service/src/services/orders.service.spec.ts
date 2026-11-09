@@ -83,7 +83,12 @@ import { ErrorCode } from '../constants/errors.js';
 it('requires delivery details when creating an order', async () => {
   const { prisma } = fakes();
   const { deliveryDetails: _details, ...withoutDetails } = valid;
-  const result = await createOrder(prisma, REQUESTER, withoutDetails as CreateOrderPayload, REFS);
+  const result = await createOrder(
+    prisma,
+    REQUESTER,
+    withoutDetails as CreateOrderPayload,
+    REFS,
+  );
   expect(result).toEqual({ ok: false, errors: ['MISSING_DELIVERY_DETAILS'] });
 });
 import type { PrismaClient } from '../db/prisma.js';
@@ -117,16 +122,44 @@ it.each([
   [12, ErrorCode.INVALID_DELIVERY_DETAILS],
   ['x'.repeat(251), ErrorCode.INVALID_DELIVERY_DETAILS],
 ])('validates delivery details %s', async (deliveryDetails, code) => {
-  const result = await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails } as CreateOrderPayload, REFS);
+  const result = await createOrder(
+    fakes().prisma,
+    REQUESTER,
+    { ...valid, deliveryDetails } as CreateOrderPayload,
+    REFS,
+  );
   expect(result).toEqual({ ok: false, errors: [code] });
 });
 
 it('trims delivery details on create and requires them on edit', async () => {
   const { prisma, create } = fakes();
-  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: '  Lobby  ' }, REFS)).ok).toBe(true);
-  expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) });
-  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: 'x'.repeat(250) }, REFS)).ok).toBe(true);
-  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({ ok: false, errors: [ErrorCode.MISSING_DELIVERY_DETAILS] });
+  expect(
+    (
+      await createOrder(
+        prisma,
+        REQUESTER,
+        { ...valid, deliveryDetails: '  Lobby  ' },
+        REFS,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(create).toHaveBeenCalledWith({
+    data: expect.objectContaining({ deliveryDetails: 'Lobby' }),
+  });
+  expect(
+    (
+      await createOrder(
+        prisma,
+        REQUESTER,
+        { ...valid, deliveryDetails: 'x'.repeat(250) },
+        REFS,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({
+    ok: false,
+    errors: [ErrorCode.MISSING_DELIVERY_DETAILS],
+  });
 });
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
@@ -382,10 +415,31 @@ describe('editOrder', () => {
   it('trims details on edit and rejects invalid details', async () => {
     const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
     findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
-    expect((await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: '  Lobby  ' }, REFS)).ok).toBe(true);
-    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) }));
-    expect(await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: 'x'.repeat(251) }, REFS))
-      .toEqual({ ok: false, errors: [ErrorCode.INVALID_DELIVERY_DETAILS] });
+    expect(
+      (
+        await editOrderImpl(
+          prisma,
+          REQUESTER,
+          order.id,
+          { deliveryDetails: '  Lobby  ' },
+          REFS,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ deliveryDetails: 'Lobby' }),
+      }),
+    );
+    expect(
+      await editOrderImpl(
+        prisma,
+        REQUESTER,
+        order.id,
+        { deliveryDetails: 'x'.repeat(251) },
+        REFS,
+      ),
+    ).toEqual({ ok: false, errors: [ErrorCode.INVALID_DELIVERY_DETAILS] });
   });
 
   it('rejects unsupported fields before querying the database', async () => {
@@ -688,12 +742,24 @@ describe('supplier-service reference check (create / edit)', () => {
   it('edit checks only the ids it changes', async () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const { prisma } = openOrder();
-    await editWithDetails(prisma, REQUESTER, 'order-1', { supplierId: 3 }, refs);
+    await editWithDetails(
+      prisma,
+      REQUESTER,
+      'order-1',
+      { supplierId: 3 },
+      refs,
+    );
     expect(client.supplierExists).toHaveBeenCalledWith(3, 'Bearer abc');
     expect(client.locationExists).not.toHaveBeenCalled();
 
     client.supplierExists.mockClear();
-    await editWithDetails(prisma, REQUESTER, 'order-1', { description: 'x' }, refs);
+    await editWithDetails(
+      prisma,
+      REQUESTER,
+      'order-1',
+      { description: 'x' },
+      refs,
+    );
     expect(client.supplierExists).not.toHaveBeenCalled();
     expect(client.locationExists).not.toHaveBeenCalled();
   });
@@ -702,7 +768,13 @@ describe('supplier-service reference check (create / edit)', () => {
     const { refs } = suppliersAnswering('found', 'not_found');
     const { prisma, updateMany } = openOrder();
     await expect(
-      editWithDetails(prisma, REQUESTER, 'order-1', { deliveryLocationId: 99 }, refs),
+      editWithDetails(
+        prisma,
+        REQUESTER,
+        'order-1',
+        { deliveryLocationId: 99 },
+        refs,
+      ),
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.DELIVERY_LOCATION_NOT_FOUND],

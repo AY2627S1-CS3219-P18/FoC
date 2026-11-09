@@ -10,6 +10,10 @@
 //   Governing decision: instructions.md Stage 27. No requirements, architecture, schema, or
 //   API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 28b - added USER_ORDER_SERVICE_API_KEY to the missing-required-variables
+//   list. Governing decision: instructions.md Stage 28b. No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +58,7 @@ describe('config.ts', () => {
       'SUPER_ADMIN_USERNAME',
       'OTP_TTL_MINUTES',
       'OTP_RESEND_WINDOW_MINUTES',
+      'USER_ORDER_SERVICE_API_KEY',
     ])('exits non-zero and names %s when it is missing', (name) => {
       const r = loadConfig({ [name]: undefined });
       expect(r.status).toBe(1);

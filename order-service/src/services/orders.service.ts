@@ -138,12 +138,17 @@ export type CreateOrderResult =
 export type EditOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
 
-const checkDeliveryDetails = (value: unknown): { error: ErrorCode } | { value: string } => {
-  if (value === undefined || value === null) return { error: ErrorCode.MISSING_DELIVERY_DETAILS };
-  if (typeof value !== 'string') return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
+const checkDeliveryDetails = (
+  value: unknown,
+): { error: ErrorCode } | { value: string } => {
+  if (value === undefined || value === null)
+    return { error: ErrorCode.MISSING_DELIVERY_DETAILS };
+  if (typeof value !== 'string')
+    return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
   const trimmed = value.trim();
   if (!trimmed) return { error: ErrorCode.MISSING_DELIVERY_DETAILS };
-  if (trimmed.length > 250) return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
+  if (trimmed.length > 250)
+    return { error: ErrorCode.INVALID_DELIVERY_DETAILS };
   return { value: trimmed };
 };
 
