@@ -14,10 +14,16 @@
 //   params (fixture values, not a new assertion: these tests are about the re-check race).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27b - changeUserStatus/changeUserRole calls pass a fixture sid and a valid
+//   Elevated-Token (elevationFor), since both now require elevation for a real change (fixture
+//   values, not a new assertion: these tests are about the re-check race).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
 import * as usersService from '../../src/services/users.service.js';
 import { AppError } from '../../src/utils/AppError.js';
+import { signElevationToken } from '../../src/utils/jwt.js';
 import { NEW_PASSWORD, PASSWORD } from '../helpers/constants.js';
 import {
   expireOtps,
@@ -42,6 +48,13 @@ import jwt from 'jsonwebtoken';
 resetEmailMock();
 beforeEach(truncateAll);
 afterEach(truncateAll);
+
+// Fixture device id and a matching valid elevation token (Stage 27b): these tests call the
+// service layer directly, bypassing the HTTP header.
+const SID = 'test-sid-1';
+function elevationFor(userId: string): string {
+  return signElevationToken({ userId, role: 'admin', sid: SID });
+}
 
 // These tests are about the lock re-check race, not email masking, so any id that is not the
 // target's own works as the requester.
@@ -341,7 +354,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended', 'TEST_REASON', null),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', SID, u.id, 'suspended', 'TEST_REASON', null, elevationFor(ACTOR_ID)),
       async (c) => {
         await c.query(`UPDATE users SET role = 'super admin' WHERE id = $1`, [u.id]);
       },
@@ -354,7 +367,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended', 'TEST_REASON', null),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', SID, u.id, 'suspended', 'TEST_REASON', null, elevationFor(ACTOR_ID)),
       async (c) => {
         await c.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [u.id]);
       },
@@ -368,7 +381,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     await seedRefreshToken(u.id, 'tok-a');
     const { value, error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended', 'TEST_REASON', null),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', SID, u.id, 'suspended', 'TEST_REASON', null, elevationFor(ACTOR_ID)),
       async (c) => {
         await c.query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [u.id]);
       },
@@ -382,7 +395,7 @@ describe('changeUserStatus re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserStatus(ACTOR_ID, 'admin', u.id, 'suspended', 'TEST_REASON', null),
+      () => usersService.changeUserStatus(ACTOR_ID, 'admin', SID, u.id, 'suspended', 'TEST_REASON', null, elevationFor(ACTOR_ID)),
       async (c) => {
         await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
       },
@@ -399,7 +412,7 @@ describe('changeUserRole re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserRole(sa.id, u.id, 'admin', 'TEST_REASON', null),
+      () => usersService.changeUserRole(sa.id, SID, u.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id)),
       async (c) => {
         await c.query(`UPDATE users SET role = 'super admin' WHERE id = $1`, [u.id]);
       },
@@ -414,7 +427,7 @@ describe('changeUserRole re-checks the locked row', () => {
     await seedRefreshToken(u.id, 'tok-a');
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserRole(sa.id, u.id, 'admin', 'TEST_REASON', null),
+      () => usersService.changeUserRole(sa.id, SID, u.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id)),
       async (c) => {
         await c.query(`UPDATE users SET status = 'suspended' WHERE id = $1`, [u.id]);
       },
@@ -429,7 +442,7 @@ describe('changeUserRole re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserRole(sa.id, u.id, 'admin', 'TEST_REASON', null),
+      () => usersService.changeUserRole(sa.id, SID, u.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id)),
       async (c) => {
         await c.query(`UPDATE users SET status = 'pending' WHERE id = $1`, [u.id]);
       },
@@ -444,7 +457,7 @@ describe('changeUserRole re-checks the locked row', () => {
     await seedRefreshToken(u.id, 'tok-a');
     const { value, error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserRole(sa.id, u.id, 'admin', 'TEST_REASON', null),
+      () => usersService.changeUserRole(sa.id, SID, u.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id)),
       async (c) => {
         await c.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [u.id]);
       },
@@ -459,7 +472,7 @@ describe('changeUserRole re-checks the locked row', () => {
     const u = await createActiveUser(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => usersService.changeUserRole(sa.id, u.id, 'admin', 'TEST_REASON', null),
+      () => usersService.changeUserRole(sa.id, SID, u.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id)),
       async (c) => {
         await c.query(`DELETE FROM users WHERE id = $1`, [u.id]);
       },

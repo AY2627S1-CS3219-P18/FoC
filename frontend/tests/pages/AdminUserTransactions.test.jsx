@@ -19,21 +19,50 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Updated dropdown interaction tests.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - the existing "profile actions" tests run with a valid
+ *        elevation fixture (set in beforeEach), since this page's Suspend/Promote buttons now
+ *        go through the same gate AdminUsers.jsx does (this page has no Elevate button/timer
+ *        of its own, but still needs the gate - see utils/elevation.js's disclosure comment).
+ *        Added a new describe block covering the gate: not elevated opens ElevationOtpModal
+ *        before the reason dialog, and a mid-submit ELEVATION_REQUIRED retries through the same
+ *        dialog, mirroring AdminUsers.test.jsx's equivalent cases.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../src/components/Toast'
 import AdminUserTransactions from '../../src/pages/AdminUserTransactions'
 import { getUser, updateUserRole, updateUserStatus } from '../../src/api/users'
 import { listUserOrders } from '../../src/api/orders'
+import * as adminApi from '../../src/api/admin'
+import { clearElevationToken, setElevationToken } from '../../src/utils/elevation'
 
 vi.mock('../../src/api/users', () => ({
   getUser: vi.fn(),
   updateUserStatus: vi.fn(),
   updateUserRole: vi.fn(),
 }))
+
+vi.mock('../../src/api/admin', () => ({
+  sendAdminOtp: vi.fn(),
+  verifyAdminOtp: vi.fn(),
+  resendAdminOtp: vi.fn(),
+}))
+
+function fakeToken(expiresInSeconds = 900) {
+  const b64 = (obj) =>
+    btoa(JSON.stringify(obj))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  const payload = { sub: 'admin-1', role: 'admin', sid: 'sid-1', exp: Math.floor(Date.now() / 1000) + expiresInSeconds }
+  return b64({ alg: 'RS256', typ: 'ep+JWT' }) + '.' + b64(payload) + '.signature'
+}
 
 vi.mock('../../src/api/orders', () => ({
   listUserOrders: vi.fn(),
@@ -104,6 +133,11 @@ function renderPage(initialEntries = ['/admin/user-transactions/user-1']) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  setElevationToken(fakeToken())
+})
+
+afterEach(() => {
+  clearElevationToken()
 })
 
 describe('AdminUserTransactions profile section', () => {
@@ -235,5 +269,62 @@ describe('AdminUserTransactions profile actions', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('That user could not be found.')
     await waitFor(() => expect(getUser).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('AdminUserTransactions elevation (Stage 27c)', () => {
+  it('not elevated: clicking Suspend opens the OTP modal before the reason dialog', async () => {
+    clearElevationToken()
+    getUser.mockResolvedValue(profile({ status: 'active' }))
+    listUserOrders.mockResolvedValue(ordersPage([]))
+    adminApi.sendAdminOtp.mockResolvedValue({ message: 'sent', code: 'OTP_SENT' })
+    adminApi.verifyAdminOtp.mockResolvedValue({ elevationToken: fakeToken() })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
+
+    expect(screen.getByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Send code' })))
+    await act(async () => {
+      screen.getAllByRole('textbox').forEach((input, i) => fireEvent.change(input, { target: { value: String(i) } }))
+    })
+
+    expect(screen.queryByRole('dialog', { name: 'Verify your identity' })).not.toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('a mid-submit ELEVATION_REQUIRED keeps the reason dialog open and retries after verifying', async () => {
+    getUser.mockResolvedValue(profile({ status: 'active' }))
+    listUserOrders.mockResolvedValue(ordersPage([]))
+    // api/users.js is mocked wholesale here, so simulate its real side effect of clearing the
+    // stored token on ELEVATION_REQUIRED (see tests/api/users.test.js for that behaviour).
+    updateUserStatus.mockImplementationOnce(() => {
+      clearElevationToken()
+      return Promise.reject({ code: 'ELEVATION_REQUIRED' })
+    })
+    updateUserStatus.mockResolvedValueOnce(profile({ status: 'suspended' }))
+    adminApi.sendAdminOtp.mockResolvedValue({ message: 'sent', code: 'OTP_SENT' })
+    adminApi.verifyAdminOtp.mockResolvedValue({ elevationToken: fakeToken() })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Suspend' }))
+    fireEvent.focus(screen.getByLabelText('Reason'))
+    fireEvent.click(screen.getByRole('option', { name: /Fraud or scam/i }))
+    const suspendButtons = screen.getAllByRole('button', { name: 'Suspend' })
+    fireEvent.click(suspendButtons[suspendButtons.length - 1])
+
+    expect(await screen.findByRole('dialog', { name: 'Verify your identity' })).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Send code' })))
+    await act(async () => {
+      screen.getAllByRole('textbox').forEach((input, i) => fireEvent.change(input, { target: { value: String(i) } }))
+    })
+
+    await waitFor(() => expect(updateUserStatus).toHaveBeenCalledTimes(2))
+    expect(updateUserStatus).toHaveBeenNthCalledWith(2, 'user-1', 'suspended', { reason: 'FRAUD_OR_SCAM' })
+    expect(await screen.findByRole('status')).toHaveTextContent('alice was suspended.')
   })
 })

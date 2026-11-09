@@ -20,6 +20,12 @@
 //   instructions.md Stage 19.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27a - added coverage for the new "Admin Action" PURPOSE_COPY entry.
+//   "throws for a purpose that has no template" now uses a synthetic purpose string instead of
+//   'Admin Action' (which now has a template), since every purpose_enum value is now
+//   implemented. Governing decision: instructions.md Stage 27. No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sendMail, createTransport } = vi.hoisted(() => {
@@ -127,6 +133,18 @@ describe('sendOtpEmail (SMTP path)', () => {
     }
   });
 
+  it('Admin Action: subject "Your FoC admin privileges elevation verification code"; text and html carry the OTP and expiry', async () => {
+    const { sendOtpEmail } = await loadEmailService({});
+    await sendOtpEmail({ to: 'a@example.com', otp: '112233', purpose: 'Admin Action', username: 'alice' });
+
+    const mail = sendMail.mock.calls[0]![0] as { subject: string; text: string; html: string };
+    expect(mail.subject).toBe('Your FoC admin privileges elevation verification code');
+    for (const body of [mail.text, mail.html]) {
+      expect(body).toContain('112233');
+      expect(body).toContain('10 minutes');
+    }
+  });
+
   it('contains no links', async () => {
     const { sendOtpEmail } = await loadEmailService({});
     for (const purpose of ['Registration', 'Forgot Password']) {
@@ -150,7 +168,7 @@ describe('sendOtpEmail (SMTP path)', () => {
   it('throws for a purpose that has no template, without sending', async () => {
     const { sendOtpEmail } = await loadEmailService({});
     await expect(
-      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Admin Action', username: 'alice' }),
+      sendOtpEmail({ to: 'a@example.com', otp: '123456', purpose: 'Not A Real Purpose', username: 'alice' }),
     ).rejects.toThrow();
     expect(sendMail).not.toHaveBeenCalled();
   });

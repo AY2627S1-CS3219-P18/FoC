@@ -52,9 +52,17 @@
  *        call site and the one assertion that checked the stored value (now "N/A").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: changeUserStatus/changeUserRole calls now pass a fixture `sid` and a valid
+ *        Elevated-Token (elevationFor), since both now require elevation for a real change
+ *        (Stage 27b); existing assertions are unchanged. No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
+import { signElevationToken } from '../../src/utils/jwt.js';
 import {
   dbNow,
   getAuditLogRowsForTarget,
@@ -77,6 +85,14 @@ beforeEach(truncateAll);
 afterEach(truncateAll);
 
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
+
+// Fixture device id and a matching valid elevation token, since changeUserStatus/changeUserRole
+// now require elevation for a real change (Stage 27b) and these tests call the service layer
+// directly, bypassing the HTTP header.
+const SID = 'test-sid-1';
+function elevationFor(userId: string): string {
+  return signElevationToken({ userId, role: 'admin', sid: SID });
+}
 
 describe('listUsers', () => {
   it('returns every status with a status field and never a password_hash', async () => {
@@ -152,7 +168,7 @@ describe('changeUserStatus', () => {
     await seedRefreshToken(target.id, 'tok-a');
     await seedRefreshToken(target.id, 'tok-b');
 
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended', 'TEST_REASON', null);
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, target.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
     expect(result.status).toBe('suspended');
     expect(result).not.toHaveProperty('password_hash');
     const tokens = await getRefreshTokens(target.id);
@@ -163,17 +179,17 @@ describe('changeUserStatus', () => {
   it('unsuspends a suspended user without touching their tokens', async () => {
     const target = await createActiveUser(1);
     await seedRefreshToken(target.id, 'tok-a');
-    await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'suspended', 'TEST_REASON', null);
+    await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, target.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
     const before = await getRefreshTokens(target.id);
 
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', target.id, 'active', 'TEST_REASON', null);
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, target.id, 'active', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
     expect(result.status).toBe('active');
     expect(await getRefreshTokens(target.id)).toEqual(before);
   });
 
   it('throws 404 USER_NOT_FOUND for a nonexistent target', async () => {
     await expect(
-      usersService.changeUserStatus(UNKNOWN_ID, 'admin', UNKNOWN_ID, 'suspended', 'TEST_REASON', null),
+      usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, UNKNOWN_ID, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
     ).rejects.toMatchObject({ status: 404, code: 'USER_NOT_FOUND' });
   });
 
@@ -181,7 +197,7 @@ describe('changeUserStatus', () => {
     it('admin may suspend a plain user', async () => {
       const t = await createUserWithRole(1, 'user');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null)).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID))).status,
       ).toBe('suspended');
     });
 
@@ -189,7 +205,7 @@ describe('changeUserStatus', () => {
       const t = await createUserWithRole(1, 'admin');
       await seedRefreshToken(t.id, 'tok-a');
       await expect(
-        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null),
+        usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
       ).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
       expect((await getUserByEmail(t.email))!.status).toBe('active');
       expect((await getRefreshTokens(t.id))[0]!.is_revoked).toBe(false);
@@ -200,7 +216,7 @@ describe('changeUserStatus', () => {
       async (requestorRole) => {
         const t = await createUserWithRole(1, 'super admin');
         await expect(
-          usersService.changeUserStatus(UNKNOWN_ID, requestorRole, t.id, 'suspended', 'TEST_REASON', null),
+          usersService.changeUserStatus(UNKNOWN_ID, requestorRole, SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
         ).rejects.toMatchObject({ status: 403, code: 'SUPER_ADMIN_IMMUTABLE' });
         expect((await getUserByEmail(t.email))!.status).toBe('active');
       },
@@ -210,10 +226,10 @@ describe('changeUserStatus', () => {
       const u = await createUserWithRole(1, 'user');
       const a = await createUserWithRole(2, 'admin');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', u.id, 'suspended', 'TEST_REASON', null)).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', SID, u.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID))).status,
       ).toBe('suspended');
       expect(
-        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', a.id, 'suspended', 'TEST_REASON', null)).status,
+        (await usersService.changeUserStatus(UNKNOWN_ID, 'super admin', SID, a.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID))).status,
       ).toBe('suspended');
     });
 
@@ -221,7 +237,7 @@ describe('changeUserStatus', () => {
       const t = await createUserWithRole(1, 'super admin');
       await setUserStatus(t.id, 'pending');
       await expect(
-        usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null),
+        usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
       ).rejects.toMatchObject({ code: 'SUPER_ADMIN_IMMUTABLE' });
     });
   });
@@ -232,7 +248,7 @@ describe('changeUserStatus', () => {
       async (status) => {
         const pending = await registerPending(1);
         await expect(
-          usersService.changeUserStatus(UNKNOWN_ID, 'admin', pending.id, status, 'TEST_REASON', null),
+          usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, pending.id, status, 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
         ).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the status of a pending user',
@@ -247,11 +263,11 @@ describe('changeUserStatus', () => {
     it('suspending an already-suspended user returns it unchanged: same updated_at and revoked_at', async () => {
       const t = await createActiveUser(1);
       await seedRefreshToken(t.id, 'tok-a');
-      await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
+      await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
       const userBefore = (await getUserByEmail(t.email))!;
       const tokensBefore = await getRefreshTokens(t.id);
 
-      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
+      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
       expect(result.status).toBe('suspended');
       expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
@@ -265,7 +281,7 @@ describe('changeUserStatus', () => {
       await seedRefreshToken(t.id, 'tok-a');
       const userBefore = (await getUserByEmail(t.email))!;
 
-      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'active', 'TEST_REASON', null);
+      const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'active', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
       expect(result.status).toBe('active');
       expect(result.updatedAt).toEqual(userBefore.updated_at);
       expect((await getUserByEmail(t.email))!.updated_at).toEqual(userBefore.updated_at);
@@ -276,7 +292,7 @@ describe('changeUserStatus', () => {
   it('does not change the target role', async () => {
     const t = await createUserWithRole(1, 'user');
     await setUserRole(t.id, 'user');
-    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', t.id, 'suspended', 'TEST_REASON', null);
+    const result = await usersService.changeUserStatus(UNKNOWN_ID, 'admin', SID, t.id, 'suspended', 'TEST_REASON', null, elevationFor(UNKNOWN_ID));
     expect(result.role).toBe('user');
   });
 });
@@ -292,7 +308,7 @@ describe('changeUserRole', () => {
     await seedRefreshToken(target.id, 'tok-a');
     await seedRefreshToken(target.id, 'tok-b');
 
-    const result = await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null);
+    const result = await usersService.changeUserRole(sa.id, SID, target.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id));
     expect(result.role).toBe('admin');
     expect(result).not.toHaveProperty('password_hash');
     expect((await getUserByEmail(target.email))!.role).toBe('admin');
@@ -306,7 +322,7 @@ describe('changeUserRole', () => {
     const target = await createUserWithRole(1, 'admin');
     await seedRefreshToken(target.id, 'tok-a');
 
-    const result = await usersService.changeUserRole(sa.id, target.id, 'user', 'TEST_REASON', null);
+    const result = await usersService.changeUserRole(sa.id, SID, target.id, 'user', 'TEST_REASON', null, elevationFor(sa.id));
     expect(result.role).toBe('user');
     expect((await getRefreshTokens(target.id)).every((t) => t.is_revoked)).toBe(true);
   });
@@ -314,12 +330,12 @@ describe('changeUserRole', () => {
   it('does not change the target status', async () => {
     const sa = await superAdmin();
     const target = await createActiveUser(1);
-    expect((await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null)).status).toBe('active');
+    expect((await usersService.changeUserRole(sa.id, SID, target.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id))).status).toBe('active');
   });
 
   it('rejects changing your own role: 403 SELF_ROLE_CHANGE, before touching the DB', async () => {
     const sa = await superAdmin();
-    await expect(usersService.changeUserRole(sa.id, sa.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, SID, sa.id, 'user', 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
       status: 403,
       message: 'Cannot modify your own role',
       code: 'SELF_ROLE_CHANGE',
@@ -329,7 +345,7 @@ describe('changeUserRole', () => {
 
   it('self-targeting is rejected even for an id that does not exist', async () => {
     await expect(
-      usersService.changeUserRole(UNKNOWN_ID, UNKNOWN_ID, 'admin', 'TEST_REASON', null),
+      usersService.changeUserRole(UNKNOWN_ID, SID, UNKNOWN_ID, 'admin', 'TEST_REASON', null, elevationFor(UNKNOWN_ID)),
     ).rejects.toMatchObject({ code: 'SELF_ROLE_CHANGE' });
   });
 
@@ -337,7 +353,7 @@ describe('changeUserRole', () => {
     const sa = await superAdmin();
     const other = await createUserWithRole('sa2', 'super admin');
     await seedRefreshToken(other.id, 'tok-a');
-    await expect(usersService.changeUserRole(sa.id, other.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, SID, other.id, 'user', 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
       status: 403,
       message: 'Cannot modify a super administrator',
       code: 'SUPER_ADMIN_IMMUTABLE',
@@ -348,7 +364,7 @@ describe('changeUserRole', () => {
 
   it('throws 404 USER_NOT_FOUND for a nonexistent target', async () => {
     const sa = await superAdmin();
-    await expect(usersService.changeUserRole(sa.id, UNKNOWN_ID, 'admin', 'TEST_REASON', null)).rejects.toMatchObject({
+    await expect(usersService.changeUserRole(sa.id, SID, UNKNOWN_ID, 'admin', 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
       status: 404,
       code: 'USER_NOT_FOUND',
     });
@@ -360,7 +376,7 @@ describe('changeUserRole', () => {
       async (role) => {
         const sa = await superAdmin();
         const pending = await registerPending(1);
-        await expect(usersService.changeUserRole(sa.id, pending.id, role, 'TEST_REASON', null)).rejects.toMatchObject({
+        await expect(usersService.changeUserRole(sa.id, SID, pending.id, role, 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the role of a pending user',
           code: 'CANNOT_CHANGE_ROLE_PENDING_USER',
@@ -376,7 +392,7 @@ describe('changeUserRole', () => {
         const target = await createActiveUser(1);
         await seedRefreshToken(target.id, 'tok-a');
         await setUserStatus(target.id, 'suspended');
-        await expect(usersService.changeUserRole(sa.id, target.id, role, 'TEST_REASON', null)).rejects.toMatchObject({
+        await expect(usersService.changeUserRole(sa.id, SID, target.id, role, 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
           status: 422,
           message: 'Cannot change the role of a suspended user',
           code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
@@ -390,7 +406,7 @@ describe('changeUserRole', () => {
       const sa = await superAdmin();
       const target = await createUserWithRole(1, 'admin');
       await setUserStatus(target.id, 'suspended');
-      await expect(usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null)).rejects.toMatchObject({
+      await expect(usersService.changeUserRole(sa.id, SID, target.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
         code: 'CANNOT_CHANGE_ROLE_SUSPENDED_USER',
       });
     });
@@ -399,7 +415,7 @@ describe('changeUserRole', () => {
       const sa = await superAdmin();
       const other = await createUserWithRole('sa2', 'super admin');
       await setUserStatus(other.id, 'suspended');
-      await expect(usersService.changeUserRole(sa.id, other.id, 'user', 'TEST_REASON', null)).rejects.toMatchObject({
+      await expect(usersService.changeUserRole(sa.id, SID, other.id, 'user', 'TEST_REASON', null, elevationFor(sa.id))).rejects.toMatchObject({
         code: 'SUPER_ADMIN_IMMUTABLE',
       });
     });
@@ -412,7 +428,7 @@ describe('changeUserRole', () => {
       await seedRefreshToken(target.id, 'tok-a');
       const before = (await getUserByEmail(target.email))!;
 
-      const result = await usersService.changeUserRole(sa.id, target.id, 'admin', 'TEST_REASON', null);
+      const result = await usersService.changeUserRole(sa.id, SID, target.id, 'admin', 'TEST_REASON', null, elevationFor(sa.id));
       expect(result.role).toBe('admin');
       expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);
@@ -425,7 +441,7 @@ describe('changeUserRole', () => {
       await seedRefreshToken(target.id, 'tok-a');
       const before = (await getUserByEmail(target.email))!;
 
-      const result = await usersService.changeUserRole(sa.id, target.id, 'user', 'TEST_REASON', null);
+      const result = await usersService.changeUserRole(sa.id, SID, target.id, 'user', 'TEST_REASON', null, elevationFor(sa.id));
       expect(result.role).toBe('user');
       expect(result.updatedAt).toEqual(before.updated_at);
       expect((await getUserByEmail(target.email))!.updated_at).toEqual(before.updated_at);

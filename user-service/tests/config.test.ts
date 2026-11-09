@@ -6,6 +6,10 @@
 //   ACCESS_TOKEN_TTL_MINUTES (1-15) bounds. Bounds are the governing decision already recorded
 //   in instructions.md Stage 23a.
 // Author review:
+// 2026-11-09: Stage 27a - test cases for the new ELEVATION_TOKEN_TTL_MINUTES (1-15) bounds.
+//   Governing decision: instructions.md Stage 27. No requirements, architecture, schema, or
+//   API decisions were made by the AI tool.
+// Author review:
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,6 +84,8 @@ describe('config.ts', () => {
       ['REFRESH_TOKEN_TTL_DAYS', '31'],
       ['ACCESS_TOKEN_TTL_MINUTES', '0'],
       ['ACCESS_TOKEN_TTL_MINUTES', '16'],
+      ['ELEVATION_TOKEN_TTL_MINUTES', '0'],
+      ['ELEVATION_TOKEN_TTL_MINUTES', '16'],
     ])('rejects %s=%s with an error naming the variable', (name, value) => {
       const r = loadConfig({ [name]: value });
       expect(r.status).toBe(1);
@@ -92,6 +98,8 @@ describe('config.ts', () => {
       ['REFRESH_TOKEN_TTL_DAYS', '30'],
       ['ACCESS_TOKEN_TTL_MINUTES', '1'],
       ['ACCESS_TOKEN_TTL_MINUTES', '15'],
+      ['ELEVATION_TOKEN_TTL_MINUTES', '1'],
+      ['ELEVATION_TOKEN_TTL_MINUTES', '15'],
     ])('accepts %s=%s', (name, value) => {
       expect(loadConfig({ [name]: value }).status).toBe(0);
     });
@@ -99,6 +107,7 @@ describe('config.ts', () => {
     it('still rejects a non-integer value within range', () => {
       expect(loadConfig({ REFRESH_TOKEN_TTL_DAYS: '1.5' }).status).toBe(1);
       expect(loadConfig({ ACCESS_TOKEN_TTL_MINUTES: '1.5' }).status).toBe(1);
+      expect(loadConfig({ ELEVATION_TOKEN_TTL_MINUTES: '1.5' }).status).toBe(1);
     });
 
     it('accepts the existing .env.test values', () => {

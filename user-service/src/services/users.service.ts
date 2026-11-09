@@ -60,6 +60,16 @@
  *        instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: changeUserStatus and changeUserRole now take the caller's `sid` and the
+ *        `Elevated-Token` header value, and check elevation last - after the lock, role
+ *        restrictions, pending/suspended rules AND the no-op check (so a no-op still needs no
+ *        elevation), but before the write/audit row. A missing, invalid or expired token is
+ *        403 ELEVATION_REQUIRED; unlock and full-email are unaffected. Per instructions.md
+ *        Stage 27b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as auditLogQueries from '../db/queries/auditLog.queries.js';
@@ -68,7 +78,14 @@ import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
+import { isElevated } from '../utils/elevation.js';
 import { toUserResponse, type UserResponse } from './userResponse.js';
+
+function requireElevation(elevatedToken: string | undefined, userId: string, sid: string): void {
+  if (!isElevated(elevatedToken, userId, sid)) {
+    throw new AppError(403, 'Verify your identity to perform this action.', 'ELEVATION_REQUIRED');
+  }
+}
 
 /** Everything a caller without a role may see about another user: who they are, nothing else. */
 export interface PublicUserSummary {
@@ -161,10 +178,12 @@ export async function getUserById(id: string, requesterId: string): Promise<User
 export async function changeUserStatus(
   requesterId: string,
   requestorRole: string,
+  requesterSid: string,
   targetId: string,
   status: 'active' | 'suspended',
   reason: string,
   userAgent: string | null,
+  elevatedToken: string | undefined,
 ): Promise<UserResponse> {
   const action = status === 'suspended' ? 'USER_SUSPEND' : 'USER_UNSUSPEND';
 
@@ -186,10 +205,13 @@ export async function changeUserStatus(
       throw new AppError(422, 'Cannot change the status of a pending user', 'CANNOT_CHANGE_STATUS_PENDING_USER');
     }
 
-    // Already in the requested status: success, no write, no token revocation, no audit row.
+    // Already in the requested status: success, no write, no token revocation, no audit row,
+    // no elevation needed (Stage 27b: elevation is checked last, after this no-op case).
     if (locked.status === status) {
       return toUserResponse(locked, requesterId);
     }
+
+    requireElevation(elevatedToken, requesterId, requesterSid);
 
     const updated = await userQueries.updateUserStatus(locked.id, status, client);
 
@@ -217,10 +239,12 @@ export async function changeUserStatus(
 
 export async function changeUserRole(
   requesterId: string,
+  requesterSid: string,
   targetId: string,
   newRole: 'admin' | 'user',
   reason: string,
   userAgent: string | null,
+  elevatedToken: string | undefined,
 ): Promise<UserResponse> {
   if (targetId === requesterId) {
     throw new AppError(403, 'Cannot modify your own role', 'SELF_ROLE_CHANGE');
@@ -254,10 +278,13 @@ export async function changeUserRole(
       );
     }
 
-    // Already has the requested role: success, no write, no token revocation, no audit row.
+    // Already has the requested role: success, no write, no token revocation, no audit row,
+    // no elevation needed (Stage 27b: elevation is checked last, after this no-op case).
     if (locked.role === newRole) {
       return toUserResponse(locked, requesterId);
     }
+
+    requireElevation(elevatedToken, requesterId, requesterSid);
 
     const updated = await userQueries.updateUserRole(locked.id, newRole, client);
 

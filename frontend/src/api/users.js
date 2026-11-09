@@ -38,9 +38,19 @@
  *        and getFullEmail no longer take or send a `reason`; their request bodies are now empty.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - updateUserStatus and updateUserRole now attach
+ *        Elevated-Token (utils/elevation.js's elevatedTokenHeader) and clear the stored token
+ *        on a 403 ELEVATION_REQUIRED response, per the stage's "a token rejected with
+ *        ELEVATION_REQUIRED is also removed" rule. Centralised here rather than in each caller
+ *        (AdminUsers.jsx, AdminUserTransactions.jsx) since both call these same two functions.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
+import { clearElevationToken, elevatedTokenHeader } from '../utils/elevation'
 
 // 200 { users, page, pageSize, total, totalPages }. users.js's shape mirrors profile.js's
 // getProfile, plus isLocked/lockedUntil/lockLevel (Stage 18d): { id, username, email, status,
@@ -53,17 +63,37 @@ export async function listUsers({ page, username, email, status, role, locked, s
 }
 
 // 200 the full user shape. 404 USER_NOT_FOUND, 403 SUPER_ADMIN_IMMUTABLE / FORBIDDEN (an admin
-// targeting another admin), 422 CANNOT_CHANGE_STATUS_PENDING_USER, 400 VALIDATION_ERROR (bad
-// reason). `reason` is { reason: '<CODE>' } or { reason: 'OTHER', otherReason: '<text>' }.
+// targeting another admin) / ELEVATION_REQUIRED (Stage 27b; clears any stored elevation token),
+// 422 CANNOT_CHANGE_STATUS_PENDING_USER, 400 VALIDATION_ERROR (bad reason). `reason` is
+// { reason: '<CODE>' } or { reason: 'OTHER', otherReason: '<text>' }.
 export async function updateUserStatus(id, status, reason) {
-  return request('/users/' + id + '/status', { method: 'PUT', json: { status, ...reason } })
+  try {
+    return await request('/users/' + id + '/status', {
+      method: 'PUT',
+      headers: elevatedTokenHeader(),
+      json: { status, ...reason },
+    })
+  } catch (err) {
+    if (err.code === 'ELEVATION_REQUIRED') clearElevationToken()
+    throw err
+  }
 }
 
 // 200 the full user shape. super admin only (403 FORBIDDEN otherwise). 404 USER_NOT_FOUND, 403
-// SUPER_ADMIN_IMMUTABLE / SELF_ROLE_CHANGE, 422 CANNOT_CHANGE_ROLE_PENDING_USER /
-// CANNOT_CHANGE_ROLE_SUSPENDED_USER, 400 VALIDATION_ERROR (bad reason).
+// SUPER_ADMIN_IMMUTABLE / SELF_ROLE_CHANGE / ELEVATION_REQUIRED (Stage 27b; clears any stored
+// elevation token), 422 CANNOT_CHANGE_ROLE_PENDING_USER / CANNOT_CHANGE_ROLE_SUSPENDED_USER, 400
+// VALIDATION_ERROR (bad reason).
 export async function updateUserRole(id, role, reason) {
-  return request('/users/' + id + '/role', { method: 'PUT', json: { role, ...reason } })
+  try {
+    return await request('/users/' + id + '/role', {
+      method: 'PUT',
+      headers: elevatedTokenHeader(),
+      json: { role, ...reason },
+    })
+  } catch (err) {
+    if (err.code === 'ELEVATION_REQUIRED') clearElevationToken()
+    throw err
+  }
 }
 
 // 200 the full user shape. Admin/super admin (403 FORBIDDEN otherwise). 404 USER_NOT_FOUND,

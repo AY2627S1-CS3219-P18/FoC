@@ -20,11 +20,21 @@
  *        session-restore and refresh-after-401 tests below.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - added a "Stage 27c: elevation token" describe block:
+ *        logout() (triggered via the existing "Log in again" banner button) and forceReauth()
+ *        (via a new ForceReauthTrigger probe button, the same pattern as LoginTrigger) both
+ *        clear a stored elevation token, per the stage's "logout and forced logout remove the
+ *        stored token" rule.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearElevationToken, getElevationToken, setElevationToken } from '../../src/utils/elevation'
 
 vi.mock('../../src/realtime/orderSocket', () => ({
   connectOrderSocket: vi.fn(),
@@ -95,12 +105,24 @@ function LoginTrigger({ useAuth }) {
   )
 }
 
+// Drives AuthContext.forceReauth() from a test, the same way Account.jsx would after a
+// successful password change.
+function ForceReauthTrigger({ useAuth }) {
+  const { forceReauth } = useAuth()
+  return (
+    <button type="button" onClick={() => forceReauth('Password changed. Please log in again.')}>
+      do-force-reauth
+    </button>
+  )
+}
+
 function renderApp({ AuthProvider, useAuth, SessionExpiryBanner }) {
   return render(
     <MemoryRouter initialEntries={['/']}>
       <AuthProvider>
         <Probe useAuth={useAuth} />
         <LoginTrigger useAuth={useAuth} />
+        <ForceReauthTrigger useAuth={useAuth} />
         <SessionExpiryBanner />
       </AuthProvider>
     </MemoryRouter>,
@@ -284,5 +306,54 @@ describe('Session expiry banner (Stage 23c)', () => {
 
     await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('in:warn'))
     expect(screen.getByRole('status')).toBeInTheDocument()
+  })
+})
+
+describe('Stage 27c: elevation token cleared on logout/forced logout', () => {
+  afterEach(() => {
+    clearElevationToken()
+  })
+
+  it('logout() clears a stored elevation token', async () => {
+    const fetchMock = createFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.respond(
+      'POST',
+      '/auth/refresh',
+      jsonResponse({ accessToken: makeToken({ sub: 'u1', role: 'user' }), sessionTimeLeftSeconds: 5 * 60 }),
+    )
+    fetchMock.respond('GET', '/users/me', jsonResponse(PROFILE))
+    fetchMock.respond('POST', '/auth/logout', jsonResponse({}))
+
+    const mods = await loadAuthModules()
+    renderApp(mods)
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument())
+
+    setElevationToken(makeToken({ exp: Math.floor(Date.now() / 1000) + 900 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Log in again' }))
+
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('out:ok'))
+    expect(getElevationToken()).toBeNull()
+  })
+
+  it('forceReauth() clears a stored elevation token', async () => {
+    const fetchMock = createFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+    fetchMock.respond(
+      'POST',
+      '/auth/refresh',
+      jsonResponse({ accessToken: makeToken({ sub: 'u1', role: 'user' }), sessionTimeLeftSeconds: 30 * 24 * 60 * 60 }),
+    )
+    fetchMock.respond('GET', '/users/me', jsonResponse(PROFILE))
+
+    const mods = await loadAuthModules()
+    renderApp(mods)
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('in:ok'))
+
+    setElevationToken(makeToken({ exp: Math.floor(Date.now() / 1000) + 900 }))
+    fireEvent.click(screen.getByRole('button', { name: 'do-force-reauth' }))
+
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('out:ok'))
+    expect(getElevationToken()).toBeNull()
   })
 })

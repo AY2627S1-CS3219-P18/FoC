@@ -49,6 +49,13 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - logout() and forceReauth() now also clear the stored
+ *        elevation token (utils/elevation.js), per the stage's "logout and forced logout
+ *        remove the stored token" rule.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
@@ -57,6 +64,7 @@ import * as authApi from '../api/auth'
 import * as profileApi from '../api/profile'
 import { getBalance } from '../api/credits'
 import { setAccessToken, setOnSessionExpired, setOnSessionTimeLeft } from '../api/http'
+import { clearElevationToken } from '../utils/elevation'
 import { connectChatSocket, disconnectChatSocket } from '../realtime/chatSocket'
 import { connectOrderSocket, disconnectOrderSocket } from '../realtime/orderSocket'
 
@@ -182,6 +190,7 @@ export function AuthProvider({ children }) {
       setUser(null)
       setStatus('anonymous')
       setSessionDeadline(null)
+      clearElevationToken()
       // Explicit logout never remembers a "from" page.
       navigate('/login')
     }
@@ -200,6 +209,7 @@ export function AuthProvider({ children }) {
       setUser(null)
       setStatus('anonymous')
       setSessionDeadline(null)
+      clearElevationToken()
       navigate('/login')
     },
     [navigate],

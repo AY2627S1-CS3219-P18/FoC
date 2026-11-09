@@ -30,6 +30,11 @@
 //    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
 //    were made by the AI tool.
 //    Author review:
+//  2026-11-09: Stage 27a - add ELEVATION_TOKEN_TTL_MINUTES, bounded 1-15 like
+//    ACCESS_TOKEN_TTL_MINUTES. Governing decision: instructions.md Stage 27 (the elevation
+//    token table). No requirements, architecture, schema, or API decisions were made by the
+//    AI tool.
+//    Author review:
 
 import { z } from "zod";
 
@@ -54,6 +59,7 @@ const envSchema = z
     JWT_PREVIOUS_PUBLIC_KEY_PATH: z.string().min(1).optional(),
     ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(15),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(30),
+    ELEVATION_TOKEN_TTL_MINUTES: z.coerce.number().int().min(1).max(15),
 
     SMTP_HOST: z.string().default(""),
     SMTP_PORT: z.coerce.number().int().positive(),
@@ -141,6 +147,7 @@ export const config = {
     previousPublicKeyPath: env.JWT_PREVIOUS_PUBLIC_KEY_PATH,
     accessTokenTtlMinutes: env.ACCESS_TOKEN_TTL_MINUTES,
     refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+    elevationTokenTtlMinutes: env.ELEVATION_TOKEN_TTL_MINUTES,
   },
   email: {
     host: env.SMTP_HOST,

@@ -9267,6 +9267,7 @@ Accepted all changes.
 **Governing decision:** George's ECS Fargate plan, `ecs-fargate-session-prompt.md` ("Task: move FoC from Docker Compose to AWS ECS on Fargate, as a personal AWS practice project"), section "Phase 1: repo changes", items 1-11. The plan was supplied as a local file attachment and is not committed to this repository.
 
 **Prompts (exact):**
+
 > @"C:\Users\Aeodile\Downloads\ecs-fargate-session-prompt.md"
 > The attached file, ecs-fargate-session-prompt.md, is my full plan for moving this repo from Docker Compose to AWS ECS on Fargate. Treat it as my instructions, including its ground rules, and don't reopen its decisions unless a fact proves one wrong.
 >
@@ -9371,6 +9372,7 @@ Facts found while testing:
 **Governing decision:** George's instruction in chat, below. Supersedes the note in the entry "ECS Fargate Phase 1: repo changes for deployment" that the plan is not committed; that plan now lives at `docs/ecs-fargate-session-prompt.md`.
 
 **Prompts (exact):**
+
 > > The plan isn’t in the repo: the usage log cites ecs-fargate-session-prompt.md by name only. AGENTS.md expects decisions to be written down, so consider committing it to docs/.
 >
 > ok add it to docs
@@ -9404,6 +9406,7 @@ None.
 **Governing decision:** George's chat decisions, quoted below: CD runs from the team repo `AY2627S1-CS3219-P18/FoC`, with PRs to it allowed, and deploys on every merge to `main`. George also chose to skip the budget alert.
 
 **Prompts (exact):**
+
 > wait wait, the repo is supposed to be the teams repo not mine
 
 > Yes, use team repo
@@ -9447,6 +9450,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Phase 3: CD", plus George's chat decisions to run CD from the team repo and deploy on every merge to `main`.
 
 **Prompts (exact):**
+
 > this is intended, it should auto deploy on every main merge
 
 The work started when George sent a screenshot of the IAM role's trust policy with no text, after the assistant had said it would write `deploy.yml` once that was confirmed. The rest of the brief is the plan section named above.
@@ -9483,6 +9487,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 **Governing decision:** `frontend/nginx/default.conf` on the team's `main`, which routes `/admin/audit-logs` to user-service (Stage 26e). The plan's routing decision is to replace nginx's routing with ALB path rules.
 
 **Prompts (exact):**
+
 > One PR
 
 **Key responses:**
@@ -9512,6 +9517,7 @@ None.
 **Governing decision:** George's chat decision of 2026-11-06 to use an ECS task role, after NUS's organisation policy denied `iam:CreateUser`. Recorded in `docs/ecs-fargate-session-prompt.md`, "Found while carrying this out". George also chose the bucket's account regional namespace.
 
 **Prompts (exact):**
+
 > shouldnt i make Account Regional namespace (recommended)
 
 > User was not created.
@@ -9568,6 +9574,7 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, Phase 2 steps 10-14, and what George set up in the AWS console.
 
 **Prompts (exact):**
+
 > foc namespace is added and yes 3 days for all
 
 **Key responses:**
@@ -9597,6 +9604,7 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "After the first deploy: ship `1fad383`". The check's behaviour is George's decision of 2026-10-23, recorded in commit `1fad383`.
 
 **Prompts (exact):**
+
 > Ship 1fad383 now
 
 **Key responses:**
@@ -9647,6 +9655,7 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 **Governing decision:** `docs/ecs-fargate-session-prompt.md`, "Starting and ending a test run", which asks for this checklist once the stack works.
 
 **Prompts (exact):**
+
 > It worked
 
 **Key responses:**
@@ -9679,6 +9688,7 @@ None.
 **Governing decision:** The team's chat answers of 2026-11-08, quoted below. No decision is written elsewhere yet; this spec is where they are first recorded.
 
 **Prompts (exact):**
+
 > in the current request flow, the deliver to is a dropdown with system defined locations mapped to specific IDs. I want to add a free text box below that for users to key in exact location details. I also want the user tables to store the last request's location, so that when a new request is made, there can be a little helper prompt asking if the user wants to reuse the same delivery details and a single click prefills the fields
 
 > 1. free text will be a new column "deliveryDetails". notnull. max length 250 chars
@@ -9711,9 +9721,10 @@ None.
 
 > 1. relax the last_req_del_loc_id to be nullable, and store null as the default
 > 2. the update call is just sent together with the endpoint for updating the new last_request table. Trimming applies to leading spaces
-> 3.  the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
+> 3. the details will be displayed below the location name, they will exist as 1 entity and 1 field. Nil will be displayed as just Nil
 
 **Key responses:**
+
 - First turn: stopped and asked, under AGENTS.md §2.1, because the request needed schema and API decisions the docs did not record. Second turn: asked ten specific questions.
 - Created branch `add-precise-delivery-location` (spaces are not valid in git branch names).
 - Wrote the spec as a draft, recording the team's answers as decisions P1-P14. Items the answers did not settle are listed as open questions Q1-Q8 and were not filled in. The plan was not written, because it would depend on those answers.
@@ -9722,6 +9733,7 @@ None.
 - No code was changed. No tests were run.
 
 **Files:**
+
 - `docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md` (created)
 - `docs/superpowers/plans/2026-11-08-precise-delivery-location.md` (created)
 - `ai/usage-log.md` (this entry)
@@ -9742,6 +9754,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
 
 **Prompts (exact):**
+
 > in the add-precise-deliver-location branch, and implement the plan at [2026-11-08-precise-delivery-location.md](docs/superpowers/plans/2026-11-08-precise-delivery-location.md)
 
 > implement it
@@ -9749,6 +9762,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Added the last_request table, queries, default rows and authenticated GET/PUT endpoints. Two focused tests passed, and the user-service build passed. Lint was interrupted after it produced no result. The remaining plan and comprehensive verification were not completed.
 
 **Files:**
+
 - `user-service/src/db/init.sql` (modified)
 - `user-service/src/db/queries/users.queries.ts` (modified)
 - `user-service/src/db/queries/lastRequest.queries.ts` (created)
@@ -9774,11 +9788,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** docs/superpowers/specs/2026-11-08-precise-delivery-location-design.md and docs/superpowers/plans/2026-11-08-precise-delivery-location.md
 
 **Prompts (exact):**
+
 > finish all implementation
 
 **Key responses:** Implemented the order column and migration, validation and event field, frontend API, form and displays, and updated tests and fixtures. The order service passed 675 unit tests, typecheck and lint; 28 end-to-end tests passed against an isolated migrated PostgreSQL container. The frontend passed 142 tests before an additional form test was added; all three form tests passed separately, and build and lint passed (lint emitted warnings). User-service build and lint passed; its full suite passed 896 tests and failed 26 Windows-specific tests (25 config tests spawn a Unix shim, and one setup test expects POSIX file permissions). The last-request controller and query tests passed. The scratch container was removed.
 
 **Files:**
+
 - `order-service/prisma/schema.prisma` (modified)
 - `order-service/prisma/migrations/20261108100000_delivery_details/migration.sql` (created)
 - `order-service/src/constants/errors.ts` (modified)
@@ -9817,11 +9833,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > I want the confirm button on the user prompt to be right aligned. On the left of this add a new dismiss button. clicking both buttons will dismiss the card, with confirm filling the fields and dismiss just dismisses the card.
 
 **Key responses:** Added right-aligned dismiss and confirm actions, with dismissal scoped to the current form. Focused frontend tests passed (4 tests); frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/tests/pages/CreateRequest.test.jsx` (modified)
 - `ai/usage-log.md` (modified)
@@ -9841,11 +9859,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > align the buttons to the top right so they are in line with the "Delivering to the same location?" question.
 
 **Key responses:** Moved the existing dismiss and confirm actions into the heading row. Frontend build passed; visual browser verification was not run.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -9864,11 +9884,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > replace the confirm and dismiss words with a cross and tick icon respectively
 
 **Key responses:** Replaced Confirm with a cross and Dismiss with a tick as requested, preserving accessible action names. Focused frontend tests passed (4 tests); frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -9887,11 +9909,13 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instruction in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > swap the 2 icons. the tick is for confirm
 
 **Key responses:** Swapped the icons so the tick confirms and the cross dismisses. Focused frontend tests passed (4 tests).
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
@@ -9910,6 +9934,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instructions in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > actually, make it such that the choosing a drop-off point and exact delivery details inputs are hidden until a button is clicked. Dismissing the card just brings up the inputs per normal, and accepting the card just prefills. Also change the phrasing of the title from "Delivering to the same location?" into "Your previous location?"
 
 > Show the fields immediately
@@ -9917,6 +9942,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Changed the prompt title, hid the inputs while a reusable location prompt is shown, and reveal them after either action; forms without a previous location show the inputs after lookup. Five focused tests and the frontend build passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/tests/pages/CreateRequest.test.jsx` (modified)
 - `ai/usage-log.md` (modified)
@@ -9928,7 +9954,6 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 
 **Author review: Congchen**
 
-
 ## 2026-11-08 — Searchable dropdowns
 
 **Tool:** Codex (model: GPT-6)
@@ -9937,6 +9962,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instructions in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > i want to add a purely cosmetic change to the UI - styling all dropdown input fields. Currently they look ugly - the down chevron is flushed to the right, and the dropdown options are browser defaults. I want to style them and standardise the design across the entire page
 
 > No. the policy dictates architectural designs. Not artistic UI designs.
@@ -9949,6 +9975,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Replaced frontend dropdowns with a searchable control, including checkbox multi-select and keyboard navigation. Updated affected interaction tests. The frontend build and two focused control tests passed. The initial full suite failed under parallel execution, including outdated native-select tests and timeouts; subsequent verification is reported below.
 
 **Files:**
+
 - `frontend/src/pages/AdminLogs.jsx` (modified)
 - `frontend/src/pages/AdminSupplierForm.jsx` (modified)
 - `frontend/src/pages/AdminSuppliers.jsx` (modified)
@@ -9976,7 +10003,6 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 
 **Verification continuation:** Full frontend suite with two workers: 146 passed, 1 failed. The remaining CreateRequest test expects maxLength 250 while the existing input in HEAD uses 200; this task did not change that limit. Browser and screen-reader testing were not performed.
 
-
 ## 2026-11-08 — Searchable dropdown display fixes
 
 **Tool:** Codex (model: GPT-6)
@@ -9985,6 +10011,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Governing decision:** User instructions in chat on 2026-11-08.
 
 **Prompts (exact):**
+
 > 2 issues:
 >
 > 1. in the request pages, the deliver to dropdown's chevron is not vertically centred.&#x20;
@@ -9993,6 +10020,7 @@ None open. Endpoint paths (`/users/me/last-request`), error code names and messa
 **Key responses:** Moved request dropdown spacing outside the control, prevented label activation from reopening a single-select after a choice, and showed multi-select choices while the menu is open. Added regression tests; 17 focused tests passed. Production build succeeded before the final click-handling adjustment.
 
 **Files:**
+
 - `frontend/src/components/SearchableSelect.jsx` (modified)
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/tests/components/SearchableSelect.test.jsx` (modified)
@@ -12462,6 +12490,7 @@ tng wen xi
 **Governing decision:** User instructions in chat on 2026-11-08; repository AGENTS.md disclosure requirements.
 
 **Prompts (exact):**
+
 > pull development branch and resolve merge conflicts
 
 > yes merge main
@@ -12469,6 +12498,7 @@ tng wen xi
 **Key responses:** Fetched origin and merged origin/main into the current branch. Preserved both branches' distinct usage log entries and reconciled the README log index; removed a conflict marker already present in the incoming log by retaining the shared entry from the current branch. Frontend production build passed; 17 focused dropdown tests passed; no conflict markers remained in the resolved files.
 
 **Files:**
+
 - `ai/usage-log.md` (modified)
 - `README.md` (modified)
 
@@ -12649,3 +12679,168 @@ Asked which migration approach to use; answered above. Open: `prisma migrate dev
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-09 — Stage 27a: Admin OTP Routes and Elevation Token
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 27's "Design decisions (already made, do not change)" tables (actions/callers, OTP, elevation token, endpoints, errors) and the "Stage 27a" section/Verification list.
+
+**Prompts (exact):**
+
+> read through instructions.md. lmk if you have any questions for stage 27.
+
+> (Via the AskUserQuestion tool, in response to two clarifying questions before starting:) Start with 27a only, one sub-stage at a time, waiting for confirmation before the next. Check, as part of 27a, whether order-service/supplier-service/credit-service/chat-service's JWT verification does strict/allow-list claim validation that the new `sid` claim and `at+JWT` header `typ` would break, rather than assume it is safe.
+
+> continue the testing for me then
+
+**Key responses:**
+
+- Before writing code, delegated a read-only check to a subagent: do any of the four other services (order-service, supplier-service, credit-service, chat-service) that verify the user-service's RS256 access token do strict/schema validation of the payload or check the header `typ`? Found none do - each reads only `sub`/`role`/`exp` individually and only checks header `alg`/`kid` - so adding `sid` to the payload and `typ: at+JWT` to the header is safe for all four. Reported back before proceeding.
+- `src/utils/jwt.ts`: `signAccessToken`/`verifyAccessToken` now sign/require header `typ: at+JWT` and a `sid` claim; added `signElevationToken`/`verifyElevationToken` for the new token (header `typ: ep+JWT`, claims `sub`/`role`/`sid`/`iat`/`exp`, same RS256 key/`kid` lookup as the access token). A token of the wrong `typ` (or a plain `JWT`) is rejected by each verifier.
+- `src/services/auth.service.ts`: `login` and `refresh` now pass the login's `refresh_tokens.id` into `signAccessToken` as `sid` (confirmed first that `createRefreshToken`/`lockRefreshToken` already return the row `id` via `RETURNING *`, so no query change was needed).
+- `src/middleware/authenticate.ts` / `src/types/express.d.ts`: `req.user` gains `sid`.
+- New `ELEVATION_TOKEN_TTL_MINUTES` env var (bounds 1-15, same shape as `ACCESS_TOKEN_TTL_MINUTES`) in `.env`, `.env.example`, `.env.test` and `src/config.ts`.
+- `src/services/email.service.ts`: added the `Admin Action` entry to `PURPOSE_COPY` (exact subject from the doc).
+- New `src/services/adminOtp.service.ts`, `src/controllers/adminOtp.controller.ts`, `src/routes/adminOtp.routes.ts` for `POST /admin/send-otp|verify-otp|resend-otp`, mounted in `src/app.ts`. Reuses the existing `requestOtp`/`checkOtp` (purpose `Admin Action`, which already existed in the DB enum and `OtpPurpose` type) for OTP send/verify/escalation/lockout isolation - no changes needed there, since that machinery is already generic over purpose. `resendAdminOtp` checks for a pending (unconsumed) `Admin Action` OTP row first, matching the existing Stage 12d pattern, before returning `NO_PENDING_OTP`. All three routes read `Elevated-Token` and return `409 ALREADY_ELEVATED` when it is valid for the caller's own `sub`+`sid`; an invalid/expired one is treated as "not elevated" rather than rejected.
+- Updated existing token fixtures/tests for the new claim and header: `tests/helpers/keys.ts` (`signToken`/`signExpiredToken`/`signWithOtherKey` now sign `sid` and header `typ: at+JWT`; added `signElevationToken`), `tests/utils/jwt.test.ts`, `tests/middleware/authenticate.test.ts`, `tests/controllers/auth.controller.test.ts` (added `sid`/`typ` assertions and a same-login-refresh-keeps-`sid` test). Added `tests/config.test.ts` cases for the new TTL bounds. Added `tests/services/email.service.test.ts` coverage for the new "Admin Action" subject, and fixed its now-stale "throws for a purpose with no template" fixture (every `purpose_enum` value now has a template, so it uses a synthetic purpose string instead of `'Admin Action'`). New `tests/controllers/adminOtp.controller.test.ts` (29 tests) covering every Stage 27a Verification bullet that doesn't need a running proxy/nginx: auth/role gating, purpose/otp validation, email recipient and subject, correct/reuse/wrong/expired-code outcomes and the 5th-attempt lockout, cooldown/limit escalation and reset-on-success, `NO_PENDING_OTP`, `ALREADY_ELEVATED` (valid token blocks, invalid doesn't), concurrent verify-otp (one 200/one 400), elevation-token shape (RS256, `ep+JWT`, claims, TTL), and that one login's elevation token does not elevate another login of the same admin.
+- Not covered by an automated test (flagged per instructions.md's own "list the manual checks" expectation, carried over from 27c but relevant here too): "a request with `Elevated-Token` reaches the service through the Vite proxy and through nginx" - needs the running dev stack/nginx and a live request, which fits better once 27c adds the frontend proxy entries.
+- Verification run: started the project's `foc-user-db` Postgres container (it was already running from the author's own compose setup; a one-off standalone container I first tried failed only because that port was already bound by it) to run the real-Postgres test suite per the Stage 7 ground rules. `npx tsc --noEmit` clean; `npx eslint` on every changed/new file clean; `npx vitest run` - 965/965 passing (one `lastRequest.controller.test.ts` failure on the first full-suite run was a `socket hang up`/`ECONNRESET` that reproduced as passing in isolation - confirmed pre-existing flakiness unrelated to this change, not fixed here).
+
+**Files:**
+
+- `user-service/.env` (modified - local/gitignored, not committed; added `ELEVATION_TOKEN_TTL_MINUTES`)
+- `user-service/.env.example` (modified)
+- `user-service/.env.test` (modified)
+- `user-service/src/config.ts` (modified)
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/src/types/express.d.ts` (modified)
+- `user-service/src/middleware/authenticate.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/adminOtp.service.ts` (created)
+- `user-service/src/controllers/adminOtp.controller.ts` (created)
+- `user-service/src/routes/adminOtp.routes.ts` (created)
+- `user-service/src/app.ts` (modified)
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/middleware/authenticate.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/adminOtp.controller.test.ts` (created)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/config.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None - the two clarifying questions asked before starting (sub-stage order; whether to verify the cross-service JWT-claim safety assumption) were resolved via AskUserQuestion before any code was written, and both are recorded above.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Stage 27b: Enforcing Elevation on Status and Role Changes
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 27's check-order table ("Elevation is checked last... no-op -> elevation check -> write and audit row") and the "Stage 27b" section/Verification list.
+
+**Prompts (exact):**
+
+> add usage-log entries and header entries first. once done, go for 27b
+
+**Key responses:**
+
+- Added `src/utils/elevation.ts` with a single `isElevated(elevatedToken, userId, sid)` helper (valid, unexpired, `sub`+`sid` match) and `src/utils/elevatedTokenHeader.ts` to read the `Elevated-Token` request header, both shared between `adminOtp.service.ts`/`adminOtp.controller.ts` (27a, refactored to use them, no behaviour change) and the new `users.service.ts`/`users.controller.ts` usage below.
+- `src/services/users.service.ts`: `changeUserStatus` and `changeUserRole` now take `requesterSid` and `elevatedToken`, and call a new `requireElevation` (throws `403 ELEVATION_REQUIRED`) at the exact position the doc specifies - after the lock, role restrictions and pending/suspended rules, but after the no-op check too (so a no-op still needs no elevation) and before the write/audit row. `unlockUser`/`getFullEmail` are untouched (the doc says they need no elevation).
+- `src/controllers/users.controller.ts`: `updateStatus`/`changeRole` now pass `req.user.sid` and `elevatedTokenHeader(req)` through.
+- Updated every existing call site for the new params: `tests/services/users.service.test.ts` and `tests/concurrency/lock-recheck.concurrency.test.ts` (service-level, bypass HTTP - added a fixture `SID` and an `elevationFor(userId)` helper signing a real matching elevation token via `signElevationToken`, applied to all 28 and 9 call sites respectively with a scripted regex transform, then spot-checked and typechecked); `tests/controllers/users.controller.test.ts` (HTTP-level - the `put`/`putStatus`/`putRole` helpers now auto-attach a matching `Elevated-Token` derived from the caller's own access token by default, with an `elevatedToken` option to omit (`null`) or override it for the new elevation-specific cases, so every pre-existing success-path test kept passing unchanged); `tests/concurrency/users.concurrency.test.ts` (direct HTTP calls - added a matching `Elevated-Token` header, fixture value, not a new assertion).
+- Added new Stage 27b Verification coverage in `users.controller.test.ts`, one `describe('elevation (Stage 27b)')` block each for status and role: no/invalid/expired token -> `403 ELEVATION_REQUIRED` with no change and no audit row; a token issued to a different admin (`sub` mismatch) and a token from another login of the same admin (`sid` mismatch) are both rejected; a valid token with a valid reason still returns `200` with the Stage 26 audit row; an existing-check rejection (super-admin target / self-role-change) returns its own error first, not `ELEVATION_REQUIRED`; a no-op still returns `200` without elevation; an invalid reason still returns `400` first.
+- Verification run: `npx tsc --noEmit` and `npx tsc -p tests/tsconfig.json --noEmit` clean; `npx eslint .` clean; `npx vitest run` on the directly affected files all green (`users.controller.test.ts` 117/117, `users.service.test.ts` 52/52, `lock-recheck.concurrency.test.ts` 27/27, `users.concurrency.test.ts` 2/2). Two separate full-suite runs (980-981/981) each hit exactly one unrelated failure in a different file (`auth.controller.test.ts`'s login-lockout/resend-OTP tests once, `users.controller.test.ts`'s no-op-role test once with a `socket hang up`/`ECONNRESET`) - each reproduced as passing 100% in isolation immediately after; same pre-existing full-suite-load flakiness pattern already noted in the Stage 26a/26b and 27a log entries, not introduced or fixed here.
+
+**Files:**
+
+- `user-service/src/utils/elevation.ts` (created)
+- `user-service/src/utils/elevatedTokenHeader.ts` (created)
+- `user-service/src/services/adminOtp.service.ts` (modified - refactored to use the shared `isElevated`, no behaviour change)
+- `user-service/src/controllers/adminOtp.controller.ts` (modified - refactored to use the shared `elevatedTokenHeader`, no behaviour change)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Stage 27c: Frontend (Elevate button/timer, OTP modal, retry flow)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, debug
+**Scope:** Implementation code
+**Governing decision:** `instructions.md` Stage 27's "Frontend flow (`/admin/users` only)" decisions table, the "Elevation token (per device)" table (storage, `Elevated-Token` header, `409 ALREADY_ELEVATED` on the three admin OTP routes), the "Changes to already-implemented code" rows #7/#10/#11/#12, and the "Stage 27c" Verification list.
+
+**Prompts (exact):**
+
+> go for it
+
+> go for it once done compacting
+
+**Key responses:**
+
+- Before writing any code, found that `AdminUserTransactions.jsx` (the per-user history page, Stage 24) also has real, working Suspend/Unsuspend/Promote/Demote buttons calling the same `updateUserStatus`/`updateUserRole` that Stage 27b now gates behind elevation - the doc's "Frontend flow (`/admin/users` only)" header only describes the Elevate button/timer/OTP modal for `/admin/users`, so those buttons on the other page would otherwise always fail `403 ELEVATION_REQUIRED` with no way to recover. Raised this via `AskUserQuestion` rather than deciding it myself; the author chose "share elevation state/modal there too" (option 1 of 3), so `AdminUserTransactions.jsx` also goes through the same not-elevated gate (via the shared hook below), just without its own Elevate button/timer.
+- `src/utils/elevation.js` (new): a `sessionStorage`-backed module mirroring `api/http.js`'s module-level-token pattern - `getElevationToken`/`setElevationToken`/`clearElevationToken`/`elevatedTokenHeader`, where `getElevationToken` decodes the stored token's own `exp` (via `decodeAccessTokenClaims`, already in `api/http.js`) and removes it if missing/expired (the stage's "on load" rule). `useElevation()` is a 1s-ticking hook for the button/timer's `isElevated`/`secondsLeft`. `useElevatedActionFlow()` is the shared "not elevated -> open `ElevationOtpModal` -> run the deferred action once verified" gate used by both pages (`withElevation(action)`, `openElevateModal()`, `handleElevated()`, `closeElevationModal()`); it reads the token directly rather than the ticked `isElevated` so a just-cleared token is seen immediately rather than up to 1s stale.
+- `src/components/ElevateTimer.jsx` (new): plain mm:ss display, `/admin/users` only, no state of its own.
+- `src/components/ElevationOtpModal.jsx` (new): opens with a "Send code" button (sends nothing until clicked, and - since the caller mounts/unmounts it rather than toggling a `visible` prop - closing and reopening always starts fresh); the OTP step reuses `OtpInput`/`ResendButton` exactly as `ForgotPassword.jsx`/`Register.jsx`'s OTP steps do. A successful verify stores the token (`setElevationToken`) and calls `onVerified()` with no arguments. Any of the three calls returning `409 ALREADY_ELEVATED` closes the modal and shows it as a toast, per the stage's error table.
+- `src/api/admin.js` (new): `sendAdminOtp`/`verifyAdminOtp`/`resendAdminOtp` (`POST /admin/send-otp|verify-otp|resend-otp`), each attaching `Elevated-Token` via `elevatedTokenHeader()` when a (possibly stale) token is held, per the stage's "the three admin OTP calls send Elevated-Token when a token is held" rule.
+- `src/api/users.js`: `updateUserStatus`/`updateUserRole` now attach `Elevated-Token` and clear the stored token on a `403 ELEVATION_REQUIRED` response (centralised here, since both pages call these same two functions, rather than duplicated per caller), per the stage's "a token rejected with ELEVATION_REQUIRED is also removed" rule.
+- `src/context/AuthContext.jsx`: `logout()` and `forceReauth()` now also clear the stored elevation token, per the stage's "logout and forced logout remove the stored token" rule.
+- `src/pages/AdminUsers.jsx`: added the "Elevate privileges" button (disabled while elevated) and `ElevateTimer` beside it next to the page heading; every row action now goes through `useElevatedActionFlow`'s `withElevation` before opening `ConfirmActionDialog`; `runAction`'s catch gained an `ELEVATION_REQUIRED` branch that keeps the open `ConfirmActionDialog` (and its entered reason) and retries the same call once the OTP modal reports success, per the stage's "reason already entered is kept" rule.
+- `src/pages/AdminUserTransactions.jsx`: same gate on its four action buttons and the same `ELEVATION_REQUIRED` retry in its own `runAction`, via the same shared hook - no Elevate button/timer on this page, per the author's answer above.
+- `frontend/vite.config.js`, `frontend/nginx/default.conf`: added the three new `/admin/send-otp`, `/admin/verify-otp`, `/admin/resend-otp` entries, same target/body as the existing `/admin/audit-logs` entry (Stage 26e).
+- `src/api/errorMessages.js`: added `ELEVATION_REQUIRED`/`ALREADY_ELEVATED`, text matching the backend's `AppError` messages exactly.
+- Manual CORS/proxy check (instructions.md asks for the result to be reported): recreated the already-running `foc-user-service` container (it had been running with a stale pre-Stage-27a environment, crash-looping on `ELEVATION_TOKEN_TTL_MINUTES: Expected number, received nan` - unrelated to this stage, same root cause the author hit directly in chat earlier; fixed by `docker compose up -d --force-recreate --no-deps user-service` so it re-reads `user-service/.env`), started the Vite dev server and built+ran the `frontend` nginx container, then sent a `POST` with an `Elevated-Token` header to all three new routes through each: the dev proxy and nginx both returned the identical `401 UNAUTHORIZED` body the service itself produces (not a proxy-level 404/502), confirming the request - and the custom header - reaches `user-service` through both paths. Stopped the frontend container and the dev server afterward.
+- Verification run: `npx vitest run` - 219/220 passing; the one failure (`CreateRequest.test.jsx`, an unrelated `maxLength` assertion) is confirmed pre-existing and untouched by this stage (`git status` shows no change to that page or its test). `npm run build` (Vite production build) clean. `npm run lint` (oxlint) - no new warnings; the one pre-existing warning in a file I touched (`AdminUserTransactions.test.jsx`'s unused `updateUserRole` import) predates this change.
+
+**Files:**
+
+- `frontend/src/utils/elevation.js` (created)
+- `frontend/src/components/ElevateTimer.jsx` (created)
+- `frontend/src/components/ElevationOtpModal.jsx` (created)
+- `frontend/src/api/admin.js` (created)
+- `frontend/src/api/users.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/context/AuthContext.jsx` (modified)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (modified)
+- `frontend/vite.config.js` (modified)
+- `frontend/nginx/default.conf` (modified)
+- `frontend/tests/utils/elevation.test.js` (created)
+- `frontend/tests/components/ElevateTimer.test.jsx` (created)
+- `frontend/tests/components/ElevationOtpModal.test.jsx` (created)
+- `frontend/tests/api/admin.test.js` (created)
+- `frontend/tests/api/users.test.js` (modified)
+- `frontend/tests/context/AuthContext.test.jsx` (modified)
+- `frontend/tests/pages/AdminUsers.test.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (log index row)
+
+**Deviations / questions raised for the team:**
+Whether `AdminUserTransactions.jsx`'s existing action buttons should share the elevation gate even though the stage's Elevate button/timer are `/admin/users`-only - resolved via `AskUserQuestion` before writing any code (see above); the author chose to share the gate.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
