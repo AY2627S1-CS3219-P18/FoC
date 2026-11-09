@@ -12476,4 +12476,139 @@ tng wen xi
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review: Congchen**
+
+## 2026-11-09 — chat-service/user-service: Message auto-translation
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decisions given in chat on 2026-11-09 (quoted below) and the interface names the user confirmed with "Use these". Mockup behaviour: `MockupBlueprint.md` §7.6.
+
+**Prompts (exact):**
+> A new message service has been added into the application. I want to build the translation feature within the chat service. How it works:
+>
+> * within the user settings, the user will store their preferred language (use a standard language list as the list of options)
+> * by default, no translation will be applied
+> * just as the mockup page suggest, all chat windows will come with an  "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
+> * if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
+> * The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
+> * translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
+> * this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each  message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
+> * The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
+
+> are the conversation stored based on the user or the order?; new user-service col, and fetched when the message tab is launched; BullMQ on shared Redis; gemini key. are we even operating with an event driven architecture thus far in the messaging service? i was thinking when the model returns, the db gets updated and would that by default lead to the ui updating?
+
+> 1. in this case,
+>
+> * conversation_participants will store an additional "auto_translate" bool
+> * messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
+>
+> the idea is that messages sent by the courier will be default contain "NA" for "translated_for_courier" since they are the courier, but "translated_for_requester" is where translated versions will be kept in the requester's preferred language if invoked, and vice versa. if a courier is switched half way, all requester messages' "translated_for_courier" cols will be cleared, so if the new courier has auto translate on, the past messages will be regenerated accordingly
+>
+> 2. the user-db will store an additional "preferred_lang" col, stored as ISO 639-1 codes, and will be interacted with in the same flow as all other user-level settings and configs.
+>
+> 3. when is user data queried in the entire flow? i think it is good if the lang was just sent together and kept on the client side - it will only be 2 chars, very small overhead to keep around, and saves an additional dedicated endpoint call during translation invocation.
+>
+> 4. Since we are already using event-driven architecture, lets follow and have a socket event to signal completion of translation to notify UI
+>
+> 5. gemini 3.1 flash-lite. i will link it with a single api key from google ai studio. pros and cons of sdk vs http calls? recommended for this application?
+>
+> 6. 1 changes things slightly
+> 7. 1 changes this
+
+> let me change up how the data is stored. instead of using 2 additional cols, which limit the translation supported to 2, add a new translated_messages table keyed by the message id and user_id to support future expansion os the conversation to more roles. this also allows each row to just contain the translated content, instead of tracking a bunch of nulls.
+>
+> SDK will be used
+>
+> conversation_participants will store an extra col for translate_to (storing the preferred language only if the toggle is on) based on the respective user settings, updated on the toggle call, and that can be read when one party sends a message. A non null value will signal that we need an event in bullmq to prepare the translation in that language for that user
+>
+> 1. remove or replace-courier route shall be for future. disregard the clearing logic, just log as a future enhancement
+> 2. in the new design, these wont be necessary, as each row maps to a translation exactly
+> 3. in the new design, the API will just return the result of the requested translation
+> 4. follow existing convention
+> 5. follow existing convention and the new design
+> 6. preferred_lang is not null, and just defaulted to english "en". Use a subset of the language list only containing english, chinese, hindi, tamil, malay, spanish, arabic
+> 7. model id is just "gemini-3.1-flash-lite", stored as TRANSLATION_LLM_MODEL. this and TRANSLATION_LLM_KEY are new env vars in chat-service
+
+Answers to two multiple-choice questions (via the question dialog): store a `translated_messages` row with content "SAME" when the model returns SAME; "Use these" for the proposed interface names (table `translated_messages(id, message_id, user_id, content, created_at; unique message_id+user_id)`, column `conversation_participants.translate_to`, route `POST /chat/conversations/:conversationId/translation` with body `{enabled, language}`, socket event `message:translated` to the user's `user:<id>` room with `{messageId, conversationId, translatedContent}`, message objects gaining `translatedContent`).
+
+**Key responses:**
+Declined the SDK-vs-HTTP pros/cons and recommendation as prohibited architecture/design work (AGENTS.md §2.2) and asked for the team's choice; stopped to ask for unrecorded schema/interface decisions (§2.1) before writing code. After the decisions were given: added `translate_to` and `translated_messages` (Prisma schema + hand-written migration); `POST /chat/conversations/:conversationID/translation` (Bearer auth; 400/401/404/403/409 as the read endpoint; stores or clears `translate_to`, queues a backfill on enable); BullMQ queue on the shared Redis (prefix `queue:chat`, name `translation`, order-service's default retry options); a per-message job queued after commit for every active, non-sender participant with `translate_to` set (user messages and system notifications); a job processor that re-checks `translate_to` before spending anything, skips already-translated and own messages, batches 20 per Gemini call (`@google/genai`, `responseMimeType: application/json`), stores one row per message (including "SAME") and emits `message:translated`; `translatedContent` in `GET .../messages` scoped to the requester; `TRANSLATION_LLM_KEY` (required) and `TRANSLATION_LLM_MODEL` (default `gemini-3.1-flash-lite`) env vars; user-service `users.preferred_lang VARCHAR(2) NOT NULL DEFAULT 'en'`, `PUT /users/me/preferred-lang` (same shape as active-view, body `{preferredLang}`, subset en/zh/hi/ta/ms/es/ar) and `preferredLang` in user responses and `GET /users/me`.
+Choices made within the delegated "follow existing convention" (for the team to confirm): the worker runs inside the chat-service API process (so it can emit through Socket.IO); SYSTEM messages with content are translated like TEXT; changing language while on deletes the user's stored translations for that chat before the backfill; the send response and `message:sent` payload are unchanged (no `translatedContent`); a failed enqueue is logged and does not fail the request (like broadcast failures).
+Future enhancement (recorded as instructed): remove/replace-courier route and clearing the outgoing courier's translations are not implemented.
+Verification: chat-service 192 tests passed (23 new), typecheck and build passed. user-service: typecheck passed; me/users controller and service suites (262 tests) passed against the local test database. Not run: live Redis/BullMQ, live Gemini calls, live MySQL migration, the rest of the user-service suite, and any frontend (the frontend toggle, show-original/Translate controls, language setting and `message:translated` handling are not built).
+
+**Files:**
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261109000000_add_translation/migration.sql` (created)
+- `chat-service/src/translation/languages.ts` (created)
+- `chat-service/src/translation/gemini.ts` (created)
+- `chat-service/src/translation/queue.ts` (created)
+- `chat-service/src/translation/worker.ts` (created)
+- `chat-service/src/translation.spec.ts` (created)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/realtime/messages.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/.env.example` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/package.json`, `chat-service/package-lock.json` (modified; JSON and lockfile, no header)
+- `compose.yaml`, `.env.example` (modified)
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts`, `users.controller.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts`, `users.service.test.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked for and received the toggle storage, language storage, queue, SDK, socket event, route and field decisions above. Open for the team: (1) a language change while the toggle is off leaves old-language rows because `translated_messages` has no language column; (2) the worker shares the API process; (3) whether SYSTEM notifications should be translated; (4) when the user lowers `preferred_lang`, nothing updates `translate_to` until the toggle is called again; (5) the frontend work.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-09 — frontend/chat-service: Translation UI and participant translateTo
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The translation decisions recorded in the previous entry (2026-11-09, chat-service/user-service: Message auto-translation); `MockupBlueprint.md` §7.6 and `foc-mockup/src/pages/Chat.jsx` for the switch and Translate/Show original controls.
+
+**Prompts (exact):**
+> Yes, build it
+
+Answer to a multiple-choice question (via the question dialog): the saved Auto-translate state is learned by adding a nullable `translateTo` to each entry of `participants` in `GET /chat/conversations/:id/messages` (chosen over adding it to chat details or keeping it browser-side).
+
+**Key responses:**
+Stopped to ask before changing the chat-service API contract (§2.1), then added `translateTo` to the history `participants` entries. Frontend: an Auto-translate switch in the thread header (disabled until the preferred language has been read from `GET /users/me` when the chat opens; sends `{enabled, language}` to the toggle route); received messages show their translation when the switch is on, with a "Show original" control per message; when the switch is off originals are shown and messages that already have a translation offer "Translate", which only swaps the display and never calls the API; messages with no translation, `SAME`, system and own messages get no control; `message:translated` events (new `useChatTranslations` hook) fill in translations live; a Preferred language section on the Account page (`PUT /users/me/preferred-lang`) using the seven-language subset.
+Verification: chat-service 193 tests passed, typecheck/build passed earlier in the stage. Frontend: 187 of 188 tests passed and the production build passed; the one failure, `CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", also fails with these changes stashed, so it is not caused by this work. New tests cover the switch, translated display, Show original/Translate, no control for SAME/untranslated/own messages, the socket event, failure handling and the Account language section. Not exercised: a real browser, live sockets, a live Gemini call.
+
+**Files:**
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `frontend/src/constants/languages.js` (created)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/src/api/profile.js` (modified)
+- `frontend/src/realtime/chatSocket.js` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/pages/Account.test.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked where the frontend learns the saved toggle state; answered above. Open: the chat list's last-message preview still shows the original text; the switch does not reflect a language change made on another device until the chat reloads; the Translate/Show original buttons are 24px tall on desktop (the mockup uses a 44px target on mobile only).
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**

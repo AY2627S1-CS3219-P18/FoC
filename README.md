@@ -2,16 +2,16 @@
 AI Assistance Disclosure:
 Scope (2026-11-08, Codex, model: GPT-6): Resolved merge conflicts in the AI log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added dropdown fixes log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added searchable dropdown log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review: Congchen
+Author review: Congchen Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the saved location icon swap log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -23,10 +23,10 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for completing precise delivery location implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for partial user-service implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -786,3 +786,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 230 | 2026-11-08 | frontend | Searchable dropdowns | Added searchable single and multi-select dropdowns. |
 | 231 | 2026-11-08 | frontend | Searchable dropdown display fixes | Fixed chevron alignment and selection display. |
 | 232 | 2026-11-08 | repository | Merge main disclosure conflicts | Reconciled usage log and index. |
+| 233 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
+| 234 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
