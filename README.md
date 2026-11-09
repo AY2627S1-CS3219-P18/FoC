@@ -850,3 +850,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 250 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
 
 | 25` | 2026-11-09 | order-service | Scheduled Errands Stage 28 e: Series API and failed rows | Added series create/get/list/edit/delete endpoints and failed-row/notice handling. |
+| 252 | 2026-11-09 | order-service | Scheduled Errands Stage 28 f: Worker | Added the 1-second scheduler that fires series occurrences, retries, and failures. |
