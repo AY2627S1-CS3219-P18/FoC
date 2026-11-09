@@ -312,6 +312,10 @@ Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #24
        view-switch redirect. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
 Author review:
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #254 for F1
+       (OTP_RESEND_LIMIT now shows the server's err.message instead of a hardcoded wait).
+       No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -852,3 +856,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 25` | 2026-11-09 | order-service | Scheduled Errands Stage 28 e: Series API and failed rows | Added series create/get/list/edit/delete endpoints and failed-row/notice handling. |
 | 252 | 2026-11-09 | order-service | Scheduled Errands Stage 28 f: Worker | Added the 1-second scheduler that fires series occurrences, retries, and failures. |
 | 253 | 2026-11-09 | frontend | Scheduled Errands Stage 28 g: Frontend | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip. |
+| 254 | 2026-11-09 | frontend | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one | Resend-limit text now comes from the server's err.message, not a hardcoded string. |
