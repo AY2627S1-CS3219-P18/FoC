@@ -13000,6 +13000,199 @@ I kept all changes.
 **Author review:**
 tng wen xi
 
+## 2026-11-09 — Scheduled Errands Stage 28a: Schema and migration (order-service)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — Design decisions tables (Model, completeBy, API, Error codes, Firing and failures, Failed rows, Notifications) and "Stage a: Schema and migration (order-service)".
+
+**Prompts (exact):**
+
+> read through stage 28. if all's clear, impelment stage a
+
+**Key responses:**
+Read instructions.md Stage 28 in full. One `[DECIDE]` blocking Stage a was still open: whether an omitted `durationMinutes` on a series should be required or default to 1440, pending George's (not yet merged) completeBy-default change — confirmed unmerged by reading order-service's schema/service code directly. Per the file's own rule ("stop and ask... do not pick a value yourself"), asked the user; they chose to leave `durationMinutes` nullable with no default logic for now and decide later.
+
+Implemented in order-service/prisma/schema.prisma: `SeriesStatus` (active/inactive) and `RetryType` (user_service_unreachable/supplier_service_unreachable/supplier_closed) enums; `OrderSeries` model mirroring `OrderRequest`'s order fields (supplierId, description, deliveryLocationId, deliveryDetails, credits, additionalDetails), plus `durationMinutes` (nullable), `rrule`, `startAt`, `nextFireAt`, `status`, the four nullable retry-state columns (`currentOccurrenceAt`, `retryType`, `attemptCount`, `nextRetryAt`, all null together), `version` for optimistic locking, and `requesterId` for ownership (needed for the owner-only API and worker lookups, not itself a new design choice). Added nullable `seriesId` (FK to `order_series.id`, `ON DELETE SET NULL`) and `failureReason` on `requests`. Indexed `nextFireAt`+`status`, `requesterId`, and `seriesId`, mirroring existing index conventions.
+
+Generated migration `20261109073127_scheduled_errands_series` via `npm run db:migrate` against the local order-db container and applied it; added the disclosure header to the generated SQL afterward and reconciled its stored checksum in `_prisma_migrations` so `prisma migrate status` reports no drift.
+
+Verification: `npm run typecheck`, `npm run test` (699 passed), and `npm run test:e2e` all run. Wrote `test/order-series-schema.e2e-spec.ts` (real database) covering: deleting a series sets `seriesId` null on its orders; a nonexistent `seriesId` is rejected by the FK; retry-state columns default to null and `failureReason` is independent of `seriesId` — all 3 pass. One pre-existing e2e suite, `test/credit-saga.e2e-spec.ts` (5 tests), fails on `main` before any of this change too (confirmed by stashing this work and rerunning against the unmodified schema) — its expectations predate the recently merged system-chat lifecycle notifications (PR #170) and are unrelated to Stage 28a.
+
+`npm run format` (prettier --write) also reformatted 4 pre-existing, unrelated files (whitespace/style only, confirmed via `git diff --stat`); the user asked to leave those reformats in place rather than reverting them.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261109073127_scheduled_errands_series/migration.sql` (created)
+- `order-service/test/order-series-schema.e2e-spec.ts` (created)
+- `order-service/package-lock.json` (modified — `npm install`)
+- `order-service/src/constants/errors.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+
+**Deviations / questions raised for the team:**
+Asked whether `durationMinutes` should be required or default to 1440 when omitted; user deferred the decision, so the column is nullable with no default logic. No other deviations.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28b: User-service worker endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — "Stage b: User-service worker endpoint", and the Firing-and-failures table's "User" check.
+
+**Prompts (exact):**
+
+> let's go to stage b
+
+**Key responses:**
+Added `GET /users/worker/:id` for order-service's scheduler. New `authenticateServiceKey` middleware (`src/middleware/authenticateServiceKey.ts`) checks the `User-Order-Service-Key` header against `config.userOrderService.apiKey` using the existing `hashesMatch`/`sha256` pair (same pattern `otp.service.ts` uses), returning `401 { message: 'Invalid service key', code: 'INVALID_SERVICE_KEY' }` on a missing or wrong key. Added `USER_ORDER_SERVICE_API_KEY` to `config.ts`'s Zod schema and exported config, `.env.example`, `.env` (local, gitignored; random dev value), and `.env.test` (fixed dummy value, no real secret). Added `workerStatus` controller and `getWorkerStatus` service function, returning only `{ status, lockedUntil }` from the existing `findById` query/`UserRow` — a pending user is returned normally with `status: 'pending'`, not blocked. Registered the route in `users.routes.ts` before `POST /:id/full-email` and `GET /:id`, with no `authenticate`/`authorize`.
+
+Verification: `npx tsc --noEmit` and `npx eslint .` clean. Full test suite: 991 tests, 989 passed; the 2 failures (`auth.controller.test.ts`, `me.controller.test.ts`, socket hang up/ECONNRESET) are unrelated to this change — confirmed by rerunning just those two files in isolation, where both pass cleanly (236/236); this is pre-existing flakiness under full-suite load, not caused by Stage 28b. Added `tests/controllers/users.worker.controller.test.ts` (9 tests, all pass): missing key, wrong key, right key for an active/pending/suspended/locked user, unknown id (404 `USER_NOT_FOUND`), non-UUID id (400 `VALIDATION_ERROR`), and that the route needs no Bearer token (route-order coverage). Added `USER_ORDER_SERVICE_API_KEY` to `tests/config.test.ts`'s missing-required-variable list.
+
+No `[DECIDE]` placeholders were open for this stage.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/middleware/authenticateServiceKey.ts` (created)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified — gitignored, local only, listed for disclosure completeness)
+- `user-service/.env.test` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (created)
+- `user-service/tests/config.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Chat service health endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User confirmed chat-service should use the existing order-service health contract in `order-service/src/routes/health.routes.ts`; recorded implementation contract in `chat-service/README.md`, GET /health.
+
+**Prompts (exact):**
+
+> can u implement a /health route to check if the service is alive
+
+> yeps do it same as order service
+
+**Key responses:**
+Initially asked the team to confirm the service and API contract before implementation. After confirmation, added unauthenticated GET /health using SELECT 1, returning 200 with {"status":"ok","database":"up"} or 503 with {"status":"error","database":"down"}, matching order-service. Added HTTP tests for both database outcomes and documented the endpoint. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+Verification: npm run typecheck and npm run build passed. Initial typecheck caught a possibly undefined test mock call; fixed the assertion and reran successfully. An intermediate correction command used the wrong relative path and changed no files. Restricted test runs failed with listen EPERM on 127.0.0.1; rerunning npm test with local listener access passed all 190 tests across 12 files. Health tests use injected Prisma doubles; live MySQL was not exercised. Postman status was attempted as requested by the API engineering skill; installed CLI returned unknown command 'status'. No Postman resources were changed.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/routes/health.routes.ts` (created)
+- `chat-service/src/health.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked whether chat-service and the health contract were intended; user confirmed matching order-service.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-09 — Scheduled Errands Stage 28 c2: order-service supplier client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage c2: order-service supplier client"
+
+**Prompts (exact):**
+
+> while waiting for congchen to approve, let's move on to c2
+
+**Key responses:**
+Added the service-key path for the scheduled-errands worker to `suppliers.client.ts`, reusing
+the same two GET endpoints (`/api/v1/suppliers/:id`, `/api/v1/suppliers/reference/location`) and
+their existing status-code mapping. Kept `supplierExists`/`locationExists` (Authorization header,
+plain `Existence` return) completely unchanged for createOrder/editOrder, and added two new
+interface members instead of overloading them, since the worker call carries no user token and
+needs richer information back (closed flag, next opening time) that the normal-order path has no
+use for — this is a minor implementation-detail choice, not a design decision, and is recorded as
+a deviation below.
+
+New pure module `openingHours.ts` computes `{closed, nextOpeningAt}` from a supplier's
+`openingHours` rows and a `now: Date`, mirroring supplier-service's own `isOpen.ts` conventions
+(day 1–7 Mon–Sun, day 8 = open 24/7, close exclusive, overnight windows, the `00:00`/`23:59`
+all-day pair, `is_24h` ignored) but extended to also find the next future opening instant, since
+the worker needs to schedule a retry, not just a boolean. Computed independently of
+supplier-service's own `isOpen` field so it is driven by the worker's injected `now`, not
+supplier-service's wall clock (keeping Stage f's "every time-dependent function takes `now: Date`"
+testable).
+
+`supplierStatusForWorker` treats an empty `openingHours` array as `hasNoOpeningHours: true`
+(distinct from merely `closed`), for the worker (Stage f) to translate into the "fail, failed row,
+notice" outcome instructions.md specifies for that case.
+
+Added `SUPPLIER_ORDER_SERVICE_API_KEY` to `config/env.ts` as optional (matching the existing
+`CHAT_SERVICE_API_KEY` pattern: only the worker will use it, once Stage f builds it) and to
+`.env.example`. Did not wire it into `compose.yaml`'s `order-worker` or into `app.ts`, since no
+caller exists yet; that wiring belongs to Stage f, which actually constructs the worker and its
+`SuppliersClient`.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 715/715 tests pass (19 files), including a new
+`openingHours.spec.ts` (10 tests: empty list, day 8, the 00:00/23:59 pair, no row for a day,
+exact open/close minute boundaries, overnight windows, and picking the nearest of several future
+openings) and new cases in `suppliers.client.spec.ts` (service-key header sent instead of
+Authorization, the key-not-configured error, not_found/unavailable mapping, the empty-hours
+case, closed/nextOpeningAt mapping, and `locationExistsForWorker`). Two existing spec files
+(`orders.service.spec.ts`, `orders.controller.spec.ts`) needed their fake `SuppliersClient`
+objects extended with the two new interface members to keep compiling; no test logic in them
+changed. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage, which touches no schema or migration.
+
+**Files:**
+
+- `order-service/src/clients/suppliers.client.ts` (modified)
+- `order-service/src/clients/openingHours.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (modified)
+- `order-service/src/clients/openingHours.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified, fake client only)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, fake client only)
+
+**Deviations / questions raised for the team:**
+Added `supplierStatusForWorker` / `locationExistsForWorker` as new `SuppliersClient` methods
+rather than overloading `supplierExists` / `locationExists` with a union auth parameter — the
+instruction said "reusing supplierExists and locationExists," which this follows at the HTTP-call
+and status-mapping level, but not as the literal same exported function signature, to keep the
+existing normal-order call sites and their return type completely untouched. Not raised to the
+team as a stop-and-ask since it is an internal client interface, not a schema/API/architecture
+decision. Otherwise none.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
 ## 2026-11-09 — order-service: Default complete-by of one hour
 
 **Tool:** Claude Code (model: claude-opus-5-5)

@@ -58,6 +58,12 @@
  *        plus req.user.sid, through to the service. Per instructions.md Stage 27b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Added `workerStatus` for GET /users/worker/:id (behind the new service-key
+ *        middleware, no `authenticate`/`authorize`), per instructions.md Stage 28b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -240,6 +246,14 @@ export const listPublic = asyncHandler(async (req, res) => {
 export const getPublicById = asyncHandler(async (req, res) => {
   const { id } = idParamsSchema.parse(req.params);
   const user = await usersService.getPublicUserById(id);
+  res.status(200).json(user);
+});
+
+// GET /users/worker/:id — order-service's scheduler, behind authenticateServiceKey
+// instead of authenticate/authorize. Returns only { status, lockedUntil }.
+export const workerStatus = asyncHandler(async (req, res) => {
+  const { id } = idParamsSchema.parse(req.params);
+  const user = await usersService.getWorkerStatus(id);
   res.status(200).json(user);
 });
 

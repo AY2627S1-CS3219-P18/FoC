@@ -75,6 +75,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
+ *        worker-only stub methods to the fake client in the supplier-service reference check
+ *        tests, per Stage 28 c2's interface change; no test logic changed. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Default complete-by - create with completeBy absent or null stores
  *        now + 1 hour; edit with completeBy: null leaves it out of the write.
@@ -527,10 +532,31 @@ describe('editOrder', () => {
   it('trims details on edit and rejects invalid details', async () => {
     const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
     findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
-    expect((await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: '  Lobby  ' }, REFS)).ok).toBe(true);
-    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) }));
-    expect(await editOrderImpl(prisma, REQUESTER, order.id, { deliveryDetails: 'x'.repeat(251) }, REFS))
-      .toEqual({ ok: false, errors: [ErrorCode.INVALID_DELIVERY_DETAILS] });
+    expect(
+      (
+        await editOrderImpl(
+          prisma,
+          REQUESTER,
+          order.id,
+          { deliveryDetails: '  Lobby  ' },
+          REFS,
+        )
+      ).ok,
+    ).toBe(true);
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ deliveryDetails: 'Lobby' }),
+      }),
+    );
+    expect(
+      await editOrderImpl(
+        prisma,
+        REQUESTER,
+        order.id,
+        { deliveryDetails: 'x'.repeat(251) },
+        REFS,
+      ),
+    ).toEqual({ ok: false, errors: [ErrorCode.INVALID_DELIVERY_DETAILS] });
   });
 
   it('rejects unsupported fields before querying the database', async () => {
@@ -802,6 +828,13 @@ describe('supplier-service reference check (create / edit)', () => {
     const client = {
       supplierExists: vi.fn(async () => supplier),
       locationExists: vi.fn(async () => location),
+      supplierStatusForWorker: vi.fn(async () => ({
+        existence: supplier,
+        hasNoOpeningHours: false,
+        closed: false,
+        nextOpeningAt: null,
+      })),
+      locationExistsForWorker: vi.fn(async () => location),
     } satisfies SuppliersClient;
     return { client, refs: { suppliers: client, authorization: 'Bearer abc' } };
   }
@@ -871,12 +904,24 @@ describe('supplier-service reference check (create / edit)', () => {
   it('edit checks only the ids it changes', async () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const { prisma } = openOrder();
-    await editWithDetails(prisma, REQUESTER, 'order-1', { supplierId: 3 }, refs);
+    await editWithDetails(
+      prisma,
+      REQUESTER,
+      'order-1',
+      { supplierId: 3 },
+      refs,
+    );
     expect(client.supplierExists).toHaveBeenCalledWith(3, 'Bearer abc');
     expect(client.locationExists).not.toHaveBeenCalled();
 
     client.supplierExists.mockClear();
-    await editWithDetails(prisma, REQUESTER, 'order-1', { description: 'x' }, refs);
+    await editWithDetails(
+      prisma,
+      REQUESTER,
+      'order-1',
+      { description: 'x' },
+      refs,
+    );
     expect(client.supplierExists).not.toHaveBeenCalled();
     expect(client.locationExists).not.toHaveBeenCalled();
   });
@@ -885,7 +930,13 @@ describe('supplier-service reference check (create / edit)', () => {
     const { refs } = suppliersAnswering('found', 'not_found');
     const { prisma, updateMany } = openOrder();
     await expect(
-      editWithDetails(prisma, REQUESTER, 'order-1', { deliveryLocationId: 99 }, refs),
+      editWithDetails(
+        prisma,
+        REQUESTER,
+        'order-1',
+        { deliveryLocationId: 99 },
+        refs,
+      ),
     ).resolves.toEqual({
       ok: false,
       errors: [ErrorCode.DELIVERY_LOCATION_NOT_FOUND],

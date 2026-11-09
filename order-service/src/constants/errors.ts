@@ -84,7 +84,8 @@ export const ErrorMessage: Record<ErrorCode, string> = {
   [ErrorCode.MISSING_DESCRIPTION]: 'Request is missing a description.',
   [ErrorCode.INVALID_DESCRIPTION]: 'Description must be non-empty text.',
   [ErrorCode.MISSING_DELIVERY_DETAILS]: 'Request is missing delivery details.',
-  [ErrorCode.INVALID_DELIVERY_DETAILS]: 'Delivery details must be text of at most 250 characters.',
+  [ErrorCode.INVALID_DELIVERY_DETAILS]:
+    'Delivery details must be text of at most 250 characters.',
   [ErrorCode.MISSING_DELIVERY_LOCATION]:
     'Request is missing a delivery location.',
   [ErrorCode.INVALID_DELIVERY_LOCATION]:

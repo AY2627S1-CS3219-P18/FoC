@@ -35,6 +35,11 @@
 //    token table). No requirements, architecture, schema, or API decisions were made by the
 //    AI tool.
 //    Author review:
+//  2026-11-09: Stage 28b (Scheduled Errands) - add USER_ORDER_SERVICE_API_KEY for the new
+//    inbound GET /users/worker/:id service-key check. Governing decision: instructions.md
+//    Stage 28b. No requirements, architecture, schema, or API decisions were made by the AI
+//    tool.
+//    Author review:
 
 import { z } from "zod";
 
@@ -94,6 +99,9 @@ const envSchema = z
         message: "Must be a comma-separated list of positive integers",
       }),
     LOCK_ESCALATION_RESET_HOURS: z.coerce.number().int().positive(),
+
+    // Shared secret for order-service's worker lookup (GET /users/worker/:id).
+    USER_ORDER_SERVICE_API_KEY: z.string().min(1),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -180,5 +188,8 @@ export const config = {
     loginFailureWindowMinutes: env.LOGIN_FAILURE_WINDOW_MINUTES,
     escalationHours: env.LOCK_ESCALATION_HOURS.split(",").map((part) => Number(part.trim())),
     escalationResetHours: env.LOCK_ESCALATION_RESET_HOURS,
+  },
+  userOrderService: {
+    apiKey: env.USER_ORDER_SERVICE_API_KEY,
   },
 } as const;

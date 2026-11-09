@@ -282,18 +282,16 @@ describe('chat_participant', () => {
     'handles %s without changing order state',
     async (kind) => {
       const t = setup('accepted');
-      const addParticipant = vi
-        .fn()
-        .mockResolvedValue(
-          kind === 'success'
-            ? { ok: true }
-            : {
-                ok: false,
-                kind,
-                status: kind === 'permanent' ? 409 : 503,
-                code: 'HTTP_ERROR',
-              },
-        );
+      const addParticipant = vi.fn().mockResolvedValue(
+        kind === 'success'
+          ? { ok: true }
+          : {
+              ok: false,
+              kind,
+              status: kind === 'permanent' ? 409 : 503,
+              code: 'HTTP_ERROR',
+            },
+      );
       const process = createCreditJobProcessor({
         prisma: t.prisma as unknown as PrismaClient,
         credits: { reserve: t.reserve, release: t.release },
