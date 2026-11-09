@@ -13079,6 +13079,7 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
 ## 2026-11-09 — Chat service health endpoint
 
 **Tool:** Codex (model: GPT-6)
@@ -13123,6 +13124,7 @@ tng wen xi
 **Governing decision:** instructions.md Stage 28, "Stage c2: order-service supplier client"
 
 **Prompts (exact):**
+
 > while waiting for congchen to approve, let's move on to c2
 
 **Key responses:**
@@ -13167,6 +13169,7 @@ changed. `npm run test:e2e` could not run in this environment (no local `.env`/`
 present) — unrelated to this stage, which touches no schema or migration.
 
 **Files:**
+
 - `order-service/src/clients/suppliers.client.ts` (modified)
 - `order-service/src/clients/openingHours.ts` (created)
 - `order-service/src/clients/suppliers.client.spec.ts` (modified)
@@ -13186,7 +13189,6 @@ team as a stop-and-ask since it is an internal client interface, not a schema/AP
 decision. Otherwise none.
 
 **What I kept/changed/rejected:**
+Accepted all changes.
 
-
-**Author review:**
-
+**Author review:** gabriel yap
