@@ -39,6 +39,14 @@
  * Scope (2026-10-23): createOrder takes the supplier-service reference check; stubbed here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Synchronous reservation (George, 2026-11-09) - createOrder reserves in
+ *        the request: open / failed outcomes, the transient failure's release, and the
+ *        one-pending-order-per-requester rule (sequential and concurrent creates against
+ *        the real database's advisory lock). Pending rows for the listing test are seeded
+ *        directly.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -51,6 +59,7 @@ import { createDeadLetterRepository } from '../src/db/dead-letter.repository.js'
 import { createOutboxRepository } from '../src/db/outbox.repository.js';
 import { createPrismaClient } from '../src/db/prisma.js';
 import { createStubSuppliersClient } from '../src/clients/suppliers.client.js';
+import { createStubCreditsClient } from '../src/clients/credits.client.js';
 import type { QueuedJob } from '../src/queue/bull-queue.js';
 import {
   createOrder,
@@ -82,6 +91,8 @@ const REFS = {
   authorization: 'Bearer e2e',
 };
 const SUPPLIER = 1; // supplier-service integer id
+/** credit-service that always reserves. */
+const CREDITS = createStubCreditsClient();
 const payload = {
   supplierId: SUPPLIER,
   description: '1x chicken rice',
@@ -93,13 +104,14 @@ const payload = {
 
 /** Relay into an in-memory list instead of Redis, then run each job like BullMQ would. */
 function harness(
-  reserve: () => CreditCallResult,
+  reserve: () => CreditCallResult | Promise<CreditCallResult>,
   release = (): CreditCallResult => ({ ok: true }),
 ) {
   const queued: QueuedJob[] = [];
   const releaseMock = vi.fn(async () => release());
+  const reserveMock = vi.fn(async () => reserve());
   const credits: CreditsClient = {
-    reserve: vi.fn(async () => reserve()),
+    reserve: reserveMock,
     release: releaseMock,
   };
   const published: OrderEvent[] = [];
@@ -115,12 +127,7 @@ function harness(
     deadLetters: createDeadLetterRepository(prisma),
     log: () => {},
   });
-  const processJob = createCreditJobProcessor({
-    prisma,
-    credits,
-    events,
-    log: () => {},
-  });
+  const processJob = createCreditJobProcessor({ prisma, credits });
   async function drain(attemptsMade = 0) {
     await relayOnce();
     const jobs = queued.splice(0);
@@ -136,7 +143,29 @@ function harness(
     }
     return jobs;
   }
-  return { releaseMock, published, drain };
+  /** createOrder with this harness's credit-service and event sink. */
+  const create = () =>
+    createOrder(prisma, REQUESTER, payload, REFS, credits, events);
+  return { releaseMock, reserveMock, published, drain, create };
+}
+
+/** A promise plus the function that resolves it. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+/** Resolves once the requester has a pending order in the database. */
+async function untilPending() {
+  for (let i = 0; i < 200; i += 1) {
+    const n = await prisma.orderRequest.count({
+      where: { requesterId: REQUESTER, status: 'pending' },
+    });
+    if (n > 0) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('no pending order appeared');
 }
 
 beforeEach(async () => {
@@ -151,35 +180,19 @@ afterAll(async () => {
 });
 
 describe('credit reservation saga (e2e)', () => {
-  it('creates a pending order with its reserve task in one commit', async () => {
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
-    if (!result.ok) throw new Error('create failed');
-
-    expect(result.order.status).toBe('pending');
-    const rows = await prisma.outbox.findMany();
-    expect(rows).toEqual([
-      expect.objectContaining({
-        taskName: 'credit_reserve',
-        payload: { requestId: result.order.id, userId: REQUESTER, amount: 4 },
-        version: 0,
-      }),
-    ]);
-  });
-
-  it('opens the order once credit-service reserves, and empties the outbox', async () => {
+  it('reserves in the request and commits the order open, with no reserve task', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
 
-    const jobs = await h.drain();
-
-    expect(jobs.map((j) => j.taskName)).toEqual(['credit_reserve']);
-    expect(jobs[0]!.id).toMatch(/^outbox-\d+$/);
+    expect(result.order).toMatchObject({ status: 'open', version: 1 });
+    expect(h.reserveMock).toHaveBeenCalledTimes(1);
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: result.order.id },
     });
-    expect(order).toMatchObject({ status: 'open', version: 1 });
-    expect(await prisma.outbox.count()).toBe(0);
+    expect(order.status).toBe('open');
+    const tasks = (await prisma.outbox.findMany()).map((r) => r.taskName);
+    expect(tasks).not.toContain('credit_reserve');
     expect(h.published).toEqual([
       expect.objectContaining({
         name: 'order:created',
@@ -188,37 +201,38 @@ describe('credit reservation saga (e2e)', () => {
     ]);
   });
 
-  it('fails the order without a release on a permanent failure', async () => {
+  it('fails the order without a release when credit-service refuses', async () => {
     const h = harness(() => ({
       ok: false,
       kind: 'permanent',
       status: 422,
       code: 'INSUFFICIENT_UNRESERVED_CREDITS',
     }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
-    if (!result.ok) throw new Error('create failed');
+    const result = await h.create();
+    expect(result).toEqual({ ok: false, errors: ['INSUFFICIENT_CREDITS'] });
 
-    await h.drain();
-
-    const order = await prisma.orderRequest.findUniqueOrThrow({
-      where: { id: result.order.id },
+    const order = await prisma.orderRequest.findFirstOrThrow({
+      where: { requesterId: REQUESTER },
     });
     expect(order.status).toBe('failed');
     expect(await prisma.outbox.count()).toBe(0); // no release queued
   });
 
-  it('on the last transient failure fails the order and queues a release that then runs', async () => {
+  it('on a transient failure fails the order at once and queues a release that then runs', async () => {
     const h = harness(() => ({
       ok: false,
       kind: 'transient',
       code: 'fetch failed',
     }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
-    if (!result.ok) throw new Error('create failed');
+    const result = await h.create();
+    expect(result).toEqual({
+      ok: false,
+      errors: ['CREDIT_SERVICE_UNAVAILABLE'],
+    });
+    expect(h.reserveMock).toHaveBeenCalledTimes(1); // no retry
 
-    await h.drain(4); // the 5th and final attempt
-    const order = await prisma.orderRequest.findUniqueOrThrow({
-      where: { id: result.order.id },
+    const order = await prisma.orderRequest.findFirstOrThrow({
+      where: { requesterId: REQUESTER },
     });
     expect(order.status).toBe('failed');
 
@@ -231,11 +245,49 @@ describe('credit reservation saga (e2e)', () => {
     expect(released.creditReleasedAt).toBeInstanceOf(Date);
   });
 
+  it('rejects a second create while the first is still pending', async () => {
+    const gate = deferred<CreditCallResult>();
+    const h = harness(() => gate.promise);
+    const first = h.create();
+    await untilPending();
+
+    await expect(h.create()).resolves.toEqual({
+      ok: false,
+      errors: ['ORDER_PENDING_EXISTS'],
+    });
+
+    gate.resolve({ ok: true });
+    await expect(first).resolves.toMatchObject({
+      ok: true,
+      order: { status: 'open' },
+    });
+    // Once the first has settled, the requester can create again.
+    const h2 = harness(() => ({ ok: true }));
+    await expect(h2.create()).resolves.toMatchObject({ ok: true });
+  });
+
+  it('lets exactly one of several concurrent creates through (advisory lock)', async () => {
+    const gate = deferred<CreditCallResult>();
+    const h = harness(() => gate.promise);
+    const attempts = Array.from({ length: 5 }, () => h.create());
+    await untilPending();
+    gate.resolve({ ok: true });
+
+    const outcomes = await Promise.all(attempts);
+    expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
+    for (const o of outcomes.filter((x) => !x.ok)) {
+      expect(o).toEqual({ ok: false, errors: ['ORDER_PENDING_EXISTS'] });
+    }
+    expect(
+      await prisma.orderRequest.count({ where: { requesterId: REQUESTER } }),
+    ).toBe(1);
+  });
+
   it('requester cancellation of an open order queues and runs a release', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
-    await h.drain();
+    await h.drain(); // flushes the order's chat_create task
 
     await expect(
       transitionOrder(prisma, result.order.id, 'cancelled', REQUESTER),
@@ -251,9 +303,9 @@ describe('credit reservation saga (e2e)', () => {
 
   it('a transition that loses the version race writes no outbox row', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
-    await h.drain();
+    await h.drain(); // flushes the order's chat_create task
 
     // Someone else bumps the version between our read and write.
     const stale = await prisma.orderRequest.findUniqueOrThrow({
@@ -315,7 +367,7 @@ describe('release dead-letter re-drive (e2e)', () => {
   }
 
   it('re-drives a transient release failure as a fresh outbox row and marks it REDRIVEN', async () => {
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await createOrder(prisma, REQUESTER, payload, REFS, CREDITS);
     if (!result.ok) throw new Error('create failed');
     const dl = await deadLetter(
       'credit_release',
@@ -359,9 +411,9 @@ describe('release dead-letter re-drive (e2e)', () => {
 
   it('a re-driven release runs to completion once credit-service is back', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
-    await h.drain(); // order is open
+    await h.drain(); // flushes the order's chat_create task
     await prisma.outbox.deleteMany();
     await deadLetter('credit_release', transientTrace, result.order.id);
 
@@ -381,9 +433,9 @@ describe('credit transfer on completion (e2e)', () => {
   it("completing the order relays a credit_transfer job to credit-service's queue", async () => {
     const COURIER = '0192f0c4-0000-7000-8000-00000000000b';
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
-    await h.drain(); // reserved -> open
+    await h.drain(); // flushes the order's chat_create task
     const id = result.order.id;
     for (const [to, actor] of [
       ['accepted', COURIER],
@@ -427,9 +479,9 @@ describe('credit transfer on completion (e2e)', () => {
 describe('accept (e2e)', () => {
   it('exactly one of many concurrent accepts wins (F12.2.1)', async () => {
     const h = harness(() => ({ ok: true }));
-    const result = await createOrder(prisma, REQUESTER, payload, REFS);
+    const result = await h.create();
     if (!result.ok) throw new Error('create failed');
-    await h.drain(); // open
+    await h.drain(); // flushes the order's chat_create task
 
     const couriers = Array.from(
       { length: 8 },
@@ -568,9 +620,11 @@ describe('listing (e2e)', () => {
   });
 
   it('never lists pending orders by default', async () => {
-    const created = await createOrder(prisma, REQUESTER, payload, REFS); // stays pending
-    if (!created.ok) throw new Error('create failed');
+    // Seeded directly: createOrder no longer leaves an order pending once it returns.
+    const pending = await prisma.orderRequest.create({
+      data: { ...payload, requesterId: REQUESTER, status: 'pending' },
+    });
     const seen = await walk({});
-    expect(seen).not.toContain(created.order.id);
+    expect(seen).not.toContain(pending.id);
   });
 });

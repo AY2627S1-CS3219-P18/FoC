@@ -41,6 +41,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): The credit job processor no longer takes the event sink (it no longer settles
+ *        reservations; George, 2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -139,7 +144,7 @@ const creditWorker = new Worker(
   creditQueue.name,
   withAttemptLog(
     CREDIT_QUEUE_KEY,
-    createCreditJobProcessor({ prisma, credits, chat, events }),
+    createCreditJobProcessor({ prisma, credits, chat }),
   ),
   { connection, prefix: creditQueue.prefix, concurrency: 1 },
 );

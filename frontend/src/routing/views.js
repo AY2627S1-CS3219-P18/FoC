@@ -8,7 +8,15 @@
  *        blocked-page message text.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): PAGE_VIEW and viewForPath - which view each view-only page belongs to,
+ *        mirroring the ViewGate routes in App.jsx, so the view toggle can tell when the user
+ *        is leaving a page of the old view (George, 2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
+
+import { matchPath } from 'react-router-dom'
 
 export const VIEWS = { REQUESTER: 'requester', COURIER: 'courier' }
 
@@ -36,4 +44,22 @@ export const NAV_LINKS = {
 
 export function mainPageFor(view) {
   return MAIN_PAGE[view] ?? MAIN_PAGE[VIEWS.REQUESTER]
+}
+
+// The view each view-only page belongs to. Keep in step with the routes App.jsx wraps in
+// <ViewGate requiredView={...}>. Pages not listed (account, chat, admin, ...) belong to both views.
+export const PAGE_VIEW = [
+  ['/suppliers', VIEWS.REQUESTER],
+  ['/suppliers/:id', VIEWS.REQUESTER],
+  ['/requests/new', VIEWS.REQUESTER],
+  ['/requests/:id/edit', VIEWS.REQUESTER],
+  ['/my-errands', VIEWS.REQUESTER],
+  ['/requests', VIEWS.COURIER],
+  ['/my-deliveries', VIEWS.COURIER],
+]
+
+/** The view `pathname` belongs to, or null for a page shown in both views. */
+export function viewForPath(pathname) {
+  const hit = PAGE_VIEW.find(([pattern]) => matchPath(pattern, pathname))
+  return hit ? hit[1] : null
 }
