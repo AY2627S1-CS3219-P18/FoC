@@ -13079,6 +13079,7 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
 ## 2026-11-09 — Chat service health endpoint
 
 **Tool:** Codex (model: GPT-6)
@@ -13123,6 +13124,7 @@ tng wen xi
 **Governing decision:** instructions.md Stage 28, "Stage c1: supplier-service service-key access (PR for Congchen to review)"
 
 **Prompts (exact):**
+
 > let's go to c1
 > ok go for it
 > continue where you left off
@@ -13162,6 +13164,7 @@ wrong key, no key and no JWT, the key rejected on two other routes, and that the
 logged) plus one added case in `requireRole.test.ts`.
 
 **Files:**
+
 - `supplier-service/src/middleware/authenticate.ts` (modified)
 - `supplier-service/src/middleware/requireRole.ts` (modified)
 - `supplier-service/src/config.ts` (modified)
@@ -13182,7 +13185,6 @@ Otherwise none — this stage's behaviour table in instructions.md was followed 
 leaving `openapi.yaml` (already uncommitted per that service's own Q5) untouched.
 
 **What I kept/changed/rejected:**
+Accepted all changes.
 
-
-**Author review:**
-
+**Author review:** gabriel yap
