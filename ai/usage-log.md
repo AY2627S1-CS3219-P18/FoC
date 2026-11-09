@@ -13766,3 +13766,42 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 29: Auto-redirect instead of the blocked-page message
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 29 ("Auto-Redirect Instead of the Blocked-Page Message")
+
+**Prompts (exact):**
+
+> read through instructions.md. let's start on stage 29. don't forget the git workflow.
+
+**Key responses:**
+Read through the Stage 22 and Stage 28g code to confirm the page-to-view list (`routing/views.js`'s `PAGE_VIEW`) already covered `/series/new` and `/series/:id/edit` (the exact gap Stage 29's own text flagged), so there was nothing to stop and ask about there.
+
+Rewrote `ViewGate` (`components/RouteGuards.jsx`) from a blocked-page `EmptyState` with switch/go-to-main-page buttons into a `<Navigate replace>` redirect to the current view's main page, firing the "You are now in `<view>` mode" toast once per redirect via a `useEffect`. This one change covers the stage's typed-URL, Back, and landing-after-login cases, since `ViewGate` already sits on every requester-only/courier-only route and `Login.jsx`'s post-login navigate already re-enters the same route tree.
+
+Updated `ActiveViewToggle.jsx`'s existing leaving-page redirect (added 2026-11-09, outside this stage) to match Stage 29's two explicit rules: the forward navigate is now `{ replace: true }` instead of a push, and the toggle-failure revert now explicitly navigates back to the original pathname with `{ replace: true }` (only if the user is still on the main page the toggle sent them to, tracked via a `locationRef` since the async closure's own `location` is stale by the time the revert runs) instead of relying on `navigate(-1)`, which would have popped past the replaced entry. Added the success toast on a successful leaving-page switch; confirmed the failure path still shows only the failure toast (no success toast fires if `setActiveView` rejects).
+
+Rewrote `tests/components/RouteGuards.test.jsx` (redirect + toast + no-bounce-on-Back, replacing the removed switch/go-to-main-page-button tests) and extended `tests/components/ActiveViewToggle.test.jsx` (success toast, no-bounce-on-Back, and an explicit "only the failure toast" assertion on the failure path). Ran the full frontend Vitest suite: 267/268 passed, including both rewritten/extended files; the one failure (`CreateRequest.test.jsx`'s saved-location maxLength assertion) is pre-existing and unrelated — confirmed via `git stash` that it fails identically on `main` before this change. Ran `npm run lint` (oxlint): no findings in any file this stage touched.
+
+Did not implement the "Notes for later" (notifications) item or the backlog edit, per the stage's own "do not implement now" / "for the team to make" notes. Did not run the app in a real browser against a live backend (would need the user-service, order-service, etc. running); the Verification bullets are covered by the Vitest suite's component-level simulation of AuthContext/router/toast instead.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/components/RouteGuards.jsx` (modified)
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified: comments only, no value changes)
+- `frontend/src/App.jsx` (modified: disclosure header only, no route changes)
+- `frontend/tests/components/RouteGuards.test.jsx` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None — the one gap the stage's text flagged (the series edit route) was already resolved in Stage 28g's changes to `routing/views.js`.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

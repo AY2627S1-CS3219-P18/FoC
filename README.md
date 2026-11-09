@@ -316,6 +316,10 @@ Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #25
        (OTP_RESEND_LIMIT now shows the server's err.message instead of a hardcoded wait).
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-sonnet-5): Added Log index row #255 for Stage 29
+       (auto-redirect instead of the blocked-page message). No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -857,3 +861,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 252 | 2026-11-09 | order-service | Scheduled Errands Stage 28 f: Worker | Added the 1-second scheduler that fires series occurrences, retries, and failures. |
 | 253 | 2026-11-09 | frontend | Scheduled Errands Stage 28 g: Frontend | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip. |
 | 254 | 2026-11-09 | frontend | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one | Resend-limit text now comes from the server's err.message, not a hardcoded string. |
+| 255 | 2026-11-10 | frontend | Stage 29: Auto-redirect instead of the blocked-page message | Opening another view's page now redirects to the current view's main page with a toast. |
