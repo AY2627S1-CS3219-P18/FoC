@@ -86,6 +86,13 @@
  *        change; no test logic changed. No requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): POST /orders reserves synchronously - 201 with the open order,
+ *        409 while a pending order exists, 422 / 503 for a refused / unreachable reserve
+ *        (George, 2026-11-09). appWith takes a credits client and keeps the created order
+ *        in memory for the settle.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -93,6 +100,11 @@ import type { RequestHandler } from 'express';
 import { createApp } from '../app.js';
 import { bearer } from '../../test/helpers/tokens.js';
 import type { PrismaClient } from '../db/prisma.js';
+import {
+  createStubCreditsClient,
+  type CreditCallResult,
+  type CreditsClient,
+} from '../clients/credits.client.js';
 import {
   createStubSuppliersClient,
   type Existence,
@@ -121,20 +133,41 @@ function appWith(
       data: object;
     }) => Promise<{ count: number }>;
     findUniqueOrThrow: (args: { where: { id: string } }) => Promise<object>;
+    findFirst: () => Promise<object | null>;
   }> = {},
   suppliers: SuppliersClient = createStubSuppliersClient(),
+  credits: CreditsClient = createStubCreditsClient(),
 ) {
   const outbox = { createMany: vi.fn(async () => ({ count: 1 })) };
+  // The order POST /orders creates, so the synchronous settle can read and update it.
+  let created: Record<string, unknown> | null = null;
+  const isCreated = (id: string) => created !== null && created.id === id;
   const prisma = {
     outbox,
     // Interactive transactions run the callback against the same fake client.
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
+    $executeRaw: async () => 1,
     orderRequest: {
-      create: async ({ data }: { data: object }) => ({ id: 'new', ...data }),
+      create: async ({ data }: { data: object }) => {
+        created = { id: 'new', version: 0, ...data };
+        return created;
+      },
       findMany,
-      findUnique: async () => null,
-      updateMany: async () => ({ count: 1 }),
-      findUniqueOrThrow: async () => ({ id: 'order-1', status: 'picked_up' }),
+      findFirst: async () => null,
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        isCreated(where.id) ? created : null,
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { status?: string };
+      }) => {
+        if (isCreated(where.id)) created = { ...created, status: data.status };
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async ({ where }: { where: { id: string } }) =>
+        isCreated(where.id) ? created : { id: 'order-1', status: 'picked_up' },
       ...orderRequestOverrides,
     },
   } as unknown as PrismaClient;
@@ -152,7 +185,7 @@ function appWith(
     req.user = { user_id: userId, role: req.get('x-role') ?? 'user' };
     next();
   };
-  return Object.assign(createApp({ prisma, authenticate, suppliers }), {
+  return Object.assign(createApp({ prisma, authenticate, suppliers, credits }), {
     outbox,
   });
 }
@@ -162,23 +195,82 @@ beforeEach(() => {
 });
 
 describe('POST /orders', () => {
-  it('202 with the pending request, queueing its credit reservation', async () => {
-    const app = appWith();
-    const res = await request(app)
+  /** credit-service answering every reserve with `result`, plus its reserve mock. */
+  const creditsAnswering = (result: CreditCallResult) => {
+    const reserve = vi.fn(async () => result);
+    const client: CreditsClient = {
+      reserve,
+      release: vi.fn(async (): Promise<CreditCallResult> => ({ ok: true })),
+    };
+    return { client, reserve };
+  };
+
+  it('201 with the open order once credits are reserved in the request', async () => {
+    const { client, reserve } = creditsAnswering({ ok: true });
+    const res = await request(appWith(undefined, {}, undefined, client))
       .post('/orders')
       .set('authorization', bearer(USER))
       .send(body)
-      .expect(202);
-    expect(res.body).toMatchObject({ credits: 4, status: 'pending' });
-    expect(res.body.id).toEqual(expect.any(String));
-    expect(app.outbox.createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          taskName: 'credit_reserve',
-          payload: { requestId: res.body.id, userId: USER, amount: 4 },
-        }),
-      ],
+      .expect(201);
+    expect(res.body).toMatchObject({ id: 'new', credits: 4, status: 'open' });
+    expect(reserve).toHaveBeenCalledWith({
+      requestId: 'new',
+      userId: USER,
+      amount: 4,
     });
+  });
+
+  it('409 while the requester has a pending order', async () => {
+    const { client, reserve } = creditsAnswering({ ok: true });
+    await request(
+      appWith(
+        undefined,
+        { findFirst: async () => ({ id: 'pending-1' }) },
+        undefined,
+        client,
+      ),
+    )
+      .post('/orders')
+      .set('authorization', bearer(USER))
+      .send(body)
+      .expect(409, {
+        message: 'Another order request is currently pending, please try again.',
+      });
+    expect(reserve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'insufficient credits',
+      {
+        ok: false,
+        kind: 'permanent',
+        status: 422,
+        code: 'INSUFFICIENT_UNRESERVED_CREDITS',
+      },
+      422,
+      'You do not have enough credits for this request.',
+    ],
+    [
+      'another refusal',
+      { ok: false, kind: 'permanent', status: 400, code: 'VALIDATION_ERROR' },
+      422,
+      'Your credits could not be reserved. Please try again.',
+    ],
+    [
+      'credit-service unreachable',
+      { ok: false, kind: 'transient', code: 'ECONNREFUSED' },
+      503,
+      'Credits could not be reserved right now. Please try again.',
+    ],
+  ] as const)('%s -> %i, answered immediately', async (_name, result, status, message) => {
+    const { client, reserve } = creditsAnswering(result);
+    await request(appWith(undefined, {}, undefined, client))
+      .post('/orders')
+      .set('authorization', bearer(USER))
+      .send(body)
+      .expect(status, { message });
+    expect(reserve).toHaveBeenCalledTimes(1);
   });
 
   it('400 when complete-by is in the past', async () => {
@@ -913,13 +1005,13 @@ describe('supplier-service existence check over HTTP', () => {
     }),
   };
 
-  it('forwards the caller token and answers 202 when both ids exist', async () => {
+  it('forwards the caller token and answers 201 when both ids exist', async () => {
     const suppliers = answering('found', 'found');
     await request(appWith(undefined, {}, suppliers))
       .post('/orders')
       .set('authorization', bearer(USER))
       .send(body)
-      .expect(202);
+      .expect(201);
     expect(suppliers.supplierExists).toHaveBeenCalledWith(1, bearer(USER));
     expect(suppliers.locationExists).toHaveBeenCalledWith(12, bearer(USER));
   });

@@ -300,6 +300,18 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #246 for the
+       order-service default complete-by. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #247 for
+       synchronous order creation and the pending-order 409. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #248 for the
+       view-switch redirect. No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -830,3 +842,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 243 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
 | 245 | 2026-11-09 | order-service | Scheduled Errands Stage 28 c2: order-service supplier client | Added a service-key path to the supplier client for the worker's closed/next-opening checks. |
 | 246 | 2026-11-09 | order-service | Scheduled Errands Stage 28 d: order-service user client | Added a user-service client for the worker's fire-time status/lock check. |
+| 247 | 2026-11-09 | order-service | order-service: Default complete-by of one hour | One-hour default complete-by; edit null keeps it; ASAP relabelled. |
+
+| 248 | 2026-11-09 | order-service | order-service: Synchronous order creation and pending-order 409 | Create reserves credits in the request; 409 while a pending order exists. |
+
+| 249 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |

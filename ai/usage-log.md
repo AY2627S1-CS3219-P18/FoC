@@ -13239,3 +13239,149 @@ union, which is an implementation detail, not a design choice.
 Accepted all changes.
 
 **Author review:** gabriel yap
+## 2026-11-09 — order-service: Default complete-by of one hour
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09 (new FR, to be added to `docs/FoC-ProductBacklog.md` by the team): a new order with no complete-by gets now + 1 hour and then behaves like a requester-set deadline; existing orders are untouched; an edit sending `completeBy: null` keeps the stored value.
+
+**Prompts (exact):**
+
+> ok tell him all decided approved, and he can add them, also for the completeBy issue, it will default to 24 hours instead of NULL, so we are making this as a new FR, to fix these issues
+
+> we decided to make it +1 hr instead to represent the ASAPness
+
+> do the same behaviour as completeBy is set by user, but its 1hr
+> existing orders are untouched
+
+> (Agent question) Editing an open order with completeBy: null currently clears the deadline to NULL (and the edit page sends null when 'ASAP' is picked). What should edit do with completeBy: null after this change?
+> (Answer) Keep current value
+
+> for the frontend, remove the ASAP option, and completeBy will default to 1hr to show it explicitly
+
+> actually, just change the ASAP button text to
+>
+> ASAP
+> By 1 hour from now
+>
+> then screenshot the frontend to show me when youre done
+
+**Key responses:**
+Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+- `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
+- `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
+- No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
+- Tests: create with completeBy absent / null stores now + 1 h (fake Date); a chosen completeBy is kept; edit with null omits completeBy from the write; edit with a value writes it. Removed "null = indefinite" from an existing test name.
+- Frontend (`CreateRequest.jsx`): the agent started removing the ASAP option, then the user replaced that instruction; the only change kept is the ASAP button label, now "ASAP" with a second line "By 1 hour from now". The button grows to fit two lines. Behaviour is unchanged: ASAP still sends no completeBy on create (order-service applies the one-hour default) and null on edit (keeps the stored value).
+
+Verification: order-service `npm run typecheck` passed, `npm run lint` reported nothing, `npm test` passed (18 files, 704 tests). `prettier --check` flags both service files, but both were already unformatted on `main` before this change, so they were not reformatted. E2E tests were not run. Frontend `npm test`: 222 passed, 1 failed (`CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", a `maxLength` assertion); the same test also fails with the unmodified `CreateRequest.jsx` from `main`. Frontend lint showed only existing warnings in other files. Screenshotted the form in the in-app browser against a throwaway local mock API (scratch file outside the repo) in both toggle states.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked how edit should treat `completeBy: null` (answered: keep current value). Asked how the edit form should treat legacy NULL deadlines once ASAP was removed; superseded when the user chose to keep ASAP with a new label. Pre-existing frontend test failure noted above. The new FR text itself still needs to be written into the backlog by the team.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: order creation reserves credits synchronously with no retry, so the client learns the outcome in the response; a create while the requester has a `pending` order is rejected 409 with the message "Another order request is currently pending, please try again."; answers to the agent's questions (below) fix the status codes, the failed-row handling and the release on a transient failure.
+
+**Prompts (exact):**
+
+> no, continue working on this branch,
+>
+> remove the retry mechanism when an order is created, so its fully sync now,
+> when creation fails, the client knows immediately
+>
+> and when an order in "pending" state exists, any requests to create an new order is rejected 409 conflict with message "Another order request is currently pending, please try again."
+
+> (Agent questions) When the synchronous credit reserve succeeds, what should POST /orders return? / When the reserve fails, what happens to the order row and the response? / Which HTTP statuses for a failed reserve? / The 409 check: whose pending orders count?
+> (Answers) 201 with the open order / Keep row as failed / 422 / 503 / Same requester only
+
+> (Agent question) If credit-service is unreachable or returns 5xx, the reserve may still have gone through on its side. Today the worker then queues a credit release. Keep that?
+> (Answer) Queue a release
+
+**Key responses:**
+- `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
+- New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
+- The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
+- Error messages reuse the existing order-service texts for `INSUFFICIENT_CREDITS` and `CREDIT_SERVICE_UNAVAILABLE`; `CREDIT_RESERVE_REJECTED` reads "Your credits could not be reserved. Please try again." (agent wording, modelled on the frontend's former generic text).
+- Frontend `CreateRequest.jsx`: Post awaits the response and shows its message on failure; the socket wait and `/orders/mine` re-check are removed. `reserveFailureMessage` in `api/orders.js` is removed (no other users). `watchOrderEvents` in `realtime/orderSocket.js` is left in place, now unused by this page.
+- Points raised for the team (not decided by the agent): `credits.client.ts` has no request timeout ("by decision"), so a hung credit-service call keeps the request open and the order `pending`, during which the requester gets 409; if the API process dies between writing the pending row and settling it, the order stays `pending` and blocks that requester's creates, with nothing that settles it (the worker's reserve job used to cover this). ECS task definitions are not in the repo, so `CREDIT_SERVICE_URL` must be added to the order-service API task by hand.
+
+Verification: order-service `npm run typecheck` and `npm run lint` clean; `npm test` 18 files, 707 tests passed. The e2e suite (`test/credit-saga.e2e-spec.ts`, rewritten for the synchronous flow, with new sequential and concurrent pending-order tests) typechecks but was **not run**: no Postgres was available. Frontend `npm test`: 222 passed, 1 failed, the same pre-existing `CreateRequest.test.jsx` `maxLength` failure noted in the previous entry.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `order-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/api/orders.js` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked the success status, failed-row handling, failure status codes, 409 scope and transient-failure release (answers above). Open for the team: request timeout on the reserve call, and recovery of an order left `pending` by a crash (see Key responses). The advisory lock is an agent implementation choice for the team to confirm.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09: switching view while on a page of the old view goes to the new view's main page instead of showing "This is only available in ... mode". This replaces, for the toggle only, `instructions.md` Stage 22's "Toggling the view" row ("The user stays on the current page").
+
+**Prompts (exact):**
+
+> ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
+
+**Key responses:**
+- "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
+- `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
+- `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
+- Implementation choice by the agent: the redirect lives in the toggle, not in `ViewGate`, because a `ViewGate` redirect would fire on the optimistic flip and leave the user on the wrong page after a failed switch. Opening another view's page directly still shows the blocked-page message.
+
+Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both directions, shared page, failed switch, `viewForPath` cases) passes; full frontend suite 235 passed, 1 failed (the pre-existing `CreateRequest.test.jsx` `maxLength` failure); oxlint clean on the changed files. Checked in the in-app browser against a throwaway local mock API (scratch file outside the repo): Suppliers -> Courier landed on Find errands, My deliveries -> Requester landed on Suppliers.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/routing/views.js` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+`instructions.md` Stage 22 still describes the old toggle behaviour; the team may want to update it. The page-to-view list now exists in `views.js` and in `App.jsx`'s `ViewGate` props.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

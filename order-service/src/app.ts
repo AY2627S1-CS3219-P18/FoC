@@ -26,6 +26,11 @@
  * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): AppDeps takes a credits client (HTTP to CREDIT_SERVICE_URL by default) for the
+ *        synchronous reserve on POST /orders (George, 2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import express, { type Express } from 'express';
@@ -40,6 +45,10 @@ import {
   createHttpSuppliersClient,
   type SuppliersClient,
 } from './clients/suppliers.client.js';
+import {
+  createHttpCreditsClient,
+  type CreditsClient,
+} from './clients/credits.client.js';
 
 export interface AppDeps {
   prisma: PrismaClient;
@@ -50,6 +59,9 @@ export interface AppDeps {
   /** supplier-service for the create / edit existence check; defaults to HTTP. */
   suppliers?: SuppliersClient;
   supplierServiceUrl?: string;
+  /** credit-service for the reserve made while creating an order; defaults to HTTP. */
+  credits?: CreditsClient;
+  creditServiceUrl?: string;
 }
 
 /**
@@ -63,6 +75,8 @@ export function createApp({
   events,
   supplierServiceUrl = 'http://localhost:3004',
   suppliers = createHttpSuppliersClient(supplierServiceUrl),
+  creditServiceUrl = 'http://localhost:3003',
+  credits = createHttpCreditsClient(creditServiceUrl),
 }: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -72,7 +86,7 @@ export function createApp({
   app.use(
     '/orders',
     authenticate ?? createAuthenticate(userServiceUrl),
-    ordersRouter(prisma, { suppliers, events, userServiceUrl }),
+    ordersRouter(prisma, { suppliers, credits, events, userServiceUrl }),
   );
 
   app.use(notFound);

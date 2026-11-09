@@ -31,6 +31,11 @@
  *        (George, 2026-10-23). Names and messages follow the existing codes' convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): CREDIT_RESERVE_REJECTED and ORDER_PENDING_EXISTS (message wording from George,
+ *        2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -61,6 +66,8 @@ export enum ErrorCode {
   INVALID_CURSOR = 'INVALID_CURSOR',
   INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS',
   CREDIT_SERVICE_UNAVAILABLE = 'CREDIT_SERVICE_UNAVAILABLE',
+  CREDIT_RESERVE_REJECTED = 'CREDIT_RESERVE_REJECTED',
+  ORDER_PENDING_EXISTS = 'ORDER_PENDING_EXISTS',
   MALFORMED_USER_ID = 'MALFORMED_USER_ID',
   INVALID_USER_ID = 'INVALID_USER_ID',
   USER_SERVICE_UNAVAILABLE = 'USER_SERVICE_UNAVAILABLE',
@@ -108,6 +115,11 @@ export const ErrorMessage: Record<ErrorCode, string> = {
     'You do not have enough credits for this request.',
   [ErrorCode.CREDIT_SERVICE_UNAVAILABLE]:
     'Credits could not be reserved right now. Please try again.',
+  [ErrorCode.CREDIT_RESERVE_REJECTED]:
+    'Your credits could not be reserved. Please try again.',
+  // Wording from George, 2026-11-09.
+  [ErrorCode.ORDER_PENDING_EXISTS]:
+    'Another order request is currently pending, please try again.',
   [ErrorCode.MALFORMED_USER_ID]: 'User id must be a valid UUID.',
   [ErrorCode.INVALID_USER_ID]: 'User not found.',
   [ErrorCode.USER_SERVICE_UNAVAILABLE]:

@@ -63,6 +63,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): POST /orders answers 201 with the open order; ORDER_PENDING_EXISTS -> 409,
+ *        CREDIT_RESERVE_REJECTED -> 422 (George, 2026-11-09).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { RequestHandler } from 'express';
@@ -79,6 +84,7 @@ import {
 } from '../services/order-listing.service.js';
 import type { OrderEventPublisher } from '../realtime/order-events.js';
 import type { SuppliersClient } from '../clients/suppliers.client.js';
+import type { CreditsClient } from '../clients/credits.client.js';
 import { RequestStatus } from '../generated/prisma/enums.js';
 
 /** The caller's own token, forwarded to supplier-service for the existence check. */
@@ -91,7 +97,12 @@ const referenceCheck = (
 });
 
 export const createOrder =
-  (prisma: PrismaClient, suppliers: SuppliersClient): RequestHandler =>
+  (
+    prisma: PrismaClient,
+    suppliers: SuppliersClient,
+    credits: CreditsClient,
+    events?: OrderEventPublisher,
+  ): RequestHandler =>
   async (req, res) => {
     const requesterId = req.user?.user_id;
     if (!isUuid(requesterId)) {
@@ -106,6 +117,8 @@ export const createOrder =
       requesterId,
       req.body ?? {},
       referenceCheck(suppliers, req),
+      credits,
+      events,
     );
     if (!result.ok) {
       const errorMessageString = result.errors
@@ -117,8 +130,8 @@ export const createOrder =
       return;
     }
 
-    // 202: accepted as `pending`; credit reservation completes asynchronously.
-    res.status(202).json(result.order);
+    // 201 with the open order: credits were reserved in this request (George, 2026-11-09).
+    res.status(201).json(result.order);
   };
 
 export const getOrders =
@@ -306,6 +319,8 @@ function statusFor(errors: ErrorCode[]): number {
   if (errors.includes(ErrorCode.SUPPLIER_NOT_FOUND)) return 422;
   if (errors.includes(ErrorCode.DELIVERY_LOCATION_NOT_FOUND)) return 422;
   if (errors.includes(ErrorCode.INSUFFICIENT_CREDITS)) return 422;
+  if (errors.includes(ErrorCode.CREDIT_RESERVE_REJECTED)) return 422;
+  if (errors.includes(ErrorCode.ORDER_PENDING_EXISTS)) return 409;
   if (errors.includes(ErrorCode.ORDER_NOT_FOUND)) return 404;
   if (errors.includes(ErrorCode.FORBIDDEN)) return 403;
   if (errors.includes(ErrorCode.INVALID_TRANSITION)) return 409;
