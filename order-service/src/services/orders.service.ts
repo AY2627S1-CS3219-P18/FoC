@@ -95,6 +95,14 @@
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 f (instructions.md) - extracted createOrder's pending-order-create +
+ *        reserve + settle sequence into exported createPendingOrderAndSettle, unchanged in
+ *        behaviour, so the scheduled-errands worker can post occurrences through the same
+ *        path ("Each occurrence is created through the normal create path"), with a
+ *        seriesId attached. createOrder itself is behaviourally unchanged. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -119,7 +127,7 @@ import {
 } from '../domain/order-status.js';
 import { canViewOrder, type Viewer } from '../domain/order-access.js';
 import type { SuppliersClient } from '../clients/suppliers.client.js';
-import type { CreditsClient } from '../clients/credits.client.js';
+import type { CreditsClient, CreditCallResult } from '../clients/credits.client.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import {
   eventsForEdit,
@@ -284,54 +292,30 @@ export const createOrder = async (
   });
   if (missing.length) return { ok: false, errors: missing };
 
-  // The order is written `pending`, then credit-service is called once, in this request,
-  // with no retry; the order settles to `open` or `failed` before the response (George,
-  // 2026-11-09). A requester with a `pending` order cannot create another until it settles.
-  // The advisory lock serialises one requester's creates, so two at once cannot both pass
-  // the pending check. The order id is the reservation's idempotency key (requestId).
   console.log('CREATING REQUEST');
-  const created = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${requesterId}))`;
-    const pending = await tx.orderRequest.findFirst({
-      where: { requesterId, status: 'pending' },
-      select: { id: true },
-    });
-    if (pending) return null;
-    return tx.orderRequest.create({
-      data: {
-        requesterId,
-        supplierId: requestPayload.supplierId,
-        description: requestPayload.description,
-        deliveryLocationId: requestPayload.deliveryLocationId,
-        deliveryDetails: 'value' in details ? details.value : '',
-        credits: requestPayload.credits,
-        completeBy: requestPayload.completeBy
-          ? new Date(requestPayload.completeBy)
-          : new Date(Date.now() + DEFAULT_COMPLETE_BY_MS),
-        additionalDetails: requestPayload.additionalDetails ?? null,
-        status: 'pending',
-      },
-    });
-  });
-  if (!created) return { ok: false, errors: [ErrorCode.ORDER_PENDING_EXISTS] };
+  const settled = await createPendingOrderAndSettle(
+    prisma,
+    {
+      requesterId,
+      supplierId: requestPayload.supplierId,
+      description: requestPayload.description,
+      deliveryLocationId: requestPayload.deliveryLocationId,
+      deliveryDetails: 'value' in details ? details.value : '',
+      credits: requestPayload.credits,
+      completeBy: requestPayload.completeBy
+        ? new Date(requestPayload.completeBy)
+        : new Date(Date.now() + DEFAULT_COMPLETE_BY_MS),
+      additionalDetails: requestPayload.additionalDetails ?? null,
+    },
+    credits,
+    events,
+  );
+  if (!settled) return { ok: false, errors: [ErrorCode.ORDER_PENDING_EXISTS] };
 
-  const reserved = await credits.reserve({
-    requestId: created.id,
-    userId: requesterId,
-    amount: created.credits,
-  });
-
-  if (reserved.ok) {
-    const order = await settleReservation(prisma, created.id, 'open', { events });
-    return { ok: true, order };
-  }
+  const { order, reserved } = settled;
+  if (reserved.ok) return { ok: true, order };
 
   if (reserved.kind === 'permanent') {
-    // credit-service refused, so nothing was reserved and nothing needs releasing.
-    await settleReservation(prisma, created.id, 'failed', {
-      events,
-      reason: reserved.code,
-    });
     return {
       ok: false,
       errors: [
@@ -341,19 +325,98 @@ export const createOrder = async (
       ],
     };
   }
-
-  // Unreachable or 5xx: the reserve may still have committed on credit-service's side
-  // without us hearing back, so the failure also queues a release (George, 2026-11-09).
-  await settleReservation(prisma, created.id, 'failed', {
-    events,
-    reason: ErrorCode.CREDIT_SERVICE_UNAVAILABLE,
-    releaseCredits: true,
-  });
   return { ok: false, errors: [ErrorCode.CREDIT_SERVICE_UNAVAILABLE] };
 };
 
 /** credit-service's code for a requester without enough unreserved credits. */
 const INSUFFICIENT_UNRESERVED_CREDITS = 'INSUFFICIENT_UNRESERVED_CREDITS';
+
+/** The fields of a new order, as written by createOrder's request path or the Stage 28 f
+ *  worker posting a series occurrence; `completeBy` is always a resolved Date here (the
+ *  worker computes it from the occurrence's scheduled time + the series' duration; the
+ *  request path resolves a missing one to DEFAULT_COMPLETE_BY_MS before calling this). */
+export interface PendingOrderFields {
+  requesterId: string;
+  supplierId: number;
+  description: string;
+  deliveryLocationId: number;
+  deliveryDetails: string;
+  credits: number;
+  completeBy: Date;
+  additionalDetails: string | null;
+  /** Set only when posting a scheduled-errands occurrence (Stage 28 f). */
+  seriesId?: string;
+}
+
+/**
+ * Creates a `pending` order and settles its credit reservation to `open`/`failed` before
+ * returning (George, 2026-11-09: no outbox credit_reserve task; one synchronous reserve
+ * call, no retry). Returns null when `fields.requesterId` already has another pending
+ * order (the advisory lock serialises concurrent calls for the same requester so two can
+ * never both pass this check); the caller decides what that means for its own flow.
+ * Shared by createOrder's request path and Stage 28 f's worker, which posts series
+ * occurrences through this same path (instructions.md: "Each occurrence is created
+ * through the normal create path").
+ */
+export async function createPendingOrderAndSettle(
+  prisma: PrismaClient,
+  fields: PendingOrderFields,
+  credits: CreditsClient,
+  events?: OrderEventPublisher,
+): Promise<{ order: OrderRequest; reserved: CreditCallResult } | null> {
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${fields.requesterId}))`;
+    const pending = await tx.orderRequest.findFirst({
+      where: { requesterId: fields.requesterId, status: 'pending' },
+      select: { id: true },
+    });
+    if (pending) return null;
+    return tx.orderRequest.create({
+      data: {
+        requesterId: fields.requesterId,
+        supplierId: fields.supplierId,
+        description: fields.description,
+        deliveryLocationId: fields.deliveryLocationId,
+        deliveryDetails: fields.deliveryDetails,
+        credits: fields.credits,
+        completeBy: fields.completeBy,
+        additionalDetails: fields.additionalDetails,
+        status: 'pending',
+        ...(fields.seriesId !== undefined && { seriesId: fields.seriesId }),
+      },
+    });
+  });
+  if (!created) return null;
+
+  const reserved = await credits.reserve({
+    requestId: created.id,
+    userId: fields.requesterId,
+    amount: created.credits,
+  });
+
+  if (reserved.ok) {
+    const order = await settleReservation(prisma, created.id, 'open', { events });
+    return { order, reserved };
+  }
+
+  if (reserved.kind === 'permanent') {
+    // credit-service refused, so nothing was reserved and nothing needs releasing.
+    const order = await settleReservation(prisma, created.id, 'failed', {
+      events,
+      reason: reserved.code,
+    });
+    return { order, reserved };
+  }
+
+  // Unreachable or 5xx: the reserve may still have committed on credit-service's side
+  // without us hearing back, so the failure also queues a release (George, 2026-11-09).
+  const order = await settleReservation(prisma, created.id, 'failed', {
+    events,
+    reason: ErrorCode.CREDIT_SERVICE_UNAVAILABLE,
+    releaseCredits: true,
+  });
+  return { order, reserved };
+}
 
 /** Moves a just-created `pending` order to its reservation outcome, as the system. */
 async function settleReservation(

@@ -46,6 +46,12 @@
  *        reservations; George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-09): Stage 28 f (instructions.md) - wires up the scheduled-errands worker
+ *        (1-second series scheduler), its user/supplier service-key HTTP clients, and its
+ *        queue in the dashboard/shutdown lists, mirroring the existing credit-job/outbox-relay
+ *        wiring. No requirements, architecture, schema, or API decisions were made by the AI
+ *        tool.
+ * Author review:
  */
 
 import { Queue, Worker, type Job } from 'bullmq';
@@ -80,6 +86,13 @@ import {
   RELEASE_REDRIVE_QUEUE_KEY,
   startReleaseRedrive,
 } from './worker/release-redrive.js';
+import { createHttpSuppliersClient } from './clients/suppliers.client.js';
+import { createHttpUserClient } from './clients/user.client.js';
+import {
+  createSeriesWorkerTick,
+  SERIES_WORKER_QUEUE_KEY,
+  startSeriesWorker,
+} from './worker/series-worker.js';
 
 loadDotenv({ quiet: true });
 
@@ -98,6 +111,30 @@ const chat = createHttpChatClient(
 const deadLetters = createDeadLetterRepository(prisma);
 const redis = new Redis(redisConnectionOptions(env));
 const events = createRedisEventPublisher(redis);
+
+// ---- Stage 28 f: scheduled-errands worker ----------------------------------
+if (!env.SUPPLIER_ORDER_SERVICE_API_KEY)
+  throw new Error('SUPPLIER_ORDER_SERVICE_API_KEY is required by the order worker');
+if (!env.USER_ORDER_SERVICE_API_KEY)
+  throw new Error('USER_ORDER_SERVICE_API_KEY is required by the order worker');
+const seriesWorkerSuppliers = createHttpSuppliersClient(
+  env.SUPPLIER_SERVICE_URL,
+  fetch,
+  undefined,
+  env.SUPPLIER_ORDER_SERVICE_API_KEY,
+);
+const seriesWorkerUsers = createHttpUserClient(
+  env.USER_ORDER_SERVICE_URL,
+  env.USER_ORDER_SERVICE_API_KEY,
+);
+const seriesTick = createSeriesWorkerTick({
+  prisma,
+  users: seriesWorkerUsers,
+  suppliers: seriesWorkerSuppliers,
+  credits,
+  events,
+});
+const seriesWorker = await startSeriesWorker(connection, seriesTick);
 
 async function processMaintenanceJob(_job: Job): Promise<void> {
   const result = await runRequestMaintenance(prisma, new Date(), events);
@@ -175,6 +212,7 @@ if (env.QUEUE_DASHBOARD_PORT !== undefined) {
     splitQueueKey(OUTBOX_RELAY_QUEUE_KEY),
     splitQueueKey(CREDIT_QUEUE_KEY),
     splitQueueKey(RELEASE_REDRIVE_QUEUE_KEY),
+    splitQueueKey(SERIES_WORKER_QUEUE_KEY),
     splitQueueKey(CREDIT_TRANSFER_QUEUE_KEY), // consumed by credit-service
   ]);
 }
@@ -191,6 +229,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
       creditWorker.close(),
       relay.close(),
       redrive.close(),
+      seriesWorker.close(),
       dashboard?.close(),
     ]);
     await queue.close();

@@ -13239,6 +13239,7 @@ union, which is an implementation detail, not a design choice.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
 ## 2026-11-09 — order-service: Default complete-by of one hour
 
 **Tool:** Claude Code (model: claude-opus-5-5)
@@ -13505,6 +13506,100 @@ occurrence at/after its own start time (e.g. `UNTIL` already in the past) is rej
 `nextFireAt` column is non-nullable (matches the real Stage a migration, not the design table's
 "nullable" note — already flagged during Stage a), so a series that could never fire cannot be
 stored. Otherwise none; every other item in the design tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28 f: Worker
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage f: Worker"
+
+**Prompts (exact):**
+
+> read through instructions.md. i have finished up to 28e. let's start with f. dont forget the git workflow
+
+**Key responses:**
+Implemented `worker/series-worker.ts`: a 1-second BullMQ job scheduler (`startScheduledTask`,
+same pattern as `release-redrive.ts`) that each tick claims every due series (`nextFireAt <= now`
+OR `nextRetryAt <= now`, `updateMany`/`deleteMany` guarded by `version`) and runs instructions.md's
+fire-time checks, retry, catch-up/skip and finished-series-deletion rules: user check
+(`user.client.ts`'s `statusForWorker`), supplier/location/opening-hours check
+(`suppliers.client.ts`'s worker methods from Stage c2), the "completeBy already past at fire
+time" skip, the "one retry slot per series" (a due next occurrence drops a stale retry, writing
+its own failed row), and "posted late" notes (> 1 minute after the scheduled time) added to the
+order's chat once it opens. Posting an occurrence reuses `orders.service.ts`'s `createOrder`
+request path, extracted into a new exported `createPendingOrderAndSettle` (same advisory lock,
+same pending-order exclusivity, same synchronous reserve-then-settle; `createOrder` itself is
+behaviourally unchanged) with a `seriesId` attached, per "each occurrence is created through
+the normal create path."
+
+The retry backoff (user/supplier-service-unreachable: up to 4 attempts, waits capped 1/2/4s
+with full jitter) follows the "Stage 19 shape" instructions.md points to
+(`user-service/src/services/email.service.ts`), but — since the scheduler must not block one
+series while others are due — is persisted across ticks via the series row's own retry columns
+rather than a blocking loop; the stage's 30s overall deadline has no dedicated timestamp column,
+so it is satisfied structurally by the 4-attempt cap together with each call's own 3s timeout
+and the 1/2/4s backoff caps (worst case well under 30s) rather than tracked directly. Notices:
+one sent immediately on entering `user_service_unreachable`/`supplier_closed` retry (and again
+on exhaustion/failure); `supplier_service_unreachable` sends only the exhaustion/failure notice,
+per "notify only when exhausted." `SeriesFailureReason` (series.service.ts) gained the worker's
+own reasons; `formatSgDateTime`, `DEFAULT_DURATION_MINUTES` and the failed-row/notice builder
+(renamed `buildStoppedOccurrenceWrite`, now taking an explicit `scheduledAt` so the worker can
+reuse it for occurrences that were never in retry) were exported from Stage e's
+`series.service.ts` for this purpose, with no change to their existing callers' behaviour.
+
+**Schema fix (stopped to ask the user):** Stage f's design requires `OrderSeries.nextFireAt` to
+be nullable (null = no further occurrences, used to trigger the finished-series delete), but
+Stage a's already-merged migration had created it `NOT NULL` — a discrepancy Stage e's own log
+entry had already flagged but left unresolved. Asked the user how to proceed (new migration vs.
+a NOT-NULL sentinel value); they chose a new migration. Added
+`prisma/migrations/20261109130642_nextfireat_nullable` (`ALTER COLUMN "nextFireAt" DROP NOT
+NULL`) and the matching `schema.prisma` change, then regenerated the Prisma client. Applied it
+to the locally running dev stack's `order-db` (the only Postgres instance available in this
+environment) rather than a disposable one, since reaching the already-running `order-db`
+container required reusing its persisted volume; the running `order-service`/`order-worker`
+containers were not restarted and stayed healthy throughout.
+
+**Deviation (not one of instructions.md's listed outcomes):** a requester already having
+another `pending` order at the exact moment a scheduled occurrence fires (an interaction with
+George's 2026-11-09 synchronous-reserve + one-pending-order-at-a-time change, which postdates
+this stage's text) is treated like any other post-time failure — failed row + notice, not
+retried, reason `SERIES_PENDING_ORDER_CONFLICT` — since the series has already advanced past
+that occurrence by the time posting is attempted. Flagged in the code and here for the team to
+confirm.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 816/816 tests pass (25 files), including the
+new `worker/series-worker.spec.ts` (18 tests: posting + the late-note threshold on both sides,
+the completeBy-already-past skip, every fire-time-check failure/retry outcome (user
+suspended/pending/not-found/locked, user- and supplier-service-unreachable entering and
+exhausting retry, supplier closed entering retry and failing past its deadline), one retry slot
+per series (a due next occurrence drops a stale retry), catch-up across four ticks, finished-
+series deletion, and exactly-once posting under two simulated concurrent claims of the same
+stale row) and no regressions in the existing `orders.service.spec.ts` / `series.service.spec.ts`
+suites after the `createPendingOrderAndSettle` extraction. `npm run db:migrate`'s underlying
+`prisma migrate dev` applied the new migration against the running dev `order-db` cleanly.
+
+**Files:**
+
+- `order-service/src/worker/series-worker.ts` (created)
+- `order-service/src/worker/series-worker.spec.ts` (created)
+- `order-service/prisma/migrations/20261109130642_nextfireat_nullable/migration.sql` (created)
+- `order-service/prisma/schema.prisma` (modified: `OrderSeries.nextFireAt` now nullable)
+- `order-service/src/services/orders.service.ts` (modified: extracted `createPendingOrderAndSettle`)
+- `order-service/src/services/series.service.ts` (modified: exported `formatSgDateTime`,
+  `DEFAULT_DURATION_MINUTES`, `buildStoppedOccurrenceWrite`; extended `SeriesFailureReason`)
+- `order-service/src/worker.ts` (modified: wires up the new scheduler and its service-key clients)
+
+**Deviations / questions raised for the team:**
+The `nextFireAt` nullability fix and the pending-order-conflict handling, both above. Otherwise
+every row of the stage's "Firing and failures" / "Fire-time checks" / "Next opening time"
+tables is implemented as specified.
 
 **What I kept/changed/rejected:**
 Accepted all changes.

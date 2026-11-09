@@ -14,6 +14,13 @@
  *        No other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 f (instructions.md) - exported formatSgDateTime, DEFAULT_DURATION_MINUTES
+ *        and stoppedRetryWriteFor (as buildStoppedOccurrenceWrite) so the worker can build the
+ *        same failed-row/notice shape for its own fire-time failure/skip outcomes; extended
+ *        SeriesFailureReason with the worker's own reasons. No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -39,13 +46,27 @@ const MAX_DURATION_MINUTES = 1440;
 // default to 1 hour, not 24h as instructions.md's Stage 28 assumed before that change
 // merged). My call per the stage's open [DECIDE] placeholder, confirmed with the team
 // after the discrepancy was flagged.
-const DEFAULT_DURATION_MINUTES = 60;
+export const DEFAULT_DURATION_MINUTES = 60;
 const UPCOMING_DATES_COUNT = 3;
 
 /** failureReason values this file writes; named UPPER_SNAKE like RESERVE_RETRIES_EXHAUSTED. */
 export const SeriesFailureReason = {
   EDITED_WHILE_RETRYING: 'SERIES_EDITED_WHILE_RETRYING',
   DELETED_WHILE_RETRYING: 'SERIES_DELETED_WHILE_RETRYING',
+  // Stage 28 f (worker) outcomes below.
+  COMPLETE_BY_IN_PAST: 'SERIES_COMPLETE_BY_IN_PAST',
+  USER_SUSPENDED: 'SERIES_USER_SUSPENDED',
+  USER_LOCKED: 'SERIES_USER_LOCKED',
+  USER_PENDING: 'SERIES_USER_PENDING',
+  USER_NOT_FOUND: 'SERIES_USER_NOT_FOUND',
+  USER_SERVICE_UNAVAILABLE: 'SERIES_USER_SERVICE_UNAVAILABLE',
+  SUPPLIER_NOT_FOUND: 'SERIES_SUPPLIER_NOT_FOUND',
+  DELIVERY_LOCATION_NOT_FOUND: 'SERIES_DELIVERY_LOCATION_NOT_FOUND',
+  SUPPLIER_NO_OPENING_HOURS: 'SERIES_SUPPLIER_NO_OPENING_HOURS',
+  SUPPLIER_CLOSED: 'SERIES_SUPPLIER_CLOSED',
+  SUPPLIER_SERVICE_UNAVAILABLE: 'SERIES_SUPPLIER_SERVICE_UNAVAILABLE',
+  RETRY_SUPERSEDED: 'SERIES_RETRY_SUPERSEDED',
+  PENDING_ORDER_CONFLICT: 'SERIES_PENDING_ORDER_CONFLICT',
 } as const;
 
 const checkDeliveryDetails = (
@@ -71,7 +92,7 @@ const validateDuration = (value: unknown): value is number =>
   isPositiveInt(value) && value <= MAX_DURATION_MINUTES;
 
 /** Singapore-time, human-readable, for notice text (e.g. "9 Nov 2026, 3:00 PM"). */
-function formatSgDateTime(date: Date): string {
+export function formatSgDateTime(date: Date): string {
   return date.toLocaleString('en-SG', {
     timeZone: 'Asia/Singapore',
     dateStyle: 'medium',
@@ -246,16 +267,21 @@ export const listMySeries = async (
   return Promise.all(rows.map((series) => toPublicSeries(prisma, series, now)));
 };
 
-/** Builds the failed-row + notice tasks for an occurrence a retry was in progress for. */
-function stoppedRetryWriteFor(
+/**
+ * Builds the failed/skipped-row + notice tasks for one occurrence of `series`, scheduled at
+ * `scheduledAt` (its own `completeBy` is `scheduledAt` + the series' duration). Used here
+ * (edit/delete stopping an in-progress retry, `scheduledAt` = `currentOccurrenceAt`) and by
+ * Stage f's worker for its own fire-time failure/skip outcomes.
+ */
+export function buildStoppedOccurrenceWrite(
   series: OrderSeries,
+  scheduledAt: Date,
   message: string,
   failureReason: string,
 ): {
   create: Prisma.OrderRequestCreateInput;
   notice: ReturnType<typeof notifySeriesEvent>;
 } {
-  const scheduledAt = series.currentOccurrenceAt as Date;
   const durationMinutes = series.durationMinutes ?? DEFAULT_DURATION_MINUTES;
   const completeBy = new Date(scheduledAt.getTime() + durationMinutes * 60_000);
   return {
@@ -400,8 +426,9 @@ export const editSeries = async (
     if (count === 0) return null;
 
     if (wasRetrying) {
-      const { create, notice } = stoppedRetryWriteFor(
+      const { create, notice } = buildStoppedOccurrenceWrite(
         series,
+        series.currentOccurrenceAt as Date,
         `We couldn't complete your recurring errand's delivery scheduled for ` +
           `${formatSgDateTime(series.currentOccurrenceAt as Date)}: the series was changed ` +
           `while we were waiting to retry it. Later occurrences are not affected.`,
@@ -436,8 +463,9 @@ export const deleteSeries = async (
 
   await prisma.$transaction(async (tx) => {
     if (series.currentOccurrenceAt !== null) {
-      const { create, notice } = stoppedRetryWriteFor(
+      const { create, notice } = buildStoppedOccurrenceWrite(
         series,
+        series.currentOccurrenceAt as Date,
         `We couldn't complete your recurring errand's delivery scheduled for ` +
           `${formatSgDateTime(series.currentOccurrenceAt as Date)}: the series was deleted ` +
           `while we were waiting to retry it.`,
