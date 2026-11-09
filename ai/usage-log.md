@@ -13841,3 +13841,67 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Fix F3: isLocked uses the DB clock (convention 5)
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F3 fix note pasted in chat on 2026-11-10 (quoted below), implementing instructions.md "Conventions established in the code" item 5 (time comes from the database clock; compare against `clock_timestamp()`; no `Date.now()` outside JWT iat/exp)
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F3: isLocked must use the DB clock (convention 5).
+>
+> - In every query whose row reaches toUserResponse (findUserById, listUsersPage,
+>   the status/role/active-view/unlock UPDATE ... RETURNING paths, and any others —
+>   grep for callers), select
+>   (login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp()) AS is_locked
+>   For RETURNING, append it: RETURNING \*, (...) AS is_locked.
+> - Use the same SQL expression for the `locked` filter in listUsersPage, so filter and
+>   field cannot disagree. Factor it into one shared SQL fragment constant.
+> - toUserResponse reads row.is_locked. Make is_locked a required field on the row type,
+>   so a query that omits it fails to compile instead of returning undefined.
+> - Remove Date.now() from userResponse.ts. Grep src/ for any other Date.now() use and
+>   report each one (JWT iat/exp are the only allowed exception).
+> - If the unlock service decides lock vs no-op from anything other than SQL, switch it to
+>   the same expression, evaluated on the row it locks FOR UPDATE.
+> - Test: backdate login_locked_until to 1 s in the future and 1 s in the past. Assert
+>   isLocked and the locked=true|false filter agree in both cases, and that unlock on the
+>   just-expired row is a no-op with no audit row.
+
+**Key responses:**
+Grepped for every `toUserResponse` caller: `users.service.ts` (listUsers via `listUsersPage`; getUserById via `findById`; changeUserStatus/changeUserRole no-op returns via `lockUserById` and real changes via `updateUserStatus`/`updateUserRole` RETURNING; unlockUser via `lockUserByIdWithNow` plus a synthesized post-unlock row) and `me.service.ts` (changeActiveView via `updateActiveView` RETURNING). `updateUsername`/`updateEmail` never reach the mapper and were left unchanged.
+
+In `users.queries.ts`, added the exported `IS_LOCKED_SQL` constant (`(login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp())`) and a private `IS_LOCKED_COLUMN` (`... AS is_locked`). `findById`, `findByIdWithNow`, `lockUserById`, `lockUserByIdWithNow`, `listUsersPage`'s SELECT, and the `updateUserStatus`/`updateUserRole`/`updateActiveView` RETURNING clauses all select it. `listUsersPage`'s `locked` filter now uses `IS_LOCKED_SQL` / `NOT IS_LOCKED_SQL` (replacing the two hand-written `NOW()` comparisons); `NOT (...)` is true for a NULL `login_locked_until` since `(false AND NULL)` is false in SQL.
+
+Row type: added `UserRowWithLock = UserRow & { is_locked: boolean }` and made `UserRowWithNow` extend it; every query above returns `UserRowWithLock`. `toUserResponse` now takes `UserRowWithLock` and returns `isLocked: row.is_locked`; `Date.now()` is gone from `userResponse.ts`. Within-decision choice: `is_locked` is required on the type the mapper accepts rather than on `UserRow` itself, because `UserRow` is also the result type of `SELECT *`/`RETURNING *` queries that never reach the mapper (`createUser`, `findByUsername`, `findByEmail`, `findSuperAdmin`, `createSuperAdmin`, `updateUsername`, `updateEmail`, and the test helpers); putting `is_locked` on `UserRow` would have made those types claim a column they do not select. The compile-time guarantee asked for holds: passing a row from a query that omits `is_locked` to `toUserResponse` is a type error.
+
+`unlockUser` now decides lock vs no-op from `locked.is_locked` on the row it locks FOR UPDATE (`lockUserByIdWithNow`), replacing the JS comparison of `login_locked_until` against `db_now`; the synthesized post-unlock row carries `is_locked: false`.
+
+`Date.now()` report for `src/`: after this change the only remaining uses are two in `src/services/email.service.ts` (lines 220 and 241), which bound the SMTP retry loop's overall wall-clock deadline (elapsed time between send attempts). They are not JWT iat/exp and were not changed; they do not touch any persisted expiry or lock. Flagged for the team under Deviations.
+
+Tests: extended `tests/helpers/db.ts`'s `setLoginLockState` with an optional `lockedUntilSecondsFromNow` (the lock end is now `clock_timestamp() + make_interval(secs => ...)`), and added a four-case describe "isLocked and the locked filter use the DB clock (fix F3)" to `tests/services/users.service.test.ts`: lock ending 1 s in the future (isLocked true, in locked=true, not in locked=false); lock ended 1 s ago (isLocked false, lockedUntil still set, in locked=false, not in locked=true); unlock on the just-expired row is a no-op (lock columns, failed-attempt count and updated_at unchanged, no audit row); unlock on the 1 s-future lock clears it and writes exactly one USER_UNLOCK row.
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. Vitest: the five lock-related files (users.service, users.controller, me.service, auth.service, lockout.concurrency) 288/288 passed, then the full user-service suite 38 files / 995 tests passed (the `Error: insert failed` and `SMTP down` stderr lines are from pre-existing forced-failure tests). `npm run lint` (eslint): no findings.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- `is_locked` was made required on the mapper's input type (`UserRowWithLock`) rather than on `UserRow` itself, for the reason given above. If the team wants it on `UserRow`, every `SELECT *`/`RETURNING *` query and the test helpers would need to select it too.
+- Two `Date.now()` uses remain in `src/services/email.service.ts` (SMTP retry deadline). They are outside the JWT exception but also outside convention 5's stated scope (OTPs, refresh tokens, persisted expiries). Left as is for the team to decide.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

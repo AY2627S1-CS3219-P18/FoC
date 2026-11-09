@@ -36,6 +36,10 @@
 //   table. Governing decision: instructions.md Stage 26.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Fix F3 (Tool: Claude Code, model: claude-fable-5-1) - setLoginLockState gained an
+//   optional lockedUntilSecondsFromNow, so a lock can be seeded 1 s either side of the DB clock.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type pg from 'pg';
 import pool from '../../src/db/pool.js';
 import { sha256 } from '../../src/utils/hash.js';
@@ -71,31 +75,39 @@ export async function getUserById(userId: string): Promise<UserRow | undefined> 
 
 // Directly sets the Stage 18b login-lockout columns, so tests can seed a lock or an escalation
 // level/window without driving the rate limit through real requests. `lockedUntil` and
-// `windowStart` take an offset in minutes from now (negative = in the past).
+// `windowStart` take an offset in minutes from now (negative = in the past);
+// `lockedUntilSecondsFromNow` is the seconds-granularity alternative (fix F3 tests). Both offsets
+// are applied to the DB clock, never to Date.now().
 export async function setLoginLockState(
   userId: string,
   {
     failedAttempts = 0,
     windowStartMinutesAgo,
     lockedUntilMinutesFromNow,
+    lockedUntilSecondsFromNow,
     lockLevel = 0,
   }: {
     failedAttempts?: number;
     windowStartMinutesAgo?: number;
     lockedUntilMinutesFromNow?: number;
+    lockedUntilSecondsFromNow?: number;
     lockLevel?: number;
   },
 ): Promise<void> {
+  const lockedUntilSeconds =
+    lockedUntilMinutesFromNow === undefined && lockedUntilSecondsFromNow === undefined
+      ? null
+      : (lockedUntilMinutesFromNow ?? 0) * 60 + (lockedUntilSecondsFromNow ?? 0);
   await pool.query(
     `UPDATE users SET
        login_failed_attempts = $2,
        login_failure_window_start = CASE WHEN $3::int IS NULL THEN NULL
          ELSE NOW() - make_interval(mins => $3::int) END,
        login_locked_until = CASE WHEN $4::int IS NULL THEN NULL
-         ELSE NOW() + make_interval(mins => $4::int) END,
+         ELSE clock_timestamp() + make_interval(secs => $4::int) END,
        login_lock_level = $5
      WHERE id = $1`,
-    [userId, failedAttempts, windowStartMinutesAgo ?? null, lockedUntilMinutesFromNow ?? null, lockLevel],
+    [userId, failedAttempts, windowStartMinutesAgo ?? null, lockedUntilSeconds, lockLevel],
   );
 }
 
