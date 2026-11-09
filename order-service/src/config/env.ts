@@ -30,6 +30,12 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: SUPPLIER_ORDER_SERVICE_API_KEY for the scheduled-errands worker's supplier-service
+ *        calls, per instructions.md Stage 28 c2. Optional like CHAT_SERVICE_API_KEY: only the
+ *        worker uses it. No requirements, architecture, schema, or API decisions were made by
+ *        the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -57,6 +63,8 @@ const EnvSchema = z.object({
   SUPPLIER_SERVICE_URL: z
     .url({ protocol: /^https?$/ })
     .default('http://localhost:3004'),
+  /** Same value as supplier-service's own copy; the scheduled-errands worker only. */
+  SUPPLIER_ORDER_SERVICE_API_KEY: z.string().min(1).optional(),
   /** Worker only: serve the bull-board queue dashboard on this port; unset = off. */
   QUEUE_DASHBOARD_PORT: z.coerce.number().int().min(1).max(65535).optional(),
 });

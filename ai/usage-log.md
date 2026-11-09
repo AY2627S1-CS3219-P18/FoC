@@ -13114,3 +13114,79 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — Scheduled Errands Stage 28 c2: order-service supplier client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage c2: order-service supplier client"
+
+**Prompts (exact):**
+> while waiting for congchen to approve, let's move on to c2
+
+**Key responses:**
+Added the service-key path for the scheduled-errands worker to `suppliers.client.ts`, reusing
+the same two GET endpoints (`/api/v1/suppliers/:id`, `/api/v1/suppliers/reference/location`) and
+their existing status-code mapping. Kept `supplierExists`/`locationExists` (Authorization header,
+plain `Existence` return) completely unchanged for createOrder/editOrder, and added two new
+interface members instead of overloading them, since the worker call carries no user token and
+needs richer information back (closed flag, next opening time) that the normal-order path has no
+use for — this is a minor implementation-detail choice, not a design decision, and is recorded as
+a deviation below.
+
+New pure module `openingHours.ts` computes `{closed, nextOpeningAt}` from a supplier's
+`openingHours` rows and a `now: Date`, mirroring supplier-service's own `isOpen.ts` conventions
+(day 1–7 Mon–Sun, day 8 = open 24/7, close exclusive, overnight windows, the `00:00`/`23:59`
+all-day pair, `is_24h` ignored) but extended to also find the next future opening instant, since
+the worker needs to schedule a retry, not just a boolean. Computed independently of
+supplier-service's own `isOpen` field so it is driven by the worker's injected `now`, not
+supplier-service's wall clock (keeping Stage f's "every time-dependent function takes `now: Date`"
+testable).
+
+`supplierStatusForWorker` treats an empty `openingHours` array as `hasNoOpeningHours: true`
+(distinct from merely `closed`), for the worker (Stage f) to translate into the "fail, failed row,
+notice" outcome instructions.md specifies for that case.
+
+Added `SUPPLIER_ORDER_SERVICE_API_KEY` to `config/env.ts` as optional (matching the existing
+`CHAT_SERVICE_API_KEY` pattern: only the worker will use it, once Stage f builds it) and to
+`.env.example`. Did not wire it into `compose.yaml`'s `order-worker` or into `app.ts`, since no
+caller exists yet; that wiring belongs to Stage f, which actually constructs the worker and its
+`SuppliersClient`.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 715/715 tests pass (19 files), including a new
+`openingHours.spec.ts` (10 tests: empty list, day 8, the 00:00/23:59 pair, no row for a day,
+exact open/close minute boundaries, overnight windows, and picking the nearest of several future
+openings) and new cases in `suppliers.client.spec.ts` (service-key header sent instead of
+Authorization, the key-not-configured error, not_found/unavailable mapping, the empty-hours
+case, closed/nextOpeningAt mapping, and `locationExistsForWorker`). Two existing spec files
+(`orders.service.spec.ts`, `orders.controller.spec.ts`) needed their fake `SuppliersClient`
+objects extended with the two new interface members to keep compiling; no test logic in them
+changed. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage, which touches no schema or migration.
+
+**Files:**
+- `order-service/src/clients/suppliers.client.ts` (modified)
+- `order-service/src/clients/openingHours.ts` (created)
+- `order-service/src/clients/suppliers.client.spec.ts` (modified)
+- `order-service/src/clients/openingHours.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified, fake client only)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, fake client only)
+
+**Deviations / questions raised for the team:**
+Added `supplierStatusForWorker` / `locationExistsForWorker` as new `SuppliersClient` methods
+rather than overloading `supplierExists` / `locationExists` with a union auth parameter — the
+instruction said "reusing supplierExists and locationExists," which this follows at the HTTP-call
+and status-mapping level, but not as the literal same exported function signature, to keep the
+existing normal-order call sites and their return type completely untouched. Not raised to the
+team as a stop-and-ask since it is an internal client interface, not a schema/API/architecture
+decision. Otherwise none.
+
+**What I kept/changed/rejected:**
+
+
+**Author review:**
+

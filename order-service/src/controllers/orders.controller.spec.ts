@@ -81,6 +81,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Included courier participant task in acceptance assertions.
  * Author review:
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
+ *        worker-only stub methods to the `answering` fake client, per Stage 28 c2's interface
+ *        change; no test logic changed. No requirements, architecture, schema, or API decisions
+ *        were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -891,6 +896,13 @@ describe('supplier-service existence check over HTTP', () => {
   const answering = (supplier: Existence, location: Existence) => ({
     supplierExists: vi.fn(async () => supplier),
     locationExists: vi.fn(async () => location),
+    supplierStatusForWorker: vi.fn(async () => ({
+      existence: supplier,
+      hasNoOpeningHours: false,
+      closed: false,
+      nextOpeningAt: null,
+    })),
+    locationExistsForWorker: vi.fn(async () => location),
   });
   const openOrder = {
     findUniqueOrThrow: async () => ({
