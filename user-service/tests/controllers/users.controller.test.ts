@@ -45,10 +45,21 @@
  *        assertions to expect reason "N/A".
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: PUT /users/:id/status and PUT /users/:id/role now require elevation (Stage 27b). The
+ *        `put` helper auto-attaches a matching Elevated-Token derived from the caller's own
+ *        access token by default (so every pre-existing success-path test keeps passing
+ *        unchanged), with an `elevatedToken` option to omit it (`null`) or override it (a
+ *        specific string) for the new elevation-specific test cases added below.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../../src/app.js';
+import { signElevationToken } from '../../src/utils/jwt.js';
 import {
   dbNow,
   getAuditLogRowsForTarget,
@@ -70,7 +81,7 @@ import {
   registerPending,
   type TestUser,
 } from '../helpers/fixtures.js';
-import { signExpiredToken } from '../helpers/keys.js';
+import { privateKey, signExpiredToken } from '../helpers/keys.js';
 
 resetEmailMock();
 beforeEach(truncateAll);
@@ -90,9 +101,28 @@ const get = (path: string, token?: string) => {
   const r = request(app).get(path);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
-const put = (path: string, token: string | undefined, body: unknown) => {
+// Stage 27b: a matching Elevated-Token for an access token, decoded for its sub/sid. Role is
+// irrelevant to the elevation check (only sub+sid are compared), so a fixed value is fine.
+function elevationForAccessToken(accessToken: string): string {
+  const decoded = jwt.decode(accessToken) as { sub: string; sid: string };
+  return signElevationToken({ userId: decoded.sub, role: 'admin', sid: decoded.sid });
+}
+
+// `elevatedToken` lets a test omit (null) or override (a specific string) the header that is
+// otherwise auto-derived from `token`, for the new Stage 27b elevation-specific test cases.
+const put = (
+  path: string,
+  token: string | undefined,
+  body: unknown,
+  { elevatedToken }: { elevatedToken?: string | null } = {},
+) => {
   const r = request(app).put(path);
-  return (token ? r.set('Authorization', bearer(token)) : r).send(body as object);
+  let req = token ? r.set('Authorization', bearer(token)) : r;
+  const headerValue = elevatedToken === null ? undefined : elevatedToken ?? (token ? elevationForAccessToken(token) : undefined);
+  if (headerValue !== undefined) {
+    req = req.set('Elevated-Token', headerValue);
+  }
+  return req.send(body as object);
 };
 
 // Stage 26b: every audited action requires a reason. These helpers default to a valid preset
@@ -104,14 +134,20 @@ const putStatus = (
   target: TestUser | { id: string },
   status: unknown,
   body: Record<string, unknown> = {},
+  opts: { elevatedToken?: string | null } = {},
 ) =>
-  put(`/users/${target.id}/status`, token, {
-    status,
-    ...(typeof status === 'string' && status in REASON_FOR_STATUS
-      ? { reason: REASON_FOR_STATUS[status] }
-      : {}),
-    ...body,
-  });
+  put(
+    `/users/${target.id}/status`,
+    token,
+    {
+      status,
+      ...(typeof status === 'string' && status in REASON_FOR_STATUS
+        ? { reason: REASON_FOR_STATUS[status] }
+        : {}),
+      ...body,
+    },
+    opts,
+  );
 
 describe('GET /users', () => {
   it('rejects a request with no Authorization header with 401 UNAUTHORIZED', async () => {
@@ -607,6 +643,105 @@ describe('PUT /users/:id/status', () => {
     });
   });
 
+  describe('elevation (Stage 27b)', () => {
+    it('no Elevated-Token: 403 ELEVATION_REQUIRED, no change, no audit row', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: null });
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        message: 'Verify your identity to perform this action.',
+        code: 'ELEVATION_REQUIRED',
+      });
+      expect((await getUserByEmail(target.email))!.status).toBe('active');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('an invalid Elevated-Token: 403 ELEVATION_REQUIRED, no change', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: 'not-a-token' });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+      expect((await getUserByEmail(target.email))!.status).toBe('active');
+    });
+
+    it('an expired Elevated-Token: 403 ELEVATION_REQUIRED, no change', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const { sub, sid } = jwt.decode(token) as { sub: string; sid: string };
+      const expired = jwt.sign(
+        { role: 'admin', sid, exp: Math.floor(Date.now() / 1000) - 60 },
+        privateKey(),
+        {
+          algorithm: 'RS256',
+          subject: sub,
+          keyid: process.env.JWT_KEY_ID,
+          header: { alg: 'RS256', typ: 'ep+JWT' },
+        },
+      );
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: expired });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+    });
+
+    it('a token issued to a different admin (sub mismatch): 403 ELEVATION_REQUIRED', async () => {
+      const { token } = await callerToken('admin', 1);
+      const other = await callerToken('admin', 2);
+      const target = await createActiveUser(3);
+      const { sid } = jwt.decode(token) as { sid: string };
+      const wrongSubToken = signElevationToken({ userId: other.user.id, role: 'admin', sid });
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: wrongSubToken });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+    });
+
+    it('a token from another login of the same admin (sid mismatch): 403 ELEVATION_REQUIRED', async () => {
+      const admin = await createUserWithRole(1, 'admin');
+      const { accessToken: token } = await loginTokens(admin);
+      const { accessToken: otherLoginToken } = await loginTokens(admin);
+      const { sid: otherSid } = jwt.decode(otherLoginToken) as { sid: string };
+      const target = await createActiveUser(2);
+      const wrongSidToken = signElevationToken({ userId: admin.id, role: 'admin', sid: otherSid });
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: wrongSidToken });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+    });
+
+    it('a valid Elevated-Token with a valid reason: 200, with the Stage 26 audit row', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putStatus(token, target, 'suspended');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('suspended');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(1);
+    });
+
+    it('a self-targeting-style rejection (super-admin target) returns its own error first, not ELEVATION_REQUIRED', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createUserWithRole(1, 'super admin');
+      const res = await putStatus(token, target, 'suspended', {}, { elevatedToken: null });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('SUPER_ADMIN_IMMUTABLE');
+    });
+
+    it('a no-op status request returns 200 unchanged without elevation', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putStatus(token, target, 'active', {}, { elevatedToken: null });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('active');
+    });
+
+    it('an invalid reason still returns 400 first, before the elevation check', async () => {
+      const { token } = await callerToken('admin');
+      const target = await createActiveUser(1);
+      const res = await putStatus(token, target, 'suspended', { reason: 'NOT_A_REAL_CODE' }, { elevatedToken: null });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
   describe('suspend and unsuspend', () => {
     it('suspends an active user: status suspended in the DB and all their refresh tokens revoked', async () => {
       const { token } = await callerToken('admin');
@@ -984,12 +1119,18 @@ const putRole = (
   target: TestUser | { id: string },
   role: unknown,
   body: Record<string, unknown> = {},
+  opts: { elevatedToken?: string | null } = {},
 ) =>
-  put(`/users/${target.id}/role`, token, {
-    role,
-    ...(typeof role === 'string' && role in REASON_FOR_ROLE ? { reason: REASON_FOR_ROLE[role] } : {}),
-    ...body,
-  });
+  put(
+    `/users/${target.id}/role`,
+    token,
+    {
+      role,
+      ...(typeof role === 'string' && role in REASON_FOR_ROLE ? { reason: REASON_FOR_ROLE[role] } : {}),
+      ...body,
+    },
+    opts,
+  );
 
 describe('PUT /users/:id/role', () => {
   describe('authentication and authorization', () => {
@@ -1023,6 +1164,76 @@ describe('PUT /users/:id/role', () => {
       expect(res.status).toBe(403);
       expect(res.body).toEqual(FORBIDDEN);
       expect((await getUserByEmail(target.email))!.role).toBe('user');
+    });
+  });
+
+  describe('elevation (Stage 27b)', () => {
+    it('no Elevated-Token: 403 ELEVATION_REQUIRED, no change, no audit row', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'admin', {}, { elevatedToken: null });
+      expect(res.status).toBe(403);
+      expect(res.body).toEqual({
+        message: 'Verify your identity to perform this action.',
+        code: 'ELEVATION_REQUIRED',
+      });
+      expect((await getUserByEmail(target.email))!.role).toBe('user');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(0);
+    });
+
+    it('a token issued to a different admin (sub mismatch): 403 ELEVATION_REQUIRED', async () => {
+      const { token } = await callerToken('super admin', 1);
+      const other = await callerToken('super admin', 2);
+      const target = await createActiveUser(3);
+      const { sid } = jwt.decode(token) as { sid: string };
+      const wrongSubToken = signElevationToken({ userId: other.user.id, role: 'super admin', sid });
+      const res = await putRole(token, target, 'admin', {}, { elevatedToken: wrongSubToken });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+    });
+
+    it('a token from another login of the same admin (sid mismatch): 403 ELEVATION_REQUIRED', async () => {
+      const admin = await createUserWithRole(1, 'super admin');
+      const { accessToken: token } = await loginTokens(admin);
+      const { accessToken: otherLoginToken } = await loginTokens(admin);
+      const { sid: otherSid } = jwt.decode(otherLoginToken) as { sid: string };
+      const target = await createActiveUser(2);
+      const wrongSidToken = signElevationToken({ userId: admin.id, role: 'super admin', sid: otherSid });
+      const res = await putRole(token, target, 'admin', {}, { elevatedToken: wrongSidToken });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ELEVATION_REQUIRED');
+    });
+
+    it('a valid Elevated-Token with a valid reason: 200, with the Stage 26 audit row', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'admin');
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('admin');
+      expect(await getAuditLogRowsForTarget(target.id)).toHaveLength(1);
+    });
+
+    it('a self-targeting rejection returns its own error first, not ELEVATION_REQUIRED', async () => {
+      const { token, user } = await callerToken('super admin');
+      const res = await putRole(token, user, 'admin', {}, { elevatedToken: null });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('SELF_ROLE_CHANGE');
+    });
+
+    it('a no-op role request returns 200 unchanged without elevation', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createUserWithRole(1, 'admin');
+      const res = await putRole(token, target, 'admin', {}, { elevatedToken: null });
+      expect(res.status).toBe(200);
+      expect(res.body.role).toBe('admin');
+    });
+
+    it('an invalid reason still returns 400 first, before the elevation check', async () => {
+      const { token } = await callerToken('super admin');
+      const target = await createActiveUser(1);
+      const res = await putRole(token, target, 'admin', { reason: 'NOT_A_REAL_CODE' }, { elevatedToken: null });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('VALIDATION_ERROR');
     });
   });
 

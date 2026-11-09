@@ -26,6 +26,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Added the /admin/send-otp, /admin/verify-otp and /admin/resend-otp proxies to the
+ *        user service, per instructions.md Stage 27c (same target as /admin/audit-logs).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import react from "@vitejs/plugin-react";
@@ -46,6 +51,12 @@ export default defineConfig({
       "/auth": process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/users": process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/admin/audit-logs":
+        process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
+      "/admin/send-otp":
+        process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
+      "/admin/verify-otp":
+        process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
+      "/admin/resend-otp":
         process.env.VITE_USER_SERVICE_URL ?? "http://localhost:3001",
       "/credits":
         process.env.VITE_CREDIT_SERVICE_URL ?? "http://localhost:3003",

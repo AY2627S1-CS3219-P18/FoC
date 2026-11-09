@@ -4485,14 +4485,14 @@ The email (masked or full) is never stored anywhere in the audit row.
 
 Preset codes:
 
-| Action           | Codes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `USER_SUSPEND`   | `FRAUD_OR_SCAM` (fake errands, payment fraud, scamming other users), `HARASSMENT` (abusive messages or behaviour toward other users), `REPEATED_NO_SHOW` (accepting errands and not completing them, repeatedly), `POLICY_VIOLATION` (prohibited items or services, terms of use breach), `SUSPECTED_COMPROMISE` (account appears hijacked; protective suspension), `USER_REQUEST` (user asked to deactivate temporarily), `OTHER`                                                     |
-| `USER_UNSUSPEND` | `APPEAL_ACCEPTED` (user appealed and the review found in their favour), `SUSPENSION_PERIOD_ENDED` (a time-boxed suspension is complete), `ISSUE_RESOLVED` (e.g. a compromised account is secured, or a dispute is settled), `SUSPENDED_IN_ERROR` (wrong user or mistaken report), `USER_REQUEST` (user asked to reactivate after a self-requested suspension), `OTHER`                                                                                                                 |
-| `USER_PROMOTE`   | `APPOINTED_MODERATOR` (approved addition to the admin or moderation team), `TEAM_MEMBER_ONBOARDING` (project or ops team member needs admin access), `TEMPORARY_COVERAGE` (covering for another admin; pair with a planned demote), `OTHER`                                                                                                                                                                                                                                            |
-| `USER_DEMOTE`    | `ROLE_ENDED` (left the team or term finished), `TEMPORARY_ACCESS_EXPIRED` (the coverage period is over), `MISCONDUCT` (misuse of admin privileges), `SUSPECTED_COMPROMISE` (admin account may be compromised), `LEAST_PRIVILEGE_REVIEW` (access review found admin isn't needed), `OTHER`                                                                                                                                                                                              |
-| `EMAIL_UNMASK`   | None — unmask no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `USER_UNLOCK`    | None — unlock no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Action           | Codes                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `USER_SUSPEND`   | `FRAUD_OR_SCAM` (fake errands, payment fraud, scamming other users), `HARASSMENT` (abusive messages or behaviour toward other users), `REPEATED_NO_SHOW` (accepting errands and not completing them, repeatedly), `POLICY_VIOLATION` (prohibited items or services, terms of use breach), `SUSPECTED_COMPROMISE` (account appears hijacked; protective suspension), `USER_REQUEST` (user asked to deactivate temporarily), `OTHER` |
+| `USER_UNSUSPEND` | `APPEAL_ACCEPTED` (user appealed and the review found in their favour), `SUSPENSION_PERIOD_ENDED` (a time-boxed suspension is complete), `ISSUE_RESOLVED` (e.g. a compromised account is secured, or a dispute is settled), `SUSPENDED_IN_ERROR` (wrong user or mistaken report), `USER_REQUEST` (user asked to reactivate after a self-requested suspension), `OTHER`                                                             |
+| `USER_PROMOTE`   | `APPOINTED_MODERATOR` (approved addition to the admin or moderation team), `TEAM_MEMBER_ONBOARDING` (project or ops team member needs admin access), `TEMPORARY_COVERAGE` (covering for another admin; pair with a planned demote), `OTHER`                                                                                                                                                                                        |
+| `USER_DEMOTE`    | `ROLE_ENDED` (left the team or term finished), `TEMPORARY_ACCESS_EXPIRED` (the coverage period is over), `MISCONDUCT` (misuse of admin privileges), `SUSPECTED_COMPROMISE` (admin account may be compromised), `LEAST_PRIVILEGE_REVIEW` (access review found admin isn't needed), `OTHER`                                                                                                                                          |
+| `EMAIL_UNMASK`   | None — unmask no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                        |
+| `USER_UNLOCK`    | None — unlock no longer collects a reason (amendment above)                                                                                                                                                                                                                                                                                                                                                                        |
 
 **Viewing the log**
 
@@ -4529,7 +4529,7 @@ Preset codes:
 | 7   | `src/routes/auditLog.routes.ts`, `src/controllers/auditLog.controller.ts`, `src/services/auditLog.service.ts` (new) | `GET /admin/audit-logs`                                                                                                                                                                                                                |
 | 8   | `src/app.ts`                                                                                                        | Mount the audit log router at `/admin/audit-logs`                                                                                                                                                                                      |
 | 9   | Existing tests                                                                                                      | Update tests for the new request bodies and the `POST` unmask route, and delete tests that assert on `[UNMASK EMAIL]` console lines. Do not change what they otherwise assert. If a test fails for another reason, stop and report it. |
-| 10  | `frontend/vite.config.js`, `frontend/nginx/default.conf`                                                            | Add `"/admin/audit-logs"` to both the dev proxy and the prod nginx config, pointing at the user service (same target as `/auth` and `/users` in each). Add nothing for `/admin` as a whole. Done in 26e.                              |
+| 10  | `frontend/vite.config.js`, `frontend/nginx/default.conf`                                                            | Add `"/admin/audit-logs"` to both the dev proxy and the prod nginx config, pointing at the user service (same target as `/auth` and `/users` in each). Add nothing for `/admin` as a whole. Done in 26e.                               |
 | 11  | `frontend/src/api/users.js`, `frontend/src/api/auditLog.js` (new), `frontend/src/api/errorMessages.js`              | New request bodies, `POST` unmask, `listAuditLogs`; text for any new codes                                                                                                                                                             |
 | 12  | `frontend/src/pages/AdminUsers.jsx`                                                                                 | Reason dialog on every audited action; unmask asks for a reason on every eye click                                                                                                                                                     |
 | 13  | `frontend/src/pages/AdminLogs.jsx` (new), `App.jsx`, nav bar                                                        | `/admin/logs` page, linked from the nav bar                                                                                                                                                                                            |
@@ -4730,3 +4730,222 @@ Same as earlier stages: header comment on every file created or modified, and a 
 - **NFR3.2.1** (secondary OTP before high-risk admin actions): dropped. Note it as a deliberate scope change.
 - **NFR3.2.2**: reword to: successful high-risk admin actions (suspend, unsuspend, promote, demote, unlock, email unmask) are recorded in an append-only audit table with actor, target, before/after, a required reason and the user agent, and are viewable by admins at `/admin/logs`. Rejected attempts and no-ops are not recorded.
 - **NFR3.1.2** / **NFR3.1.3**: as noted in Stage 20, plus: unmasking now requires a reason, on every click.
+
+# Stage 27: Admin Elevation (OTP) for High-Risk Admin Actions (NFR3.2.1)
+
+> **Scope**: `user-service`, `frontend`, and one line per new route in `frontend/vite.config.js`
+> and `frontend/nginx/default.conf`. Before an admin can suspend/unsuspend or promote/demote a
+> user, they must "elevate privileges": verify an OTP sent to their own email. Verification gives
+> a short-lived, per-device elevation token, sent on later requests in the `Elevated-Token` header.
+>
+> - 27a: admin OTP routes and the elevation token
+> - 27b: enforcing elevation on the status and role endpoints
+> - 27c: frontend (Elevate privileges button and timer, OTP modal, flow with the Stage 26 reason dialog, token kept in `sessionStorage`)
+>
+> Backlog refs: NFR3.2.1. This restores NFR3.2.1, which Stage 26 recorded as dropped.
+>
+> **Depends on Stage 26 (landed):** the `reason` / `otherReason` fields, the preset reason codes, the
+> audit table and the reason dialog already exist. This stage does not change them. Unlock and
+> unmask email carry no reason (Stage 26 amendment) and need no elevation.
+>
+> **Not in this stage:** a Content-Security-Policy. It applies to the whole frontend and gets its own later stage. Until then, do not add CSP headers or meta tags.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me. Do not pick a value
+> yourself. Implement one sub-stage at a time and wait for my confirmation before the next.
+>
+> **Ground rules:** conventions 1–8 at the top of this file and the Stage 4d lock-order rule apply.
+> The Stage 16 frontend ground rules apply to 27c (work in `frontend/` only; never touch
+> `foc-mockup/`; do not modify `src/realtime/orderSocket.js`, `src/data/users.js`,
+> `src/components/DemoControls.jsx` or `AI-NOTES.md`; reuse `OtpInput`, `ResendButton`,
+> `errorMessages.js`, toasts and banners; no new libraries; list every file touched outside the
+> changes table).
+
+### Design decisions (already made, do not change)
+
+#### Which actions, which callers
+
+| Rule                        | Value                                                                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Actions that need elevation | Suspend / unsuspend (`PUT /users/:id/status`) and promote / demote (`PUT /users/:id/role`)                                                                                             |
+| Actions that do not         | Unlock, unmask email, every `GET`. Credit adjustments are not part of this stage.                                                                                                      |
+| Callers                     | Admin and super admin                                                                                                                                                                  |
+| No-op requests              | Do not need elevation (the no-op paths return before the elevation check)                                                                                                              |
+| Check order                 | Elevation is checked **last**: Zod validation (including the Stage 26 reason) → lock → role restrictions → pending/suspended rules → no-op → **elevation check** → write and audit row |
+| Failed elevation            | Rejected before any write: no change, no audit row (Stage 26: rejected requests write nothing)                                                                                         |
+
+#### OTP
+
+| Rule               | Value                                                                                                                                                                                                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API-facing purpose | `admin_action` → DB enum `'Admin Action'`. Every admin OTP route takes a `purpose` field with a single-value enum (`admin_action`); anything else → `400 VALIDATION_ERROR`, `"Invalid purpose"`.                                                                                             |
+| Sent to            | The acting admin's own registered email                                                                                                                                                                                                                                                      |
+| Sending            | Through `requestOtp`, never `issueOtp` directly. The 60 s cooldown, the resend window (`config.otp.resendWindowMinutes`), the per-OTP guess limit (5) and the Stage 18 escalating send block (1 h, 4 h, 24 h) all apply. Stage 18 covered three purposes; this extends it to `Admin Action`. |
+| Lockout            | Wrong admin OTP guesses do **not** count toward the login lockout. They use the per-OTP guess counter only.                                                                                                                                                                                  |
+| Escalation reset   | A successful verify resets this purpose's send escalation level, as for the other purposes                                                                                                                                                                                                   |
+| Verify             | Consuming (the OTP is used up on a correct code)                                                                                                                                                                                                                                             |
+| Email              | Same shape as the other purposes (OTP + expiry, no links). Subject: `Your FoC admin privileges elevation verification code`                                                                                                                                                                  |
+| Retries / logging  | Inherited from Stage 19 (`issueOtp`)                                                                                                                                                                                                                                                         |
+| Sending the code   | By a "Send code" button the admin clicks. The OTP modal does **not** send a code when it opens.                                                                                                                                                                                              |
+
+#### Elevation token (per device)
+
+| Rule                                | Value                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mechanism                           | A short-lived elevation token. The 15-minute window lives in the token, so it is per device, not per account.                                                                                                                                                                                                                                                               |
+| Algorithm and format                | RS256, same key and `kid` handling as the access token. Claims: `sub`, `role`, `sid`, `iat`, `exp`. JWT header `typ` is `ep+JWT`.                                                                                                                                                                                                                                           |
+| Token types                         | Access tokens now carry header `typ: at+JWT`. Ported now with no grace period (no active users). `verifyAccessToken` accepts only `at+JWT`; the elevation verifier accepts only `ep+JWT`. Each rejects the other's tokens and plain `JWT`.                                                                                                                                  |
+| `sid` (device binding)              | `sid` is the `refresh_tokens.id` of the login the token belongs to. It stays the same for the whole login because refresh tokens are not rotated. **Both** the access token and the elevation token carry it. The elevation check requires the elevation token's `sub` and `sid` to equal the caller's access-token `sub` and `sid`. A mismatch → `403 ELEVATION_REQUIRED`. |
+| Lifetime                            | Follows the other TTLs: an env var in `.env`, `.env.example`, `.env.test` and `config.ts`, with bounds like the access-token TTL. Name `ELEVATION_TOKEN_TTL_MINUTES`, value `15`, bounds 1–15.                                                                                                                                                                              |
+| Sent on requests                    | `Elevated-Token` request header                                                                                                                                                                                                                                                                                                                                             |
+| `admin_action_allowed_until` column | Dropped. Nothing is added to the `users` table.                                                                                                                                                                                                                                                                                                                             |
+| Returned by verify                  | `200 { elevationToken }`. No other fields. The client decodes `exp` for the timer, as it does for the access token.                                                                                                                                                                                                                                                         |
+| Client storage                      | `sessionStorage` (per tab; survives a reload in the same tab; a new tab starts with none). This is the one exception to the Stage 23 rule that auth tokens never go in storage; that rule still holds for the access token. No backend hydration is needed.                                                                                                                 |
+| On load                             | The frontend reads the stored token, decodes `exp`, removes it if expired, and shows the timer if still valid. The server is the authority: a rejected token (`ELEVATION_REQUIRED`) is also removed from storage.                                                                                                                                                           |
+| Logout                              | The frontend removes the stored token on logout, and on any forced logout that clears auth state (including the forced re-login after a password change).                                                                                                                                                                                                                   |
+| Ends early when                     | Only at `exp`. Follows the access token: no revocation. Logout, password change, forgot-password reset, role change and suspension do not end the window early on the server (only the frontend clears its stored copy on logout).                                                                                                                                          |
+| Re-verify while active              | Rejected (see errors). The three admin OTP routes read the `Elevated-Token` header; a valid token for the caller (`sub` and `sid` match) → `409 ALREADY_ELEVATED`. The frontend sends the header on these three calls when it holds a token.                                                                                                                                |
+
+#### Endpoints (new, under `/admin/`)
+
+All three: `authenticate` + `authorize('admin')`, Zod `.strict()`, `asyncHandler`.
+
+| Route                    | Body               | Success                                                                                    |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------------ |
+| `POST /admin/send-otp`   | `{ purpose }`      | `200 { message: 'A verification code has been sent to your email', code: 'OTP_SENT' }`     |
+| `POST /admin/verify-otp` | `{ otp, purpose }` | `200 { elevationToken }`                                                                   |
+| `POST /admin/resend-otp` | `{ purpose }`      | `200 { message: 'A new verification code has been sent to your email', code: 'OTP_SENT' }` |
+
+- Success messages follow the existing OTP routes.
+- `otp` format check in the service layer, as everywhere: `^\d{6}$` → `400 VALIDATION_ERROR`, `"OTP must be a 6-digit code"`.
+- `resend-otp` with no pending admin OTP → `400 NO_PENDING_OTP`, `"No pending verification found"` (pending = latest `Admin Action` OTP row exists and is not consumed, as in Stage 12d).
+- These paths sit under `/admin/`, where frontend pages live. Each needs its own exact entry in `vite.config.js` and `nginx/default.conf`, as `/admin/audit-logs` got in Stage 26. Do not add `/admin` as a whole.
+- CORS: no code change is planned. `cors({ origin, credentials: true })` has no `allowedHeaders`, so it allows whatever headers a cross-origin preflight asks for, and the frontend reaches the service through the Vite proxy and nginx (same-origin). Verify by sending a request with `Elevated-Token` through the dev proxy and through nginx and confirming the header arrives in the service. If it does not arrive anywhere, stop and tell me what you found.
+
+#### Errors
+
+| Case                                                    | Response                                                                                                                                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status/role change with no valid `Elevated-Token`       | `403 ELEVATION_REQUIRED`, `"Verify your identity to perform this action."`. Covers missing, invalid and expired tokens, all with the same code.                                          |
+| `send-otp`, `verify-otp` or `resend-otp` while elevated | `409 ALREADY_ELEVATED`, `"Admin actions are already unlocked."`                                                                                                                          |
+| Wrong, expired, attempts exceeded, cooldown, limit      | Existing codes reused: `INVALID_OTP`, `OTP_EXPIRED`, `OTP_ATTEMPTS_EXCEEDED`, `OTP_RESEND_COOLDOWN` (with `Retry-After`), `OTP_RESEND_LIMIT` (level-matched message, with `Retry-After`) |
+
+#### Frontend flow (`/admin/users` only)
+
+| Rule                                              | Value                                                                                                                       |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Elevate button                                    | "Elevate privileges", on `/admin/users` only. Disabled while elevated. A timer sits beside it (a new component).            |
+| Greyed-out items                                  | None. Suspend/unsuspend and promote/demote are always clickable.                                                            |
+| Click an action, not elevated                     | The OTP modal opens. After a successful verify, the Stage 26 reason dialog opens, then the request is submitted.            |
+| Click an action, elevated                         | The Stage 26 reason dialog opens straight away                                                                              |
+| Click "Elevate privileges"                        | The OTP modal opens. After a successful verify, nothing else runs.                                                          |
+| OTP modal                                         | Opens with a "Send code" button. Nothing is sent until the admin clicks it.                                                 |
+| Window expires                                    | The timer disappears and the button is enabled again. The next high-risk click opens the OTP modal.                         |
+| `ELEVATION_REQUIRED` after the reason was entered | The OTP modal opens; after verifying, the reason already entered is kept and the request is retried through the same dialog |
+| Cooldown                                          | Resend disabled with a countdown from `Retry-After`                                                                         |
+| Limit                                             | Text only, level-matched ("about an hour" / "about 4 hours" / "about a day"), no countdown                                  |
+| Error text                                        | Add `ELEVATION_REQUIRED` and `ALREADY_ELEVATED` to `errorMessages.js`, with the display type for each                       |
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                                                          | Change                                                                                                                                                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `.env`, `.env.example`, `.env.test`, `src/config.ts`                                                          | Elevation token TTL env var with bounds (name and bounds to confirm above)                                                                                                                                                                                                                                |
+| 2   | `src/utils/jwt.ts`, `src/middleware/authenticate.ts`, `src/types/express.d.ts`                                | Sign the access token with header `typ: at+JWT` and a `sid` claim; `verifyAccessToken` returns `sid` too and rejects any other `typ`. Add sign/verify for the elevation token (`ep+JWT`, claims `sub`, `role`, `sid`, `iat`, `exp`). `req.user` gains `sid`.                                              |
+| 2a  | `src/services/auth.service.ts` (`login`, `refresh`), `src/db/queries/tokens.queries.ts`                       | Pass the `refresh_tokens.id` of the login into the access token as `sid`. Verify first that `createRefreshToken` returns the row id, and that `refresh` has the id of the locked row. Report what you find. Other services only read `sub` and `role`; check that the JWKS consumers ignore extra claims. |
+| 2b  | Existing auth tests that decode or build access tokens                                                        | Update only the token fixtures and decode assertions (`typ`, `sid`). If a test fails for another reason, stop and report it.                                                                                                                                                                              |
+| 3   | `src/services/email.service.ts`                                                                               | Add an `Admin Action` entry to the purpose map, subject `Your FoC admin privileges elevation verification code`                                                                                                                                                                                           |
+| 4   | `src/services/otp.service.ts` (`requestOtp`) and the verify path                                              | Apply the Stage 18 escalating send block to `Admin Action`; a successful verify resets its level                                                                                                                                                                                                          |
+| 5   | New route, controller and service files for the three admin OTP routes                                        | Follow the existing file naming, as the audit-log files did. Mount in `src/app.ts`.                                                                                                                                                                                                                       |
+| 6   | `src/controllers/users.controller.ts`, `src/services/users.service.ts` (`changeUserStatus`, `changeUserRole`) | The controller reads the `Elevated-Token` header and passes it down; the service checks it at the "last" position in the transaction, before the write and the audit row                                                                                                                                  |
+| 7   | `frontend/src/` (new small storage helper), `AuthContext` logout and forced-logout paths                      | Read, write and remove the elevation token in `sessionStorage`; remove it on logout and forced logout. Reword the Stage 23 manual check "no access token in storage" so it names the access token only.                                                                                                   |
+| 8   | `src/utils/errors` or the existing `AppError` usage                                                           | New codes `ELEVATION_REQUIRED` and `ALREADY_ELEVATED` thrown as `AppError`                                                                                                                                                                                                                                |
+| 9   | Existing tests                                                                                                | Status and role tests need a valid elevation token fixture. Update only those fixtures. If a test fails for another reason, stop and report it.                                                                                                                                                           |
+| 10  | `frontend/vite.config.js`, `frontend/nginx/default.conf`                                                      | Exact entries for `/admin/send-otp`, `/admin/verify-otp`, `/admin/resend-otp`, same target as `/auth` and `/users`                                                                                                                                                                                        |
+| 11  | `frontend/src/api/` (new admin OTP functions), `src/api/http.js`                                              | Add the three calls; attach `Elevated-Token` on the status and role calls when elevated                                                                                                                                                                                                                   |
+| 12  | `frontend/src/pages/AdminUsers.jsx`, new elevate timer component, `errorMessages.js`                          | Elevate button and timer, OTP modal, retry flow with the kept reason                                                                                                                                                                                                                                      |
+
+---
+
+## Stage 27a: Admin OTP Routes and Elevation Token
+
+### Verification
+
+- Admin and super admin can `send-otp`, `verify-otp` and `resend-otp`; a regular user gets `403 FORBIDDEN`; no token → `401 UNAUTHORIZED`
+- `purpose` other than `admin_action` → `400 VALIDATION_ERROR`, `"Invalid purpose"`; an extra field → `400`, `"Request contains unexpected fields"`
+- `otp` not 6 digits → `400 VALIDATION_ERROR`, `"OTP must be a 6-digit code"`
+- The code is sent to the acting admin's own email; the email subject is `Your FoC admin privileges elevation verification code`
+- Correct code → an elevation token is returned and works; the same code again → `400 INVALID_OTP`
+- The token is RS256, carries `sub`, `role`, `iat`, `exp`, and expires after the configured TTL
+- Wrong code → `400 INVALID_OTP`, attempt persisted; 5 wrong codes → `429 OTP_ATTEMPTS_EXCEEDED`; expired → `400 OTP_EXPIRED`
+- Wrong admin OTPs do not affect the login lockout counter
+- Resend inside 60 s → `429 OTP_RESEND_COOLDOWN` with `Retry-After`; after the cap → `429 OTP_RESEND_LIMIT` with a level-matched message and `Retry-After`; the block escalates 1 h, 4 h, 24 h and does not mix with other purposes
+- A successful verify resets this purpose's escalation level
+- `send-otp`, `verify-otp` and `resend-otp` while elevated → `409 ALREADY_ELEVATED`
+- Email send failure → `503 EMAIL_SEND_FAILED`, rolled back, Stage 19 retries apply
+- Two concurrent `verify-otp` with the correct code → one success, one `400 INVALID_OTP`
+- Elevation on one device does not elevate another device of the same admin
+- Access tokens carry header `typ: at+JWT` and a `sid` claim equal to the login's `refresh_tokens.id`; `sid` is the same after a refresh of the same login
+- The elevation token is rejected as an access token, and an access token (or a plain `JWT`) is rejected as an elevation token
+- An elevation token from one login is rejected for a different login of the same admin (`sid` mismatch) and for a different admin (`sub` mismatch)
+- Out-of-bounds TTL values exit at startup with a clear error naming the variable and range (as in Stage 23a)
+- `resend-otp` with no pending admin OTP (none, or the latest is consumed) → `400 NO_PENDING_OTP`, `"No pending verification found"`
+- A valid elevation token in `Elevated-Token` on `send-otp`, `verify-otp` or `resend-otp` → `409 ALREADY_ELEVATED`; an invalid or expired one does not block sending
+- Logout, password change, reset, role change and suspension do not make an unexpired elevation token fail (it expires at `exp`)
+- A request with `Elevated-Token` reaches the service through the Vite proxy and through nginx (CORS check; report the result)
+
+---
+
+## Stage 27b: Enforcing Elevation on Status and Role Changes
+
+### Verification
+
+- Suspend/unsuspend and promote/demote with no `Elevated-Token`, an invalid token, or an expired token → `403 ELEVATION_REQUIRED`, no change, no audit row
+- The same calls with a valid token and a valid Stage 26 reason → `200` as before, with the audit row from Stage 26
+- Elevation is checked after the existing checks: a self-targeting, super-admin, admin-vs-admin, pending or suspended-target request returns its existing error first, not `ELEVATION_REQUIRED`
+- No-op status and role requests still return `200` unchanged without elevation
+- An invalid or missing reason still returns `400` first (Zod runs before everything)
+- Unlock and unmask email work without elevation
+- Concurrent status/role calls keep the Stage 9/10 behaviour (no deadlock, no `500`)
+- A token issued to one admin does not elevate a different admin (`sub` mismatch), and a token from another login of the same admin does not elevate this one (`sid` mismatch)
+
+---
+
+## Stage 27c: Frontend
+
+### Verification
+
+- Elevate button and timer appear only on `/admin/users`; the button is disabled while elevated
+- Clicking an action while not elevated opens the OTP modal, then the reason dialog after a correct code, then submits
+- Clicking an action while elevated opens the reason dialog straight away
+- Clicking "Elevate privileges" and verifying runs no action
+- The OTP modal sends nothing until "Send code" is clicked; closing and reopening the modal sends nothing
+- Timer counts down, disappears at zero, and the button is enabled again; the next action click opens the OTP modal
+- `ELEVATION_REQUIRED` after the reason was entered → OTP modal opens, and after verifying the reason is still filled in
+- Resend cooldown shows a countdown; the limit state shows level-matched text with no countdown
+- Wrong code shows the error and clears the boxes; attempts exceeded points at resend
+- `ALREADY_ELEVATED` is shown as a toast and the button state corrects itself
+- The token is stored in `sessionStorage` after verify; reload mid-window in the same tab → the timer shows the correct remaining time from the stored token's `exp`; a new tab starts without elevation
+- An expired stored token is removed on load; a token rejected with `ELEVATION_REQUIRED` is removed
+- Logout and forced logout (including after a password change) remove the stored token
+- The access token is still not in `localStorage` or `sessionStorage` (check DevTools); only the elevation token is
+- The three admin OTP calls send `Elevated-Token` when a token is held
+- Success updates the row and shows a toast; failure shows a toast and refetches
+- Reloading `/admin/users`, `/admin/logs` and `/admin/suppliers` still loads the React app; the three admin OTP calls go through the proxy
+- Phone-width viewport: modals, button and timer are usable
+
+---
+
+### Tests (Vitest)
+
+Follow the Stage 7 ground rules: real Postgres, the existing mocking policy (mock `sendOtpEmail` to capture the OTP), tests under `tests/` mirroring `src/`, concurrency tests in `tests/concurrency/`. Every Verification bullet in 27a, 27b and 27c that does not need a real browser is a required test case. Simulate time by backdating, or with fake timers on the frontend. Existing status and role tests need an elevation fixture: update only those. Frontend tests mock the network layer and use the existing setup. List the visual and phone-width checks in your summary for manual verification. Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry per sub-stage.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR3.2.1:** reword to: suspend/unsuspend and promote/demote require the admin to elevate privileges first (OTP to their own email, 15-minute per-device window). Direct credit balance adjustments are dropped. Undo the "dropped" note added for Stage 26.

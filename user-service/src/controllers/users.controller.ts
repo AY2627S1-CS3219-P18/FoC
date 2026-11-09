@@ -52,12 +52,19 @@
  *        Per instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: `updateStatus` and `changeRole` now read the `Elevated-Token` header and pass it,
+ *        plus req.user.sid, through to the service. Per instructions.md Stage 27b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
 import { AUDIT_REASON_CODES, type AuditAction } from '../constants/auditReasons.js';
 import * as usersService from '../services/users.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { elevatedTokenHeader } from '../utils/elevatedTokenHeader.js';
 
 // A failed .uuid() check is a ZodError, which the global error handler turns into
 // 400 VALIDATION_ERROR with this message, before any DB call.
@@ -271,10 +278,12 @@ export const updateStatus = asyncHandler(async (req, res) => {
   const user = await usersService.changeUserStatus(
     req.user!.user_id,
     req.user!.role,
+    req.user!.sid,
     id,
     parsed.status,
     reason,
     req.get('user-agent') ?? null,
+    elevatedTokenHeader(req),
   );
   res.status(200).json(user);
 });
@@ -307,10 +316,12 @@ export const changeRole = asyncHandler(async (req, res) => {
   // authenticate has run, so req.user is set.
   const user = await usersService.changeUserRole(
     req.user!.user_id,
+    req.user!.sid,
     id,
     parsed.role,
     reason,
     req.get('user-agent') ?? null,
+    elevatedTokenHeader(req),
   );
   res.status(200).json(user);
 });

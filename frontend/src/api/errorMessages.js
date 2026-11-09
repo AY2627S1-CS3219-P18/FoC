@@ -39,6 +39,16 @@
  *        availability instead of promising an action that would still fail.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Added ELEVATION_REQUIRED and ALREADY_ELEVATED, per instructions.md Stage 27c's error
+ *        table (text matches user-service's AppError messages exactly, as the OTP entries
+ *        above already do). Neither is shown via this map's default display in practice:
+ *        AdminUsers.jsx/AdminUserTransactions.jsx intercept ELEVATION_REQUIRED to open the OTP
+ *        modal instead, and ElevationOtpModal shows ALREADY_ELEVATED as a toast itself; `toast`
+ *        is still the closest default for an unhandled occurrence of either.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -109,6 +119,13 @@ export const errorMessages = {
     message: "A suspended user's role cannot be changed.",
     display: 'toast',
   },
+
+  // --- Admin elevation (OTP step-up) --------------------------------------------------------
+  ELEVATION_REQUIRED: {
+    message: 'Verify your identity to perform this action.',
+    display: 'toast',
+  },
+  ALREADY_ELEVATED: { message: 'Admin actions are already unlocked.', display: 'toast' },
 
   // --- Fallback -----------------------------------------------------------------------------
   INTERNAL_ERROR: { message: 'Something went wrong. Please try again.', display: 'banner' },

@@ -24,6 +24,11 @@
 //   Governing decision: instructions.md Stage 23b. No requirements, architecture, schema, or
 //   API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27a - added coverage for the access token's new header `typ: at+JWT` and
+//   `sid` claim (the login's refresh_tokens.id), and that `sid` stays the same across a
+//   refresh of the same login. Governing decision: instructions.md Stage 27.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -441,16 +446,26 @@ describe('POST /auth/login', () => {
       );
     });
 
-    it('issues an RS256 access token with claims { sub, role } expiring in ~15 minutes', async () => {
+    it('issues an RS256 access token (header typ: at+JWT) with claims { sub, role, sid } expiring in ~15 minutes', async () => {
       const user = await createActiveUser(1);
       const res = await loginUser(user);
       const decoded = jwt.decode(res.body.accessToken, { complete: true })!;
       const payload = decoded.payload as jwt.JwtPayload;
 
       expect(decoded.header.alg).toBe('RS256');
+      expect(decoded.header.typ).toBe('at+JWT');
       expect(payload.sub).toBe(user.id);
       expect(payload.role).toBe('user');
+      expect(typeof payload.sid).toBe('string');
       expect(payload.exp! - payload.iat!).toBe(15 * 60);
+    });
+
+    it("sid equals the login's refresh_tokens.id", async () => {
+      const user = await createActiveUser(1);
+      const res = await loginUser(user);
+      const { sid } = jwt.decode(res.body.accessToken) as { sid: string };
+      const [row] = await getRefreshTokens(user.id);
+      expect(sid).toBe(row!.id);
     });
 
     it('takes the role claim from the user row (admin)', async () => {
@@ -698,6 +713,17 @@ describe('POST /auth/refresh', () => {
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(['accessToken', 'sessionTimeLeftSeconds']);
     expect(jwt.decode(res.body.accessToken)).toMatchObject({ sub: user.id, role: 'user' });
+  });
+
+  it('sid is the same after a refresh of the same login', async () => {
+    const user = await createActiveUser(1);
+    const { accessToken, refreshToken } = await loginTokens(user);
+    const { sid: sidBefore } = jwt.decode(accessToken) as { sid: string };
+
+    const res = await post('/auth/refresh').set('Cookie', refreshCookie(refreshToken));
+
+    const { sid: sidAfter } = jwt.decode(res.body.accessToken) as { sid: string };
+    expect(sidAfter).toBe(sidBefore);
   });
 
   it('returns sessionTimeLeftSeconds ~ 300 for a token backdated to 5 minutes left, without changing expires_at', async () => {

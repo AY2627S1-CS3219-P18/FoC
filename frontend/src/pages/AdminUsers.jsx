@@ -64,6 +64,17 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
  * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 27c of instructions.md - added the "Elevate privileges" button and ElevateTimer
+ *        next to it (new component, this page only), and gated every row action behind
+ *        useElevatedActionFlow (utils/elevation.js): not elevated opens ElevationOtpModal
+ *        first, elevated opens ConfirmActionDialog straight away, same as before. runAction's
+ *        catch gained an ELEVATION_REQUIRED branch that keeps the open ConfirmActionDialog (and
+ *        its entered reason) and retries the same call once the OTP modal reports success,
+ *        per the stage's "reason already entered is kept" rule.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -72,6 +83,8 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
 import ActionMenu from '../components/ActionMenu'
 import Button from '../components/Button'
+import ElevateTimer from '../components/ElevateTimer'
+import ElevationOtpModal from '../components/ElevationOtpModal'
 import FieldError from '../components/FieldError'
 import { useBalance } from '../api/lookups'
 import EmptyState from '../components/EmptyState'
@@ -82,6 +95,7 @@ import { useApi } from '../api/useApi'
 import { getFullEmail, listUsers, unlockUser, updateUserRole, updateUserStatus } from '../api/users'
 import { describeError } from '../api/errorMessages'
 import { ACTION_TO_AUDIT_ACTION, AUDIT_REASON_CODES } from '../constants/auditReasons'
+import { useElevatedActionFlow } from '../utils/elevation'
 
 // No eye icon for the caller's own row (already unmasked everywhere else) or a super admin's
 // row, per instructions.md Stage 20b.
@@ -369,6 +383,7 @@ export default function AdminUsers() {
   const { user: viewer } = useAuth()
   const { showToast } = useToast()
   const navigate = useNavigate()
+  const elevation = useElevatedActionFlow()
 
   const [usernameInput, setUsernameInput] = useState('')
   const [emailInput, setEmailInput] = useState('')
@@ -485,6 +500,10 @@ export default function AdminUsers() {
       setConfirm(null)
       showToast(ACTION_SUCCESS[action](targetUser.username), 'success')
     } catch (err) {
+      if (err.code === 'ELEVATION_REQUIRED') {
+        elevation.withElevation(() => runAction(targetUser, action, reasonPayload))
+        return
+      }
       setConfirm(null)
       showToast(describeError(err).message, 'error')
       reload()
@@ -495,7 +514,20 @@ export default function AdminUsers() {
 
   return (
     <div className="page-width page-gutter py-8 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Manage users</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Manage users</h1>
+        <div className="flex items-center gap-3">
+          {elevation.isElevated && <ElevateTimer secondsLeft={elevation.secondsLeft} />}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={elevation.openElevateModal}
+            disabled={elevation.isElevated}
+          >
+            Elevate privileges
+          </Button>
+        </div>
+      </div>
 
       <div className="mt-6 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_160px_160px_160px]">
         <input
@@ -656,7 +688,7 @@ export default function AdminUsers() {
                         <RowMenu
                           user={u}
                           viewer={viewer}
-                          onPick={(action) => setConfirm({ user: u, action })}
+                          onPick={(action) => elevation.withElevation(() => setConfirm({ user: u, action }))}
                         />
                       </td>
                     </tr>
@@ -680,6 +712,13 @@ export default function AdminUsers() {
           busy={busy}
           onCancel={() => setConfirm(null)}
           onConfirm={(reasonPayload) => runAction(confirm.user, confirm.action, reasonPayload)}
+        />
+      )}
+
+      {elevation.elevationModalOpen && (
+        <ElevationOtpModal
+          onClose={elevation.closeElevationModal}
+          onVerified={elevation.handleElevated}
         />
       )}
     </div>

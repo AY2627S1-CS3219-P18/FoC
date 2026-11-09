@@ -6,6 +6,9 @@
 //   Stage 13b); authenticate middleware coverage above is unaffected and kept as-is.
 //   Governing decision: instructions.md Stage 13c.
 // Author review:
+// 2026-11-09: Stage 27a - req.user now also carries `sid`. Governing decision: instructions.md
+//   Stage 27. No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -67,11 +70,11 @@ describe('authenticate middleware', () => {
     expect(res.body).toEqual(UNAUTHORIZED);
   });
 
-  it('attaches { user_id, role } to req.user for a valid token', async () => {
+  it('attaches { user_id, role, sid } to req.user for a valid token', async () => {
     const res = await request(protectedApp)
       .get('/protected')
-      .set('Authorization', `Bearer ${signToken({ sub: 'u-1', role: 'admin' })}`);
+      .set('Authorization', `Bearer ${signToken({ sub: 'u-1', role: 'admin', sid: 'sid-1' })}`);
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ user_id: 'u-1', role: 'admin' });
+    expect(res.body.user).toEqual({ user_id: 'u-1', role: 'admin', sid: 'sid-1' });
   });
 });

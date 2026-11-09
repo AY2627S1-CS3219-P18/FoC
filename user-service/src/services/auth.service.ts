@@ -64,6 +64,11 @@
 //   otp.service.ts. Governing decision: instructions.md Stage 25.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-09: Stage 27a - login() and refresh() now pass the login's refresh_tokens.id as
+//   `sid` into signAccessToken, so the access token carries the same device-binding claim the
+//   new elevation token uses. Governing decision: instructions.md Stage 27.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -307,6 +312,7 @@ export async function login(
       role: locked.role,
       activeView: locked.active_view,
       sessionTimeLeftSeconds: tokenRow.seconds_left,
+      sid: tokenRow.id,
     };
   });
 
@@ -317,7 +323,7 @@ export async function login(
     throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
   }
 
-  const accessToken = signAccessToken({ userId: user.id, role: outcome.role });
+  const accessToken = signAccessToken({ userId: user.id, role: outcome.role, sid: outcome.sid });
 
   return {
     accessToken,
@@ -362,7 +368,7 @@ export async function refresh(
   // Lock order: user row first, then token row (see the lock ordering rule in Stage 4d).
   // Re-check on the locked rows, so a logout, reset or suspend that committed while this
   // request waited cannot be followed by a freshly issued access token.
-  const { id, role, sessionTimeLeftSeconds } = await withTransaction(async (client) => {
+  const { id, role, sessionTimeLeftSeconds, sid } = await withTransaction(async (client) => {
     const lockedUser = await userQueries.lockUserById(tokenRow.user_id, client);
     if (!lockedUser) {
       throw new AppError(401, 'Invalid refresh token', 'INVALID_REFRESH_TOKEN');
@@ -386,10 +392,11 @@ export async function refresh(
       id: lockedUser.id,
       role: lockedUser.role,
       sessionTimeLeftSeconds: lockedToken.seconds_left,
+      sid: lockedToken.id,
     };
   });
 
-  const accessToken = signAccessToken({ userId: id, role });
+  const accessToken = signAccessToken({ userId: id, role, sid });
 
   return { accessToken, sessionTimeLeftSeconds };
 }

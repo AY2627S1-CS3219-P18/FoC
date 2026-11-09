@@ -276,6 +276,18 @@ Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Added the incoming message wiggle fix log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #233 for
+       user-service Stage 27a (admin OTP routes and elevation token). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #234 for
+       user-service Stage 27b (enforcing elevation on status and role changes). No
+       requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #235 for
+       frontend Stage 27c (Elevate button/timer, OTP modal, retry flow). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -786,3 +798,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 230 | 2026-11-08 | frontend | Searchable dropdowns | Added searchable single and multi-select dropdowns. |
 | 231 | 2026-11-08 | frontend | Searchable dropdown display fixes | Fixed chevron alignment and selection display. |
 | 232 | 2026-11-08 | repository | Merge main disclosure conflicts | Reconciled usage log and index. |
+| 233 | 2026-11-09 | user-service | Stage 27a: Admin OTP routes and elevation token | Added admin elevation OTP routes and a per-device elevation token (access token now carries sid/typ). |
+| 234 | 2026-11-09 | user-service | Stage 27b: Enforcing elevation on status and role changes | Suspend/unsuspend and promote/demote now require a valid Elevated-Token, checked last. |
+| 235 | 2026-11-09 | frontend | Stage 27c: Frontend (Elevate button/timer, OTP modal, retry flow) | Added the admin elevation UI: Elevate button/timer, OTP modal, kept-reason retry flow. |
