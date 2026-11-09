@@ -10,6 +10,9 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Added or tested a total unread badge on the top chat icon.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added setTranslation for POST /chat/conversations/:id/translation.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { request } from "./http";
@@ -55,3 +58,11 @@ export const markMessagesRead = async (id, lastReadMessageId) => {
   window.dispatchEvent(new Event("chat-read-updated"));
   return receipt;
 };
+
+// AI-generated (edited by <name>).
+// body: { enabled: false } or { enabled: true, language }. 200 { conversationId, userId, translateTo }.
+export const setTranslation = (id, body) =>
+  request("/chat/conversations/" + encodeURIComponent(id) + "/translation", {
+    method: "POST",
+    json: body,
+  });

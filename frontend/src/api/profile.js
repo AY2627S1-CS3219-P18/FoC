@@ -5,7 +5,7 @@
  *        instructions.md): getProfile (GET /users/me) and setActiveView (PUT
  *        /users/me/active-view). No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
  * Scope: Added the calls Account.jsx needs, per instructions.md Stage 16e: changeUsername,
@@ -14,12 +14,15 @@
  *        (the one /users/me/resend-otp endpoint shared by change_email and change_password),
  *        and changePassword/confirmPasswordChange.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added setPreferredLang for PUT /users/me/preferred-lang.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { request } from './http'
 
-// 200 { username, email, activeView }
+// 200 { username, email, activeView, preferredLang }
 export async function getProfile() {
   return request('/users/me')
 }
@@ -28,6 +31,11 @@ export async function getProfile() {
 // updatedAt }. Callers only need activeView back; AuthContext keeps the rest of its user object.
 export async function setActiveView(activeView) {
   return request('/users/me/active-view', { method: 'PUT', json: { activeView } })
+}
+
+// 200, the full user shape including preferredLang. 400 VALIDATION_ERROR for an unsupported code.
+export async function setPreferredLang(preferredLang) {
+  return request('/users/me/preferred-lang', { method: 'PUT', json: { preferredLang } })
 }
 
 // 200 { username, email }. 409 USERNAME_UNCHANGED / USERNAME_TAKEN.

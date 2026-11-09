@@ -7,7 +7,7 @@
  *        real routing/navigationHistory.js module (reset before each test) rather than mocking
  *        it, since that module's whole job is to distinguish the two cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Added live-chat API doubles and role/list/error tests.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
@@ -52,6 +52,9 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested errand-origin-only outer chat back navigation.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Tested the Auto-translate switch, translated display and Show original/Translate controls.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import {
@@ -70,6 +73,7 @@ const realtime = vi.hoisted(() => ({
   handlers: [],
   reads: [],
   ready: [],
+  translated: [],
   useChatRoom: vi.fn(),
 }));
 vi.mock("../../src/realtime/chatSocket", () => ({
@@ -83,6 +87,9 @@ vi.mock("../../src/realtime/chatSocket", () => ({
   useChatReady: (handler) => {
     realtime.ready.push(handler);
   },
+  useChatTranslations: (handler) => {
+    realtime.translated.push(handler);
+  },
 }));
 const chatApi = vi.hoisted(() => ({
   markMessagesRead: vi.fn(),
@@ -91,8 +98,11 @@ const chatApi = vi.hoisted(() => ({
   listMessages: vi.fn(),
   sendMessage: vi.fn(),
   findOrderChat: vi.fn(),
+  setTranslation: vi.fn(),
 }));
 vi.mock("../../src/api/chat", () => chatApi);
+const profileApi = vi.hoisted(() => ({ getProfile: vi.fn() }));
+vi.mock("../../src/api/profile", () => profileApi);
 vi.mock("../../src/api/lookups", () => ({
   useUserName: (id) =>
     ({ "courier-id": "Courier Alice", "requester-id": "Requester Bob" })[id] ??
@@ -137,6 +147,8 @@ beforeEach(() => {
   realtime.handlers = [];
   realtime.reads = [];
   realtime.ready = [];
+  realtime.translated = [];
+  profileApi.getProfile.mockResolvedValue({ preferredLang: "es" });
   mockUseAuth.mockReturnValue({ user: { activeView: "requester" } });
 });
 
@@ -808,4 +820,120 @@ it("loads older history once at the top, preserving the viewport as content grow
   } finally {
     height.mockRestore();
   }
+});
+
+// AI-generated (edited by <name>).
+describe("Chat translation", () => {
+  const received = (extra = {}) => ({
+    messageId: "m1",
+    conversationId: "c1",
+    senderId: "other",
+    type: "TEXT",
+    content: "Hello there",
+    metadata: null,
+    createdAt: "2026-11-09T00:00:00.000Z",
+    translatedContent: null,
+    ...extra,
+  });
+  const open = (messages, translateTo = null) => {
+    mockUseAuth.mockReturnValue({ user: { id: "me", activeView: "requester" } });
+    chatApi.listMessages.mockResolvedValue({
+      participants: [{ userId: "me", role: "REQUESTER", translateTo }],
+      data: messages,
+      pagination: { hasMore: false, nextCursor: null },
+    });
+    renderChat(["/chat/c1"]);
+  };
+  const toggle = () => screen.findByRole("switch", { name: "Auto-translate" });
+
+  it("shows the saved switch state and the translated text with Show original", async () => {
+    open([received({ translatedContent: "Hola" })], "es");
+    expect(await screen.findByText("Hola")).toBeInTheDocument();
+    expect(screen.queryByText("Hello there")).not.toBeInTheDocument();
+    expect(await toggle()).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: /Show original/ }));
+    expect(screen.getByText("Hello there")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Translate/ }));
+    expect(screen.getByText("Hola")).toBeInTheDocument();
+  });
+
+  it("shows originals when off but offers Translate without calling the model", async () => {
+    open([received({ translatedContent: "Hola" })], null);
+    expect(await screen.findByText("Hello there")).toBeInTheDocument();
+    expect(await toggle()).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("button", { name: /Translate/ }));
+    expect(screen.getByText("Hola")).toBeInTheDocument();
+    expect(chatApi.setTranslation).not.toHaveBeenCalled();
+  });
+
+  it("offers no control for untranslated, SAME and own messages", async () => {
+    open(
+      [
+        received({ messageId: "a", content: "plain" }),
+        received({ messageId: "b", content: "same", translatedContent: "SAME" }),
+        received({
+          messageId: "c",
+          senderId: "me",
+          content: "mine",
+          translatedContent: "x",
+        }),
+      ],
+      "es",
+    );
+    expect(await screen.findByText("plain")).toBeInTheDocument();
+    expect(screen.getByText("same")).toBeInTheDocument();
+    expect(screen.getByText("mine")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show original|Translate/ })).toBeNull();
+  });
+
+  it("turns translation on with the preferred language read at launch", async () => {
+    chatApi.setTranslation.mockResolvedValue({ translateTo: "es" });
+    open([received()]);
+    const sw = await toggle();
+    await waitFor(() => expect(sw).not.toBeDisabled());
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(chatApi.setTranslation).toHaveBeenCalledWith("c1", {
+        enabled: true,
+        language: "es",
+      }),
+    );
+    await waitFor(() => expect(sw).toHaveAttribute("aria-checked", "true"));
+  });
+
+  it("turns translation off", async () => {
+    chatApi.setTranslation.mockResolvedValue({ translateTo: null });
+    open([received({ translatedContent: "Hola" })], "es");
+    const sw = await toggle();
+    fireEvent.click(sw);
+    await waitFor(() =>
+      expect(chatApi.setTranslation).toHaveBeenCalledWith("c1", { enabled: false }),
+    );
+    expect(await screen.findByText("Hello there")).toBeInTheDocument();
+  });
+
+  it("applies a message:translated event to the open chat only", async () => {
+    open([received()], "es");
+    await screen.findByText("Hello there");
+    act(() =>
+      realtime.translated.forEach((h) =>
+        h({ messageId: "m1", conversationId: "other-chat", translatedContent: "No" }),
+      ),
+    );
+    expect(screen.getByText("Hello there")).toBeInTheDocument();
+    act(() =>
+      realtime.translated.forEach((h) =>
+        h({ messageId: "m1", conversationId: "c1", translatedContent: "Hola" }),
+      ),
+    );
+    expect(await screen.findByText("Hola")).toBeInTheDocument();
+  });
+
+  it("shows a failed toggle and keeps the previous state", async () => {
+    chatApi.setTranslation.mockRejectedValue(new Error("Could not update"));
+    open([received()], "es");
+    fireEvent.click(await toggle());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not update");
+    expect(await toggle()).toHaveAttribute("aria-checked", "true");
+  });
 });
