@@ -100,6 +100,11 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Aligned dropdown chevrons by moving field spacing outside the control.
  * Author review: Congchen
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Complete-by toggle - the ASAP option reads "ASAP" / "By 1 hour from
+ *        now" (George, 2026-11-09); order-service fills in the one-hour default.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -474,21 +479,32 @@ function RequestForm({ order }) {
             When do you need it by?
           </span>
           <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
+            {/* ASAP sends no complete-by, so order-service sets it to an hour from now
+                (George, 2026-11-09). */}
             {[
-              ['asap', 'As soon as possible'],
-              ['later', 'By a specific time'],
-            ].map(([value, text]) => (
+              ['asap', 'ASAP', 'By 1 hour from now'],
+              ['later', 'By a specific time', null],
+            ].map(([value, text, hint]) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setTiming(value)}
                 aria-pressed={timing === value}
                 className={
-                  'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
+                  'min-h-11 md:min-h-10 flex-1 rounded-[7px] px-3 py-1 text-sm font-medium leading-tight transition-colors duration-150 ' +
                   (timing === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
                 }
               >
-                {text}
+                <span className="block">{text}</span>
+                {hint && (
+                  <span
+                    className={
+                      'block text-xs font-normal ' + (timing === value ? 'text-white/80' : 'text-ink-40')
+                    }
+                  >
+                    {hint}
+                  </span>
+                )}
               </button>
             ))}
           </div>

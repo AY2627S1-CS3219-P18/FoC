@@ -12999,3 +12999,56 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — order-service: Default complete-by of one hour
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** George in chat, 2026-11-09 (new FR, to be added to `docs/FoC-ProductBacklog.md` by the team): a new order with no complete-by gets now + 1 hour and then behaves like a requester-set deadline; existing orders are untouched; an edit sending `completeBy: null` keeps the stored value.
+
+**Prompts (exact):**
+
+> ok tell him all decided approved, and he can add them, also for the completeBy issue, it will default to 24 hours instead of NULL, so we are making this as a new FR, to fix these issues
+
+> we decided to make it +1 hr instead to represent the ASAPness
+
+> do the same behaviour as completeBy is set by user, but its 1hr
+> existing orders are untouched
+
+> (Agent question) Editing an open order with completeBy: null currently clears the deadline to NULL (and the edit page sends null when 'ASAP' is picked). What should edit do with completeBy: null after this change?
+> (Answer) Keep current value
+
+> for the frontend, remove the ASAP option, and completeBy will default to 1hr to show it explicitly
+
+> actually, just change the ASAP button text to
+>
+> ASAP
+> By 1 hour from now
+>
+> then screenshot the frontend to show me when youre done
+
+**Key responses:**
+Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+- `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
+- `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
+- No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
+- Tests: create with completeBy absent / null stores now + 1 h (fake Date); a chosen completeBy is kept; edit with null omits completeBy from the write; edit with a value writes it. Removed "null = indefinite" from an existing test name.
+- Frontend (`CreateRequest.jsx`): the agent started removing the ASAP option, then the user replaced that instruction; the only change kept is the ASAP button label, now "ASAP" with a second line "By 1 hour from now". The button grows to fit two lines. Behaviour is unchanged: ASAP still sends no completeBy on create (order-service applies the one-hour default) and null on edit (keeps the stored value).
+
+Verification: order-service `npm run typecheck` passed, `npm run lint` reported nothing, `npm test` passed (18 files, 704 tests). `prettier --check` flags both service files, but both were already unformatted on `main` before this change, so they were not reformatted. E2E tests were not run. Frontend `npm test`: 222 passed, 1 failed (`CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", a `maxLength` assertion); the same test also fails with the unmodified `CreateRequest.jsx` from `main`. Frontend lint showed only existing warnings in other files. Screenshotted the form in the in-app browser against a throwaway local mock API (scratch file outside the repo) in both toggle states.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked how edit should treat `completeBy: null` (answered: keep current value). Asked how the edit form should treat legacy NULL deadlines once ASAP was removed; superseded when the user chose to keep ASAP with a new label. Pre-existing frontend test failure noted above. The new FR text itself still needs to be written into the backlog by the team.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

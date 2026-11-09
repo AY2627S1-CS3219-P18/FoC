@@ -82,6 +82,12 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): createOrder with no completeBy (absent or null) stores now + 1 hour
+ *        instead of NULL; editOrder with completeBy: null keeps the stored value (George,
+ *        2026-11-09). Existing NULL rows are not touched.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -131,6 +137,10 @@ const EDITABLE_ORDER_FIELDS = new Set([
   'completeBy',
   'additionalDetails',
 ]);
+
+// A new order without a complete-by gets one an hour from creation, and then behaves
+// exactly like a requester-chosen deadline (George, 2026-11-09).
+export const DEFAULT_COMPLETE_BY_MS = 60 * 60 * 1000;
 
 export type CreateOrderResult =
   { ok: true; order: OrderRequest } | { ok: false; errors: ErrorCode[] };
@@ -276,7 +286,7 @@ export const createOrder = async (
         credits: requestPayload.credits,
         completeBy: requestPayload.completeBy
           ? new Date(requestPayload.completeBy)
-          : null,
+          : new Date(Date.now() + DEFAULT_COMPLETE_BY_MS),
         additionalDetails: requestPayload.additionalDetails ?? null,
         status: 'pending',
       },
@@ -387,12 +397,16 @@ export const editOrder = async (
     });
     if (missing.length) return { ok: false, errors: missing };
 
+    // completeBy: null means "no change": the stored deadline stays (George, 2026-11-09).
+    const { completeBy, ...changes } = payload;
+
     // `status: 'open'` in the guard too: an accept that lands between the read and this
     // write makes the edit a version conflict instead of editing an accepted order.
     const { count } = await prisma.orderRequest.updateMany({
       where: { id: order.id, version: order.version, status: 'open' },
       data: {
-        ...payload,
+        ...changes,
+        ...(completeBy != null && { completeBy }),
         deliveryDetails: 'value' in details ? details.value : '',
         version: { increment: 1 },
       },

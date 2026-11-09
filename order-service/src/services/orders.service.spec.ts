@@ -75,6 +75,11 @@
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
  * Author review:
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
+ * Scope (2026-11-09): Default complete-by - create with completeBy absent or null stores
+ *        now + 1 hour; edit with completeBy: null leaves it out of the write.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -321,13 +326,45 @@ describe('createOrder: validation', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('accepts null optional fields (completeBy null = indefinite)', async () => {
+  it('accepts null optional fields', async () => {
     const { result } = await run({
       ...valid,
       completeBy: null,
       additionalDetails: null,
     });
     expect(result.ok).toBe(true);
+  });
+
+  describe('default complete-by (2026-11-09)', () => {
+    const CREATED_AT = new Date('2026-11-09T08:00:00.000Z');
+    const ONE_HOUR_LATER = new Date('2026-11-09T09:00:00.000Z');
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(CREATED_AT);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it.each([
+      ['absent', {}],
+      ['null', { completeBy: null }],
+    ])('stores now + 1 hour when completeBy is %s', async (_name, override) => {
+      // `valid` has no completeBy of its own.
+      const { result, create } = await run({ ...valid, ...override });
+      expect(result.ok).toBe(true);
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ completeBy: ONE_HOUR_LATER }),
+      });
+    });
+
+    it('keeps a requester-chosen completeBy as given', async () => {
+      const { create } = await run({ ...valid, completeBy: LATER });
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ completeBy: new Date(LATER) }),
+      });
+    });
   });
 });
 
@@ -510,6 +547,43 @@ describe('editOrder', () => {
       },
     });
     expect(findUniqueOrThrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the stored completeBy when the edit sends completeBy: null (2026-11-09)', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editWithDetails(
+        prisma,
+        REQUESTER,
+        order.id,
+        { description: 'Updated description', completeBy: null },
+        REFS,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: order.id, version: order.version, status: 'open' },
+      data: {
+        description: 'Updated description',
+        deliveryDetails: 'Nil',
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it('writes a new completeBy when the edit sends one', async () => {
+    const { prisma, updateMany, findUniqueOrThrow, order } = prismaWithEdit();
+    findUniqueOrThrow.mockResolvedValueOnce(order).mockResolvedValueOnce(order);
+
+    await expect(
+      editWithDetails(prisma, REQUESTER, order.id, { completeBy: LATER }, REFS),
+    ).resolves.toMatchObject({ ok: true });
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ completeBy: LATER }),
+      }),
+    );
   });
 
   it('returns FORBIDDEN when the actor is not the requester', async () => {
