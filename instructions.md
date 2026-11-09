@@ -10528,3 +10528,187 @@ Same as earlier stages: header comment on every file created or modified, and a 
 
 - **NFR3.1.2:** the per-email eye-icon unmask is available on both `/admin/users` and the admin user page.
 - **F5.3.2:** the profile email is masked by default and can be unmasked as in NFR3.1.2.
+
+# Stage 31: Lockout Unlock Email (NFR1.1.1)
+
+> **Scope**: `user-service`, `frontend`, and the proxy entries for any new frontend or backend path
+> (`frontend/vite.config.js`, `frontend/nginx/default.conf`, as in Stages 26 and 27). When an account
+> is locked by the Stage 18 login lockout, the user is emailed a link. The link opens a frontend
+> page with a button. Pressing the button clears the lock.
+>
+> - 31a: config and unlock-token utilities
+> - 31b: the email, the retry reuse, and sending it on every login lock
+> - 31c: the unlock-by-link endpoint
+> - 31d: frontend page
+> - 31e: tests
+>
+> Backlog refs: NFR1.1.1. This supersedes the "deferred" note in Stage 18.
+>
+> **Before starting:** read the current code, not just this file. If any `[DECIDE]` placeholder
+> remains, or anything below disagrees with the code, stop and ask me. Do not pick a value
+> yourself. Implement one sub-stage at a time and wait for my confirmation before the next.
+>
+> **Ground rules:** conventions 1-8 at the top of this file and the Stage 4d lock-order rule apply.
+> The Stage 16 frontend ground rules apply to 31d (work in `frontend/` only; never touch
+> `foc-mockup/`; do not modify `src/realtime/orderSocket.js`, `src/data/users.js`,
+> `src/components/DemoControls.jsx` or `AI-NOTES.md`; reuse existing components,
+> `errorMessages.js`, banners and toasts; no new libraries; list every file touched outside the
+> changes table).
+
+### Design decisions (already made, do not change)
+
+#### When the email is sent
+
+| Rule                  | Value                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger               | Every Stage 18 **login** lock: the 1 h, the 4 h and the 24 h lock. A lock set from `POST /auth/login`, `PUT /users/me/email` or `PUT /users/me/password` (they share one counter) sends the email.                            |
+| Not a trigger         | OTP send blocks (Stage 18). Only the login lock sends an email.                                                                                                                                                               |
+| Pending and suspended | No email is sent if the account is `pending` or `suspended` when the email would be sent.                                                                                                                                     |
+| Exactly once per lock | One lock sends one email. N concurrent failures that produce one lock send one email. Requests rejected during a lock do not send one.                                                                                        |
+| Sent to               | The account's registered email                                                                                                                                                                                                |
+| After commit          | The email is sent only after the transaction that sets the lock has committed. A failed send never rolls back the lock.                                                                                                       |
+| Failure               | If every attempt fails, the failure is logged and nothing else happens. The lock stands. The caller still gets `429 ACCOUNT_LOCKED` as in Stage 18.                                                                           |
+| Retries and timeline  | Exactly the Stage 19 configuration: same attempt count, same transient/non-transient error rules, same backoff, same per-attempt timeout, same overall deadline, same handling of abandoned sends, same dev console fallback. |
+| Reuse                 | Reuse the Stage 19 retry mechanism. Do not copy the loop. `sendOtpEmail` keeps its contract. Tell me how you shared it.                                                                                                       |
+| Logging               | Console only, in the Stage 19 log line format. How the unlock email is told apart from the OTP purposes in that line: `[DECIDE]`.                                                                                             |
+| Request latency       | Whether the login/password request waits for the send (up to the Stage 19 deadline) or the send runs in the background after the commit: `[DECIDE]`.                                                                          |
+| Email content         | Subject, wording, and whether it states the lock length: `[DECIDE]`. It contains the unlock link. It never contains an OTP, the password or a password hint.                                                                  |
+
+#### The unlock link and token
+
+| Rule                    | Value                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token                   | A signed JWT. RS256, same key and `kid` handling as the access token. Its own JWT header `typ`, so it cannot be used as an access token or an elevation token, and those cannot be used as an unlock token. The `typ` value: `[DECIDE]`.                                                                                                 |
+| Claims                  | `sub`, `iat`, `exp`, plus a claim binding the token to one specific lock. Which claim and which lock value it holds: `[DECIDE]` (candidate discussed: the lock's end time, `login_locked_until`).                                                                                                                                        |
+| Lifetime                | 1 hour. Fixed constant or env var with bounds: `[DECIDE]`.                                                                                                                                                                                                                                                                               |
+| Binding to the lock     | The token works only while the lock it was issued for is still the account's current lock. It stops working once that lock is cleared (admin unlock, successful login, correct current password on `PUT /users/me/email` or `PUT /users/me/password`, or an earlier use of the link), has expired, or has been replaced by a newer lock. |
+| Single use              | Following from the binding: after the link clears the lock, the same link no longer does anything.                                                                                                                                                                                                                                       |
+| Link                    | `FRONTEND_BASE_URL` + a frontend path, with the token in it. Path and query parameter name: `[DECIDE]`.                                                                                                                                                                                                                                  |
+| Opening the link        | Opens a frontend page with a button. Opening the page (a GET) changes nothing. Only pressing the button calls the backend, with a POST.                                                                                                                                                                                                  |
+| Backend endpoint        | Public (no `authenticate`). Zod `.strict()`, `asyncHandler`. Method and path: `POST` + `[DECIDE]`. Body carries the token.                                                                                                                                                                                                               |
+| What a valid click does | The same effect as the admin unlock: clears the login lock **and** resets the login escalation, and clears OTP send blocks and their escalation for all three purposes. Share the code with the admin unlock; do not duplicate it.                                                                                                       |
+| Locking                 | Follow conventions 2-3: `withTransaction`, `SELECT ... FOR UPDATE` on the user row, `client` on every query, re-check the locked row after the lock is granted. Use one conditional update. Concurrent clicks produce one unlock.                                                                                                        |
+| Link used after expiry  | If the lock has already ended or been cleared (the token no longer matches the account's current lock): the frontend goes straight to `/login`. What the page shows on the way (nothing, or a message): `[DECIDE]`.                                                                                                                      |
+| Other bad tokens        | Malformed, bad signature, wrong `typ`, expired by `exp` (older than 1 hour): `[DECIDE]` for the error code, the HTTP status and what the frontend does.                                                                                                                                                                                  |
+| Suspended at click time | Suspended or pending when the button is pressed: `[DECIDE]`.                                                                                                                                                                                                                                                                             |
+| Audit                   | None. No audit row for a self-unlock via the link (the Stage 26 table is for admin actions). Admin unlock is unchanged.                                                                                                                                                                                                                  |
+| Rate limit              | None.                                                                                                                                                                                                                                                                                                                                    |
+
+#### Config
+
+New env var, added to `config.ts`'s Zod schema and to `.env.example`, `.env` and `.env.test`:
+
+- `FRONTEND_BASE_URL` (dev value `http://localhost:5173`)
+- the token lifetime variable, only if the lifetime decision above is "env var"
+
+Check whether `FRONTEND_BASE_URL` can also be what the Stage 4a CORS origin uses. Report only, do not change the CORS setup.
+
+---
+
+## Changes to already-implemented code
+
+| #   | File                                                                                                                        | Change                                                                                                                                                                 |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/config.ts`, `.env*`                                                                                                    | Add the new env var(s).                                                                                                                                                |
+| 2   | `src/services/email.service.ts`                                                                                             | Add the unlock-email template and send function. Share the Stage 19 retry mechanism. `sendOtpEmail` contract unchanged.                                                |
+| 3   | The Stage 13 signing/verification code                                                                                      | Add signing and verification of the unlock token, with its own `typ`. `verifyAccessToken` and the elevation verifier must reject it.                                   |
+| 4   | `src/services/auth.service.ts` (`login`) and `src/services/me.service.ts` (`initiateEmailChange`, `initiatePasswordChange`) | After the commit that sets a login lock, send the email (rules above).                                                                                                 |
+| 5   | `src/services/users.service.ts` (admin unlock)                                                                              | Move the clearing logic into a shared function used by the admin unlock and the new endpoint. Admin unlock behaviour and responses unchanged.                          |
+| 6   | `src/routes/auth.routes.ts`, `src/controllers/auth.controller.ts`, `src/services/auth.service.ts`                           | Add the public unlock-by-link endpoint (or the files the `[DECIDE]` path puts it in).                                                                                  |
+| 7   | `frontend/src/api/auth.js` (or the API module `login` is in), `frontend/src/api/errorMessages.js`                           | Add the unlock call and error text for the new error codes.                                                                                                            |
+| 8   | `frontend/src/App.jsx` (routes), new page file                                                                              | Add the unlock page. It is reachable logged out and logged in.                                                                                                         |
+| 9   | `frontend/vite.config.js`, `frontend/nginx/default.conf`                                                                    | One exact entry per new path that needs it, as in Stages 26 and 27. Do not add a whole prefix.                                                                         |
+| 10  | Existing tests                                                                                                              | Stage 18 tests that assert on login-lock behaviour must still pass unchanged, with the email mocked per the Stage 19 mocking policy. If one fails, stop and report it. |
+
+---
+
+## Stage 31a: Config and unlock-token utilities
+
+Rows 1 and 3.
+
+### Verification
+
+- App starts with the new env var(s) set; exits with a clear error naming the variable if `FRONTEND_BASE_URL` is missing or not a valid URL
+- A signed unlock token verifies with the unlock verifier
+- An access token, an elevation token and a plain `JWT` are rejected by the unlock verifier
+- An unlock token is rejected by `verifyAccessToken` and the elevation verifier
+- A token past its `exp`, and a token with a bad signature, are rejected
+
+---
+
+## Stage 31b: The email and sending it on every login lock
+
+Rows 2 and 4.
+
+### Verification
+
+- 5 wrong logins (Stage 18 threshold) → one email to the registered address with a link built from `FRONTEND_BASE_URL`
+- The 2nd lock (4 h) and the 3rd lock (24 h) each send their own email
+- Wrong passwords on `PUT /users/me/email` and `PUT /users/me/password` that cause a lock send one email
+- A lock caused by OTP send blocks sends nothing
+- Attempts during a lock send nothing and do not extend the lock
+- A `pending` or `suspended` account sends nothing
+- N concurrent failures at the threshold → one lock and one email
+- The email fails on every attempt → the failure is logged, the lock stands, the response is still `429 ACCOUNT_LOCKED`
+- Transient and non-transient failures follow the Stage 19 rules, with the Stage 19 backoff and deadline
+- Development console fallback behaves as in Stage 19
+- The email contains no OTP and no password information
+- The OTP email flows still behave exactly as in Stage 19
+
+---
+
+## Stage 31c: Unlock-by-link endpoint
+
+Rows 5 and 6.
+
+### Verification
+
+- A valid token for a currently locked account → the lock, the login escalation, and the OTP send blocks and escalations (all three purposes) are cleared; the user can log in
+- The same token used a second time does nothing further and gets the "lock already ended" outcome
+- A token for an earlier lock after a newer lock was set → does not unlock the newer lock
+- A token after an admin unlock, after a successful login, or after a correct current password on `PUT /users/me/email` / `PUT /users/me/password` → does nothing
+- A token for a lock that has expired by time → the "lock already ended" outcome
+- Malformed token, bad signature, wrong `typ`, token older than 1 hour → the `[DECIDE]` outcome
+- A pending or suspended account → the `[DECIDE]` outcome
+- A locked super admin can unlock via the link
+- No audit row is written
+- Concurrent clicks with the same token → one effective unlock, no error beyond the normal "already ended" outcome
+- Admin `POST /users/:id/unlock` behaves exactly as in Stage 18
+
+---
+
+## Stage 31d: Frontend page
+
+Rows 7-9.
+
+- A page opened from the link. It reads the token from the URL, shows an explanation and one button. Opening the page sends no request.
+- Pressing the button calls the unlock endpoint with the token.
+- Success: goes to `/login` with the existing toast style. Text: `[DECIDE]`.
+- "Lock already ended" outcome: goes straight to `/login`.
+- Other outcomes: per the `[DECIDE]` entries above.
+- Works when logged out (the main case) and when logged in. It is not in the Stage 22 page-to-view list; if it has to be, stop and ask me.
+- The button is disabled while the request is in flight.
+
+### Verification
+
+- Open the link → page shows with the button; the network tab shows no request until the button is pressed
+- Press the button on a valid link → one `POST`, then `/login`; logging in with the correct password works
+- Press it on a stale link → goes straight to `/login`
+- Double-click the button → one request
+- Malformed or missing token in the URL → the `[DECIDE]` behaviour
+- Phone-width viewport: the page and button are usable
+
+---
+
+## Stage 31e: Tests (Vitest)
+
+Follow the Stage 7 ground rules and the Stage 19 mocking policy for the email transport: real Postgres, tests under `tests/` mirroring `src/`, concurrency tests in `tests/concurrency/`. Simulate elapsed time by backdating timestamp columns, as in earlier stages. Every Verification bullet in 31a-31d that does not need Docker or a real browser is a required test case. For the frontend, use the existing Vitest + `@testing-library/react` setup with the API function mocked. List the phone-width and real-browser checks in your summary for manual verification. Do not modify application code to make a test pass.
+
+### AI logging
+
+Same as earlier stages: header comment on every file created or modified, and a usage-log entry per sub-stage.
+
+### Backlog edit (for the team to make in `docs/FoC-ProductBacklog.md`)
+
+- **NFR1.1.1:** reword to: when an account is locked by the login lockout, the system emails the registered address a link, valid for 1 hour and tied to that lock, that opens a page where the user can press a button to clear the lock and its escalation (and any OTP send blocks). Sent for every login lock; not for OTP send blocks; not for pending or suspended accounts. Failed sends are retried as for OTP emails and then logged.
+- Remove the "deferred" note on NFR1.1.1 added for Stage 18.
