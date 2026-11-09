@@ -31,6 +31,11 @@
  *        leftover job fails without retries.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - test for the extended chat_notification payload
+ *        (orderId null + recipient, for series notices) via isChatNotificationPayload.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError } from 'bullmq';
@@ -274,6 +279,25 @@ describe('chat_notification', () => {
       expect(t.outbox.createMany).not.toHaveBeenCalled();
     },
   );
+
+  // AI-generated (edited by <name>).
+  it('accepts a series notice (orderId null, recipient set) and rejects one with neither', async () => {
+    const t = setup('open');
+    const notify = vi.fn().mockResolvedValue({ ok: true });
+    const process = createCreditJobProcessor({
+      prisma: t.prisma as unknown as PrismaClient,
+      credits: { reserve: t.reserve, release: t.release },
+      chat: { create: vi.fn(), notify, addParticipant: vi.fn() },
+    });
+    const seriesData = { orderId: null, recipient: REQUESTER, messageId: 'm-1', message: 'hi' };
+    await expect(process(job('chat_notification', seriesData))).resolves.toBeUndefined();
+    expect(notify).toHaveBeenCalledWith(seriesData);
+
+    const invalid = { orderId: null, messageId: 'm-1', message: 'hi' };
+    await expect(process(job('chat_notification', invalid))).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+  });
 });
 
 // AI-generated (edited by <name>).

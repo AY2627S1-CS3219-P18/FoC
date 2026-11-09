@@ -40,6 +40,12 @@
  *        and chat jobs are unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - chat_notification validation now uses
+ *        isChatNotificationPayload (queue/tasks.ts), accepting the extended payload
+ *        (nullable orderId + recipient) that series notices use. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
@@ -50,6 +56,7 @@ import {
   CHAT_PARTICIPANT_TASK,
   type ChatParticipantPayload,
   type ChatNotificationPayload,
+  isChatNotificationPayload,
   CHAT_CREATE_TASK,
 } from '../queue/tasks.js';
 import type { CreditsClient } from '../clients/credits.client.js';
@@ -132,18 +139,11 @@ export function createCreditJobProcessor({
         return;
       }
       case CHAT_NOTIFICATION_TASK: {
-        const input = job.data as Partial<ChatNotificationPayload> | null;
-        if (
-          !input ||
-          !['orderId', 'messageId', 'message'].every(
-            (key) =>
-              typeof input[key as keyof ChatNotificationPayload] === 'string',
-          )
-        )
+        if (!isChatNotificationPayload(job.data))
           throw new UnrecoverableError('Invalid chat_notification payload.');
         if (!chat)
           throw new UnrecoverableError('Chat client is not configured.');
-        const result = await chat.notify(input as ChatNotificationPayload);
+        const result = await chat.notify(job.data as ChatNotificationPayload);
         if (!result.ok) {
           if (result.kind === 'permanent')
             throw new UnrecoverableError(

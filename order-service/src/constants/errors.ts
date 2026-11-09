@@ -36,6 +36,13 @@
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - series error codes (SERIES_NOT_FOUND 404,
+ *        SERIES_CONFLICT 409, INVALID_RULE, MISSING_RULE, INVALID_DURATION, INVALID_START,
+ *        MISSING_START_TIME, INVALID_USER), named and mapped per the stage's error-codes
+ *        table. No requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 
 export enum ErrorCode {
@@ -75,6 +82,14 @@ export enum ErrorCode {
   SUPPLIER_NOT_FOUND = 'SUPPLIER_NOT_FOUND',
   DELIVERY_LOCATION_NOT_FOUND = 'DELIVERY_LOCATION_NOT_FOUND',
   SUPPLIER_SERVICE_UNAVAILABLE = 'SUPPLIER_SERVICE_UNAVAILABLE',
+  SERIES_NOT_FOUND = 'SERIES_NOT_FOUND',
+  SERIES_CONFLICT = 'SERIES_CONFLICT',
+  INVALID_RULE = 'INVALID_RULE',
+  MISSING_RULE = 'MISSING_RULE',
+  INVALID_DURATION = 'INVALID_DURATION',
+  INVALID_START = 'INVALID_START',
+  MISSING_START_TIME = 'MISSING_START_TIME',
+  INVALID_USER = 'INVALID_USER',
 }
 
 export const ErrorMessage: Record<ErrorCode, string> = {
@@ -131,4 +146,15 @@ export const ErrorMessage: Record<ErrorCode, string> = {
     'That delivery location does not exist.',
   [ErrorCode.SUPPLIER_SERVICE_UNAVAILABLE]:
     'Supplier details could not be checked right now. Please try again.',
+  [ErrorCode.SERIES_NOT_FOUND]: 'Series not found.',
+  [ErrorCode.SERIES_CONFLICT]:
+    'This series was changed by someone else. Refresh and try again.',
+  [ErrorCode.INVALID_RULE]: 'Recurrence rule is invalid.',
+  [ErrorCode.MISSING_RULE]: 'Series is missing a recurrence rule.',
+  [ErrorCode.INVALID_DURATION]:
+    'Duration must be a whole number of minutes, up to 1440 (24 hours).',
+  [ErrorCode.INVALID_START]: 'Start time must be a valid date.',
+  [ErrorCode.MISSING_START_TIME]:
+    'Series is missing a start time (startAt or startNow).',
+  [ErrorCode.INVALID_USER]: 'This user cannot receive scheduled errands.',
 };
