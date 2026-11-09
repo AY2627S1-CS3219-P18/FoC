@@ -49,6 +49,13 @@
  *        is still the closest default for an unhandled occurrence of either.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Finding F1 - reworded OTP_RESEND_LIMIT to no longer name a specific wait ("about an
+ *        hour"), since callers now show err.message (the server's own wording) instead of this
+ *        entry for OTP_RESEND_LIMIT. This entry remains as the generic fallback text.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -76,7 +83,7 @@ export const errorMessages = {
   },
   OTP_RESEND_COOLDOWN: { message: 'Please wait before requesting another code.', display: 'field' },
   OTP_RESEND_LIMIT: {
-    message: "You've reached the resend limit. Please try again in about an hour.",
+    message: "You've reached the resend limit. Please try again later.",
     display: 'field',
   },
   NO_PENDING_REGISTRATION: {

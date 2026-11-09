@@ -13729,3 +13729,40 @@ Otherwise every item in the stage's bullets is implemented as specified.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-09 — F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Finding F1 (pasted task); display text source was already decided by errorMessages.js's existing display-type convention (field-level message string)
+
+**Prompts (exact):**
+
+> Implement finding F1. Keep changes minimal.
+>
+> 1. frontend/src/components/ResendButton.jsx: replace the `limitReached` boolean with `limitMessage` state (string|null). In the OTP_RESEND_LIMIT branch of handleClick, call setLimitMessage(err.message). Render <p className="text-sm text-ink-40">{limitMessage}</p> when it is set. Remove the errorMessages import if now unused.
+> 2. frontend/src/pages/ForgotPassword.jsx (~line 84) and frontend/src/components/ElevationOtpModal.jsx (~line 66): in the OTP_RESEND_LIMIT handling for the initial send-code action, use err.message instead of errorMessages.OTP_RESEND_LIMIT.message. Keep the existing display type and surrounding behaviour.
+> 3. frontend/src/api/errorMessages.js: change OTP_RESEND_LIMIT's message to "You've reached the resend limit. Please try again later." (keep display type).
+> 4. Update frontend/tests/components/ResendButton.test.jsx so the mocked rejection includes a `message`, and assert the rendered text equals it. Add cases for "about an hour", "about 4 hours" and "about a day". Add or adjust tests for ForgotPassword and ElevationOtpModal if they assert the old limit text.
+> 5. Add a new AI Assistance Disclosure entry to the header of every file you edit (tool: Claude Code, model: claude-sonnet-5-5, date: 2026-11-09, scope, author review blank, no requirements/architecture/schema/API decisions made by the AI tool), and give me the entry to paste into /ai/usage-log.md.
+> 6. Run the frontend tests and lint. Report changed files and results. Do not change anything under user-service/.
+
+**Key responses:**
+Replaced ResendButton's `limitReached` boolean with `limitMessage` (string|null) sourced from `err.message`, so the displayed wait reflects whatever the server actually reports, rather than a string hardcoded in errorMessages.js. Applied the same `err.message` substitution to ForgotPassword's and ElevationOtpModal's initial-send OTP_RESEND_LIMIT branches. Reworded errorMessages.js's OTP_RESEND_LIMIT entry to a generic fallback since callers no longer read it for this code's display text. Checked ForgotPassword.test.jsx and ElevationOtpModal.test.jsx for assertions on the old "about an hour" text — found none, so no changes were needed there (confirmed via grep). Updated ResendButton.test.jsx's limit test to assert against `err.message` and added three parametrized cases for different wait phrasings. Ran the three affected test files (21/21 passed), then the full suite (267/268 passed; one pre-existing, unrelated failure in CreateRequest.test.jsx over a maxLength mismatch, left untouched), then `npm run lint` (oxlint, exit 0, no findings in the edited files).
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/components/ResendButton.jsx` (modified)
+- `frontend/src/pages/ForgotPassword.jsx` (modified)
+- `frontend/src/components/ElevationOtpModal.jsx` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/tests/components/ResendButton.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
