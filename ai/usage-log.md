@@ -13269,6 +13269,7 @@ Accepted all changes.
 
 **Key responses:**
 Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+
 - `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
 - `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
 - No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
@@ -13315,6 +13316,7 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 > (Answer) Queue a release
 
 **Key responses:**
+
 - `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
 - New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
 - The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
@@ -13364,6 +13366,7 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 > ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
 
 **Key responses:**
+
 - "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
 - `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
 - `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
@@ -13385,3 +13388,125 @@ Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both d
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage e: Series API and failed rows"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+> once done, go for stage f
+> ok let's finish up stage e. ignore my msg to go for f. finish up whatever you need for e then stop.
+
+**Key responses:**
+Implemented the full series API (`POST /orders/series`, `GET /orders/series/mine`,
+`GET /orders/series/:seriesId`, `PATCH /orders/series/:seriesId/edit`,
+`DELETE /orders/series/:seriesId`), mirroring `createOrder`/`editOrder`'s validation and
+optimistic-lock patterns: `series.service.ts`, `series.controller.ts`, `series.routes.ts`
+(mounted at `/orders/series`, before `GET /orders/:id`), `types/series.ts`. Added the stage's
+error codes to `constants/errors.ts` and `statusFor` mapping (404/409 for
+`SERIES_NOT_FOUND`/`SERIES_CONFLICT`, everything else 400).
+
+Added `domain/series-rule.ts`: a thin wrapper over the `rrule` npm package (per the stage's
+"Library: rrule (npm)" decision) that parses the series' stored RRULE text against its
+DTSTART, using the same Singapore-wall-clock-shift trick as `clients/openingHours.ts` (stage
+c2), since `rrule` otherwise treats JS `Date`s as literal UTC. Used to validate a submitted
+rule, compute the initial `nextFireAt` (the first occurrence at/after DTSTART, inclusive), and
+the "next 3 upcoming dates" GET responses expose.
+
+Extended `queue/tasks.ts`'s `ChatNotificationPayload` with a nullable `orderId` and an optional
+`recipient` (required when `orderId` is null), per the Notifications section's already-approved
+(George, Wen Xi) extension, and added `notifySeriesEvent`/`isChatNotificationPayload`; updated
+`worker/credit-jobs.ts`'s `chat_notification` validator to use the new type guard. Series
+failure/skip rows are inserted directly into `requests` (status `failed`, `failureReason` set,
+no credit reservation, no outbox row except the notice) via a small shared helper in
+`series.service.ts`, used by `editSeries`/`deleteSeries` when a retry was stopped (see below) and
+exported for Stage f's worker to reuse.
+
+Implemented "series edited/paused/deleted while retrying stops the retry, writes a failed row and
+a notice" for both `editSeries` (any successful edit while `currentOccurrenceAt` is set) and
+`deleteSeries` (same, in the same transaction as the delete). The two notice messages were
+drafted and shown to the user for approval before use, per the stage's explicit instruction, and
+used verbatim once approved.
+
+`editSeries` resets DTSTART to the edit time and recomputes `nextFireAt` only when the submitted
+`rrule` text differs from the stored one (a byte-for-byte change, per "only when the RRULE ...
+changes"); resuming a paused series (`status: inactive -> active`) recomputes `nextFireAt` from
+the resume time without touching DTSTART, so missed occurrences during the pause are dropped
+without restarting the recurrence pattern's day/weekday alignment.
+
+`listMyOrders` (order-listing.service.ts) now includes `failed` rows that carry a
+`failureReason` (series outcomes) while still hiding credit-reservation failures
+(`failureReason` null), per the stage's "Failed rows" table; its one existing test case
+(`orders.controller.spec.ts`, `GET /orders/mine`) was updated for the new where-clause, not
+added to.
+
+**`[DECIDE]` resolved during this stage:** the design table's open placeholder — "If
+`durationMinutes` is omitted on a series: default 1440 or required; waiting for George's
+completeBy change" — was raised to the user, who first said default to 1440 pending later
+confirmation. Mid-stage, `git fetch` showed George's completeBy-default change (commit
+`98ee3e3`) had since merged to main with a **1-hour** default for normal orders, not the 24
+hours instructions.md assumed. Raised this discrepancy to the user, who then said to match it:
+`durationMinutes` omitted on create defaults to 60 minutes (`DEFAULT_DURATION_MINUTES` in
+`series.service.ts`), not 1440. The 1440-minute **maximum** (24h cap) from the stage's own table
+is unchanged and still enforced.
+
+**Branching note:** work was originally done on the `feat/stage-d-order-service-user-client`
+branch (PR #176, unmerged), which was itself based on an older `main`. Partway through, `main`
+was found to have merged a second relevant change — `5f17a93` "reserve credits synchronously on
+create" (removes the worker's `credit_reserve` job; `POST /orders` now reserves inline) — which
+touched `orders.routes.ts` and `worker/credit-jobs.ts`, two files this stage also edits. Per the
+user's direction, the Stage-d-only usage-log sign-off was committed and pushed to PR #176
+separately, and this stage's work was redone from scratch on a fresh branch cut from current
+`main` (`feat/stage-e-order-service-series-api`), reapplying the same edits against the new file
+versions.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build (`tsc -p
+tsconfig.build.json`) all clean. `npx vitest run` — 785/785 tests pass (23 files), including new
+`domain/series-rule.spec.ts` (8 tests), `queue/tasks.spec.ts` (9 tests),
+`services/series.service.spec.ts` (32 tests: create validation incl. durationMinutes
+default/startNow/startAt rules, getSeries/listMySeries ownership and public shape — no retry
+state or `nextFireAt` exposed, edit semantics incl. DTSTART reset/resume/stop-retry-and-notify,
+delete incl. stop-retry-and-notify), `controllers/series.controller.spec.ts` (12 HTTP-level
+tests: status-code mapping, route order, ownership), and one new case each in
+`worker/credit-jobs.spec.ts` and `queue/tasks.spec.ts` for the extended `chat_notification`
+payload. `npm run test:e2e` could not run in this environment (no local `.env`/`DATABASE_URL`
+present) — unrelated to this stage.
+
+**Files:**
+
+- `order-service/src/services/series.service.ts` (created)
+- `order-service/src/services/series.service.spec.ts` (created)
+- `order-service/src/controllers/series.controller.ts` (created)
+- `order-service/src/controllers/series.controller.spec.ts` (created)
+- `order-service/src/routes/series.routes.ts` (created)
+- `order-service/src/types/series.ts` (created)
+- `order-service/src/domain/series-rule.ts` (created)
+- `order-service/src/domain/series-rule.spec.ts` (created)
+- `order-service/src/queue/tasks.spec.ts` (created)
+- `order-service/src/constants/errors.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/routes/orders.routes.ts` (modified)
+- `order-service/src/services/order-listing.service.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/controllers/orders.controller.spec.ts` (modified, one fixture assertion only)
+- `order-service/package.json` / `package-lock.json` (added the `rrule` dependency)
+
+**Deviations / questions raised for the team:**
+The `durationMinutes` default (see above) — resolved with the user mid-stage, flagged here since
+it reverses an earlier "default 1440" answer. A series created without a rule that yields any
+occurrence at/after its own start time (e.g. `UNTIL` already in the past) is rejected as
+`INVALID_RULE` at create time; instructions.md does not say what should happen here, but the
+`nextFireAt` column is non-nullable (matches the real Stage a migration, not the design table's
+"nullable" note — already flagged during Stage a), so a series that could never fire cannot be
+stored. Otherwise none; every other item in the design tables is implemented as specified.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

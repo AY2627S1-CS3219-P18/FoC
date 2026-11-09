@@ -43,6 +43,11 @@
  *        reserve (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - mounted seriesRouter at /series, before GET /:id, per
+ *        the stage's API table ("registered BEFORE /:id"). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -54,6 +59,7 @@ import type { CreditsClient } from '../clients/credits.client.js';
 import * as ordersController from '../controllers/orders.controller.js';
 import { ErrorCode, ErrorMessage } from '../constants/errors.js';
 import { isUuid } from '../utils/validation.js';
+import { seriesRouter } from './series.routes.js';
 
 export interface OrdersRouterDeps {
   /** supplier-service, for the create / edit existence check. */
@@ -89,6 +95,8 @@ export function ordersRouter(
     '/admin/users/:userId',
     ordersController.getAdminUserOrders(prisma, userServiceUrl),
   );
+  // Stage 28 e: registered before /:id so "series" is never captured as an order id.
+  router.use('/series', seriesRouter(prisma));
   router.get('/:id', ordersController.getOrderById(prisma));
   router.post(
     '/',

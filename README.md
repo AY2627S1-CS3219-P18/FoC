@@ -847,3 +847,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 248 | 2026-11-09 | order-service | order-service: Synchronous order creation and pending-order 409 | Create reserves credits in the request; 409 while a pending order exists. |
 
 | 249 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+| 250 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+
+| 25` | 2026-11-09 | order-service | Scheduled Errands Stage 28 e: Series API and failed rows | Added series create/get/list/edit/delete endpoints and failed-row/notice handling. |
