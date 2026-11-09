@@ -83,6 +83,10 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested errand-origin-only outer chat back navigation.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Pinned system chats and displayed their messages as incoming from FoC.
+ * Author review: tng wen xi
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified Auto-translate switch, per-message Show original/Translate control and translated message display.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
@@ -128,11 +132,43 @@ export default function Chat() {
   return <ChatView key={user?.activeView} />;
 }
 
-// Listing supplies authoritative updatedAt DESC ordering; details supplies each stored title.
+// Order chats retain API ordering; the system conversation is pinned ahead of them.
+// AI-generated (edited by <name>).
+function pinSystemChat(conversations) {
+  const unique = [
+    ...new Map(conversations.map((chat) => [chat.id, chat])).values(),
+  ];
+  return [
+    ...unique.filter((chat) => chat.orderId === null),
+    ...unique.filter((chat) => chat.orderId !== null),
+  ];
+}
+
+// Details supplies each stored title.
 async function loadChatPage(role, cursor) {
   const page = await listChats(role, cursor);
+  let rows = page.conversations;
+  if (!cursor && !rows.some((chat) => chat.orderId === null)) {
+    // A system chat may be older than the first page. Find it without changing
+    // the order-chat cursor; later pages are deduplicated when loaded normally.
+    let searchPage = page;
+    const visited = new Set();
+    while (searchPage.hasMore && searchPage.nextCursor) {
+      const key = JSON.stringify(searchPage.nextCursor);
+      if (visited.has(key)) break;
+      visited.add(key);
+      searchPage = await listChats(role, searchPage.nextCursor);
+      const systemChat = searchPage.conversations.find(
+        (chat) => chat.orderId === null,
+      );
+      if (systemChat) {
+        rows = [...rows, systemChat];
+        break;
+      }
+    }
+  }
   const conversations = await Promise.all(
-    page.conversations.map(async (chat) => {
+    rows.map(async (chat) => {
       const details = await getChat(chat.id);
       return {
         ...chat,
@@ -141,7 +177,7 @@ async function loadChatPage(role, cursor) {
       };
     }),
   );
-  return { ...page, conversations };
+  return { ...page, conversations: pinSystemChat(conversations) };
 }
 
 function ChatTitle({ chat, role }) {
@@ -226,7 +262,10 @@ function ChatView() {
       const next = await loadChatPage(role, page.nextCursor);
       setPage((prev) => ({
         ...next,
-        conversations: [...prev.conversations, ...next.conversations],
+        conversations: pinSystemChat([
+          ...prev.conversations,
+          ...next.conversations,
+        ]),
       }));
     } catch (err) {
       setError(err.message);
@@ -610,7 +649,13 @@ function Thread({ id, user, onRead, errandReturnTo }) {
   };
   const send = async (event) => {
     event.preventDefault();
-    if (!text.trim() || busy || chat?.status !== "ACTIVE") return;
+    if (
+      !text.trim() ||
+      busy ||
+      chat?.status !== "ACTIVE" ||
+      chat?.orderId === null
+    )
+      return;
     refocusAfterSend.current = true;
     setSending(true);
     setBusy(true);
@@ -681,8 +726,9 @@ function Thread({ id, user, onRead, errandReturnTo }) {
         className="my-4 max-h-[60vh] space-y-3 overflow-y-auto px-1 [overflow-anchor:none]"
       >
         {messages.map((message, index) => {
-          const own = message.senderId === user?.id;
-          const system = message.type === "SYSTEM";
+          const systemChat = chat?.orderId === null;
+          const own = !systemChat && message.senderId === user?.id;
+          const system = !systemChat && message.type === "SYSTEM";
           const read = index <= readThrough;
           const date = new Date(message.createdAt);
           // AI-generated (edited by <name>).
@@ -723,6 +769,11 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                       : `min-w-0 max-w-[85%] rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
                   }
                 >
+                  {systemChat && (
+                    <p className="mb-1 text-xs font-semibold text-ink-70">
+                      FoC
+                    </p>
+                  )}
                   <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                     {showTranslated ? translation : message.content}
                   </p>
@@ -796,13 +847,20 @@ function Thread({ id, user, onRead, errandReturnTo }) {
           aria-label="Message"
           value={text}
           onChange={(event) => setText(event.target.value)}
-          disabled={busy || !chat || chat.status !== "ACTIVE"}
+          disabled={
+            busy || !chat || chat.status !== "ACTIVE" || chat.orderId === null
+          }
           className="min-w-0 flex-1 rounded-btn border border-line p-3"
         />
         <button
           type="submit"
           aria-label="Send message"
-          disabled={busy || !text.trim() || chat?.status !== "ACTIVE"}
+          disabled={
+            busy ||
+            !text.trim() ||
+            chat?.status !== "ACTIVE" ||
+            chat?.orderId === null
+          }
           className="flex items-center gap-2 rounded-btn bg-ink px-4 text-white disabled:opacity-50"
         >
           <Send size={20} aria-hidden="true" /> Send

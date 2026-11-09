@@ -7,7 +7,9 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Verified read receipt room delivery and reader exclusion.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Tested on-demand chat rooms and acknowledgements.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 import { createServer } from "node:http";
@@ -59,7 +61,7 @@ async function setup(
   };
   return { io, client, ready, close };
 }
-it.each([undefined, "", "bad"])(
+it.each([undefined, "", "bad", "SYSTEM"])(
   "rejects invalid handshake token %j",
   async (token) => {
     const t = await setup();

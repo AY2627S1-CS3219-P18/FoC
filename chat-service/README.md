@@ -41,6 +41,10 @@ Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified message-history participant read positions.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Documented the team-specified system conversations.
+Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Documented the approved health endpoint.
+Author review: tng wen xi
 Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Documented the team-specified message translation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
@@ -62,6 +66,14 @@ npm run dev
 ```
 
 `DATABASE_URL` supplies the MySQL host, port, user, password and database. `CHAT_SERVICE_API_KEY` is required and must match the order worker's configured secret. Never commit real credentials.
+
+## GET /health
+
+<!-- AI-generated -->
+
+Matches order-service's health endpoint. No authentication is required. Runs `SELECT 1`
+against the chat database; returns `200` with `{"status":"ok","database":"up"}`
+on success, or `503` with `{"status":"error","database":"down"}` on query failure.
 
 ## POST /chat/conversations
 
@@ -372,3 +384,25 @@ Team decisions supplied in the 2026-11-09 implementation conversation:
 - Future enhancement (not built): a remove/replace-courier route that clears the outgoing courier's translations.
 
 Verification: 192 chat-service tests passed (translation toggle, enqueue on send, job processor, history field); typecheck and build passed. Not exercised: live Redis/BullMQ, live Gemini, live MySQL migration, and the frontend.
+
+## System conversations
+
+Team decisions supplied in the 2026-11-09 implementation conversation:
+
+- Orderless notifications explicitly send `{ "orderId": null, "recipient": "<user UUID>", "messageId": "<caller UUID>", "message": "Schedule failed" }`. The recipient is required for orderless requests. Omitted orderId is invalid. Authentication remains X-Service-Key.
+- The service lazily creates an ACTIVE conversation titled `FoC`, with null orderId and one recipient participant whose role is null. No SYSTEM user or order is created.
+- `system_chats` maps the UUID user_id primary key to a unique UUID conversation_id foreign key, cascading updates/deletes. Conversation and mapping creation share a transaction. A concurrent loser rolls back and reads the winning mapping.
+- Messages retain their existing conversation foreign key. A separate transaction persists each message and updates the conversation timestamp. An empty system conversation can remain if message persistence fails; a retry reuses it.
+- Caller-generated message IDs remain globally unique. Identical retries return 200 without broadcasting; mismatched content, order or system recipient returns 409. New messages return 201.
+- Explicit UUID order IDs continue to use order conversations; missing conversations return 404 and malformed IDs return 400 without fallback.
+- Existing list/details/history/read endpoints work with system conversations. Role-filtered lists also include the user's system conversation. Nullable orderId and participant role are returned unchanged.
+- Users cannot send to system conversations (403). Normal creation still requires an order ID and order-service credentials. Socket room membership still checks authenticated participation; SYSTEM cannot authenticate as a user.
+- After message commit, existing `message:sent` broadcasts notify the recipient user room and conversation room, including for the first notification. No new socket event or payload is introduced. The frontend disables its composer for null-order conversations.
+
+Apply the migration before starting the updated service:
+
+```sh
+cd chat-service
+npm run db:generate
+npm run db:deploy
+```

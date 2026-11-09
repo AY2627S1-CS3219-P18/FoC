@@ -21,7 +21,9 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review: Congchen
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
@@ -411,10 +413,14 @@ export function postSystemNotification(
   return async (req, res) => {
     const body = z
       .object({
-        orderId: z.uuid(),
+        orderId: z.uuid().nullable(),
+        recipient: z.uuid().optional(),
         messageId: z.uuid(),
         message: z.string().refine((value) => value.trim().length > 0),
       })
+      .refine(
+        (value) => value.orderId !== null || value.recipient !== undefined,
+      )
       .safeParse(req.body);
     if (!body.success) {
       res.sendStatus(400);

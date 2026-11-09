@@ -15,6 +15,8 @@
  * Author review: george-yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Reused for chat-service as requested.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 
 import {
@@ -194,6 +196,7 @@ export function createAuthenticate(
       const { user_id, role } = await verifyToken(
         authHeader.slice("Bearer ".length).trim(),
       );
+      if (user_id === "SYSTEM") throw new Error("unauthorized");
       req.user = { user_id, role };
       next();
     } catch {
