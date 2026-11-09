@@ -39,6 +39,12 @@
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - listMyOrders now also returns failed rows that have
+ *        a failureReason (series outcomes); credit-reservation failures (failureReason null)
+ *        stay hidden, per the stage's "Failed rows" table.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -369,7 +375,12 @@ export function listMyOrders(
   return prisma.orderRequest.findMany({
     where: {
       ...(as === 'courier' ? { courierId: userId } : { requesterId: userId }),
-      status: { not: 'failed' }, // failed reservations are not shown (George, 2026-10-20)
+      // Credit-reservation failures (failureReason null) stay hidden; series-caused
+      // failures (failureReason set) are shown (instructions.md Stage 28e).
+      OR: [
+        { status: { not: 'failed' } },
+        { status: 'failed', failureReason: { not: null } },
+      ],
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });

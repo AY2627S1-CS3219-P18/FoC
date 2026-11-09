@@ -93,6 +93,11 @@
  *        in memory for the settle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 e (instructions.md) - updated the GET /orders/mine where-clause assertion
+ *        for the listMyOrders change (failed rows with a failureReason are now included).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import request from 'supertest';
@@ -463,18 +468,27 @@ describe('GET /orders/mine', () => {
     [{}, { requesterId: me }],
     [{ as: 'requester' }, { requesterId: me }],
     [{ as: 'courier' }, { courierId: me }],
-  ])('%o -> where %o, failed left out, newest first', async (query, where) => {
-    const findMany = vi.fn(async () => []);
-    await request(appWith(findMany))
-      .get('/orders/mine')
-      .query(query)
-      .set('authorization', bearer(me))
-      .expect(200, { ok: true, orders: [] });
-    expect(findMany).toHaveBeenCalledWith({
-      where: { ...where, status: { not: 'failed' } },
-      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-    });
-  });
+  ])(
+    '%o -> where %o, credit-reservation failures left out (series failures included), newest first',
+    async (query, where) => {
+      const findMany = vi.fn(async () => []);
+      await request(appWith(findMany))
+        .get('/orders/mine')
+        .query(query)
+        .set('authorization', bearer(me))
+        .expect(200, { ok: true, orders: [] });
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          ...where,
+          OR: [
+            { status: { not: 'failed' } },
+            { status: 'failed', failureReason: { not: null } },
+          ],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      });
+    },
+  );
 
   it.each([
     [{ as: 'admin' }, 'Invalid query parameter value. (as)'],
