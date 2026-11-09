@@ -5,13 +5,19 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - removed the dead `postAt` mock field and the unused
+ *        `postAtLabel` helper (no scheduled single-post feature exists; `getRequest`, the
+ *        mock `requests` array, `minutesUntil` and `expiryLabel` are still imported
+ *        elsewhere, so kept). Added `failed` to STATUSES/STATUS_LABELS and a
+ *        FAILURE_REASON_LABELS map for the new failed-order chip/reason text.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 // Timestamps are generated relative to page load so the demo always reads as "just now".
 //
-// Three separate clocks per request (team decision):
-//   postAt     - when the request is sent out to the board. null means it went out
-//                immediately. A future value means it is scheduled and not yet listed.
+// Two clocks per request (team decision):
 //   expiresAt  - when an UNACCEPTED request stops being offered and the credits come back.
 //                Runs from the moment it posts. Irrelevant once a courier has accepted.
 //   completeBy - the deadline for the food to actually arrive. null means as soon as
@@ -30,6 +36,7 @@ export const STATUSES = [
   'completed',
   'cancelled',
   'expired',
+  'failed',
 ]
 
 export const STATUS_LABELS = {
@@ -40,7 +47,32 @@ export const STATUS_LABELS = {
   completed: 'Completed',
   cancelled: 'Cancelled',
   expired: 'Expired',
+  failed: 'Failed',
 }
+
+// Stage 28 g: `failureReason` on a `failed` order (order-service's SeriesFailureReason
+// values, series.service.ts/series-worker.ts) - a scheduled errand that never posted.
+// Unrecognised/future reasons fall back to a generic line rather than showing the raw code.
+export const FAILURE_REASON_LABELS = {
+  SERIES_EDITED_WHILE_RETRYING: 'The recurring errand was edited while this occurrence was waiting to retry.',
+  SERIES_DELETED_WHILE_RETRYING: 'The recurring errand was deleted while this occurrence was waiting to retry.',
+  SERIES_COMPLETE_BY_IN_PAST: "Its deadline had already passed by the time it was due to post.",
+  SERIES_USER_SUSPENDED: 'Your account was suspended at the time it was due to post.',
+  SERIES_USER_LOCKED: 'Your account was locked at the time it was due to post.',
+  SERIES_USER_PENDING: 'Your account was still pending verification at the time it was due to post.',
+  SERIES_USER_NOT_FOUND: 'Your account could not be found at the time it was due to post.',
+  SERIES_USER_SERVICE_UNAVAILABLE: "We couldn't reach the user service after several attempts.",
+  SERIES_SUPPLIER_NOT_FOUND: 'The supplier could not be found.',
+  SERIES_DELIVERY_LOCATION_NOT_FOUND: 'The delivery location could not be found.',
+  SERIES_SUPPLIER_NO_OPENING_HOURS: 'The supplier has no opening hours set.',
+  SERIES_SUPPLIER_CLOSED: 'The supplier was closed and could not reopen in time.',
+  SERIES_SUPPLIER_SERVICE_UNAVAILABLE: "We couldn't reach the supplier after several attempts.",
+  SERIES_RETRY_SUPERSEDED: 'The next scheduled occurrence became due before this one could be retried.',
+  SERIES_PENDING_ORDER_CONFLICT: 'You already had another order pending at that time.',
+}
+
+export const failureReasonLabel = (reason) =>
+  (reason && FAILURE_REASON_LABELS[reason]) || "This errand couldn't be posted."
 
 export const requests = [
   {
@@ -49,7 +81,6 @@ export const requests = [
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
-    postAt: null,
     expiresAt: minutes(42),
     completeBy: minutes(75),
     notes: 'I am at the back of the study area, near the printers.',
@@ -65,7 +96,6 @@ export const requests = [
     description: 'Kopi-o kosong and a kaya toast set.',
     deliveryLocation: 'COM2 Level 3 Lounge',
     credits: 3,
-    postAt: null,
     expiresAt: minutes(18),
     completeBy: null,
     notes: 'No sugar in the kopi, please double check with the stall.',
@@ -81,7 +111,6 @@ export const requests = [
     description: 'Any 2 dishes cai fan, no pork. Whatever is left is fine.',
     deliveryLocation: 'Central Library',
     credits: 3,
-    postAt: null,
     expiresAt: minutes(65),
     completeBy: minutes(120),
     notes: '',
@@ -97,7 +126,6 @@ export const requests = [
     description: 'Large ban mian, extra chilli. Please do not let it get soggy.',
     deliveryLocation: 'UTown Residence',
     credits: 5,
-    postAt: null,
     expiresAt: minutes(55),
     completeBy: minutes(90),
     notes: 'Leave it at the front desk if I do not pick up.',
@@ -113,7 +141,6 @@ export const requests = [
     description: 'Mixed rice, one meat two veg. Gravy on the rice is fine.',
     deliveryLocation: 'Yusof Ishak House',
     credits: 4,
-    postAt: null,
     expiresAt: minutes(30),
     completeBy: minutes(60),
     notes: '',
@@ -129,7 +156,6 @@ export const requests = [
     description: '1x chicken rice, no cucumber. Chilli separate please.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
-    postAt: null,
     expiresAt: minutes(35),
     completeBy: minutes(50),
     notes: 'I am in a lecture until 3, meet at the side entrance.',
@@ -145,7 +171,6 @@ export const requests = [
     description: 'Two prata kosong and one teh peng.',
     deliveryLocation: 'PGP Residence Block A',
     credits: 4,
-    postAt: null,
     expiresAt: minutes(20),
     completeBy: minutes(35),
     notes: 'Block A lobby, I will wait downstairs.',
@@ -161,7 +186,6 @@ export const requests = [
     description: 'Yong tau foo, dry, six pieces. Chilli and sweet sauce.',
     deliveryLocation: 'COM1 Basement',
     credits: 4,
-    postAt: null,
     expiresAt: minutes(-5),
     completeBy: hoursAgo(2.3),
     notes: '',
@@ -181,7 +205,6 @@ export const requests = [
     description: 'Sliced fish soup, thick bee hoon, no milk.',
     deliveryLocation: 'i3 Building',
     credits: 5,
-    postAt: null,
     expiresAt: daysAgo(1),
     completeBy: daysAgo(1),
     notes: '',
@@ -203,7 +226,6 @@ export const requests = [
     description: 'Nasi lemak set with extra sambal, and a bandung.',
     deliveryLocation: 'SDE4 Studio',
     credits: 6,
-    postAt: null,
     expiresAt: daysAgo(2),
     completeBy: daysAgo(2),
     notes: '',
@@ -219,7 +241,6 @@ export const requests = [
     description: 'Any bubble tea, half sugar, less ice.',
     deliveryLocation: 'UTown Residence',
     credits: 3,
-    postAt: null,
     expiresAt: daysAgo(3),
     completeBy: null,
     notes: '',
@@ -235,7 +256,6 @@ export const requests = [
     description: 'Iced milo and a tuna sandwich, if they still have it.',
     deliveryLocation: 'LT19',
     credits: 3,
-    postAt: null,
     expiresAt: minutes(25),
     completeBy: minutes(40),
     notes: 'Back row of LT19, I will come down to the door.',
@@ -275,9 +295,6 @@ export const fullTime = (iso) =>
 export const completeByLabel = (iso) => (iso ? 'deliver by ' + clockTime(iso) : 'deliver ASAP')
 
 export const completeByShort = (iso) => (iso ? clockTime(iso) : 'ASAP')
-
-// "Goes out at 14:30", or the immediate wording when it was not scheduled.
-export const postAtLabel = (iso) => (iso ? 'goes out at ' + clockTime(iso) : 'posted immediately')
 
 export const LIFECYCLE = ['open', 'accepted', 'picked_up', 'delivered', 'completed']
 

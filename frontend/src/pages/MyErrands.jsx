@@ -7,9 +7,14 @@
  *        activityShared.jsx.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - added the "Scheduled" section above "Active now".
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import EmptyState from '../components/EmptyState'
+import ScheduledSeriesSection from '../components/ScheduledSeriesSection'
 import { ActivitySection, useActivityList } from './activityShared'
 
 // Order F3.4.2 active requests, F5 cancellation, F6 editing, F1.4.1 / F4.1.3 credit outcomes.
@@ -20,6 +25,8 @@ export default function MyErrands() {
   return (
     <div className="page-width page-gutter py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">My errands</h1>
+
+      <ScheduledSeriesSection />
 
       {notice}
 

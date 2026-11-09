@@ -18,6 +18,14 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested errand-origin-only outer chat back navigation.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Stage 28 g (instructions.md) - `failed` joins CLOSED (a scheduled errand that never
+ *        posted lands in History, dimmed, with its failure reason shown, and no "Open chat"
+ *        since MESSAGEABLE already excludes it). Orders posted from a series get a "from
+ *        series" tag (request.seriesId); it disappears once the series is deleted
+ *        (order-service clears seriesId via its FK's ON DELETE SET NULL).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,6 +42,7 @@ import {
   LIFECYCLE_LABELS,
   clockTime,
   completeByShort,
+  failureReasonLabel,
 } from "../data/requests";
 import { useApi } from "../api/useApi";
 import { useLocationNames, useSupplier, useUserName } from "../api/lookups";
@@ -48,7 +57,7 @@ import {
 } from "../api/orders";
 import { useOrderEvents, useSocketReady } from "../realtime/orderSocket";
 
-export const CLOSED = ["completed", "cancelled", "expired"];
+export const CLOSED = ["completed", "cancelled", "expired", "failed"];
 export const ACTIVE = ["open", "accepted", "picked_up", "delivered"];
 const MESSAGEABLE = ["open", "accepted", "picked_up", "delivered"];
 const ROLE_REQUESTER = "You requested";
@@ -152,7 +161,10 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
   );
   const [busy, setBusy] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const dimmed = request.status === "cancelled" || request.status === "expired";
+  const dimmed =
+    request.status === "cancelled" ||
+    request.status === "expired" ||
+    request.status === "failed";
   const showTimeline = !CLOSED.includes(request.status);
   const canMessage = MESSAGEABLE.includes(request.status);
   // F17.2: an ongoing errand can be cancelled by its requester only after its deliver-by time.
@@ -325,11 +337,21 @@ function ActivityCard({ request, asCourier, locationName, runAction }) {
             </p>
           )}
 
-          {dimmed && !asCourier && (
+          {request.status === "failed" && !asCourier && (
+            <p className="mt-1.5 text-sm text-alert">
+              {failureReasonLabel(request.failureReason)}
+            </p>
+          )}
+          {dimmed && request.status !== "failed" && !asCourier && (
             <p className="mt-1.5 text-sm text-ink-40">
               <span className="tnum">{request.credits}</span> credits returned
               to your balance.
             </p>
+          )}
+          {request.seriesId && (
+            <span className="mt-1.5 inline-flex h-5 items-center rounded-pill bg-surface-alt px-2 text-[11px] font-medium text-ink-70">
+              From a recurring errand
+            </span>
           )}
         </div>
 

@@ -862,3 +862,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 257 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
 | 258 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
 | 259 | 2026-11-09 | frontend | Merge main into message translation branch | Resolved conflicts and verified frontend. |
+| 260 | 2026-11-09 | frontend | Scheduled Errands Stage 28 g: Frontend | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip. |
+
+| 261 | 2026-11-09 | frontend | Merge latest main into message translation branch | Resolved merge conflicts and checked frontend. |
