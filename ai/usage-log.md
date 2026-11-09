@@ -13193,6 +13193,52 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+## 2026-11-09 — Scheduled Errands Stage 28 d: order-service user client
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 28, "Stage d: User client (order-service)"
+
+**Prompts (exact):**
+
+> ok on with the next stage for 28
+
+**Key responses:**
+Added `user.client.ts`: `createHttpUserClient(baseUrl, serviceKey, fetchImpl?, timeoutMs?)`
+calls `GET {USER_ORDER_SERVICE_URL}/users/worker/:id` with header `User-Order-Service-Key`
+(secret `USER_ORDER_SERVICE_API_KEY`), returning `{ existence, status, lockedUntil }` —
+`existence` reuses the `Existence` type from `suppliers.client.ts` (`found`/`not_found`/
+`unavailable`), `status` is `'pending' | 'active' | 'suspended'` (null unless found), `lockedUntil`
+is parsed to a `Date` or null. 404 maps to `not_found`; any other non-2xx, a network error, a
+timeout, or an unexpected response body maps to `unavailable`. 3 s timeout, matching
+`suppliers.client.ts`'s convention. Added `USER_ORDER_SERVICE_URL` (defaulted, like the existing
+`SUPPLIER_SERVICE_URL`) and `USER_ORDER_SERVICE_API_KEY` (optional, like
+`SUPPLIER_ORDER_SERVICE_API_KEY` and `CHAT_SERVICE_API_KEY`: only the worker will use it) to
+`config/env.ts` and `.env.example`. Did not wire either into `app.ts` or `compose.yaml`'s
+`order-worker` — no caller exists yet; that is Stage f's job.
+
+**Verification:** `npx tsc --noEmit`, `oxlint --type-aware`, and the build all clean. `npx vitest
+run` — 728/728 tests pass (20 files), including a new `user.client.spec.ts` (13 tests: the
+service-key header, active/pending/suspended mapping, a locked user's `lockedUntil` parsed to a
+`Date`, 404, four other HTTP statuses, an unexpected body, a network failure, and a timeout — the
+full "mock fetch for each result" list the stage asks for).
+
+**Files:**
+
+- `order-service/src/clients/user.client.ts` (created)
+- `order-service/src/clients/user.client.spec.ts` (created)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/.env.example` (modified)
+
+**Deviations / questions raised for the team:**
+None. Reused suppliers.client.ts's `Existence` type rather than redefining the same three-value
+union, which is an implementation detail, not a design choice.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
 ## 2026-11-09 — order-service: Default complete-by of one hour
 
 **Tool:** Claude Code (model: claude-opus-5-5)
