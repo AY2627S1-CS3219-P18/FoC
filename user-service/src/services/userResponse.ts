@@ -4,18 +4,23 @@
  * Scope: Created toUserResponse, the shared camelCase mapper for user rows, per
  *        instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added isLocked, lockedUntil and lockLevel, per instructions.md Stage 18d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: toUserResponse now takes the requester's ID and masks email unless the row is the
  *        requester's own, per instructions.md Stage 20 (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-09
+ * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import type { UserRow } from '../db/queries/users.queries.js';
@@ -28,6 +33,7 @@ export interface UserResponse {
   status: 'pending' | 'active' | 'suspended';
   role: 'user' | 'admin' | 'super admin';
   activeView: 'requester' | 'courier';
+  preferredLang: string;
   createdAt: Date;
   updatedAt: Date;
   isLocked: boolean;
@@ -46,6 +52,7 @@ export function toUserResponse(row: UserRow, requesterId: string): UserResponse 
     status: row.status,
     role: row.role,
     activeView: row.active_view,
+    preferredLang: row.preferred_lang,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     isLocked: row.login_locked_until !== null && row.login_locked_until.getTime() > Date.now(),

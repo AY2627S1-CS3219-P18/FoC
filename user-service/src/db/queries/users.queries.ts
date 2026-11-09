@@ -1,49 +1,53 @@
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 4b - user queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 4e - super admin queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 5a - optional db param, status param, lock/activate/stale-cleanup queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 6d - updatePasswordHash
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 9 - listAllUsers, updateUserStatus
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 10 - updateUserRole
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 11 - active_view on UserRow, updateActiveView
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 12b - updateUsername
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 12d - updateEmail
-// Author review:
+// Author review: Congchen
 // 2026-10-19: findPublicSummariesByIds for the public lookup (GET /users/public).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-10-22: Stage 15b - replaced listAllUsers with listUsersPage (paginated, filtered,
 //   sorted). Governing decision: instructions.md Stage 15b.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-04: Stage 18a/18b/18d - added the login-lockout columns to UserRow, lockUserByIdWithNow,
 //   recordLoginFailure, lockLoginAccount, resetLoginLock, and the `locked` filter on
 //   listUsersPage. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-04: Stage 20 - added findByIdWithNow, an unlocked read (no FOR UPDATE) alongside
 //   clock_timestamp(), for the unmask-email actor lookup (NFR3.1.1), which needs the DB clock
 //   for its log line but takes no lock since it writes no state. Governing decision:
 //   instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-06: Stage 26d - exported escapeLikePattern so auditLog.queries.ts's actor/target
 //   filters can reuse it. No requirements, architecture, schema, or API decisions were made by
 //   the AI tool.
-// Author review:
+// Author review: Congchen
+
+// 2026-11-09 (Claude Code, model: claude-sonnet-5-5): Added preferred_lang to UserRow and updatePreferredLang.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review: Congchen
 
 // Scope (2026-11-08, Codex, model: GPT-6): Added the default last-request row at user creation.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 import pool from "../pool.js";
 import { insertDefaultRow } from './lastRequest.queries.js';
 import type { Queryable } from "../transaction.js";
@@ -58,6 +62,7 @@ export interface UserRow {
   status: "pending" | "active" | "suspended";
   role: "user" | "admin" | "super admin";
   active_view: "requester" | "courier";
+  preferred_lang: string;
   login_failed_attempts: number;
   login_failure_window_start: Date | null;
   login_locked_until: Date | null;
@@ -432,6 +437,19 @@ export async function updateActiveView(
   const result = await db.query<UserRow>(
     `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
     [userId, activeView],
+  );
+  return result.rows[0] ?? null;
+}
+
+// AI-generated (edited by <name>).
+export async function updatePreferredLang(
+  userId: string,
+  preferredLang: string,
+  db: Queryable = pool,
+): Promise<UserRow | null> {
+  const result = await db.query<UserRow>(
+    `UPDATE users SET preferred_lang = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    [userId, preferredLang],
   );
   return result.rows[0] ?? null;
 }

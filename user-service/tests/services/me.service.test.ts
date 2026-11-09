@@ -4,7 +4,7 @@
  * Scope: Generated Vitest integration tests (real test DB) for me.service.ts, covering the
  *        Stage 11b Verification bullets in instructions.md that apply at the service layer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
  * Scope: Added coverage for Stage 12's remaining me.service.ts functions (getOwnProfile,
@@ -17,14 +17,14 @@
  *        — those are already covered purpose-agnostically in otp.service.test.ts, and Stage 7's
  *        own rule is not to duplicate a case elsewhere just because a new call site exists.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added coverage for initiateEmailChange/initiatePasswordChange's login-lockout check
  *        (precedence over the password check, shared counter with login, reset on success),
  *        per instructions.md Stage 18b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as meService from '../../src/services/me.service.js';
@@ -93,6 +93,7 @@ describe('changeActiveView', () => {
         'isLocked',
         'lockLevel',
         'lockedUntil',
+        'preferredLang',
         'role',
         'status',
         'updatedAt',
@@ -113,7 +114,7 @@ describe('getOwnProfile', () => {
   it('returns exactly { username, email, activeView }', async () => {
     const user = await createActiveUser(1);
     const result = await meService.getOwnProfile(user.id);
-    expect(result).toEqual({ username: 'user1', email: user.email, activeView: 'requester' });
+    expect(result).toEqual({ username: 'user1', email: user.email, activeView: 'requester', preferredLang: 'en' });
   });
 
   it('throws 404 USER_NOT_FOUND for a nonexistent user id', async () => {
