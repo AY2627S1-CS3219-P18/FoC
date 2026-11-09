@@ -13223,6 +13223,7 @@ Accepted all changes.
 
 **Key responses:**
 Earlier in the session the agent checked a teammate's reported order-service behaviours against the code (reporting facts only) and declined to choose a fix for how a default deadline should appear in the UI, since that is a requirements/design decision. After the team's decision, it implemented:
+
 - `createOrder`: a missing or null `completeBy` is stored as creation time + 1 hour (`DEFAULT_COMPLETE_BY_MS`) instead of NULL. A requester-supplied value is unchanged. Validation is unchanged.
 - `editOrder`: `completeBy: null` is left out of the update, so the stored deadline stays; a string value is written as before.
 - No migration, no change to existing rows, no frontend change. Expiry, cancellation and acceptance rules already key off `completeBy`, so defaulted orders follow them like user-set deadlines.
@@ -13269,6 +13270,7 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 > (Answer) Queue a release
 
 **Key responses:**
+
 - `createOrder` writes the order `pending`, calls credit-service `reserve` once (no retry), then moves the order to `open` (201 with the open order) or `failed` before answering. Refused by credit-service -> `failed`, 422 (`INSUFFICIENT_CREDITS` for `INSUFFICIENT_UNRESERVED_CREDITS`, otherwise new `CREDIT_RESERVE_REJECTED`), no release. Unreachable / 5xx -> `failed`, 503 `CREDIT_SERVICE_UNAVAILABLE`, and a `credit_release` outbox row (the release still runs in the worker with its retries). Order events (`order:created` / `order:failed`) and the open order's `chat_create` task are still produced, through the existing `transitionOrder`.
 - New `ORDER_PENDING_EXISTS` -> 409 with the given message, checked per requester inside the create transaction. Implementation choice made by the agent: a transaction-scoped Postgres advisory lock keyed on the requester id (`pg_advisory_xact_lock(hashtext(requesterId))`) so two concurrent creates cannot both pass the check. No schema change.
 - The worker's `credit_reserve` job (retry, retries-exhausted release, `RESERVE_RETRIES_EXHAUSTED`) is removed; a leftover reserve job now fails as an unknown task. The API now gets a credits client (`CREDIT_SERVICE_URL`, added to the order-service container in `compose.yaml`).
@@ -13318,6 +13320,7 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 > ok so if user is on suppliers page when in requester mode, then when changing to courier mode, it should automatically redirect to "available errands" page, instead of showing "this page isnt available in courier mode", and vice versa
 
 **Key responses:**
+
 - "Available errands" was read as the courier main page, Find errands (`/requests`); the requester main page is Suppliers (`/suppliers`). Both come from the existing `mainPageFor`.
 - `routing/views.js`: new `PAGE_VIEW` list and `viewForPath(pathname)`, mirroring the routes `App.jsx` wraps in `ViewGate` (requester: `/suppliers`, `/suppliers/:id`, `/requests/new`, `/requests/:id/edit`, `/my-errands`; courier: `/requests`, `/my-deliveries`). The two must be kept in step; a comment says so.
 - `ActiveViewToggle.jsx`: when the current page belongs only to the view being left, it navigates to the new view's main page in the same tick as `setActiveView`'s optimistic flip (no flash of the blocked page). If the switch fails, `setActiveView` reverts the view and the toggle goes back (`navigate(-1)`) before the error toast. Shared pages (account, chat, admin) stay put.
@@ -13458,5 +13461,6 @@ occurrence at/after its own start time (e.g. `UNTIL` already in the past) is rej
 stored. Otherwise none; every other item in the design tables is implemented as specified.
 
 **What I kept/changed/rejected:**
+Accepted all changes.
 
-**Author review:**
+**Author review:** gabriel yap
