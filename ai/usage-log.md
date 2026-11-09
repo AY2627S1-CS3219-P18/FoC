@@ -12999,3 +12999,83 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-09 — Scheduled Errands Stage 28a: Schema and migration (order-service)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — Design decisions tables (Model, completeBy, API, Error codes, Firing and failures, Failed rows, Notifications) and "Stage a: Schema and migration (order-service)".
+
+**Prompts (exact):**
+
+> read through stage 28. if all's clear, impelment stage a
+
+**Key responses:**
+Read instructions.md Stage 28 in full. One `[DECIDE]` blocking Stage a was still open: whether an omitted `durationMinutes` on a series should be required or default to 1440, pending George's (not yet merged) completeBy-default change — confirmed unmerged by reading order-service's schema/service code directly. Per the file's own rule ("stop and ask... do not pick a value yourself"), asked the user; they chose to leave `durationMinutes` nullable with no default logic for now and decide later.
+
+Implemented in order-service/prisma/schema.prisma: `SeriesStatus` (active/inactive) and `RetryType` (user_service_unreachable/supplier_service_unreachable/supplier_closed) enums; `OrderSeries` model mirroring `OrderRequest`'s order fields (supplierId, description, deliveryLocationId, deliveryDetails, credits, additionalDetails), plus `durationMinutes` (nullable), `rrule`, `startAt`, `nextFireAt`, `status`, the four nullable retry-state columns (`currentOccurrenceAt`, `retryType`, `attemptCount`, `nextRetryAt`, all null together), `version` for optimistic locking, and `requesterId` for ownership (needed for the owner-only API and worker lookups, not itself a new design choice). Added nullable `seriesId` (FK to `order_series.id`, `ON DELETE SET NULL`) and `failureReason` on `requests`. Indexed `nextFireAt`+`status`, `requesterId`, and `seriesId`, mirroring existing index conventions.
+
+Generated migration `20261109073127_scheduled_errands_series` via `npm run db:migrate` against the local order-db container and applied it; added the disclosure header to the generated SQL afterward and reconciled its stored checksum in `_prisma_migrations` so `prisma migrate status` reports no drift.
+
+Verification: `npm run typecheck`, `npm run test` (699 passed), and `npm run test:e2e` all run. Wrote `test/order-series-schema.e2e-spec.ts` (real database) covering: deleting a series sets `seriesId` null on its orders; a nonexistent `seriesId` is rejected by the FK; retry-state columns default to null and `failureReason` is independent of `seriesId` — all 3 pass. One pre-existing e2e suite, `test/credit-saga.e2e-spec.ts` (5 tests), fails on `main` before any of this change too (confirmed by stashing this work and rerunning against the unmodified schema) — its expectations predate the recently merged system-chat lifecycle notifications (PR #170) and are unrelated to Stage 28a.
+
+`npm run format` (prettier --write) also reformatted 4 pre-existing, unrelated files (whitespace/style only, confirmed via `git diff --stat`); the user asked to leave those reformats in place rather than reverting them.
+
+**Files:**
+
+- `order-service/prisma/schema.prisma` (modified)
+- `order-service/prisma/migrations/20261109073127_scheduled_errands_series/migration.sql` (created)
+- `order-service/test/order-series-schema.e2e-spec.ts` (created)
+- `order-service/package-lock.json` (modified — `npm install`)
+- `order-service/src/constants/errors.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/services/orders.service.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified — incidental Prettier reformat, unrelated to this stage)
+
+**Deviations / questions raised for the team:**
+Asked whether `durationMinutes` should be required or default to 1440 when omitted; user deferred the decision, so the column is nullable with no default logic. No other deviations.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-09 — Scheduled Errands Stage 28b: User-service worker endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md, "Stage 28: Scheduled Errands" — "Stage b: User-service worker endpoint", and the Firing-and-failures table's "User" check.
+
+**Prompts (exact):**
+
+> let's go to stage b
+
+**Key responses:**
+Added `GET /users/worker/:id` for order-service's scheduler. New `authenticateServiceKey` middleware (`src/middleware/authenticateServiceKey.ts`) checks the `User-Order-Service-Key` header against `config.userOrderService.apiKey` using the existing `hashesMatch`/`sha256` pair (same pattern `otp.service.ts` uses), returning `401 { message: 'Invalid service key', code: 'INVALID_SERVICE_KEY' }` on a missing or wrong key. Added `USER_ORDER_SERVICE_API_KEY` to `config.ts`'s Zod schema and exported config, `.env.example`, `.env` (local, gitignored; random dev value), and `.env.test` (fixed dummy value, no real secret). Added `workerStatus` controller and `getWorkerStatus` service function, returning only `{ status, lockedUntil }` from the existing `findById` query/`UserRow` — a pending user is returned normally with `status: 'pending'`, not blocked. Registered the route in `users.routes.ts` before `POST /:id/full-email` and `GET /:id`, with no `authenticate`/`authorize`.
+
+Verification: `npx tsc --noEmit` and `npx eslint .` clean. Full test suite: 991 tests, 989 passed; the 2 failures (`auth.controller.test.ts`, `me.controller.test.ts`, socket hang up/ECONNRESET) are unrelated to this change — confirmed by rerunning just those two files in isolation, where both pass cleanly (236/236); this is pre-existing flakiness under full-suite load, not caused by Stage 28b. Added `tests/controllers/users.worker.controller.test.ts` (9 tests, all pass): missing key, wrong key, right key for an active/pending/suspended/locked user, unknown id (404 `USER_NOT_FOUND`), non-UUID id (400 `VALIDATION_ERROR`), and that the route needs no Bearer token (route-order coverage). Added `USER_ORDER_SERVICE_API_KEY` to `tests/config.test.ts`'s missing-required-variable list.
+
+No `[DECIDE]` placeholders were open for this stage.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/middleware/authenticateServiceKey.ts` (created)
+- `user-service/src/controllers/users.controller.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/routes/users.routes.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified — gitignored, local only, listed for disclosure completeness)
+- `user-service/.env.test` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (created)
+- `user-service/tests/config.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -70,6 +70,12 @@
  *        Stage 27b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
+ * Scope: Added getWorkerStatus for GET /users/worker/:id (order-service's scheduler), per
+ *        instructions.md Stage 28b.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import * as auditLogQueries from '../db/queries/auditLog.queries.js';
@@ -109,6 +115,20 @@ export async function getPublicUserById(id: string): Promise<PublicUserSummary> 
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
   return row;
+}
+
+/** Just enough for order-service's scheduler to decide whether to fire an occurrence. */
+export interface WorkerUserStatus {
+  status: 'pending' | 'active' | 'suspended';
+  lockedUntil: Date | null;
+}
+
+export async function getWorkerStatus(id: string): Promise<WorkerUserStatus> {
+  const row = await userQueries.findById(id);
+  if (!row) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+  return { status: row.status, lockedUntil: row.login_locked_until };
 }
 
 const PAGE_SIZE = 50;
