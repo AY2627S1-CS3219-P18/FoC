@@ -44,6 +44,13 @@
 // Scope (2026-11-08, Codex, model: GPT-6): Added the default last-request row at user creation.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Fix F3 (Tool: Claude Code, model: claude-fable-5-1) - added IS_LOCKED_SQL, the one
+//   SQL expression for "currently login-locked" against clock_timestamp() (convention 5), selected
+//   AS is_locked by every query whose row reaches toUserResponse and reused by listUsersPage's
+//   `locked` filter; added the UserRowWithLock type. Governing decision: the team's F3 fix note
+//   (chat, 2026-11-10) and instructions.md convention 5.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import pool from "../pool.js";
 import { insertDefaultRow } from './lastRequest.queries.js';
 import type { Queryable } from "../transaction.js";
@@ -64,7 +71,20 @@ export interface UserRow {
   login_lock_level: number;
 }
 
-export type UserRowWithNow = UserRow & { db_now: Date };
+// "Currently login-locked", decided by the database clock (convention 5), never by the app
+// server's. Every query whose row reaches toUserResponse selects this AS is_locked, and
+// listUsersPage's `locked` filter uses the very same expression, so the field and the filter
+// cannot disagree. NOT (...) is true for a NULL login_locked_until, since (false AND NULL) is
+// false in SQL.
+export const IS_LOCKED_SQL =
+  '(login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp()) ';
+const IS_LOCKED_COLUMN = `${IS_LOCKED_SQL} AS is_locked`;
+
+// A user row plus the DB-computed is_locked flag. toUserResponse requires this type, so a
+// query that forgets to select is_locked cannot feed a response without a type error.
+export type UserRowWithLock = UserRow & { is_locked: boolean };
+
+export type UserRowWithNow = UserRowWithLock & { db_now: Date };
 
 export async function createUser(
   {
@@ -113,10 +133,11 @@ export async function findByEmail(
 export async function findById(
   userId: string,
   db: Queryable = pool,
-): Promise<UserRow | null> {
-  const result = await db.query<UserRow>(`SELECT * FROM users WHERE id = $1`, [
-    userId,
-  ]);
+): Promise<UserRowWithLock | null> {
+  const result = await db.query<UserRowWithLock>(
+    `SELECT *, ${IS_LOCKED_COLUMN} FROM users WHERE id = $1`,
+    [userId],
+  );
   return result.rows[0] ?? null;
 }
 
@@ -127,7 +148,7 @@ export async function findByIdWithNow(
   db: Queryable = pool,
 ): Promise<UserRowWithNow | null> {
   const result = await db.query<UserRowWithNow>(
-    `SELECT *, clock_timestamp() AS db_now FROM users WHERE id = $1`,
+    `SELECT *, ${IS_LOCKED_COLUMN}, clock_timestamp() AS db_now FROM users WHERE id = $1`,
     [userId],
   );
   return result.rows[0] ?? null;
@@ -168,9 +189,9 @@ export async function createSuperAdmin(
 export async function lockUserById(
   userId: string,
   db: Queryable = pool,
-): Promise<UserRow | null> {
-  const result = await db.query<UserRow>(
-    `SELECT * FROM users WHERE id = $1 FOR UPDATE`,
+): Promise<UserRowWithLock | null> {
+  const result = await db.query<UserRowWithLock>(
+    `SELECT *, ${IS_LOCKED_COLUMN} FROM users WHERE id = $1 FOR UPDATE`,
     [userId],
   );
   return result.rows[0] ?? null;
@@ -183,7 +204,7 @@ export async function lockUserByIdWithNow(
   db: Queryable = pool,
 ): Promise<UserRowWithNow | null> {
   const result = await db.query<UserRowWithNow>(
-    `SELECT *, clock_timestamp() AS db_now FROM users WHERE id = $1 FOR UPDATE`,
+    `SELECT *, ${IS_LOCKED_COLUMN}, clock_timestamp() AS db_now FROM users WHERE id = $1 FOR UPDATE`,
     [userId],
   );
   return result.rows[0] ?? null;
@@ -321,7 +342,7 @@ export interface ListUsersPageParams {
 export async function listUsersPage(
   { usernameContains, email, status, role, locked, sortBy, sortDir, limit, offset }: ListUsersPageParams,
   db: Queryable = pool,
-): Promise<{ rows: UserRow[]; total: number }> {
+): Promise<{ rows: UserRowWithLock[]; total: number }> {
   const conditions: string[] = [];
   const values: unknown[] = [];
 
@@ -342,15 +363,16 @@ export async function listUsersPage(
     conditions.push(`role = $${values.length}`);
   }
   if (locked !== undefined) {
-    conditions.push(locked ? `login_locked_until > NOW()` : `(login_locked_until IS NULL OR login_locked_until <= NOW())`);
+    // Same expression as the is_locked column below (fix F3), so filter and field agree.
+    conditions.push(locked ? IS_LOCKED_SQL : `NOT ${IS_LOCKED_SQL}`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const sortColumn = SORT_COLUMNS[sortBy];
   const sortDirection = SORT_DIRECTIONS[sortDir];
 
-  const result = await db.query<UserRow & { full_count: string }>(
-    `SELECT *, COUNT(*) OVER() AS full_count FROM users
+  const result = await db.query<UserRowWithLock & { full_count: string }>(
+    `SELECT *, ${IS_LOCKED_COLUMN}, COUNT(*) OVER() AS full_count FROM users
      ${whereClause}
      ORDER BY ${sortColumn} ${sortDirection}, id ${sortDirection}
      LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
@@ -379,9 +401,9 @@ export async function updateUserStatus(
   userId: string,
   status: "active" | "suspended",
   db: Queryable = pool,
-): Promise<UserRow> {
-  const result = await db.query<UserRow>(
-    `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+): Promise<UserRowWithLock> {
+  const result = await db.query<UserRowWithLock>(
+    `UPDATE users SET status = $2, updated_at = NOW() WHERE id = $1 RETURNING *, ${IS_LOCKED_COLUMN}`,
     [userId, status],
   );
   return result.rows[0]!;
@@ -392,9 +414,9 @@ export async function updateUserRole(
   userId: string,
   role: "admin" | "user",
   db: Queryable = pool,
-): Promise<UserRow> {
-  const result = await db.query<UserRow>(
-    `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+): Promise<UserRowWithLock> {
+  const result = await db.query<UserRowWithLock>(
+    `UPDATE users SET role = $2, updated_at = NOW() WHERE id = $1 RETURNING *, ${IS_LOCKED_COLUMN}`,
     [userId, role],
   );
   return result.rows[0]!;
@@ -428,9 +450,9 @@ export async function updateActiveView(
   userId: string,
   activeView: "requester" | "courier",
   db: Queryable = pool,
-): Promise<UserRow | null> {
-  const result = await db.query<UserRow>(
-    `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+): Promise<UserRowWithLock | null> {
+  const result = await db.query<UserRowWithLock>(
+    `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING *, ${IS_LOCKED_COLUMN}`,
     [userId, activeView],
   );
   return result.rows[0] ?? null;

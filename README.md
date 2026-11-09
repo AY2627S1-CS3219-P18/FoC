@@ -863,3 +863,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 254 | 2026-11-09 | frontend | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one | Resend-limit text now comes from the server's err.message, not a hardcoded string. |
 | 255 | 2026-11-10 | frontend | Stage 29: Auto-redirect instead of the blocked-page message | Opening another view's page now redirects to the current view's main page with a toast. |
 | 256 | 2026-11-10 | frontend | Stage 30: Email unmask on the admin user page | Admin user page's profile email gets the shared eye-icon unmask from /admin/users. |
+| 257 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
