@@ -12,9 +12,12 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Mounted the approved order-service-compatible health route.
+ * Author review: tng wen xi
  */
 import type { TokenVerifier } from "./middleware/authenticate.js";
 import express from "express";
+import { healthRouter } from "./routes/health.routes.js";
 import type { PrismaClient } from "./db/prisma.js";
 import {
   conversationsRouter,
@@ -38,6 +41,8 @@ export function createApp({
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json());
+  // AI-generated
+  app.use("/health", healthRouter(prisma));
   app.use(
     "/chat/conversations",
     conversationsRouter(

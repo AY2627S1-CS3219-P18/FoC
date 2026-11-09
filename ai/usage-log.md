@@ -13079,3 +13079,38 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+## 2026-11-09 — Chat service health endpoint
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User confirmed chat-service should use the existing order-service health contract in `order-service/src/routes/health.routes.ts`; recorded implementation contract in `chat-service/README.md`, GET /health.
+
+**Prompts (exact):**
+
+> can u implement a /health route to check if the service is alive
+
+> yeps do it same as order service
+
+**Key responses:**
+Initially asked the team to confirm the service and API contract before implementation. After confirmation, added unauthenticated GET /health using SELECT 1, returning 200 with {"status":"ok","database":"up"} or 503 with {"status":"error","database":"down"}, matching order-service. Added HTTP tests for both database outcomes and documented the endpoint. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+Verification: npm run typecheck and npm run build passed. Initial typecheck caught a possibly undefined test mock call; fixed the assertion and reran successfully. An intermediate correction command used the wrong relative path and changed no files. Restricted test runs failed with listen EPERM on 127.0.0.1; rerunning npm test with local listener access passed all 190 tests across 12 files. Health tests use injected Prisma doubles; live MySQL was not exercised. Postman status was attempted as requested by the API engineering skill; installed CLI returned unknown command 'status'. No Postman resources were changed.
+
+**Files:**
+
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/routes/health.routes.ts` (created)
+- `chat-service/src/health.spec.ts` (created)
+- `chat-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked whether chat-service and the health contract were intended; user confirmed matching order-service.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
