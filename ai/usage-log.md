@@ -13805,3 +13805,39 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 30: Email unmask on the admin user page
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate | refactor
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** instructions.md Stage 30 ("Email Unmask on the Admin User Page (NFR3.1.1, F5.3.2)"), building on Stage 20b, the Stage 26 "Reasons" amendment and Stage 27
+
+**Prompts (exact):**
+
+> let's start stage 30. dont forget the git workflow.
+
+**Key responses:**
+Verify-first findings (reported, nothing changed at that point): in `AdminUsers.jsx` the unmasked values lived in a per-row `unmaskedEmails` state object, the 60 s timers in a `useRef` map, re-mask-on-refetch in a `useEffect` on the `useApi` `data` object, and reveals called `getFullEmail` from `api/users.js` (already a `POST /users/:id/full-email` with an empty JSON body, no reason, no elevation). On the user page, the profile comes from `getUser` (`GET /users/:id`, masked by the backend) and the profile object is replaced in exactly three places: the initial `useApi` load, `setProfileOverride(updated)` after a successful action, and `reloadProfile()` after a failed action; the derived `shownProfile` changes identity in all three cases. Nothing in the stage text disagreed with the code, so no stop-and-ask was needed.
+
+Extracted the inline logic into a shared hook `useEmailUnmask` plus `canUnmaskEmail`/`UNMASK_TIMEOUT_MS` in a new `frontend/src/utils/emailUnmask.js` (same folder pattern as Stage 27c's `utils/elevation.js`), and the eye/eye-off button into a new `components/EmailUnmaskButton.jsx` (identical markup, aria-labels, classes, size and `stopPropagation`). `AdminUsers.jsx` now uses both; its refetch effect still re-masks every row. `AdminUserTransactions.jsx` renders the email with the same button, hidden via `canUnmaskEmail` for the caller's own page and a super admin's, and re-masks through an effect on `shownProfile`, which covers all three replacement paths above. No API, route, backend, or protocol change.
+
+Tests: added an 11-case describe block to `tests/pages/AdminUserTransactions.test.jsx` covering every Verification bullet that does not need a browser or backend: icon shown for pending/suspended/admin users, hidden on own page and super admin's page, reveal with one id-only `getFullEmail` call and the "hide" label, re-mask on second click with no request, 60 s auto re-mask with fake timers, no reason dialog/OTP modal even when not elevated, failure toast with email still masked, re-mask after a suspend replaces the profile, and re-mask after navigating to an order and back (via a stub order route with a back button). The existing `AdminUsers.test.jsx` Stage 20b tests pass unchanged.
+
+Verification run: full frontend Vitest suite 278/279 passed; the one failure (`CreateRequest.test.jsx` saved-location maxLength assertion) is the same pre-existing failure recorded in the Stage 29 entry and is unrelated to this change. `npm run lint` (oxlint): no errors; the warning set is identical to `main` (only line numbers shifted), none introduced by this stage. Not verified in a real browser: the visual check of the icon beside the email, the phone-width tap target, the Network-tab request body, and the `EMAIL_UNMASK` audit row at `/admin/logs` are left for manual verification. Did not make the backlog edits listed under "Backlog edit (for the team to make)".
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/utils/emailUnmask.js` (created)
+- `frontend/src/components/EmailUnmaskButton.jsx` (created)
+- `frontend/src/pages/AdminUsers.jsx` (modified)
+- `frontend/src/pages/AdminUserTransactions.jsx` (modified)
+- `frontend/tests/pages/AdminUserTransactions.test.jsx` (modified)
+
+**Deviations / questions raised for the team:** None. One observation, not a deviation: the stage's Network bullet says the unmask POST has "no body", while the pre-existing `getFullEmail` sends an empty JSON object `{}`. The stage says the protocol is unchanged and to use the same API function, so this was left as is.
+
+**What I kept/changed/rejected:**
+Accepted all changes
+
+**Author review:** gabriel yap
