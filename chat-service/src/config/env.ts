@@ -8,6 +8,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified TRANSLATION_LLM_KEY and TRANSLATION_LLM_MODEL variables.
+ * Author review: Congchen
  */
 import { z } from "zod";
 const schema = z.object({
@@ -18,6 +20,8 @@ const schema = z.object({
   DATABASE_URL: z.url({ protocol: /^mysql$/ }),
   USER_SERVICE_URL: z.url().default("http://user-service:3001"),
   CHAT_SERVICE_API_KEY: z.string().min(1),
+  TRANSLATION_LLM_KEY: z.string().min(1),
+  TRANSLATION_LLM_MODEL: z.string().min(1).default("gemini-3.1-flash-lite"),
 });
 export function loadEnv(source: NodeJS.ProcessEnv = process.env) {
   return schema.parse(source);
