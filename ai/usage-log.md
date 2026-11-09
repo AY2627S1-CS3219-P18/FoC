@@ -12672,3 +12672,301 @@ Whether `AdminUserTransactions.jsx`'s existing action buttons should share the e
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-09 — System conversations
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code, Refactor/Docs
+**Governing decision:** User-supplied final schema and contract in this conversation; implemented behavior recorded in chat-service/README.md, System conversations. Later prompts supersede earlier schema proposals.
+
+**Prompts (exact):**
+
+> Implement **system conversations** in the existing FoC chat service.
+>
+> ## Context
+>
+> Currently, chat conversations are tied to successfully created orders. However, some system notifications (e.g., failed scheduled order creation) have no associated order, so there is no conversation to deliver them to.
+>
+> The chat service already has a `POST /chat/send-system-notification` endpoint for internal microservices to send notifications.
+>
+> ## Requirements
+>
+> ### 1. System conversations
+>
+> Introduce a system conversation for each user.
+>
+> - A system conversation is identified by having `"SYSTEM"` as one of its participants.
+> - Its participants should be `[userId, "SYSTEM"]`.
+> - It must not be tied to an order (`orderId = null`).
+> - Each user should have at most one system conversation.
+> - System conversations should be created lazily when the first orderless notification arrives.
+> - Subsequent notifications should reuse the existing system conversation.
+> - System conversations are read-only: users cannot send messages to them.
+>
+> Prefer reusing the existing conversation and message models rather than introducing a separate notification model.
+>
+> Check the existing Prisma schema before implementation. If participants are constrained to UUIDs or user foreign keys, make the minimum necessary schema changes to support `"SYSTEM"` safely.
+>
+> ### 2. Update `POST /chat/send-system-notification`
+>
+> Preserve the existing endpoint contract and authentication.
+>
+> Modify the notification routing logic:
+>
+> - If the notification has a valid associated order, deliver it to the corresponding order conversation using the existing behaviour.
+> - If the notification has no associated order, deliver it to the recipient's system conversation.
+> - If the system conversation does not exist, create it automatically.
+> - Do not silently fall back to a system conversation when an explicitly supplied order ID is invalid or its conversation is missing. Preserve or handle that error explicitly.
+> - Do not create an order or an order conversation for orderless notifications.
+>
+> ### 3. Idempotency
+>
+> Preserve the existing message ID contract:
+>
+> - The calling microservice generates the message UUID.
+> - Retries must reuse the same message UUID.
+> - Duplicate requests must not create duplicate messages.
+> - Concurrent requests must not create duplicate system conversations.
+> - Use appropriate database constraints and atomic operations or transactions.
+>
+> ### 4. Socket.IO real-time updates
+>
+> Integrate system conversations with the existing Socket.IO implementation.
+>
+> The frontend already subscribes to:
+>
+> - `user:<userId>` for conversation list updates.
+> - `chat:<conversationId>` for message updates.
+>
+> Ensure that:
+>
+> - Creating a system conversation notifies the recipient through their user room.
+> - Sending a system notification updates the conversation list through the existing user-room event.
+> - New messages are emitted to the corresponding conversation room.
+> - Existing event names and payload formats are preserved wherever possible.
+> - Socket room access is authenticated and restricted to the conversation's actual participants. `"SYSTEM"` is not a real user and must not be treated as an authenticated participant.
+>
+> ### 5. Conversation APIs
+>
+> Ensure existing conversation endpoints support system conversations:
+>
+> - Users can retrieve their own system conversation in their conversation list.
+> - Users can retrieve messages from their system conversation.
+> - System conversations do not require an order ID.
+> - System conversations cannot be created through the normal user-facing conversation creation endpoint.
+> - Users cannot send messages to system conversations.
+> - Other users cannot access someone else's system conversation.
+>
+> Update any response DTOs or validation logic that currently assumes every conversation has an order.
+>
+> ### 6. Testing
+>
+> Add or update tests covering:
+>
+> - First orderless notification creates a system conversation.
+> - Subsequent orderless notifications reuse it.
+> - Different users receive separate system conversations.
+> - Notifications with valid order IDs retain existing routing behaviour.
+> - Invalid order IDs do not silently fall back.
+> - Duplicate message UUIDs are idempotent.
+> - Concurrent notifications cannot create duplicate system conversations.
+> - Users cannot send messages to system conversations.
+> - Users cannot access another user's system conversation.
+> - Socket.IO events are emitted correctly.
+>
+> ## Implementation constraints
+>
+> 1. Inspect the existing chat-service architecture, Prisma schema, routes, controllers, services, authentication middleware, and Socket.IO implementation before making changes.
+> 2. Follow the repository's existing conventions.
+> 3. Minimise unnecessary changes and avoid breaking existing order conversations.
+> 4. Preserve the existing `X-Service-Key` authentication for internal notification requests.
+> 5. Preserve existing endpoint contracts where possible. Make the order ID optional only where appropriate.
+> 6. Add a Prisma migration if the schema needs changing.
+> 7. Do not introduce a separate notification service.
+> 8. Do not modify unrelated microservices unless necessary.
+>
+> ## Deliverables
+>
+> Implement the changes directly in the repository, then provide:
+>
+> - A summary of files changed.
+> - Any database schema changes and migration commands.
+> - An explanation of the updated notification routing.
+> - Any frontend changes required.
+> - Test results and any remaining limitations.
+>
+> **Important:** Do not assume the current database structure or endpoint payloads. Inspect the actual implementation first and adapt the solution accordingly.
+
+> orderless requests supply null!
+
+> how about, instead of the participants saying "SYSTEM", determine if a chat is a system chat by checking if order id is null.
+> before creating a system chat, check if user already has a conversation with null order id to make sure that system chat does not already exist
+
+> participant role will also be null. then title is "FoC".
+
+> 403 forbiddene
+
+> oh okay sorry scrap that. i have a better idea. create a new table called `system_chats` with the following fields:
+>
+> - created_at
+> - updated_at
+> - user_id (unique)
+
+> sorry add one more field for conversation_id. then the messages can link to the system_chats
+
+> yepss
+
+> primary key is conversation_id
+
+> when it is a system message, supply null to order id and add a field for `recipient` with the userid
+
+> yes correct. if the chat_id is not in conversations, then it is in system_chats? does that work?
+
+> ohh okay sorry wait i have another idea
+>
+> system chats still exist in conversations table with the order_id as null and title as "FoC". but there is another table "system_chats" with fields&#x20;
+>
+> - conversation_id (fkey, unique)
+> - user_id (pk)
+>
+> this should settle concurrency
+
+> yes
+
+> both columns are uuid strings. cascade.
+
+> yes
+
+**Key responses:**
+Inspected schema, routes, controllers, services, authentication, sockets and frontend. Asked for team schema/interface decisions before writing code. Implemented nullable conversation orderId and participant role; team-specified system_chats mapping with cascading FK; transactional creation and unique-user conflict recovery. Reused message primary-key idempotency with recipient collision checks. Preserved order routing, service-key authentication, message:sent payload/room broadcasts and membership checks. Included system chats in role-filtered lists and disabled their frontend composer. Added rejection of SYSTEM as an authenticated identity.
+
+Verification: Prisma client generation, chat typecheck/build and frontend build passed. Chat service: 188 tests passed; targeted frontend: 33 tests passed. Initial sandbox HTTP/socket run could not bind ports; rerun outside sandbox passed. Updated existing role-filter query assertions. Concurrency conflict recovery is tested with Prisma doubles, not live MySQL. Migration not applied to a live database. Postman status failed because the installed CLI reports unknown command status; no Postman artifacts changed.
+
+**Files:**
+
+- `chat-service/README.md` (modified)
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/conversation-details.spec.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/src/conversations-list.spec.ts` (modified)
+- `chat-service/src/middleware/authenticate.ts` (modified)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `chat-service/src/realtime/socket-server.ts` (modified)
+- `chat-service/src/send-message.spec.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `chat-service/prisma/migrations/20261109000000_system_chats/migration.sql` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Requested team decisions on recipient, nullable order ID, participant role/title, user-send status, mapping schema, foreign-key actions and concurrency transaction. Final implementation uses no SYSTEM participant. Conversation and mapping creation commit before message insertion; a failed message insert can leave an empty reusable system conversation.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-09 — System chat frontend linkage
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code
+**Governing decision:** User's prompt below; preceding team decisions identify system chats by null orderId, title FoC, with sending forbidden.
+
+**Prompts (exact):**
+
+> link to the frontend also. make the system chat similar to other chats, just that all messages come from FoC and the user is unable to send messages. system chat should be at the top of the list.
+
+**Key responses:**
+Pinned system conversations above order chats while preserving the order chats' API ordering. Initial loading searches later existing API pages for an older system chat; it retains the first page's pagination cursor and deduplicates the pinned conversation when loading subsequent pages. System-chat messages render as incoming bubbles labelled FoC; order conversation system messages retain their existing appearance. Kept the existing disabled composer and send guard for system chats. No API or schema changes in this stage.
+
+Verification: 35 tests passed across Chat page, chat API and chat socket tests. Frontend production build passed. Targeted lint exited successfully with two existing react(set-state-in-effect) warnings in Chat.jsx. No live browser/backend integration was exercised in this stage.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-09 — Local authentication startup fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging, Boilerplate
+**Governing decision:** instructions.md Stage 27a specifies ELEVATION_TOKEN_TTL_MINUTES=15, bounds 1–15; user-service/.env.example records the same value.
+
+**Prompts (exact):**
+
+> ```less
+> foc-frontend          | 6:16:39 AM [vite] http proxy error: /auth/refresh
+> foc-frontend          | Error: connect ECONNREFUSED 172.18.0.11:3001
+> foc-frontend          |     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16)
+> foc-frontend          | 6:16:50 AM [vite] http proxy error: /auth/login
+> foc-frontend          | Error: connect ECONNREFUSED 172.18.0.11:3001
+> foc-frontend          |     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16)
+> ```
+
+**Key responses:**
+Inspected proxy configuration and Docker service status/logs. Found the user-service process had crashed during configuration validation for ELEVATION_TOKEN_TTL_MINUTES while nodemon kept the container running. Set only this configuration value to the team's recorded 15 minutes in the local ignored .env, adding disclosure comments without reading or printing other values. Recreated only user-service. Verified startup log says listening on port 3001. An empty POST /auth/login from the frontend container returned HTTP 400 both directly and through Vite, establishing restored connectivity and validation (not successful login). No application source changes or automated tests were needed.
+
+**Files:**
+
+- `user-service/.env` (modified locally; ignored; no credentials disclosed or committed)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-09 — Orderless notification caller instructions
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing implemented orderless notification contract in chat-service/README.md and preceding team instructions in this conversation.
+
+**Prompts (exact):**
+
+> add the new instructions for orderless notifications in system-notifications.md
+
+**Key responses:**
+Updated chat-service/SYSTEM-NOTIFICATIONS.md to describe explicit null orderId and required recipient UUID, lazy FoC conversation creation, unique-user concurrency recovery, unchanged order routing and authentication, read-only frontend behavior, migration commands, duplicate-recipient conflict checking and existing real-time events. Added an orderless cURL example with a caller-generated UUID reused on retries. Documented that message failure can leave an empty reusable conversation. Corrected the obsolete introduction claiming this endpoint never creates conversations.
+
+Verification: Parsed all JSON examples, checked the new shell example with bash -n, and executed it with a local curl stub to validate the expanded JSON payload. No HTTP requests were sent. No application code changed; application tests were not rerun.
+
+**Files:**
+
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

@@ -52,6 +52,10 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested errand-origin-only outer chat back navigation.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Tested pinned system chats, FoC message labels and read-only sending.
+ * Author review: tng wen xi
  */
 
 import {
@@ -808,4 +812,84 @@ it("loads older history once at the top, preserving the viewport as content grow
   } finally {
     height.mockRestore();
   }
+});
+
+// AI-generated (edited by <name>).
+it("disables the composer for FoC system conversations", async () => {
+  chatApi.getChat.mockResolvedValue({
+    title: "FoC",
+    status: "ACTIVE",
+    orderId: null,
+  });
+  renderChat(["/chat/conversation-1"]);
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled(),
+  );
+  expect(chatApi.sendMessage).not.toHaveBeenCalled();
+});
+
+// AI-generated (edited by <name>).
+it("pins an older FoC conversation found beyond the first page without duplicating it", async () => {
+  const order = {
+    id: "order-chat",
+    orderId: "order-1",
+    updatedAt: "2026-11-09T12:00:00Z",
+  };
+  const system = {
+    id: "system-chat",
+    orderId: null,
+    updatedAt: "2026-11-01T12:00:00Z",
+  };
+  const cursor = { id: "order-chat", updatedAt: order.updatedAt };
+  chatApi.listChats.mockImplementation(async (_role, next) =>
+    next
+      ? { conversations: [system], hasMore: false, nextCursor: null }
+      : { conversations: [order], hasMore: true, nextCursor: cursor },
+  );
+  chatApi.getChat.mockImplementation(async (id) => ({
+    title: id === "system-chat" ? "FoC" : "Errand chat",
+    status: "ACTIVE",
+  }));
+  renderChat(["/chats"]);
+  const systemLink = await screen.findByRole("link", { name: /FoC/ });
+  const orderLink = screen.getByRole("link", { name: /Errand chat/ });
+  expect(
+    systemLink.compareDocumentPosition(orderLink) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Load more chats" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.getAllByRole("link", { name: /FoC/ })).toHaveLength(1);
+});
+
+it("shows system-chat notifications as incoming FoC messages and prevents sending", async () => {
+  chatApi.getChat.mockResolvedValue({
+    title: "FoC",
+    status: "ACTIVE",
+    orderId: null,
+  });
+  chatApi.listMessages.mockResolvedValue({
+    data: [
+      {
+        messageId: "notice-1",
+        senderId: null,
+        type: "SYSTEM",
+        content: "Schedule failed",
+        createdAt: "2026-11-09T12:00:00Z",
+      },
+    ],
+    pagination: { hasMore: false, nextCursor: null },
+  });
+  renderChat(["/chat/system-chat"]);
+  const content = await screen.findByText("Schedule failed");
+  expect(content.parentElement).toHaveTextContent("FoC");
+  expect(content.parentElement).toHaveClass("rounded-bl-sm");
+  expect(content.parentElement.parentElement).toHaveClass("justify-start");
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  expect(chatApi.sendMessage).not.toHaveBeenCalled();
 });

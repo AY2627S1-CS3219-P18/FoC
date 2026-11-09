@@ -7,6 +7,8 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified participant read positions in message history.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -175,4 +177,23 @@ it("handles database errors", async () => {
   } finally {
     log.mockRestore();
   }
+});
+
+// AI-generated (edited by <name>).
+it("allows only the owner to read system conversation history", async () => {
+  const t = setup();
+  t.findUnique.mockResolvedValue({
+    ...t.row,
+    orderId: null,
+    participants: [
+      { userId, role: null, joinedAt: new Date(time), lastReadMessageId: null },
+    ],
+  });
+  expect((await t.get()).status).toBe(200);
+  t.verifyToken.mockResolvedValue({
+    user_id: "outsider",
+    role: "student",
+    exp: 9999999999,
+  });
+  expect((await t.get()).status).toBe(403);
 });

@@ -5,7 +5,9 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -26,10 +28,14 @@ function setup() {
     .fn()
     .mockImplementation(async ({ data }) => ({ ...data, id, metadata: null }));
   const update = vi.fn().mockResolvedValue({});
+  const findSystem = vi.fn().mockResolvedValue(null);
+  const createConversation = vi.fn().mockResolvedValue({ conversationId: id });
+  const createSystem = vi.fn().mockImplementation(async ({ data }) => data);
   let committed = false;
   const transaction = vi.fn().mockImplementation(async (fn) => {
     const result = await fn({
-      conversation: { findUnique, update },
+      conversation: { findUnique, update, create: createConversation },
+      systemChat: { create: createSystem },
       message: { create },
     });
     committed = true;
@@ -41,6 +47,7 @@ function setup() {
   const app = createApp({
     prisma: {
       conversation: { findUnique: findOrder },
+      systemChat: { findUnique: findSystem },
       message: { findUnique: findMessage },
       $transaction: transaction,
     } as unknown as PrismaClient,
@@ -60,6 +67,9 @@ function setup() {
       .send(body);
   return {
     app,
+    findSystem,
+    createConversation,
+    createSystem,
     findMessage,
     post,
     findOrder,
@@ -228,3 +238,113 @@ it.each([undefined, "bad"])(
     expect(t.findMessage).not.toHaveBeenCalled();
   },
 );
+
+// AI-generated (edited by <name>).
+const orderless = (recipient = userId, messageId = id) => ({
+  orderId: null,
+  recipient,
+  messageId,
+  message: "Schedule failed",
+});
+it("lazily creates FoC with a single nullable-role participant and emits the message", async () => {
+  const t = setup();
+  const response = await t.post(orderless());
+  expect(response.status).toBe(201);
+  expect(t.createConversation).toHaveBeenCalledWith({
+    data: {
+      orderId: null,
+      title: "FoC",
+      participants: { create: { userId, role: null } },
+    },
+  });
+  expect(t.createSystem).toHaveBeenCalledWith({
+    data: { userId, conversationId: id },
+  });
+  expect(t.findOrder).not.toHaveBeenCalled();
+  expect(t.publish).toHaveBeenCalledWith(response.body, [userId]);
+});
+it("reuses a user's system conversation", async () => {
+  const t = setup();
+  t.findSystem.mockResolvedValue({ userId, conversationId: id });
+  expect((await t.post(orderless())).status).toBe(201);
+  expect((await t.post(orderless(userId, userId))).status).toBe(201);
+  expect(t.createConversation).not.toHaveBeenCalled();
+});
+it("creates separate mappings for different recipients", async () => {
+  const t = setup();
+  await t.post(orderless());
+  await t.post(orderless(id, userId));
+  expect(t.createSystem.mock.calls.map(([arg]) => arg.data.userId)).toEqual([
+    userId,
+    id,
+  ]);
+});
+it("reuses the winning mapping after a concurrent unique-user collision", async () => {
+  const t = setup();
+  t.findSystem
+    .mockResolvedValueOnce(null)
+    .mockResolvedValue({ userId, conversationId: id });
+  t.createSystem.mockRejectedValue({ code: "P2002" });
+  expect((await t.post(orderless())).status).toBe(201);
+  expect(t.findSystem).toHaveBeenCalledTimes(2);
+  expect(t.create).toHaveBeenCalledTimes(1);
+});
+it.each([userId, id])(
+  "checks recipient identity on duplicate system message (%s)",
+  async (recipient) => {
+    const t = setup();
+    t.findMessage.mockResolvedValue(
+      storedMessage({
+        content: "Schedule failed",
+        conversation: { orderId: null, systemChat: { userId } },
+      }),
+    );
+    expect((await t.post(orderless(recipient))).status).toBe(
+      recipient === userId ? 200 : 409,
+    );
+    expect(t.createConversation).not.toHaveBeenCalled();
+    expect(t.publish).not.toHaveBeenCalled();
+  },
+);
+it.each([undefined, "bad", null])(
+  "requires a UUID recipient for orderless requests (%s)",
+  async (recipient) => {
+    const t = setup();
+    expect((await t.post({ ...orderless(), recipient })).status).toBe(400);
+    expect(t.findSystem).not.toHaveBeenCalled();
+  },
+);
+
+// AI-generated (edited by <name>).
+it("routes simultaneous orderless notifications through one winning unique-user mapping", async () => {
+  const t = setup();
+  let mapping: { userId: string; conversationId: string } | null = null;
+  let lookups = 0;
+  let release!: () => void;
+  const bothLookedUp = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  t.findSystem.mockImplementation(async () => {
+    if (++lookups <= 2) {
+      if (lookups === 2) release();
+      await bothLookedUp;
+      return null;
+    }
+    return mapping;
+  });
+  t.createSystem.mockImplementation(async ({ data }) => {
+    if (mapping) throw { code: "P2002" };
+    mapping = data;
+    return data;
+  });
+  const responses = await Promise.all([
+    t.post(orderless()),
+    t.post(orderless(userId, userId)),
+  ]);
+  expect(responses.map((response) => response.status)).toEqual([201, 201]);
+  expect(mapping).toEqual({ userId, conversationId: id });
+  expect(responses.map((response) => response.body.conversationId)).toEqual([
+    id,
+    id,
+  ]);
+});
