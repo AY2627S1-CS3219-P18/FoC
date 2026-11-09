@@ -13201,6 +13201,7 @@ Accepted all changes.
 **Governing decision:** instructions.md Stage 28, "Stage d: User client (order-service)"
 
 **Prompts (exact):**
+
 > ok on with the next stage for 28
 
 **Key responses:**
@@ -13224,6 +13225,7 @@ service-key header, active/pending/suspended mapping, a locked user's `lockedUnt
 full "mock fetch for each result" list the stage asks for).
 
 **Files:**
+
 - `order-service/src/clients/user.client.ts` (created)
 - `order-service/src/clients/user.client.spec.ts` (created)
 - `order-service/src/config/env.ts` (modified)
@@ -13234,7 +13236,6 @@ None. Reused suppliers.client.ts's `Existence` type rather than redefining the s
 union, which is an implementation detail, not a design choice.
 
 **What I kept/changed/rejected:**
+Accepted all changes.
 
-
-**Author review:**
-
+**Author review:** gabriel yap
