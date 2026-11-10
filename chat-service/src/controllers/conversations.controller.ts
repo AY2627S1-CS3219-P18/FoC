@@ -31,7 +31,7 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";

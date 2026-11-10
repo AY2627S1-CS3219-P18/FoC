@@ -343,7 +343,10 @@ Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #2
 Author review:
 Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and updated the log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
+Scope (2026-11-10, Codex, model: GPT-6): Added user-service test verification log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -915,3 +918,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 281 | 2026-11-10 | frontend                                                      | Stage 31d: Frontend page                                                                                         | Added /unlock-account: reads the token, one button, routes to /login with the matching toast.                                                   |
 | 282 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
 | 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
+| 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |

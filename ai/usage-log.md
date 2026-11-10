@@ -15048,4 +15048,31 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review: Congchen**
+
+
+## 2026-11-10 — User-service test verification after merge
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging | Implementation code
+**Governing decision:** Existing preferred-language response and safe-query fields introduced by the translation work.
+
+**Prompts (exact):**
+> user-service npm test failed. docker is up. run the tests
+
+**Key responses:**
+Started the existing user-db Compose service after finding it was not running. The full user-service suite ran: 1,018 passed and 36 failed. Five failures were exact-key assertions missing the already-implemented preferredLang/preferred_lang fields; updated those assertions. The remaining 31 failures were the config tests' Unix-style tsx executable not launching on Windows (spawn returned ENOENT) and the setup test asserting Unix mode 0600 on Windows. Reran the two modified files: 156 tests passed. The full suite was not rerun after the assertion changes. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `ai/usage-log.md` (entry appended)
+- `README.md` (index updated)
+
+**Deviations / questions raised for the team:**
+Windows-specific config runner and private-key permission assertion failures remain.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
