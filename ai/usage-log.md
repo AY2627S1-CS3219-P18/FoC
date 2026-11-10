@@ -15431,3 +15431,44 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — ECS Fargate: chat deployment and email docs
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** explain | docs
+**Scope:** Refactor/Docs
+**Governing decision:** George's chat decisions in this session: "i will make a new database, and it will use foc_admin" (chat-service RDS instance); "enable database TLS for the mysql, like we did for supplier service"; "yes switch to use the SMTP, set secure in prod, and startup check in prod too" (Email decision change). Recorded in `docs/ecs-fargate-session-prompt.md`.
+
+**Prompts (exact):**
+> any new PRs to be made?
+
+> ok update docs and PR everything in 1 PR
+
+**Key responses:**
+- Walked George through the AWS console steps for deploying chat-service (explain only, no repo files changed by those turns). The steps: ECR repo, checking the RDS instance, a one-off task creating `chat_service`, SSM parameters, log group, task definition JSON, new revisions for `order-worker`, `user-service`, `supplier-service` and `supplier-worker`, the `foc-chat` target group, load balancer rule 6, the ECS service, start order, and a smoke test. Found along the way and recorded in the docs:
+  - Settings that `main` made required after the 2026-11-07 deploy. Found by diffing each service's config schema since that date.
+  - A `user-service` schema gap (`preferred_lang`, two `users_otps` columns, `last_request`) that broke login. Fixed with a one-off task running the statements copied from `init.sql`.
+  - A mistyped RDS endpoint (DNS NXDOMAIN) in the database-creation task.
+  - Advised revoking the SMTP key that George pasted into chat. It is not recorded here.
+- `docs/ecs-fargate-run-checklist.md`:
+  - added the 5th database, the 9th service, rule 6, the start order with `chat-service` before the workers, and translation jobs to the queue-drain step;
+  - added a "Before starting after merges" section (new required settings; schema changes per service);
+  - updated the teardown counts and the cost note;
+  - added troubleshooting rows.
+- `docs/ecs-fargate-session-prompt.md`: recorded George's decisions in the Decisions table (9 services, 5 databases, TLS on all five, the Email change) and added "Found while carrying this out" bullets (chat-service resources, settings added after 2026-11-07, new SSM parameters, the user database schema fix, status). Struck through the Email known limitation.
+- Included the Compose fix from the side session (`Pass SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker in Compose`), cherry-picked onto current `main`. Its log entry and index row were renumbered from #274 to #287, because `main` had moved on.
+- Verification: docs only, so nothing was run beyond reading. The SQL and resource names in the docs match what George reported creating and what the repo contains. The README index already had duplicate row numbers (#284, #285) from earlier merges. Those were left as they are.
+
+**Files:**
+- `docs/ecs-fargate-run-checklist.md` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #288 and header scope line)
+
+**Deviations / questions raised for the team:**
+- `user-service` has Prisma migrations, but its production image doesn't run them, and the AWS database predates their baseline. How the team wants future user-service schema changes applied on AWS is for the team to decide. The checklist documents the one-off approach used on 2026-11-10.
+- The README Log index has duplicate row numbers (#284, #285) from earlier merges. Not renumbered.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
