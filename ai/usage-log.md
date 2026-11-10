@@ -5544,7 +5544,7 @@ Asked George which status a non-UUID `:id` returns and where the check lives; im
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-10-22 — Credit Service: BullMQ credit-transfer queue consumer
 
@@ -9362,7 +9362,7 @@ Facts found while testing:
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add to docs
 
@@ -9396,7 +9396,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: record team repo and CD trigger decisions
 
@@ -9440,7 +9440,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate Phase 3: CD workflow
 
@@ -9477,7 +9477,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add audit log route
 
@@ -9507,7 +9507,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
 
@@ -9564,7 +9564,7 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
 
@@ -9594,7 +9594,7 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: ship the order supplier check
 
@@ -9645,7 +9645,7 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: start and stop checklist
 
@@ -9678,7 +9678,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-08 — Precise delivery location: design spec and implementation plan
 
@@ -13365,7 +13365,7 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
 
@@ -13426,7 +13426,7 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
 
@@ -13461,7 +13461,7 @@ Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both d
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
 

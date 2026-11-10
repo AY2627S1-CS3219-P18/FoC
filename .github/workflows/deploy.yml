@@ -3,7 +3,7 @@
 # Scope: ECS Fargate CD workflow, per docs/ecs-fargate-session-prompt.md Phase 3 and George's chat
 #        decision to deploy on every merge to main from the team repo. No requirements, architecture,
 #        schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: George Yeo
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
 # Scope: Added chat-service to the build and deploy-web lists, like the other web services, per
 #        George's chat instruction. No requirements, architecture, schema, or API decisions were made

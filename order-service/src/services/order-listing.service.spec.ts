@@ -12,7 +12,7 @@
  * Scope (2026-10-22): authz fix - listOrders takes the caller's id; non-open status filters
  *        add a requester-or-courier scope, open / default does not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { ErrorCode } from '../constants/errors.js';

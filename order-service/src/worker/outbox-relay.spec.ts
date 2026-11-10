@@ -9,7 +9,7 @@
  * Scope (2026-10-21): Credit transfer - credit_transfer rows relay to
  *        queue:credit:transfer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import type { OutboxRow } from '../db/outbox.repository.js';

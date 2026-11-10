@@ -80,7 +80,7 @@
  * Scope (2026-10-22): Required-field asterisk (George) on Pick-up from, What do you need?,
  *        Deliver to and Offer, the fields POST /orders rejects as missing.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: /requests/new and /requests/:id/edit are now wrapped in RequireAuth (App.jsx), which
@@ -107,12 +107,12 @@
  * Scope (2026-11-09): Complete-by toggle - the ASAP option reads "ASAP" / "By 1 hour from
  *        now" (George, 2026-11-09); order-service fills in the one-hour default.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09): POST /orders is synchronous (George, 2026-11-09) - Post waits for the
  *        response and shows its message on failure; the socket wait and /orders/mine re-check
  *        for the reservation outcome are removed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts in disclosure headers.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:

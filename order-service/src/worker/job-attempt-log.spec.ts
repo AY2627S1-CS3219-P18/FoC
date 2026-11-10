@@ -4,7 +4,7 @@
  * Scope (2026-10-22): Unit tests for withAttemptLog - one line per attempt, result
  *        classification (completed / retrying / failed), errors passed through.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { UnrecoverableError } from 'bullmq';

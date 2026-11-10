@@ -64,13 +64,13 @@
  * Scope (2026-10-21): Credit transfer - completion (requester or system)
  *        queues a credit_transfer outbox row; other transitions do not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): create / edit take the supplier-service reference check (stubbed
  *        to "exists" for the existing cases); new coverage for not found (422 codes),
  *        unavailable, and edit checking only the ids it changes, after authorization.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
  * Author review:tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
@@ -84,12 +84,12 @@
  * Scope (2026-11-09): Default complete-by - create with completeBy absent or null stores
  *        now + 1 hour; edit with completeBy: null leaves it out of the write.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09): Synchronous reservation - createOrder fakes keep the order in memory
  *        and take a credits client; the outbox reserve-task cases are replaced by open /
  *        insufficient / rejected / unavailable outcomes and the pending-order 409 check.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-10, Codex, model: GPT-6): Verified terminal transitions enqueue archiving after notification.
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.

@@ -39,7 +39,7 @@
  *        handling; createOrder now reserves synchronously (George, 2026-11-09). Release
  *        and chat jobs are unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md) - chat_notification validation now uses
  *        isChatNotificationPayload (queue/tasks.ts), accepting the extended payload

@@ -4,7 +4,7 @@
  * Scope: ECS Fargate migration - checks REDIS_TLS reaches the ioredis client, per George's ECS Fargate
  *        plan, Phase 1 item 5. No requirements, architecture, schema, or API decisions were made by
  *        the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

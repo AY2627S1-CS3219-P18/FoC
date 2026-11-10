@@ -40,17 +40,17 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
  * Scope (2026-10-22): ORDER_NOT_FOUND maps to 404 in statusFor (George).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-10-22): GET /orders/:id - 200 with the order, 404 when it is missing or
  *        the caller may not read it (George's spec: requester / courier / admin always,
  *        anyone else only while open).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-10-22): GET /orders passes the caller's id to the listing (non-open statuses
  *        are scoped to the caller's own orders) and answers 401 without one, like the
  *        other handlers.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Codex (model: GPT-6), date: 2026-11-05
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -60,14 +60,14 @@
  *        header to the existence check; SUPPLIER_SERVICE_UNAVAILABLE -> 503,
  *        SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND -> 422 (George, 2026-10-23).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): POST /orders answers 201 with the open order; ORDER_PENDING_EXISTS -> 409,
  *        CREDIT_RESERVE_REJECTED -> 422 (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import type { RequestHandler } from 'express';

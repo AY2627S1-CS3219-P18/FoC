@@ -4,11 +4,11 @@
  * Scope: ECS Fargate migration - checks PHOTO_STORE_REGION reaches the S3 client, per George's ECS
  *        Fargate plan, Phase 1 item 6. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - checks when the S3
  *        client gets explicit keys, per George's task role decision of 2026-11-06. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

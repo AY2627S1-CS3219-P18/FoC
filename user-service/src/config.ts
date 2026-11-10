@@ -29,7 +29,7 @@
 //    Tool: Claude Code (model: claude-opus-5-5). Implements the decision in George's ECS
 //    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
 //    were made by the AI tool.
-//    Author review:
+//    Author review: George Yeo
 //  2026-11-09: Stage 27a - add ELEVATION_TOKEN_TTL_MINUTES, bounded 1-15 like
 //    ACCESS_TOKEN_TTL_MINUTES. Governing decision: instructions.md Stage 27 (the elevation
 //    token table). No requirements, architecture, schema, or API decisions were made by the

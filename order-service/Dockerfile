@@ -13,7 +13,7 @@
 # Scope: ECS Fargate migration - add the RDS CA bundle to the production stage, per
 #        George's ECS Fargate plan, Phase 1 item 4. No requirements, architecture,
 #        schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: George Yeo
 #
 # Targets:
 #   dev         -> hot-reload image used by ../compose.dev.yaml

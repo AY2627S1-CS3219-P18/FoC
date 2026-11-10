@@ -6,7 +6,7 @@
  *        JSON lines). Field names beyond those four and the result values
  *        (completed | retrying | failed) are by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { UnrecoverableError, type Job } from 'bullmq';
