@@ -29,9 +29,15 @@
  * Author review: Congchen
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -109,7 +115,7 @@ export function postConversation(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const cursorSchema = z
   .object({ updatedAt: z.iso.datetime(), id: z.uuid() })
   .strict();
@@ -177,7 +183,7 @@ export function getConversations(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generate
 export function getConversation(prisma: PrismaClient): RequestHandler {
   return async (req, res) => {
     const parsed = z.uuid().safeParse(req.params.conversationID);
@@ -207,7 +213,7 @@ export function getConversation(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const messageCursorSchema = z
   .object({ createdAt: z.iso.datetime(), id: z.uuid() })
   .strict();
@@ -274,7 +280,7 @@ export function getMessages(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const sendMessageSchema = z.object({
   type: z.literal("TEXT"),
   content: z.string().refine((value) => value.trim().length > 0),
@@ -336,7 +342,7 @@ export function postMessage(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function postRead(
   prisma: PrismaClient,
   publishRead?: import("../realtime/messages.js").ReadPublisher,
@@ -372,7 +378,7 @@ export function postRead(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function postParticipant(
   prisma: PrismaClient,
   byOrderId = false,
@@ -421,11 +427,16 @@ export function postSystemNotification(
       .object({
         orderId: z.uuid().nullable(),
         recipient: z.uuid().optional(),
+        triggeredByUserId: z.uuid().optional(),
         messageId: z.uuid(),
         message: z.string().refine((value) => value.trim().length > 0),
       })
       .refine(
         (value) => value.orderId !== null || value.recipient !== undefined,
+      )
+      .refine(
+        (value) =>
+          value.triggeredByUserId === undefined || value.orderId !== null,
       )
       .safeParse(req.body);
     if (!body.success) {

@@ -54,6 +54,9 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: Congchen
 Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 -->
 
 # Chat service
@@ -179,7 +182,7 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 }
 ```
 
-The supplied `messages` table has UUID `id`, `chat_id` referencing conversations, nullable UUID `sender_id` (null for system), type TEXT/IMAGE/VIDEO/SYSTEM, nullable text `content`, nullable JSON `metadata` (system eventType/orderId), and `created_at`. Apply its checked-in migration with `npm run db:deploy` before using the endpoint.
+The supplied `messages` table has UUID `id`, `chat_id` referencing conversations, nullable UUID `sender_id` (null for system), type TEXT/IMAGE/VIDEO/SYSTEM, nullable text `content`, nullable UUID `triggered_by_user_id` (the user who triggered an order action), and `created_at`. Apply its checked-in migration with `npm run db:deploy` before using the endpoint.
 
 `USER_SERVICE_URL` selects the JWKS host (default `http://user-service:3001` for Compose); set it to `http://localhost:3001` for local host execution. No additional package is required: the verifier is copied from order-service with its existing attribution preserved.
 
@@ -241,7 +244,7 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 - Order by `createdAt DESC, id DESC`, with an exclusive cursor boundary.
 - Pagination follows conversation listing: `nextCursor` is an object to encode for the next request, or null on the final page. It uses the last returned message. `hasMore` indicates additional older messages.
 - Team update (2026-11-08): Every message-history page also returns `participants`, with `userId`, `role`, ISO `joinedAt`, and nullable `lastReadMessageId` for each participant. Null preserves the existing stored value when no read position exists. No schema change.
-- Each message exposes messageId, conversationId, senderId, type, content, metadata and createdAt. Nullable values are preserved; attachments are omitted for MVP. No schema changes.
+- Each message exposes messageId, conversationId, senderId, type, content, triggeredByUserId and createdAt. Nullable values are preserved; attachments are omitted for MVP. No schema changes.
 
 ```json
 {
@@ -269,7 +272,7 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 - Alternatively, `X-Service-Key` must match CHAT_SERVICE_API_KEY. Any service name (or no service-name header) is allowed on this endpoint. These messages use type TEXT and senderId null. A supplied service key is checked before Bearer authentication; an incorrect key returns 401.
 - Missing conversation: 404. Non-participant user: 403. Archived conversation or revoked user: 409. Service-key senders bypass membership/revocation checks but still require an existing ACTIVE conversation.
 - The message insert and conversation updatedAt write use one Prisma transaction and the same timestamp. No schema changes.
-- Return 201 with one message object directly: messageId, conversationId, senderId, type, content, metadata and createdAt, matching the GET messages item shape.
+- Return 201 with one message object directly: messageId, conversationId, senderId, type, content, triggeredByUserId and createdAt, matching the GET messages item shape.
 - After commit, broadcast `message:sent` with that same object to the union of `chat:<conversationId>` and non-revoked participants' `user:<userId>` rooms. A socket in multiple target rooms receives one event. Broadcast errors are logged; the persisted message still returns 201.
 
 ### Socket.IO
@@ -329,7 +332,7 @@ Team decisions supplied and confirmed in the 2026-11-08 implementation conversat
 - Body: `{ "orderId": "<UUID>", "messageId": "<UUID>", "message": "Order ready" }`. Invalid UUIDs, missing fields, non-string messages, empty or whitespace-only messages return 400. Valid text is stored unchanged.
 - Same service-key authentication as participant addition: valid X-Service-Key, no service-name restriction, supplied-key precedence, 401 missing/invalid credentials and 403 valid Bearer-only users.
 - Look up the conversation by orderId; return 404 if missing and 409 if archived.
-- Reuse normal sending to insert a SYSTEM message with senderId null, text in content and metadata null, updating conversation updatedAt in the same transaction.
+- Reuse normal sending to insert a SYSTEM message with senderId null, text in content and optional triggeredByUserId, updating conversation updatedAt in the same transaction.
 - Return 201 with the normal message object. After commit, reuse `message:sent` delivery to the union of chat and active participant user rooms. Broadcast failures are logged while retaining the successful response.
 
 Verification: all 151 tests passed, including 19 system-notification cases; typecheck and build passed. HTTP persistence tests use injected Prisma doubles; live MySQL and Redis cross-replica delivery were not exercised.
@@ -421,3 +424,5 @@ Authenticated users must be participants; nonparticipants receive 403. Existing
 authentication failures return 401. Malformed UUIDs return 400; an order without
 a conversation returns 404. Sets the conversation status to `ARCHIVED` and
 returns 200, including when already archived.
+
+Order-service notifications may supply optional UUID `triggeredByUserId`. It is persisted and returned as a nullable top-level message field in history, HTTP responses and `message:sent` events. It does not remove recipients or chat messages; the frontend suppresses the triggering user’s toast. The migration `20261110000000_message_triggered_by_user` drops the old message metadata column and adds this field.

@@ -91,7 +91,10 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Verified terminal transitions enqueue archiving after notification.
- * Author review:tng wen xi
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -1273,6 +1276,7 @@ describe('transitionOrder', () => {
             4,
             'The order has been marked as completed',
             true,
+            actor === 'system' ? undefined : actor,
           ),
         ],
       });
@@ -1288,7 +1292,15 @@ describe('transitionOrder', () => {
 
     await transitionOrder(prisma, orderId, 'delivered', courierId);
     expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
-      data: [notificationRow(orderId, 4, 'The order has been delivered')],
+      data: [
+        notificationRow(
+          orderId,
+          4,
+          'The order has been delivered',
+          false,
+          courierId,
+        ),
+      ],
     });
   });
 
@@ -1397,7 +1409,13 @@ describe('transitionOrder', () => {
     expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
       data: [
         ...releaseRow(orderId, 4).data,
-        notificationRow(orderId, 4, 'The order has been cancelled', true),
+        notificationRow(
+          orderId,
+          4,
+          'The order has been cancelled',
+          true,
+          requesterId,
+        ),
       ],
     });
   });
@@ -1441,7 +1459,13 @@ describe('transitionOrder', () => {
           taskName: 'chat_participant',
           payload: { orderId, userId: courierId, role: 'COURIER' },
         }),
-        notificationRow(orderId, 4, 'The order has been accepted'),
+        notificationRow(
+          orderId,
+          4,
+          'The order has been accepted',
+          false,
+          courierId,
+        ),
       ],
     });
   });
@@ -1707,12 +1731,13 @@ describe('transitionOrder', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 function notificationRow(
   orderId: string,
   version: number,
   message: string,
   archiveAfter = false,
+  triggeredByUserId?: string,
 ) {
   return {
     taskName: 'chat_notification',
@@ -1721,6 +1746,7 @@ function notificationRow(
       orderId,
       message,
       ...(archiveAfter ? { archiveAfter: true } : {}),
+      ...(triggeredByUserId ? { triggeredByUserId } : {}),
       messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     },
   };

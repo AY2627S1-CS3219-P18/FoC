@@ -132,7 +132,7 @@ it("handles database errors", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("returns nullable order and role for the owner and denies another user", async () => {
   const t = setup();
   t.findUnique.mockResolvedValue({

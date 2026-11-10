@@ -70,9 +70,21 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Restricted system chat to the Active list per user correction.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Verified bottom-aware new-message scrolling and arrow navigation.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Tested paginated tab unread counts, system-chat placement and refresh after read updates.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated unread badge tests to verify zero-count badges are absent.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import {
@@ -739,7 +751,7 @@ it("loads the saved read boundary and opens with the first unread at the top", a
   }
 });
 
-it("scrolls down after sending from an earlier position and restores input focus", async () => {
+it("preserves an earlier reading position after sending and restores input focus", async () => {
   const height = vi
     .spyOn(HTMLElement.prototype, "scrollHeight", "get")
     .mockReturnValue(1200);
@@ -755,9 +767,14 @@ it("scrolls down after sending from an earlier position and restores input focus
     await waitFor(() => expect(input).toBeEnabled());
     const list = container.querySelector("ol");
     list.scrollTop = 20;
+    fireEvent.scroll(list);
     fireEvent.change(input, { target: { value: "New bottom message" } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByText("New bottom message");
+    expect(list.scrollTop).toBe(20);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Scroll to new messages" }),
+    );
     expect(list.scrollTop).toBe(1200);
     expect(input).toHaveFocus();
   } finally {
@@ -848,6 +865,7 @@ it("loads older history once at the top, preserving the viewport as content grow
   }
 });
 
+// AI-generated
 // AI-generated (edited by <name>).
 describe("Chat translation", () => {
   const received = (extra = {}) => ({
@@ -862,7 +880,9 @@ describe("Chat translation", () => {
     ...extra,
   });
   const open = (messages, translateTo = null) => {
-    mockUseAuth.mockReturnValue({ user: { id: "me", activeView: "requester" } });
+    mockUseAuth.mockReturnValue({
+      user: { id: "me", activeView: "requester" },
+    });
     chatApi.listMessages.mockResolvedValue({
       participants: [{ userId: "me", role: "REQUESTER", translateTo }],
       data: messages,
@@ -874,7 +894,13 @@ describe("Chat translation", () => {
 
   // AI-generated (edited by <name>).
   it("places translation above the received time outside the bubble", async () => {
-    open([received({ translatedContent: "Hola" }), received({ messageId: "mine", senderId: "me", content: "My message" })], "es");
+    open(
+      [
+        received({ translatedContent: "Hola" }),
+        received({ messageId: "mine", senderId: "me", content: "My message" }),
+      ],
+      "es",
+    );
     const receivedText = await screen.findByText("Hola");
     const ownText = screen.getByText("My message");
     const receivedRow = receivedText.closest("li");
@@ -885,7 +911,10 @@ describe("Chat translation", () => {
     expect(receivedText.parentElement).not.toContainElement(receivedTime);
     expect(ownText.parentElement).not.toContainElement(ownTime);
     expect(receivedText.parentElement).not.toContainElement(control);
-    expect(control.compareDocumentPosition(receivedTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      control.compareDocumentPosition(receivedTime) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(ownTime.parentElement.parentElement).toHaveClass("justify-end");
   });
 
@@ -913,7 +942,11 @@ describe("Chat translation", () => {
     open(
       [
         received({ messageId: "a", content: "plain" }),
-        received({ messageId: "b", content: "same", translatedContent: "SAME" }),
+        received({
+          messageId: "b",
+          content: "same",
+          translatedContent: "SAME",
+        }),
         received({
           messageId: "c",
           senderId: "me",
@@ -926,7 +959,9 @@ describe("Chat translation", () => {
     expect(await screen.findByText("plain")).toBeInTheDocument();
     expect(screen.getByText("same")).toBeInTheDocument();
     expect(screen.getByText("mine")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Show original|Translate/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Show original|Translate/ }),
+    ).toBeNull();
   });
 
   it("turns translation on with the preferred language read at launch", async () => {
@@ -950,7 +985,9 @@ describe("Chat translation", () => {
     const sw = await toggle();
     fireEvent.click(sw);
     await waitFor(() =>
-      expect(chatApi.setTranslation).toHaveBeenCalledWith("c1", { enabled: false }),
+      expect(chatApi.setTranslation).toHaveBeenCalledWith("c1", {
+        enabled: false,
+      }),
     );
     expect(await screen.findByText("Hello there")).toBeInTheDocument();
   });
@@ -960,7 +997,11 @@ describe("Chat translation", () => {
     await screen.findByText("Hello there");
     act(() =>
       realtime.translated.forEach((h) =>
-        h({ messageId: "m1", conversationId: "other-chat", translatedContent: "No" }),
+        h({
+          messageId: "m1",
+          conversationId: "other-chat",
+          translatedContent: "No",
+        }),
       ),
     );
     expect(screen.getByText("Hello there")).toBeInTheDocument();
@@ -976,7 +1017,9 @@ describe("Chat translation", () => {
     chatApi.setTranslation.mockRejectedValue(new Error("Could not update"));
     open([received()], "es");
     fireEvent.click(await toggle());
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not update");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not update",
+    );
     expect(await toggle()).toHaveAttribute("aria-checked", "true");
   });
 });
@@ -995,7 +1038,7 @@ it("disables the composer for FoC system conversations", async () => {
   expect(chatApi.sendMessage).not.toHaveBeenCalled();
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("pins an older FoC conversation found beyond the first page without duplicating it", async () => {
   const order = {
     id: "order-chat",
@@ -1055,13 +1098,15 @@ it("shows system-chat notifications as incoming FoC messages and prevents sendin
   const content = await screen.findByText("Schedule failed");
   expect(content.parentElement).toHaveTextContent("FoC");
   expect(content.parentElement).toHaveClass("rounded-bl-sm");
-  expect(content.parentElement.parentElement.parentElement).toHaveClass("justify-start");
+  expect(content.parentElement.parentElement.parentElement).toHaveClass(
+    "justify-start",
+  );
   expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   expect(chatApi.sendMessage).not.toHaveBeenCalled();
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe("Active and archived chat tabs", () => {
   it("shows only the active list when there are no archived chats", async () => {
     renderChat(["/chats"]);
@@ -1121,7 +1166,7 @@ describe("Active and archived chat tabs", () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("keeps system chat pinned in Active and excludes it from Archived", async () => {
   const row = (id, orderId) => ({
     id,
@@ -1164,4 +1209,144 @@ it("keeps system chat pinned in Active and excludes it from Archived", async () 
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Active" }));
   await screen.findByRole("link", { name: /FoC/ });
+});
+
+// AI-generated
+it("follows incoming messages at the bottom and shows a jump arrow when reading earlier messages", async () => {
+  let scrollHeight = 1000;
+  const height = vi
+    .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+    .mockImplementation(() => scrollHeight);
+  const clientHeight = vi
+    .spyOn(HTMLElement.prototype, "clientHeight", "get")
+    .mockReturnValue(400);
+  try {
+    const { container } = renderChat(["/chat/conversation-1"]);
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled(),
+    );
+    const list = container.querySelector("ol");
+    list.scrollTop = 600;
+    fireEvent.scroll(list);
+    const incoming = (messageId) => ({
+      messageId,
+      conversationId: "conversation-1",
+      senderId: "other",
+      type: "TEXT",
+      content: messageId,
+      createdAt: "2026-11-10T10:00:00Z",
+    });
+    scrollHeight = 1200;
+    await act(async () =>
+      realtime.handlers.forEach((handler) => handler(incoming("new-1"))),
+    );
+    expect(list.scrollTop).toBe(1200);
+    expect(
+      screen.queryByRole("button", { name: "Scroll to new messages" }),
+    ).not.toBeInTheDocument();
+    list.scrollTop = 100;
+    fireEvent.scroll(list);
+    scrollHeight = 1400;
+    await act(async () =>
+      realtime.handlers.forEach((handler) => handler(incoming("new-2"))),
+    );
+    expect(list.scrollTop).toBe(100);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Scroll to new messages" }),
+    );
+    expect(list.scrollTop).toBe(1400);
+    expect(
+      screen.queryByRole("button", { name: "Scroll to new messages" }),
+    ).not.toBeInTheDocument();
+    // Repeated delivery of the same saved message must not move a reader's viewport.
+    list.scrollTop = 100;
+    fireEvent.scroll(list);
+    await act(async () =>
+      realtime.handlers.forEach((handler) => handler(incoming("new-2"))),
+    );
+    expect(list.scrollTop).toBe(100);
+    expect(
+      screen.queryByRole("button", { name: "Scroll to new messages" }),
+    ).not.toBeInTheDocument();
+    await act(async () =>
+      realtime.handlers.forEach((handler) => handler(incoming("new-3"))),
+    );
+    expect(
+      screen.getByRole("button", { name: "Scroll to new messages" }),
+    ).toBeInTheDocument();
+    list.scrollTop = 1000;
+    fireEvent.scroll(list);
+    expect(
+      screen.queryByRole("button", { name: "Scroll to new messages" }),
+    ).not.toBeInTheDocument();
+  } finally {
+    height.mockRestore();
+    clientHeight.mockRestore();
+  }
+});
+
+// AI-generated
+it("totals unread messages across both tab pages, counts FoC only in Active and refreshes read counts", async () => {
+  let read = false;
+  const cursor = { id: "older", updatedAt: "2026-11-09T00:00:00Z" };
+  const row = (id, count, orderId = id) => ({
+    id,
+    orderId,
+    unreadCount: read ? 0 : count,
+    updatedAt: "2026-11-10T00:00:00Z",
+  });
+  chatApi.listChats.mockImplementation(async (_role, next, status) => {
+    if (!status)
+      return { conversations: [row("system", 4, null)], hasMore: false };
+    if (status === "active")
+      return next
+        ? { conversations: [row("active-2", 3)], hasMore: false }
+        : {
+            conversations: [row("active-1", 2)],
+            hasMore: true,
+            nextCursor: cursor,
+          };
+    return next
+      ? {
+          conversations: [row("archived-2", 7), row("system", 4, null)],
+          hasMore: false,
+        }
+      : {
+          conversations: [row("archived-1", 5)],
+          hasMore: true,
+          nextCursor: cursor,
+        };
+  });
+  chatApi.getChat.mockImplementation(async (id) => ({
+    title: id,
+    participants: [],
+  }));
+  renderChat(["/chats"]);
+  expect(
+    await screen.findByLabelText("Active: 9 unread messages"),
+  ).toHaveTextContent("9");
+  expect(
+    screen.getByLabelText("Archived: 12 unread messages"),
+  ).toHaveTextContent("12");
+  fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
+  await screen.findByRole("link", { name: /archived-1/ });
+  expect(screen.getByLabelText("Active: 9 unread messages")).toHaveTextContent(
+    "9",
+  );
+  read = true;
+  act(() => window.dispatchEvent(new Event("chat-read-updated")));
+  await waitFor(() =>
+    expect(
+      screen.queryByLabelText("Archived: 12 unread messages"),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByLabelText("Active: 0 unread messages"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("Archived: 0 unread messages"),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Active" })).not.toHaveAttribute(
+    "aria-describedby",
+  );
 });

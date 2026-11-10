@@ -78,19 +78,19 @@ export function conversationsRouter(
     createAuthenticate(userServiceUrl, verifyToken),
     getMessages(prisma),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/messages",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
     postMessage(prisma, publish, enqueueTranslation),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/read",
     createAuthenticate(userServiceUrl, verifyToken),
     postRead(prisma, publishRead),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/translation",
     createAuthenticate(userServiceUrl, verifyToken),
@@ -113,7 +113,7 @@ export function conversationsRouter(
   return router;
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function systemNotificationsRouter(
   prisma: PrismaClient,
   apiKey: string,
@@ -123,7 +123,7 @@ export function systemNotificationsRouter(
   enqueueTranslation?: import("../translation/queue.js").TranslationEnqueuer,
 ) {
   const router = Router();
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/orders/:orderId/archive",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),

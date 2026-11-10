@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-10, Codex, model: GPT-6): Prevented repeated redirect feedback during StrictMode effect replay.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: Created RequireAuth and RequireRole, per instructions.md Stage 16b. While the session
  *        is still restoring, both render nothing rather than redirect, so a logged-in user on
@@ -29,50 +32,61 @@
  * Author review:
  */
 
-import { useEffect } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import Forbidden from './Forbidden'
-import { useToast } from './Toast'
-import { VIEW_MODE_LABEL, mainPageFor } from '../routing/views'
+import { useEffect, useRef } from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import Forbidden from "./Forbidden";
+import { useToast } from "./Toast";
+import { VIEW_MODE_LABEL, mainPageFor } from "../routing/views";
 
 // Same rank order as user-service/src/middleware/authorize.ts's ROLE_RANK.
-const ROLE_RANK = { user: 0, admin: 1, 'super admin': 2 }
+const ROLE_RANK = { user: 0, admin: 1, "super admin": 2 };
 
 export function RequireAuth({ children }) {
-  const { status, isLoggedIn } = useAuth()
-  const location = useLocation()
+  const { status, isLoggedIn } = useAuth();
+  const location = useLocation();
 
-  if (status === 'loading') return null
-  if (!isLoggedIn) return <Navigate to="/login" state={{ from: location }} replace />
-  return children
+  if (status === "loading") return null;
+  if (!isLoggedIn)
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  return children;
 }
 
 export function RequireRole({ minimum, children }) {
-  const { status, isLoggedIn, user } = useAuth()
-  const location = useLocation()
+  const { status, isLoggedIn, user } = useAuth();
+  const location = useLocation();
 
-  if (status === 'loading') return null
-  if (!isLoggedIn) return <Navigate to="/login" state={{ from: location }} replace />
-  if (ROLE_RANK[user.role] < ROLE_RANK[minimum]) return <Forbidden />
-  return children
+  if (status === "loading") return null;
+  if (!isLoggedIn)
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (ROLE_RANK[user.role] < ROLE_RANK[minimum]) return <Forbidden />;
+  return children;
 }
 
 // Redirects, replacing the history entry, when a requester-only or courier-only page is opened
 // from the other view, per instructions.md Stage 29. The view itself does not change; the user
 // lands on the current view's main page and sees the "You are now in <view> mode" toast once.
 export function ViewGate({ requiredView, children }) {
-  const { user } = useAuth()
-  const { showToast } = useToast()
-  const location = useLocation()
-  const mismatch = Boolean(user) && user.activeView !== requiredView
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const location = useLocation();
+  const mismatch = Boolean(user) && user.activeView !== requiredView;
 
+  // AI-generated (edited by <name>).
+  const notifiedRedirect = useRef(null);
   useEffect(() => {
-    if (mismatch) showToast('You are now in ' + VIEW_MODE_LABEL[user.activeView], 'success')
+    if (!mismatch) {
+      notifiedRedirect.current = null;
+      return;
+    }
+    const redirect = location.key + ":" + user.activeView;
+    if (notifiedRedirect.current === redirect) return;
+    notifiedRedirect.current = redirect;
+    showToast("You are now in " + VIEW_MODE_LABEL[user.activeView], "success");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mismatch, location.pathname])
+  }, [mismatch, location.pathname]);
 
-  if (!user) return children
-  if (mismatch) return <Navigate to={mainPageFor(user.activeView)} replace />
-  return children
+  if (!user) return children;
+  if (mismatch) return <Navigate to={mainPageFor(user.activeView)} replace />;
+  return children;
 }

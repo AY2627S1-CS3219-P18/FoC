@@ -13,6 +13,11 @@
 // Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified translate_to column and translated_messages table.
 // Author review: Congchen
 
+// Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review: tng wen xi
+
+
 generator client {
   provider = "prisma-client"
   output = "../src/generated/prisma"
@@ -68,7 +73,7 @@ model Message {
   senderId String? @map("sender_id") @db.Char(36)
   type MessageType
   content String? @db.Text
-  metadata Json?
+  triggeredByUserId String? @map("triggered_by_user_id") @db.Char(36)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   conversation Conversation @relation(fields: [chatId], references: [conversationId], onDelete: Restrict, onUpdate: Restrict)
   translations TranslatedMessage[]

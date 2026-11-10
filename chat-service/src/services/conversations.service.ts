@@ -34,9 +34,15 @@
  * Author review: Congchen
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -208,7 +214,7 @@ export async function listConversations(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function getConversationDetails(
   prisma: PrismaClient,
   conversationId: string,
@@ -245,7 +251,7 @@ export async function getConversationDetails(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function listMessages(
   prisma: PrismaClient,
   conversationId: string,
@@ -291,7 +297,7 @@ export async function listMessages(
       senderId: true,
       type: true,
       content: true,
-      metadata: true,
+      triggeredByUserId: true,
       createdAt: true,
       // The requesting user's own translation, if one has been prepared.
       translations: { where: { userId }, select: { content: true } },
@@ -314,7 +320,7 @@ export async function listMessages(
       senderId: row.senderId,
       type: row.type,
       content: row.content,
-      metadata: row.metadata,
+      triggeredByUserId: row.triggeredByUserId,
       createdAt: row.createdAt.toISOString(),
       translatedContent: row.translations[0]?.content ?? null,
     })),
@@ -328,13 +334,14 @@ export async function listMessages(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function sendMessage(
   prisma: PrismaClient,
   conversationId: string,
   senderId: string | null,
   validate: () => { type: "TEXT" | "SYSTEM"; content: string } | 400 | 422,
   messageId?: string,
+  triggeredByUserId?: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const conversation = await tx.conversation.findUnique({
@@ -367,6 +374,7 @@ export async function sendMessage(
         ...(messageId ? { id: messageId } : {}),
         chatId: conversationId,
         senderId,
+        triggeredByUserId: triggeredByUserId ?? null,
         type: input.type,
         content: input.content,
         createdAt: now,
@@ -384,7 +392,7 @@ export async function sendMessage(
         senderId: row.senderId,
         type: row.type,
         content: row.content,
-        metadata: row.metadata,
+        triggeredByUserId: row.triggeredByUserId,
         createdAt: row.createdAt.toISOString(),
       },
       userIds: conversation.participants
@@ -393,15 +401,14 @@ export async function sendMessage(
       // Active recipients with auto-translate on; each needs a translation prepared.
       translateTargets: conversation.participants
         .filter(
-          (p) =>
-            p.revokedAt === null && p.userId !== senderId && p.translateTo,
+          (p) => p.revokedAt === null && p.userId !== senderId && p.translateTo,
         )
         .map((p) => ({ userId: p.userId, language: p.translateTo! })),
     };
   });
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function markConversationRead(
   prisma: PrismaClient,
   conversationId: string,
@@ -518,6 +525,7 @@ export async function sendSystemNotification(
   input: {
     orderId: string | null;
     recipient?: string;
+    triggeredByUserId?: string;
     message: string;
     messageId: string;
   },
@@ -534,6 +542,7 @@ export async function sendSystemNotification(
       row.conversation.orderId !== input.orderId ||
       (input.orderId === null &&
         row.conversation.systemChat?.userId !== input.recipient) ||
+      (row.triggeredByUserId ?? null) !== (input.triggeredByUserId ?? null) ||
       row.content !== input.message ||
       row.type !== "SYSTEM" ||
       row.senderId !== null
@@ -547,7 +556,7 @@ export async function sendSystemNotification(
         senderId: row.senderId,
         type: row.type,
         content: row.content,
-        metadata: row.metadata,
+        triggeredByUserId: row.triggeredByUserId,
         createdAt: row.createdAt.toISOString(),
       },
     };
@@ -572,6 +581,7 @@ export async function sendSystemNotification(
         content: input.message,
       }),
       input.messageId,
+      input.triggeredByUserId,
     );
   } catch (error) {
     // Concurrent retries can both miss the lookup; the primary key arbitrates.
@@ -665,7 +675,7 @@ async function getSystemConversation(prisma: PrismaClient, userId: string) {
   }
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function archiveOrderConversation(
   prisma: PrismaClient,
   orderId: string,

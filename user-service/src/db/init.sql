@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS users_otps (
   send_blocked_until TIMESTAMPTZ
 );
 
--- AI-generated (edited by <name>).
+-- AI-generated
 -- CREATE TABLE IF NOT EXISTS leaves pre-Stage-18 tables unchanged.
 ALTER TABLE users_otps ADD COLUMN IF NOT EXISTS send_escalation_level SMALLINT NOT NULL DEFAULT 0;
 ALTER TABLE users_otps ADD COLUMN IF NOT EXISTS send_blocked_until TIMESTAMPTZ;

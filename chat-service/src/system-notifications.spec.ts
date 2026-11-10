@@ -8,7 +8,15 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
- * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated the system notification response assertion to the documented actor field.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -27,7 +35,7 @@ function setup() {
   });
   const create = vi
     .fn()
-    .mockImplementation(async ({ data }) => ({ ...data, id, metadata: null }));
+    .mockImplementation(async ({ data }) => ({ ...data, id }));
   const update = vi.fn().mockResolvedValue({});
   const findSystem = vi.fn().mockResolvedValue(null);
   const createConversation = vi.fn().mockResolvedValue({ conversationId: id });
@@ -95,7 +103,7 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
     senderId: null,
     type: "SYSTEM",
     content: "  Order ready  ",
-    metadata: null,
+    triggeredByUserId: null,
     createdAt: expect.any(String),
   });
   expect(t.create).toHaveBeenCalledWith({
@@ -105,6 +113,7 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
       senderId: null,
       type: "SYSTEM",
       content: "  Order ready  ",
+      triggeredByUserId: null,
       createdAt: expect.any(Date),
     },
   });
@@ -179,7 +188,7 @@ it.each(["lookup", "insert", "update", "broadcast"])(
   },
 );
 
-// AI-generated (edited by <name>).
+// AI-generated
 function storedMessage(overrides: object = {}) {
   return {
     id,
@@ -240,7 +249,7 @@ it.each([undefined, "bad"])(
   },
 );
 
-// AI-generated (edited by <name>).
+// AI-generated
 const orderless = (recipient = userId, messageId = id) => ({
   orderId: null,
   recipient,
@@ -316,7 +325,7 @@ it.each([undefined, "bad", null])(
   },
 );
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("routes simultaneous orderless notifications through one winning unique-user mapping", async () => {
   const t = setup();
   let mapping: { userId: string; conversationId: string } | null = null;

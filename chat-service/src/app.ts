@@ -60,7 +60,7 @@ export function createApp({
       enqueueTranslation,
     ),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   app.use(
     "/chat",
     systemNotificationsRouter(

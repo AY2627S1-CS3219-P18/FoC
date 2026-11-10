@@ -90,7 +90,7 @@ export function ordersRouter(
   router.get('/', ordersController.getOrders(prisma));
   router.get('/active', ordersController.getActiveDeliveries(prisma));
   router.get('/mine', ordersController.getMyOrders(prisma));
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.get(
     '/admin/users/:userId',
     ordersController.getAdminUserOrders(prisma, userServiceUrl),

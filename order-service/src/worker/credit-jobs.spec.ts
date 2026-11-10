@@ -243,7 +243,7 @@ describe('chat_create', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe('chat_notification', () => {
   it.each(['success', 'transient', 'permanent'] as const)(
     'handles %s and retains the message ID',
@@ -310,7 +310,7 @@ describe('chat_notification', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe('chat_participant', () => {
   it.each(['success', 'transient', 'permanent'] as const)(
     'handles %s without changing order state',
@@ -351,7 +351,7 @@ describe('chat_participant', () => {
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it('retries the terminal notification job when archive fails, without changing the order', async () => {
   const t = setup('completed');
   const fetchImpl = vi

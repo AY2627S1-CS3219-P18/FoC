@@ -87,7 +87,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${CHAT_DB_PASSWORD:?set CHAT_DB_PASSWORD in .env}
       MYSQL_DATABASE: chat_service
-    # AI-generated (edited by <name>).
+    # AI-generated
     ports:
       - "127.0.0.1:3306:3306"
     volumes:

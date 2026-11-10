@@ -105,6 +105,9 @@
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -664,7 +667,7 @@ function creditTasksFor(
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
-  // AI-generated (edited by <name>).
+  // AI-generated
   if (order.status === 'pending' && to === 'open')
     return [buildChatCreateTask(order)];
   // Completion pays the courier: credit-service moves the reserved credits.
@@ -698,7 +701,7 @@ export const transitionOrder = async (
   if (!check.ok) return check;
 
   const tasks = creditTasksFor(order, to, options);
-  // AI-generated (edited by <name>).
+  // AI-generated
   const messages: Partial<Record<RequestStatus, string>> = {
     cancelled: 'The order has been cancelled',
     expired: 'The order has expired',
@@ -724,6 +727,7 @@ export const transitionOrder = async (
         order.id,
         message,
         to === 'completed' || to === 'cancelled',
+        actorId === SYSTEM_ACTOR ? undefined : actorId,
       ),
     );
 

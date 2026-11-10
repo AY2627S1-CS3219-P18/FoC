@@ -24,6 +24,9 @@
  *        (ECS Fargate plan, Phase 1 item 8). No requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import "dotenv/config";
 import { createServer } from "node:http";
@@ -39,6 +42,7 @@ import {
   createMessagePublisher,
   createTranslatedPublisher,
 } from "./realtime/messages.js";
+// AI-generated
 import { createGeminiTranslator } from "./translation/gemini.js";
 import { createTranslationQueue } from "./translation/queue.js";
 import {
