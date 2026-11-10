@@ -31,6 +31,10 @@
 //   from authService. Governing decision: instructions.md Stage 23b. No requirements,
 //   architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31c - added the unlock controller for POST /auth/unlock. Tool: Claude Code
+//   (model: claude-sonnet-5). Governing decision: instructions.md Stage 31 ("Backend endpoint"
+//   row). No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -230,4 +234,21 @@ export const resetPassword = asyncHandler(async (req, res) => {
     message: 'Password reset successful. Please log in with your new password.',
     code: 'PASSWORD_RESET_SUCCESS',
   });
+});
+
+const unlockSchema = z
+  .object({
+    token: z.string({
+      required_error: 'Token is required',
+      invalid_type_error: 'Token must be a string',
+    }).min(1, 'Token is required'),
+  })
+  .strict();
+
+export const unlock = asyncHandler(async (req, res) => {
+  const { token } = unlockSchema.parse(req.body);
+  const code = await authService.unlockByToken(token);
+  const message =
+    code === 'UNLOCKED' ? 'Your account has been unlocked' : 'Your account is no longer locked';
+  res.status(200).json({ message, code });
 });

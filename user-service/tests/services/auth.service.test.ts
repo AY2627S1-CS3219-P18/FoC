@@ -21,7 +21,21 @@
 //   decision: instructions.md Stage 23b. No requirements, architecture, schema, or API
 //   decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31e - added unlock-email trigger coverage to the login lockout describe
+//   block (each of the three login locks sends exactly one email to the registered address
+//   with a link whose token's lck matches the row, a pending/suspended account's lock sends
+//   none, and login() itself never awaits the send so a failing send does not fail login) and
+//   a new describe('unlockByToken (Stage 31c)') covering every service-level Verification
+//   bullet: a valid token unlocks (lock, escalation, OTP send blocks/escalations for all three
+//   purposes cleared, login then works), reuse/supersession/admin-unlock/successful-login/
+//   time-expiry/suspended/pending/unknown-user all give ALREADY_UNLOCKED with no write, bad
+//   token shapes give INVALID_UNLOCK_TOKEN, and a locked super admin can unlock. Governing
+//   decision: instructions.md Stage 31b/31c's own Verification bullets.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+import { readFileSync } from 'node:fs';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
 import { AppError } from '../../src/utils/AppError.js';
@@ -31,6 +45,7 @@ import {
   backdateOtps,
   countUsers,
   expireOtps,
+  getAuditLogRowsForTarget,
   getCreditAllocationOutboxRows,
   getOtps,
   getRefreshTokenByPlain,
@@ -47,14 +62,24 @@ import {
   truncateAll,
 } from '../helpers/db.js';
 import {
+  awaitLastUnlockEmail,
   emailCallsFor,
   failNextEmail,
   latestOtpFor,
+  latestUnlockUrlFor,
   resetEmailMock,
   sendOtpEmailMock,
+  sendUnlockEmailMock,
+  unlockEmailCallsFor,
   wrongOtp,
 } from '../helpers/email.js';
-import { createActiveUser, registerPending, userInput } from '../helpers/fixtures.js';
+import { createActiveUser, createUserWithRole, registerPending, userInput } from '../helpers/fixtures.js';
+import { verifyUnlockToken } from '../../src/utils/jwt.js';
+import {
+  signToken as signTestAccessToken,
+  signUnlockToken as signTestUnlockToken,
+  tamperSignature,
+} from '../helpers/keys.js';
 
 resetEmailMock();
 beforeEach(truncateAll);
@@ -391,6 +416,80 @@ describe('login lockout (Stage 18b)', () => {
     expect((await getUserById(u.id))!.login_lock_level).toBe(1);
   });
 
+  it('the 1h, 4h and 24h login locks each send exactly one unlock email with a matching link', async () => {
+    const u = await createActiveUser(1);
+    for (let i = 0; i < 5; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    await awaitLastUnlockEmail();
+    expect(unlockEmailCallsFor(u.email)).toHaveLength(1);
+    const url1 = latestUnlockUrlFor(u.email);
+    expect(url1).toMatch(/^http:\/\/localhost:5173\/unlock-account\?token=/);
+    const token1 = new URL(url1).searchParams.get('token')!;
+    let row = (await getUserById(u.id))!;
+    expect(verifyUnlockToken(token1)).toEqual({
+      user_id: u.id,
+      lck: Math.floor(row.login_locked_until!.getTime() / 1000),
+    });
+
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: -1 });
+    for (let i = 0; i < 5; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    await awaitLastUnlockEmail();
+    expect(unlockEmailCallsFor(u.email)).toHaveLength(2);
+
+    await setLoginLockState(u.id, { lockLevel: 2, lockedUntilMinutesFromNow: -1 });
+    for (let i = 0; i < 5; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    await awaitLastUnlockEmail();
+    expect(unlockEmailCallsFor(u.email)).toHaveLength(3);
+    row = (await getUserById(u.id))!;
+    expect(row.login_lock_level).toBe(3);
+  });
+
+  it('a pending or suspended account gets no unlock email: wrong logins never lock (or email) it', async () => {
+    const pending = await registerPending(1);
+    for (let i = 0; i < 10; i++) {
+      await appError(authService.login({ identifier: pending.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    expect(sendUnlockEmailMock).not.toHaveBeenCalled();
+
+    const suspended = await createActiveUser(2);
+    await setUserStatus(suspended.id, 'suspended');
+    for (let i = 0; i < 10; i++) {
+      await appError(authService.login({ identifier: suspended.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    expect(sendUnlockEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('attempts during an existing lock send no additional email', async () => {
+    const u = await createActiveUser(1);
+    for (let i = 0; i < 5; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    await awaitLastUnlockEmail();
+    sendUnlockEmailMock.mockClear();
+
+    await appError(authService.login({ identifier: u.email, password: PASSWORD }, null, null));
+    expect(sendUnlockEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("login() rejects with ACCOUNT_LOCKED even if the unlock email send fails (the lock stands, the send is never awaited)", async () => {
+    const u = await createActiveUser(1);
+    sendUnlockEmailMock.mockRejectedValueOnce(new Error('SMTP down'));
+    for (let i = 0; i < 4; i++) {
+      await appError(authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null));
+    }
+    const err = await appError(
+      authService.login({ identifier: u.email, password: 'Wrong!Pass1' }, null, null),
+    );
+    expect(err).toMatchObject({ status: 429, code: 'ACCOUNT_LOCKED' });
+    await expect(awaitLastUnlockEmail()).rejects.toThrow('SMTP down');
+    expect((await getUserById(u.id))!.login_locked_until).not.toBeNull();
+  });
+
   it('a super admin can be locked; suspending a locked account works and does not clear the lock', async () => {
     const u = await createActiveUser(1);
     await setUserRole(u.id, 'super admin');
@@ -403,6 +502,159 @@ describe('login lockout (Stage 18b)', () => {
     const row = (await getUserById(u.id))!;
     expect(row.status).toBe('suspended');
     expect(row.login_locked_until).not.toBeNull();
+  });
+});
+
+describe('unlockByToken (Stage 31c)', () => {
+  it('a valid token for a currently locked active account: unlocks, clears escalation and all three OTP send blocks, login then works', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 2, lockedUntilMinutesFromNow: 60, failedAttempts: 5 });
+    for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
+      await setOtpSendBlock(u.id, purpose, { level: 2, blockedUntilMinutesFromNow: 60 });
+    }
+    const row = (await getUserById(u.id))!;
+    const token = signTestUnlockToken({
+      sub: u.id,
+      lck: Math.floor(row.login_locked_until!.getTime() / 1000),
+    });
+
+    const result = await authService.unlockByToken(token);
+    expect(result).toBe('UNLOCKED');
+
+    const after = (await getUserById(u.id))!;
+    expect(after.login_failed_attempts).toBe(0);
+    expect(after.login_failure_window_start).toBeNull();
+    expect(after.login_locked_until).toBeNull();
+    expect(after.login_lock_level).toBe(0);
+    for (const purpose of ['Forgot Password', 'Change Email', 'Change Password'] as const) {
+      for (const otpRow of await getOtps(u.id, purpose)) {
+        expect(otpRow.send_escalation_level).toBe(0);
+        expect(otpRow.send_blocked_until).toBeNull();
+      }
+    }
+
+    const login = await authService.login({ identifier: u.email, password: PASSWORD }, null, null);
+    expect(login.user.id).toBe(u.id);
+  });
+
+  it('the same token used again: ALREADY_UNLOCKED, nothing changes', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(u.id))!;
+    const token = signTestUnlockToken({
+      sub: u.id,
+      lck: Math.floor(row.login_locked_until!.getTime() / 1000),
+    });
+    expect(await authService.unlockByToken(token)).toBe('UNLOCKED');
+    expect(await authService.unlockByToken(token)).toBe('ALREADY_UNLOCKED');
+  });
+
+  it('a token for an earlier lock after a newer lock was set: ALREADY_UNLOCKED, the newer lock stands', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const earlierRow = (await getUserById(u.id))!;
+    const earlierToken = signTestUnlockToken({
+      sub: u.id,
+      lck: Math.floor(earlierRow.login_locked_until!.getTime() / 1000),
+    });
+
+    await setLoginLockState(u.id, { lockLevel: 2, lockedUntilMinutesFromNow: 240 });
+
+    expect(await authService.unlockByToken(earlierToken)).toBe('ALREADY_UNLOCKED');
+    const after = (await getUserById(u.id))!;
+    expect(after.login_locked_until).not.toBeNull();
+    expect(after.login_lock_level).toBe(2);
+  });
+
+  it('a token after an admin unlock, or after a successful-login-style lock clear: ALREADY_UNLOCKED', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(u.id))!;
+    const token = signTestUnlockToken({
+      sub: u.id,
+      lck: Math.floor(row.login_locked_until!.getTime() / 1000),
+    });
+    // A successful login (correct password) clears the lock the same way admin unlock /
+    // resetLoginLock does, via the same column writes unlockByToken itself checks.
+    await setLoginLockState(u.id, {});
+    expect(await authService.unlockByToken(token)).toBe('ALREADY_UNLOCKED');
+  });
+
+  it('a token whose lock has expired by time: ALREADY_UNLOCKED', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: -1 });
+    const row = (await getUserById(u.id))!;
+    const token = signTestUnlockToken({
+      sub: u.id,
+      lck: Math.floor(row.login_locked_until!.getTime() / 1000),
+    });
+    expect(await authService.unlockByToken(token)).toBe('ALREADY_UNLOCKED');
+  });
+
+  it('a token for an account that is now suspended or pending, or that no longer exists: ALREADY_UNLOCKED, nothing changes', async () => {
+    const suspended = await createActiveUser(1);
+    await setLoginLockState(suspended.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const suspendedRow = (await getUserById(suspended.id))!;
+    const suspendedToken = signTestUnlockToken({
+      sub: suspended.id,
+      lck: Math.floor(suspendedRow.login_locked_until!.getTime() / 1000),
+    });
+    await setUserStatus(suspended.id, 'suspended');
+    expect(await authService.unlockByToken(suspendedToken)).toBe('ALREADY_UNLOCKED');
+    expect((await getUserById(suspended.id))!.login_locked_until).not.toBeNull();
+
+    const unknownToken = signTestUnlockToken({ sub: '00000000-0000-4000-8000-000000000000', lck: 1 });
+    expect(await authService.unlockByToken(unknownToken)).toBe('ALREADY_UNLOCKED');
+  });
+
+  it('malformed token, bad signature, wrong typ, or past exp: throws 401 INVALID_UNLOCK_TOKEN', async () => {
+    await expect(authService.unlockByToken('not-a-jwt')).rejects.toMatchObject({
+      status: 401,
+      code: 'INVALID_UNLOCK_TOKEN',
+      message: 'This link is invalid or has expired',
+    });
+    await expect(authService.unlockByToken(tamperSignature(signTestUnlockToken()))).rejects.toMatchObject({
+      status: 401,
+      code: 'INVALID_UNLOCK_TOKEN',
+    });
+    // Wrong typ (at+JWT) for the unlock verifier.
+    await expect(authService.unlockByToken(signTestAccessToken())).rejects.toMatchObject({
+      status: 401,
+      code: 'INVALID_UNLOCK_TOKEN',
+    });
+    // Past exp.
+    const expired = jwt.sign(
+      { lck: 123, exp: Math.floor(Date.now() / 1000) - 60 },
+      readFileSync(process.env.JWT_PRIVATE_KEY_PATH!, 'utf8'),
+      {
+        algorithm: 'RS256',
+        subject: 'user-id-1',
+        keyid: process.env.JWT_KEY_ID,
+        header: { alg: 'RS256', typ: 'ul+JWT' },
+      },
+    );
+    await expect(authService.unlockByToken(expired)).rejects.toMatchObject({
+      status: 401,
+      code: 'INVALID_UNLOCK_TOKEN',
+    });
+  });
+
+  it('a locked super admin can unlock via the link', async () => {
+    const sa = await createUserWithRole(1, 'super admin');
+    await setLoginLockState(sa.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(sa.id))!;
+    const token = signTestUnlockToken({ sub: sa.id, lck: Math.floor(row.login_locked_until!.getTime() / 1000) });
+    expect(await authService.unlockByToken(token)).toBe('UNLOCKED');
+  });
+
+  it('writes no audit row for any outcome', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(u.id))!;
+    const token = signTestUnlockToken({ sub: u.id, lck: Math.floor(row.login_locked_until!.getTime() / 1000) });
+    await authService.unlockByToken(token);
+    await authService.unlockByToken(token); // ALREADY_UNLOCKED
+    expect(await getAuditLogRowsForTarget(u.id)).toHaveLength(0);
   });
 });
 

@@ -56,6 +56,12 @@
  *        entry for OTP_RESEND_LIMIT. This entry remains as the generic fallback text.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Added INVALID_UNLOCK_TOKEN, per instructions.md Stage 31d's error table (text matches
+ *        the server's AppError message exactly, as the other entries here do).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 export const errorMessages = {
@@ -71,6 +77,7 @@ export const errorMessages = {
     display: 'banner',
   },
   INVALID_REFRESH_TOKEN: { message: 'Your session has expired. Please log in again.', display: 'toast' },
+  INVALID_UNLOCK_TOKEN: { message: 'This link is invalid or has expired.', display: 'banner' },
   UNAUTHORIZED: { message: 'Please log in to continue.', display: 'toast' },
   FORBIDDEN: { message: "You don't have access to do that.", display: 'toast' },
 

@@ -14181,3 +14181,223 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31a: Config and unlock-token utilities
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, "Config" section, changes table rows 1-2, "Stage 31a: Config and unlock-token utilities")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+
+**Key responses:**
+
+Stage 31 has no remaining `[DECIDE]` placeholders, so 31a was implemented as written; per the stage's "implement one sub-stage at a time" rule, work stopped after 31a for the user's confirmation.
+
+- `src/config.ts`: `FRONTEND_BASE_URL` added to the Zod schema as `z.string().url()`, exposed as `config.frontend.baseUrl`. A trailing slash is stripped, mirroring the existing `CREDIT_SERVICE_URL` handling, so `'/unlock-account?token=...'` can be appended directly. A missing, empty or non-URL value exits at startup through the existing env-validation path, naming the variable (`FRONTEND_BASE_URL: Required` / `Invalid url`).
+- `.env.example`, `.env`, `.env.test`: `FRONTEND_BASE_URL=http://localhost:5173` added (`.env` is gitignored; listed for completeness).
+- `src/utils/jwt.ts`: `UNLOCK_TOKEN_TTL_SECONDS = 60 * 60` as a code constant at the top of the file (no env var). `signUnlockToken({ userId, lockedUntil: Date })` signs RS256 with the current key and `kid`, header `typ: ul+JWT`, claims exactly `sub`, `iat`, `exp` (1 h) and `lck` = `Math.floor(lockedUntil.getTime() / 1000)` (epoch seconds). `verifyUnlockToken(token)` asserts `typ === 'ul+JWT'` through the existing Stage 27 `assertTokenType`, resolves the key by `kid`, verifies RS256, and additionally throws if `sub` is not a string or `lck` is not a number; returns `{ user_id, lck }`. Because `verifyAccessToken` and `verifyElevationToken` already assert their own `typ`, they reject `ul+JWT` with no change to them.
+- Note for 31c: Postgres `timestamptz` carries microseconds while `lck` is whole seconds, so the "same instant" comparison in 31c must truncate `login_locked_until` to seconds (or compare `floor(extract(epoch ...))`) rather than compare raw values. Flagged here so it is not missed.
+- CORS report (report only, no change made): `src/app.ts` line 34 hardcodes `cors({ origin: 'http://localhost:5173', ... })`. It could read `config.frontend.baseUrl` instead; the dev value is identical. Left unchanged as instructed.
+- Tests for the 31a Verification bullets are scheduled for Stage 31e per the stage text; none were added here. Verification was done with a throwaway tsx script (not committed) covering every 31a bullet: `config.frontend.baseUrl` parsed; token header `ul+JWT`/RS256/`kid`; claims exactly `exp,iat,lck,sub`; `exp - iat = 3600`; `lck` equals the floored lock instant; the unlock verifier accepts the token and rejects `at+JWT`, `ep+JWT` and plain `JWT`; `verifyAccessToken` and `verifyElevationToken` reject `ul+JWT`; expired, tampered-signature and missing-`lck` tokens are rejected. All 14 checks passed. Startup with `FRONTEND_BASE_URL` empty and with `not-a-url` both exited with "Invalid or missing environment variables: - FRONTEND_BASE_URL: Invalid url".
+- `npx tsc --noEmit` (src and tests) clean; `npx eslint src tests` clean; `tests/config.test.ts` and `tests/utils/jwt.test.ts` 51/51 passed. Full suite (`npx vitest run`, real Postgres): 38 files, 1002/1002 passed. The two stderr stack traces are the pre-existing forced-failure tests.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified, gitignored)
+- `user-service/.env.test` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #261)
+
+**Deviations / questions raised for the team:**
+
+- The running `foc-user-service` dev container reads `user-service/.env` at start and will need a restart to pick up `FRONTEND_BASE_URL` once this is merged (it is only read by config at startup; nothing uses it until 31b).
+- `instructions.md` had uncommitted team edits in the working tree when the branch was created; they were left untouched and not staged.
+- Nothing else; no ambiguity found in rows 1-2.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31b: The email and sending it on every login lock
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("When the email is sent" table, changes table rows 3-4, "Stage 31b: The email and sending it on every login lock")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+
+**Key responses:**
+
+- `src/services/email.service.ts`: extracted `sendOtpEmail`'s attempt loop into a private `sendMailWithRetry(mailOptions, { username, to, purpose })` (identical attempts/backoff/per-attempt cap/overall deadline/`[OTP EMAIL]` log line; `sendOtpEmail`'s own signature, template lookup, dev fallback and log lines are byte-for-byte unchanged, so its contract holds). Added `sendUnlockEmail({ to, username, unlockUrl })`, which builds the unlock email and calls the same `sendMailWithRetry` with `purpose: 'account_unlock'`, so its log lines read `[OTP EMAIL] outcome=... purpose=account_unlock attempt=n/4` per the Stage 31 logging rule ("same log line format ... writes account_unlock"). Its own dev-fallback line is `[DEV EMAIL] to=... purpose=account_unlock url=...` (no otp field, since there is none) — the exact field name is an implementation detail, not specified by the stage; flagged here for review. Email content: subject `Your FoC account has been locked`; body states the account was locked after too many failed attempts and holds the link; never states the lock length, an OTP or anything about the password. Exact wording:
+  > Your FoC account was locked after too many failed attempts. Use the link below to unlock it.
+  >
+  > {unlockUrl}
+- `src/services/auth.service.ts`: `RecordLoginFailureResult`'s locked variant now also carries `lockedUntil: Date` and `user: { id, email, username }` (available on the already-locked `UserRowWithNow` row). Added exported `triggerUnlockEmail(user, lockedUntil)`: signs the unlock token (`signUnlockToken`, Stage 31a), builds `${config.frontend.baseUrl}/unlock-account?token=...`, and fires `sendUnlockEmail(...).catch(() => {})` without awaiting — the caller's response is never delayed and the rejection can never become unhandled. `login()` calls it (with the lock's `user`/`lockedUntil`) immediately after its transaction commits, before throwing `ACCOUNT_LOCKED`.
+- `src/services/me.service.ts`: `initiateEmailChange` and `initiatePasswordChange` call the same exported `triggerUnlockEmail` at their own `authOutcome.kind === 'locked'` sites, after their phase-1 transaction commits. No other change to either function.
+- "Pending and suspended: no email" is satisfied structurally, not by an extra check: `recordLoginFailure` (the only path that can produce a `locked` result) is called by all three sites only when `status !== 'pending' && status !== 'suspended'` already (Stage 18b's `countsTowardLock`), so a `locked` result's user is always `active`.
+- `tests/setup/setupFiles.ts`: added `sendUnlockEmail: vi.fn(async () => {})` to the global `email.service.js` mock (per the changes table row 10's mocking requirement) — without it, every existing Stage 18 lockout test that reaches the lock threshold would throw on the unmocked import.
+- Verification: a throwaway scratch test (not committed) against the real app and Postgres confirmed: 5 wrong logins → `429 ACCOUNT_LOCKED` plus exactly one `sendUnlockEmail` call whose token verifies and whose `lck` matches the row's `login_locked_until`; a wrong current password on `PUT /users/me/password` that locks sends one email; an OTP send-block (forgot-password cap) sends none; attempts during an active lock send nothing and do not change `login_locked_until`; N concurrent failures at the threshold produce exactly one email; every send attempt rejecting leaves the lock standing with zero `unhandledRejection` events. A second throwaway scratch test on `sendUnlockEmail` directly confirmed the exact subject, no OTP-shaped text, no mention of "password" or any duration wording, the retry/backoff/deadline reuse, the `account_unlock` log lines, and the dev-fallback line. Neither scratch file was committed.
+- `npx tsc --noEmit` (src and tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms the Stage 18 lockout tests still pass with the email transport mocked, and the OTP email flows are unchanged).
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/setup/setupFiles.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #262)
+
+**Deviations / questions raised for the team:**
+
+- The unlock email's dev-fallback console line format (`[DEV EMAIL] to=... purpose=account_unlock url=...`) was chosen to parallel the OTP dev-fallback line; the stage does not specify its exact fields. Flagging for review; easy to change.
+- Please review the email wording above (subject and body) before it ships.
+- No `[DECIDE]` placeholders remained in rows 3-4; no other ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31c: Unlock-by-link endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, changes table rows 5-6, "Stage 31c: Unlock-by-link endpoint")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+
+**Key responses:**
+
+- `src/services/users.service.ts`: extracted `unlockUser`'s clearing step into exported `clearLoginLock(userId, client)` (`resetLoginLock` + `otpQueries.clearSendBlocksForUser`, called inside the caller's own transaction against a row already locked FOR UPDATE), per the stage's "share the clearing code with the admin unlock; do not duplicate it." `unlockUser`'s own permission rules, audit row and response are unchanged; it now just calls `clearLoginLock` instead of inlining the same two calls.
+- `src/services/auth.service.ts`: added `unlockByToken(token)`. Verifies the token with `verifyUnlockToken` (Stage 31a); any throw (malformed, bad signature, wrong `typ`, expired) becomes `401 INVALID_UNLOCK_TOKEN`. Otherwise locks the target row FOR UPDATE (`lockUserByIdWithNow`) and returns `'ALREADY_UNLOCKED'` without writing anything when: the user no longer exists; the status is `pending` or `suspended`; `login_locked_until` is null or has passed the DB clock; or the token's `lck` (epoch seconds) does not equal `Math.floor(login_locked_until.getTime() / 1000)` — the truncation flagged in the Stage 31a log entry, applied here. Otherwise it calls the shared `clearLoginLock` and returns `'UNLOCKED'`. No audit row, per the stage's own rule. Concurrency falls out of the existing FOR UPDATE lock: whichever click reaches the row first clears it; every other one (whether it was already queued or arrives after) sees the cleared/mismatched state and gets `ALREADY_UNLOCKED`.
+- `src/controllers/auth.controller.ts` / `src/routes/auth.routes.ts`: added the `unlock` controller (Zod `.strict()`, `token` a non-empty string, `asyncHandler`) and `POST /auth/unlock`, mounted on the existing public `authRouter` with no `authenticate` — matching every other `/auth/*` route, so an `Authorization` header is simply never read.
+- Verification: `npx tsc --noEmit` (src, tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms `unlockUser`'s existing behaviour and audit row are unchanged). A throwaway scratch E2E test (not committed, against the real app and Postgres) covered every 31c Verification bullet: a valid token on a locked active account unlocks it (lock, escalation and OTP send blocks for all three purposes cleared) and the user can then log in; the same token reused is `ALREADY_UNLOCKED`; a token for an earlier lock after a newer lock was set is `ALREADY_UNLOCKED` with the newer lock standing; a token after an admin unlock, and after a direct lock-clear (standing in for a successful login/correct-password reset, which use the identical `resetLoginLock` write), are both `ALREADY_UNLOCKED`; an expired-by-time lock is `ALREADY_UNLOCKED`; a now-suspended account's token is `ALREADY_UNLOCKED` with nothing changed; a malformed token and a tampered-signature token are `401 INVALID_UNLOCK_TOKEN` with the exact message; a missing, empty, or extra-key body is `400 VALIDATION_ERROR`; a locked super admin can unlock; no audit row is written for any outcome; N concurrent clicks with the same token produce exactly one `UNLOCKED` and the rest `ALREADY_UNLOCKED`; the admin endpoint still requires auth and still audits; and the endpoint works with no `Authorization` header and ignores one that is present. Not committed.
+
+**Files:**
+
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #263)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in rows 5-6; no ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31d: Frontend page
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("Frontend (`/unlock-account`)" table, changes table rows 7-9, "Stage 31d: Frontend page")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+
+**Key responses:**
+
+- `src/pages/UnlockAccount.jsx` (new): reads `token` from the query string via `useSearchParams`. A missing/empty token shows the invalid-link banner immediately (reusing `errorMessages.INVALID_UNLOCK_TOKEN`'s text) and disables the button, sending no request, matching how the same banner appears after a failed `POST /auth/unlock`. Pressing the button calls `authApi.unlockAccount(token)`; the button is disabled while the call is in flight (`busy` state) and on success the component navigates away before `busy` is ever reset, so a double-click sends exactly one request. `UNLOCKED` and `ALREADY_UNLOCKED` both navigate to `/login` and then call `showToast` (the existing toast system from `components/Toast.jsx`, the same one `ViewGate` already uses) with the two exact strings the stage specifies. `INVALID_UNLOCK_TOKEN` stays on the page and shows the banner via `describeError`. Not wrapped in `RequireAuth` or `ViewGate` — same as `/login`, `/register`, `/forgot-password` — so it is reachable logged out and logged in and is not subject to the Stage 29 `ViewGate` redirect; confirmed it is also absent from `routing/views.js`'s `PAGE_VIEW` list, so no stop-and-ask was needed.
+- `src/api/auth.js`: added `unlockAccount(token)` — `POST /auth/unlock` with `{ token }`, returning `{ message, code }` unchanged (matches the backend contract from Stage 31c).
+- `src/api/errorMessages.js`: added `INVALID_UNLOCK_TOKEN` (banner), text matching the backend's `AppError` message exactly, as the file's other entries already do.
+- `src/App.jsx`: added `<Route path="/unlock-account" element={<UnlockAccount />} />`, alongside `/login`, `/register`, `/forgot-password`.
+- `frontend/vite.config.js`, `frontend/nginx/default.conf`: no changes. Checked both: `POST /auth/unlock` is already covered by the existing `/auth` proxy entry (vite) and `/auth` location (nginx) — Stage 31's own row 9 text says "do not add a whole prefix," and a new exact-path entry for `/auth/unlock` would duplicate what `/auth` already forwards. `/unlock-account` is a frontend-only route; checked that no other frontend route (`/login`, `/register`, `/forgot-password`) has its own nginx `location` block — they all rely on the existing SPA fallback (`location / { try_files ... /index.html; }`), so `/unlock-account` is already served the same way with no new entry.
+- Verification: `npm run build` (vite build) succeeded; `npm run lint` (oxlint) showed only pre-existing warnings in files I did not touch, nothing in the new/changed files. A throwaway scratch RTL test (`tests/pages/scratch_UnlockAccount.test.jsx`, not committed), using the existing Vitest + `@testing-library/react` setup with `api/auth` mocked, covered: missing-token banner + disabled button + no request; opening a valid-token link sends no request; pressing on `UNLOCKED` makes exactly one request and lands on `/login` showing the unlocked toast text; `ALREADY_UNLOCKED` lands on `/login` with the no-longer-locked toast text; `INVALID_UNLOCK_TOKEN` stays on the page showing the banner with no redirect; a double-click while the first call is still pending sends exactly one request. All 6 passed, then the file was deleted. Ran the full frontend suite afterward (`npx vitest run`): 278/279 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to this stage) was confirmed via `git stash` to pre-date this change and is not touched by anything in Stage 31d.
+- Manual verification still needed (cannot be done in this environment): phone-width viewport check; opening the link in a fresh tab through the dev proxy and through nginx (direct hit, not an in-app navigation) to confirm the SPA fallback serves the page rather than a 404; a real-browser click-through of the full email-link flow end to end.
+
+**Files:**
+
+- `frontend/src/pages/UnlockAccount.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #264)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in the Stage 31d rows; no ambiguity found. `vite.config.js`/`nginx/default.conf` were deliberately left unchanged (reasoning above), reported here rather than silently skipped.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31e: Tests (Vitest)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code (tests)
+**Governing decision:** instructions.md Stage 31e ("Follow the Stage 7 ground rules and the Stage 19 mocking policy... Every Verification bullet in 31a-31d that does not need Docker or a real browser is a required test case.")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+> on with e
+
+**Key responses:**
+
+- Awaiting the fire-and-forget unlock-email send deterministically, without changing production behaviour: `triggerUnlockEmail` (auth.service.ts) calls `sendUnlockEmail(...).catch(() => {})` without awaiting it, so the caller's own promise (a supertest response, or authService.login's rejection) can settle before the mocked send does. The call to the mock itself, though, happens synchronously - `sendUnlockEmail(...)` is invoked, and `.catch()` attached, entirely before `triggerUnlockEmail` returns, which is itself before the HTTP response is written. So by the time the triggering request/call has resolved, the mock's call and the Promise it returned are already recorded in `sendUnlockEmailMock.mock.results`. Added `awaitLastUnlockEmail()` (`tests/helpers/email.ts`) which just reads and awaits that already-captured promise (`mock.results.at(-1)`). No change to any production file, no polling, no fake timers - it is reading a result that already exists by the time the test calls it.
+- `tests/helpers/keys.ts` / `tests/utils/jwt.test.ts` (Stage 31a): added `signUnlockToken` (mirrors `signElevationToken`). Extended `verifyAccessToken`/`verifyElevationToken`'s existing cross-type-rejection tests with the new `ul+JWT` case, and added `signUnlockToken`/`verifyUnlockToken` describe blocks covering claim shape (`sub`/`iat`/`exp`/`lck`), the 1 hour expiry, and every cross-type/expired/tampered/wrong-key rejection, mirroring the existing elevation-token coverage.
+- `tests/helpers/email.ts` / `tests/services/email.service.test.ts` (Stage 31b): added `sendUnlockEmailMock`, `unlockEmailCallsFor`, `latestUnlockUrlFor`, `awaitLastUnlockEmail` (global mock already added in setupFiles.ts for 31b). Added a `sendUnlockEmail` describe block covering subject/link content, the "too many failed attempts" wording with no lock-length/OTP/password text, the dev-fallback `[DEV EMAIL] ... url=...` line, and the `[OTP EMAIL] ... purpose=account_unlock ...` log line - the last two prove it goes through the shared `sendMailWithRetry`/`PURPOSE_COPY`-free path rather than a copy. Did not re-test the full transient/non-transient/backoff/deadline matrix for `sendUnlockEmail` purpose-by-purpose, since that logic is generic and already covered by the `sendOtpEmail` retry describe block above it (same principle `me.service.test.ts`'s own header comment states for not duplicating generic OTP logic per call site); one transient-failure case is included only to demonstrate the retry path is actually taken.
+- `tests/services/auth.service.test.ts` (Stage 31b/31c): extended the `login lockout (Stage 18b)` describe block with: each of the three escalating login locks sending exactly one unlock email whose link's token verifies with `lck` matching the row; a pending or suspended account never emailed (via real `login()` calls, not direct DB writes, since `countsTowardLock` already excludes both); attempts during an existing lock sending no additional email; and that `login()` still rejects with `ACCOUNT_LOCKED` even when the mocked send rejects (the lock stands; the send is never awaited). Added `describe('unlockByToken (Stage 31c)')` covering every service-level Verification bullet: a valid token unlocks (lock, escalation, and OTP send blocks/escalations for all three purposes cleared, and the user can then log in); the same token reused, a token for an earlier lock after a newer lock, a token after an admin-style lock clear, a time-expired lock, and a suspended/pending/unknown account all give `ALREADY_UNLOCKED` with nothing changed; malformed/tampered/wrong-`typ`/expired tokens give `INVALID_UNLOCK_TOKEN`; a locked super admin can unlock; and no audit row is ever written.
+- `tests/controllers/auth.controller.test.ts` (Stage 31c): added `describe('POST /auth/unlock (Stage 31c)')` for the HTTP-level bullets not already exercised at the service layer: the `200 UNLOCKED`/`ALREADY_UNLOCKED` and `401 INVALID_UNLOCK_TOKEN` response shapes, Zod `.strict()` validation (missing/empty/non-string token, unknown body key), working with no `Authorization` header and ignoring one that is present, a locked super admin unlocking via the link, no audit row, and that admin `POST /users/:id/unlock` is unchanged (still requires auth, still audits).
+- `tests/concurrency/lockout.concurrency.test.ts` (Stage 31b/31c): added the unlock-email assertion (exactly one email) to the existing N-concurrent-wrong-logins test, and a new describe block for N concurrent clicks of the same unlock link: exactly one `UNLOCKED`, the rest `ALREADY_UNLOCKED`, lock fully cleared.
+- `frontend/tests/pages/UnlockAccount.test.jsx` (Stage 31d): promoted the throwaway scratch RTL test used during 31d's own verification into a permanent test, covering every 31d Verification bullet that does not need a real browser: no request until pressed (missing and valid token), `UNLOCKED`/`ALREADY_UNLOCKED` redirect-to-`/login`-with-toast, `INVALID_UNLOCK_TOKEN` staying on the page with the banner, and a double-click sending exactly one request.
+- Manual verification still needed (cannot be done in this environment, and is explicitly listed for manual follow-up in the stage's own text): phone-width viewport usability of `/unlock-account`; opening the unlock link in a fresh tab through the Vite dev proxy and through the nginx production image to confirm the SPA fallback serves the page rather than a 404; a full real-browser click-through of the email-link flow end to end.
+- Verification: backend - `npx tsc --noEmit -p tests/tsconfig.json` and `npx eslint src tests` clean; full suite `npx vitest run`: 38 files, 1047/1047 passed (up from 1002 before this stage; no regressions, Stage 18 lockout and admin-unlock tests included). Frontend - `npx vitest run`: 40 files, 284/285 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to Stage 31) was confirmed pre-existing via `git stash` during Stage 31d's own review and is untouched here.
+- Did not modify any application code to make a test pass, per the stage's own instruction; every assertion added here matches already-implemented 31a-31d behaviour.
+
+**Files:**
+
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/helpers/email.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `frontend/tests/pages/UnlockAccount.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #265)
+
+**Deviations / questions raised for the team:**
+
+- None beyond what is already flagged above (the three manual-verification items the stage itself defers, and the deliberate choice not to re-test the generic OTP retry/backoff matrix a second time for `sendUnlockEmail`).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

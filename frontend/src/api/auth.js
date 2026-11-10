@@ -42,6 +42,12 @@
  *        refresh.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 31d of instructions.md - added unlockAccount, the call UnlockAccount.jsx needs
+ *        (POST /auth/unlock).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { decodeAccessTokenClaims, recordSessionTimeLeft, refreshAccessToken, request, setAccessToken } from './http'
@@ -95,6 +101,12 @@ export async function forgotPassword({ email }) {
 // OTP_ATTEMPTS_EXCEEDED.
 export async function resetPassword({ email, otp, newPassword }) {
   return request('/auth/reset-password', { method: 'POST', json: { email, otp, newPassword } })
+}
+
+// 200 { message, code: 'UNLOCKED' | 'ALREADY_UNLOCKED' }. 401 INVALID_UNLOCK_TOKEN, 400
+// VALIDATION_ERROR.
+export async function unlockAccount(token) {
+  return request('/auth/unlock', { method: 'POST', json: { token } })
 }
 
 // Page load: trade the refresh cookie for an access token, then rebuild the same user object login
