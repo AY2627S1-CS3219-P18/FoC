@@ -15472,3 +15472,29 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — Frontend: remove the nav notification bell
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** George's chat instruction in this session (quoted below): notifications are delivered through the chat system, so the bell is removed.
+
+**Prompts (exact):**
+> hold on, also remove the notification bell on the frontend, since our notifs are delivered through the chat system, do it in the same PR
+
+**Key responses:**
+- The bell was a `<button aria-label="Notifications">` in `TopNav.jsx`'s logged-in desktop nav, with a static orange dot, no click handler and no data source. The mobile drawer had no bell. Removed the button and the now-unused `Bell` import. Nothing else referenced it, in code or tests.
+- Verification: `npx vitest run` in `frontend/`: 40 files, 298/298 passed. `npm run build` succeeded. `oxlint` on `TopNav.jsx` reports only an existing `set-state-in-effect` warning in an effect this change didn't touch. Not checked visually in a browser.
+
+**Files:**
+- `frontend/src/components/TopNav.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #289 and header scope line)
+
+**Deviations / questions raised for the team:**
+- `MockupBlueprint.md` (team-authored) still lists "a bell icon" in the logged-in nav (line 262). Left for the team to update.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
