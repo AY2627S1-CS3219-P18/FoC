@@ -29,9 +29,18 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  */
@@ -258,6 +267,7 @@ export async function listMessages(
           role: true,
           joinedAt: true,
           lastReadMessageId: true,
+          translateTo: true,
         },
       },
     },
@@ -289,6 +299,8 @@ export async function listMessages(
       content: true,
       triggeredByUserId: true,
       createdAt: true,
+      // The requesting user's own translation, if one has been prepared.
+      translations: { where: { userId }, select: { content: true } },
     },
   });
   const hasMore = rows.length > input.limit;
@@ -300,6 +312,7 @@ export async function listMessages(
       role: participant.role,
       joinedAt: participant.joinedAt.toISOString(),
       lastReadMessageId: participant.lastReadMessageId,
+      translateTo: participant.translateTo,
     })),
     data: page.map((row) => ({
       messageId: row.id,
@@ -309,6 +322,7 @@ export async function listMessages(
       content: row.content,
       triggeredByUserId: row.triggeredByUserId,
       createdAt: row.createdAt.toISOString(),
+      translatedContent: row.translations[0]?.content ?? null,
     })),
     pagination: {
       nextCursor:
@@ -335,7 +349,9 @@ export async function sendMessage(
       select: {
         status: true,
         orderId: true,
-        participants: { select: { userId: true, revokedAt: true } },
+        participants: {
+          select: { userId: true, revokedAt: true, translateTo: true },
+        },
       },
     });
     if (!conversation) return { status: 404 as const };
@@ -382,6 +398,12 @@ export async function sendMessage(
       userIds: conversation.participants
         .filter((p) => p.revokedAt === null)
         .map((p) => p.userId),
+      // Active recipients with auto-translate on; each needs a translation prepared.
+      translateTargets: conversation.participants
+        .filter(
+          (p) => p.revokedAt === null && p.userId !== senderId && p.translateTo,
+        )
+        .map((p) => ({ userId: p.userId, language: p.translateTo! })),
     };
   });
 }
@@ -575,6 +597,49 @@ export async function sendSystemNotification(
     }
     throw error;
   }
+}
+
+// AI-generated (edited by <name>).
+export async function setTranslation(
+  prisma: PrismaClient,
+  conversationId: string,
+  userId: string,
+  input: { enabled: false } | { enabled: true; language: string },
+) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { conversationId },
+    select: {
+      participants: {
+        select: { id: true, userId: true, revokedAt: true, translateTo: true },
+      },
+    },
+  });
+  if (!conversation) return { status: 404 as const };
+  const participant = conversation.participants.find(
+    (p) => p.userId === userId,
+  );
+  if (!participant) return { status: 403 as const };
+  if (participant.revokedAt !== null) return { status: 409 as const };
+  const translateTo = input.enabled ? input.language : null;
+  await prisma.$transaction(async (tx) => {
+    // Stored translations are in the previous language, so a language change discards them.
+    if (
+      participant.translateTo !== null &&
+      translateTo !== null &&
+      participant.translateTo !== translateTo
+    )
+      await tx.translatedMessage.deleteMany({
+        where: { userId, message: { chatId: conversationId } },
+      });
+    await tx.chatParticipant.update({
+      where: { id: participant.id },
+      data: { translateTo },
+    });
+  });
+  return {
+    status: 200 as const,
+    translation: { conversationId, userId, translateTo },
+  };
 }
 
 // AI-generated

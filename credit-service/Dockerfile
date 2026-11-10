@@ -7,7 +7,7 @@
 #  2026-11-06: Tool: Claude Code (model: claude-opus-5-5). ECS Fargate migration - add the RDS CA
 #    bundle to the prod stage, per George's ECS Fargate plan, Phase 1 item 4.
 #    No requirements, architecture, schema, or API decisions were made by the AI tool.
-#    Author review:
+#    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 FROM node:24-alpine AS base
 WORKDIR /app

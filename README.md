@@ -2,16 +2,16 @@
 AI Assistance Disclosure:
 Scope (2026-11-08, Codex, model: GPT-6): Resolved merge conflicts in the AI log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added dropdown fixes log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added searchable dropdown log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review: Congchen
+Author review: Congchen Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the saved location icon swap log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -23,47 +23,47 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for completing precise delivery location implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for partial user-service implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-22, Claude Code, model: claude-sonnet-5): Added Log index rows #129-130 for
        the user-service docs work (local dev setup guide; merge of jwks-verification-guide.md
        into it). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #138 for
        frontend Stage 16c (registration page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #139 for
        frontend Stage 16d (forgot-password page). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #140 for
        frontend Stage 16e (account page). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #141 for
        frontend Stage 16f (requester/courier toggle). No requirements, architecture, schema,
        or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-10-23, Claude Code, model: claude-sonnet-5): Added Log index row #142 for
        frontend Stage 16g (admin user management). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication test log index row.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-02, Codex, model: GPT-6): Added the supplier authentication documentation log index row.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index rows #148-149 for the
        user-service docs-rename record and Stage 17 (local setup script). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Tool: Codex (model: GPT-6), date: 2026-11-05
 Scope: Added the admin user order history disclosure and log-index entry.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -75,15 +75,15 @@ Author review: tng wen xi
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #150 for Stage 19
        (OTP email retry and delivery logging). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #151 for Stage 20a
        (email masking for admin responses and the full-email unmask endpoint). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-04, Claude Code, model: claude-sonnet-5): Added Log index row #152 for Stage 20b
        (frontend email eye icon). No requirements, architecture, schema, or API decisions were
        made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-02, Codex, model: GPT-6): Resolved merge conflict and added Phase 5 log index row.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -112,43 +112,43 @@ Scope (2026-11-04, Codex, model: GPT-6): Added the Phase 5 state and test arrang
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
 Scope (2026-11-04, Codex, model: GPT-6): Resolved PR 144 merge conflicts and updated the log index.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-05, Claude Code, model: claude-sonnet-5): Added the Stage 22 log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-sonnet-5): Added Log index row #182 for Stage
        25a/25c (OTP attempts-exceeded Retry-After and counting guesses against an expired
        code). No requirements, architecture, schema, or API decisions were made by the AI
        tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-sonnet-5): Added Log index row #183 for Stage
        25b (frontend OTP attempts-exceeded UI fix). No requirements, architecture, schema, or
        API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #190 for ECS Fargate
        Phase 1 (repo changes for deployment). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #191 for copying the
        ECS Fargate plan into docs/. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #192 for recording
        the team repo and CD trigger decisions in the ECS Fargate plan. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #193 for the ECS
        Fargate CD workflow. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #194 for the audit
        log route in the ECS Fargate plan, and renumbered this branch's rows after merging main.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Tool: Codex (model: GPT-6), date: 2026-11-06
 Scope: Added the order:accepted courierId disclosure log-index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Added the chat conversation creation log-index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -165,19 +165,19 @@ Scope (2026-11-08, Codex, model: GPT-6): Added table rename log index row.
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Added Log index row #195 for supplier S3
        access through a task role. No requirements, architecture, schema, or API decisions were
        made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #196 for recording
        Phase 2 facts in the ECS Fargate plan. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #197 for shipping the
        order supplier check. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-07, Claude Code, model: claude-opus-5-5): Added Log index row #198 for the ECS Fargate
        start and stop checklist. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-08, Codex, model: GPT-6): Documented conversation details implementation and disclosure.
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Added the message listing disclosure log-index row.
@@ -279,15 +279,15 @@ Author review: tng wen xi
 Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #233 for
        user-service Stage 27a (admin OTP routes and elevation token). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #234 for
        user-service Stage 27b (enforcing elevation on status and role changes). No
        requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added Log index row #235 for
        frontend Stage 27c (Elevate button/timer, OTP modal, retry flow). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-09, Codex, model: GPT-6): Added the system conversations disclosure index row.
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the system chat frontend disclosure index row.
@@ -300,6 +300,29 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added the chat message metadata log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-09, Codex, model: GPT-6): Added translation placement log index row.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #246 for the
+       order-service default complete-by. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #247 for
+       synchronous order creation and the pending-order 409. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #248 for the
+       view-switch redirect. No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-10, Codex, model: GPT-6): Added rrule runtime import fix log index row.
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added the order chat archiving log index row.
@@ -317,6 +340,17 @@ Author review: tng wen xi
 Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #260 for fix F2
        (shared loopback supertest server). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and updated the log index.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Author review: Congchen
+Scope (2026-11-10, Codex, model: GPT-6): Added user-service test verification log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #285 for chat-service
+       database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
+       were made by the AI tool.
 Author review:
 Scope (2026-11-10, Codex, model: GPT-6): Added the order message toast log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -354,6 +388,9 @@ Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added the chat notification test correction log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -880,7 +917,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 247 | 2026-11-09 | order-service                                                 | order-service: Default complete-by of one hour                                                                   | One-hour default complete-by; edit null keeps it; ASAP relabelled.                                                                              |
 | 248 | 2026-11-09 | order-service                                                 | order-service: Synchronous order creation and pending-order 409                                                  | Create reserves credits in the request; 409 while a pending order exists.                                                                       |
 | 249 | 2026-11-09 | frontend                                                      | frontend: Redirect to the new view's main page on view switch                                                    | Toggling view on a view-only page opens the new view's main page.                                                                               |
-| 250 | 2026-11-09 | frontend                                                      | frontend: Redirect to the new view's main page on view switch                                                    | Toggling view on a view-only page opens the new view's main page.                                                                               |
 | 251 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 e: Series API and failed rows                                                         | Added series create/get/list/edit/delete endpoints and failed-row/notice handling.                                                              |
 | 252 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 f: Worker                                                                             | Added the 1-second scheduler that fires series occurrences, retries, and failures.                                                              |
 | 253 | 2026-11-09 | frontend                                                      | Scheduled Errands Stage 28 g: Frontend                                                                           | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip.                                                       |
@@ -897,7 +933,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 264 | 2026-11-10 | frontend                                                      | Active and archived chat list tabs                                                                               | Added conditional status tabs with filtered chat pagination.                                                                                    |
 | 265 | 2026-11-10 | frontend                                                      | Preserve system chat across status tabs                                                                          | Restored pinned system chat independently of status filters.                                                                                    |
 | 266 | 2026-11-10 | frontend                                                      | Show system chat only in Active                                                                                  | Kept system chat pinned only in the Active tab.                                                                                                 |
-| 267 | 2026-11-10 | supplier-service                                              | Merge main into PR 173 branch                                                                                    | Resolved disclosure log and index conflicts.                                                                                                    |
 | 268 | 2026-11-10 | user-service                                                  | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite                                       | Tests share one loopback supertest server instead of a wildcard server per request.                                                             |
 | 269 | 2026-11-10 | user-service                                                  | Stage 31a: Config and unlock-token utilities                                                                     | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair.                                                                   |
 | 270 | 2026-11-10 | user-service                                                  | Stage 31b: The email and sending it on every login lock                                                          | Every login lock now emails an unlock link in the background, reusing the Stage 19 retry mechanism.                                             |
@@ -916,3 +951,20 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 283 | 2026-11-10 | frontend                                                      | Corner unread tab badges hidden at zero                                                                          | Matched chat icon badge placement and hid zero counts.                                                                                          |
 | 284 | 2026-11-10 | frontend                                                      | Nudge tab unread badges outward                                                                                  | Moved unread badges slightly further up and right.                                                                                              |
 | 285 | 2026-11-10 | chat-service                                                  | Align system notification test with actor field                                                                  | Updated stale assertions and verified all 197 tests pass.                                                                                       |
+
+| 253 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
+| 254 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
+| 255 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
+| 256 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
+| 257 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
+| 258 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
+| 259 | 2026-11-09 | frontend | Merge main into message translation branch | Resolved conflicts and verified frontend. |
+| 261 | 2026-11-09 | frontend | Merge latest main into message translation branch | Resolved merge conflicts and checked frontend. |
+| 267 | 2026-11-10 | user-service | Merge main into PR 174 branch | Resolved merge conflicts and retained lock status for language updates. |
+| 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
+| 284 | 2026-11-10 | repo-wide | Repo-wide: filled Koh Wee Jean's author-review attributions | Signed 221 blank attribution fields across 101 files she has commits on |
+| 285 | 2026-11-10 | credit-service | Credit Service: service README and completed API reference | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md |
+| 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |
+| 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
+| 285 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |
+| 287 | 2026-11-10 | chat-service, frontend | Merge main translation with chat-service updates | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds. |

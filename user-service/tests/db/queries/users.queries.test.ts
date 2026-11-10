@@ -1,3 +1,6 @@
+// Scope (2026-11-10, Codex, model: GPT-6): Updated safe user column assertions for preferred language.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review: Congchen
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-26
 // 26/09/2026: Stage 7 - integration tests for users.queries.ts against the real test DB
@@ -297,7 +300,7 @@ describe('safe user columns (fix F4)', () => {
     const row = (await users.findById(u.id))!;
     expect(Object.keys(row).sort()).toEqual(
       [
-        'id', 'username', 'email', 'created_at', 'updated_at', 'status', 'role', 'active_view',
+        'id', 'username', 'email', 'created_at', 'updated_at', 'status', 'role', 'active_view', 'preferred_lang',
         'login_failed_attempts', 'login_failure_window_start', 'login_locked_until',
         'login_lock_level', 'is_locked',
       ].sort(),

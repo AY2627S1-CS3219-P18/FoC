@@ -11028,7 +11028,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-08
 Scope: Appended this task's disclosure record.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 -->
 
 **Tool:** Codex (model: GPT-6)
@@ -13979,7 +13979,370 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
-# <<<<<<< HEAD
+## 2026-11-10 — Merge main into PR 173 branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
+
+**Prompts (exact):**
+
+> switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
+
+**Key responses:**
+Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `ai/usage-log.md` (conflict resolved and entry appended)
+- `README.md` (conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — chat-service/user-service: Message auto-translation
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** Team decisions given in chat on 2026-11-09 (quoted below) and the interface names the user confirmed with "Use these". Mockup behaviour: `MockupBlueprint.md` §7.6.
+
+**Prompts (exact):**
+
+> A new message service has been added into the application. I want to build the translation feature within the chat service. How it works:
+>
+> - within the user settings, the user will store their preferred language (use a standard language list as the list of options)
+> - by default, no translation will be applied
+> - just as the mockup page suggest, all chat windows will come with an "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
+> - if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
+> - The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
+> - translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
+> - this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
+> - The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
+
+> are the conversation stored based on the user or the order?; new user-service col, and fetched when the message tab is launched; BullMQ on shared Redis; gemini key. are we even operating with an event driven architecture thus far in the messaging service? i was thinking when the model returns, the db gets updated and would that by default lead to the ui updating?
+
+> 1. in this case,
+>
+> - conversation_participants will store an additional "auto_translate" bool
+> - messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
+>
+> the idea is that messages sent by the courier will be default contain "NA" for "translated_for_courier" since they are the courier, but "translated_for_requester" is where translated versions will be kept in the requester's preferred language if invoked, and vice versa. if a courier is switched half way, all requester messages' "translated_for_courier" cols will be cleared, so if the new courier has auto translate on, the past messages will be regenerated accordingly
+>
+> 2. the user-db will store an additional "preferred_lang" col, stored as ISO 639-1 codes, and will be interacted with in the same flow as all other user-level settings and configs.
+> 3. when is user data queried in the entire flow? i think it is good if the lang was just sent together and kept on the client side - it will only be 2 chars, very small overhead to keep around, and saves an additional dedicated endpoint call during translation invocation.
+> 4. Since we are already using event-driven architecture, lets follow and have a socket event to signal completion of translation to notify UI
+> 5. gemini 3.1 flash-lite. i will link it with a single api key from google ai studio. pros and cons of sdk vs http calls? recommended for this application?
+> 6. 1 changes things slightly
+> 7. 1 changes this
+
+> let me change up how the data is stored. instead of using 2 additional cols, which limit the translation supported to 2, add a new translated_messages table keyed by the message id and user_id to support future expansion os the conversation to more roles. this also allows each row to just contain the translated content, instead of tracking a bunch of nulls.
+>
+> SDK will be used
+>
+> conversation_participants will store an extra col for translate_to (storing the preferred language only if the toggle is on) based on the respective user settings, updated on the toggle call, and that can be read when one party sends a message. A non null value will signal that we need an event in bullmq to prepare the translation in that language for that user
+>
+> 1. remove or replace-courier route shall be for future. disregard the clearing logic, just log as a future enhancement
+> 2. in the new design, these wont be necessary, as each row maps to a translation exactly
+> 3. in the new design, the API will just return the result of the requested translation
+> 4. follow existing convention
+> 5. follow existing convention and the new design
+> 6. preferred_lang is not null, and just defaulted to english "en". Use a subset of the language list only containing english, chinese, hindi, tamil, malay, spanish, arabic
+> 7. model id is just "gemini-3.1-flash-lite", stored as TRANSLATION_LLM_MODEL. this and TRANSLATION_LLM_KEY are new env vars in chat-service
+
+Answers to two multiple-choice questions (via the question dialog): store a `translated_messages` row with content "SAME" when the model returns SAME; "Use these" for the proposed interface names (table `translated_messages(id, message_id, user_id, content, created_at; unique message_id+user_id)`, column `conversation_participants.translate_to`, route `POST /chat/conversations/:conversationId/translation` with body `{enabled, language}`, socket event `message:translated` to the user's `user:<id>` room with `{messageId, conversationId, translatedContent}`, message objects gaining `translatedContent`).
+
+**Key responses:**
+Declined the SDK-vs-HTTP pros/cons and recommendation as prohibited architecture/design work (AGENTS.md §2.2) and asked for the team's choice; stopped to ask for unrecorded schema/interface decisions (§2.1) before writing code. After the decisions were given: added `translate_to` and `translated_messages` (Prisma schema + hand-written migration); `POST /chat/conversations/:conversationID/translation` (Bearer auth; 400/401/404/403/409 as the read endpoint; stores or clears `translate_to`, queues a backfill on enable); BullMQ queue on the shared Redis (prefix `queue:chat`, name `translation`, order-service's default retry options); a per-message job queued after commit for every active, non-sender participant with `translate_to` set (user messages and system notifications); a job processor that re-checks `translate_to` before spending anything, skips already-translated and own messages, batches 20 per Gemini call (`@google/genai`, `responseMimeType: application/json`), stores one row per message (including "SAME") and emits `message:translated`; `translatedContent` in `GET .../messages` scoped to the requester; `TRANSLATION_LLM_KEY` (required) and `TRANSLATION_LLM_MODEL` (default `gemini-3.1-flash-lite`) env vars; user-service `users.preferred_lang VARCHAR(2) NOT NULL DEFAULT 'en'`, `PUT /users/me/preferred-lang` (same shape as active-view, body `{preferredLang}`, subset en/zh/hi/ta/ms/es/ar) and `preferredLang` in user responses and `GET /users/me`.
+Choices made within the delegated "follow existing convention" (for the team to confirm): the worker runs inside the chat-service API process (so it can emit through Socket.IO); SYSTEM messages with content are translated like TEXT; changing language while on deletes the user's stored translations for that chat before the backfill; the send response and `message:sent` payload are unchanged (no `translatedContent`); a failed enqueue is logged and does not fail the request (like broadcast failures).
+Future enhancement (recorded as instructed): remove/replace-courier route and clearing the outgoing courier's translations are not implemented.
+Verification: chat-service 192 tests passed (23 new), typecheck and build passed. user-service: typecheck passed; me/users controller and service suites (262 tests) passed against the local test database. Not run: live Redis/BullMQ, live Gemini calls, live MySQL migration, the rest of the user-service suite, and any frontend (the frontend toggle, show-original/Translate controls, language setting and `message:translated` handling are not built).
+
+**Files:**
+
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261109000000_add_translation/migration.sql` (created)
+- `chat-service/src/translation/languages.ts` (created)
+- `chat-service/src/translation/gemini.ts` (created)
+- `chat-service/src/translation/queue.ts` (created)
+- `chat-service/src/translation/worker.ts` (created)
+- `chat-service/src/translation.spec.ts` (created)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/app.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/src/realtime/messages.ts` (modified)
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/.env.example` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/package.json`, `chat-service/package-lock.json` (modified; JSON and lockfile, no header)
+- `compose.yaml`, `.env.example` (modified)
+- `user-service/src/db/init.sql` (modified)
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/src/controllers/me.controller.ts` (modified)
+- `user-service/src/routes/me.routes.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts`, `users.controller.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts`, `users.service.test.ts` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked for and received the toggle storage, language storage, queue, SDK, socket event, route and field decisions above. Open for the team: (1) a language change while the toggle is off leaves old-language rows because `translated_messages` has no language column; (2) the worker shares the API process; (3) whether SYSTEM notifications should be translated; (4) when the user lowers `preferred_lang`, nothing updates `translate_to` until the toggle is called again; (5) the frontend work.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-09 — frontend/chat-service: Translation UI and participant translateTo
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The translation decisions recorded in the previous entry (2026-11-09, chat-service/user-service: Message auto-translation); `MockupBlueprint.md` §7.6 and `foc-mockup/src/pages/Chat.jsx` for the switch and Translate/Show original controls.
+
+**Prompts (exact):**
+
+> Yes, build it
+
+Answer to a multiple-choice question (via the question dialog): the saved Auto-translate state is learned by adding a nullable `translateTo` to each entry of `participants` in `GET /chat/conversations/:id/messages` (chosen over adding it to chat details or keeping it browser-side).
+
+**Key responses:**
+Stopped to ask before changing the chat-service API contract (§2.1), then added `translateTo` to the history `participants` entries. Frontend: an Auto-translate switch in the thread header (disabled until the preferred language has been read from `GET /users/me` when the chat opens; sends `{enabled, language}` to the toggle route); received messages show their translation when the switch is on, with a "Show original" control per message; when the switch is off originals are shown and messages that already have a translation offer "Translate", which only swaps the display and never calls the API; messages with no translation, `SAME`, system and own messages get no control; `message:translated` events (new `useChatTranslations` hook) fill in translations live; a Preferred language section on the Account page (`PUT /users/me/preferred-lang`) using the seven-language subset.
+Verification: chat-service 193 tests passed, typecheck/build passed earlier in the stage. Frontend: 187 of 188 tests passed and the production build passed; the one failure, `CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", also fails with these changes stashed, so it is not caused by this work. New tests cover the switch, translated display, Show original/Translate, no control for SAME/untranslated/own messages, the socket event, failure handling and the Account language section. Not exercised: a real browser, live sockets, a live Gemini call.
+
+**Files:**
+
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `frontend/src/constants/languages.js` (created)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/src/api/profile.js` (modified)
+- `frontend/src/realtime/chatSocket.js` (modified)
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/pages/Account.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/pages/Account.test.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked where the frontend learns the saved toggle state; answered above. Open: the chat list's last-message preview still shows the original text; the switch does not reflect a language change made on another device until the chat reloads; the Translate/Show original buttons are 24px tall on desktop (the mockup uses a 44px target on mobile only).
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-09 — user-service: Prisma migrations for the user database
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Boilerplate
+**Governing decision:** Team decision in chat on 2026-11-09: use Prisma migrate (order/chat style) for user-service.
+
+**Prompts (exact):**
+
+> - gemini is tested and works
+> - update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
+> - blank log entries are accepted
+>
+> after updating the database, generate a PR message
+
+Answer to a multiple-choice question (via the question dialog): "Prisma migrate (order/chat style)", chosen over a supplier-style re-runnable migrate script and applying the ALTER by hand.
+
+**Key responses:**
+Stopped to ask which migration tooling to use (§2.1; the other services differ: order and chat use Prisma migrate, supplier uses a `migrate.ts` script, credit uses only `init.sql`). Added Prisma as a dev dependency with a model-less `prisma/schema.prisma`, `prisma.config.ts` reading `DATABASE_URL`, `npm run db:deploy`, a baseline migration (a copy of `init.sql` before `preferred_lang`) and a second migration adding `users.preferred_lang`. Verified on scratch databases that an empty database migrates fully, and that a database built from `init.sql` migrates after `prisma migrate resolve --applied 20261109000000_baseline`; a second deploy reported no pending migrations. Applied the same baseline-resolve and deploy to the local dev `user_service` database (5 existing users kept); scratch databases were dropped. Typecheck and ESLint of the config passed. Not done: wiring `db:deploy` into the Compose or ECS startup, and removing `init.sql` (the test database, CI and fresh Compose volumes still use it, so it must keep every migrated column).
+
+**Files:**
+
+- `user-service/prisma/schema.prisma` (created)
+- `user-service/prisma.config.ts` (created)
+- `user-service/prisma/migrations/20261109000000_baseline/migration.sql` (created)
+- `user-service/prisma/migrations/20261109010000_add_preferred_lang/migration.sql` (created)
+- `user-service/prisma/migrations/migration_lock.toml` (created; no header possible)
+- `user-service/package.json`, `user-service/package-lock.json` (modified; JSON, no header)
+- `user-service/.env.example`, `user-service/README.md` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+Asked which migration approach to use; answered above. Open: `prisma migrate dev` and `db push` must not be used (no models, so they would propose dropping tables); `init.sql` and the migrations are two places to keep in step; deployments (Compose, ECS) do not yet run `db:deploy`.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — frontend: Delivery details input length
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing 250-character delivery details limit (`order-service/src/services/orders.service.ts`, `order-service/prisma/schema.prisma`) and the `/250` counter in `frontend/src/pages/CreateRequest.jsx`.
+
+**Prompts (exact):**
+
+> quick fix for createrequest in frontend, restart chat-service so i can check the current ui
+
+**Key responses:**
+Ran the failing `CreateRequest.test.jsx` test: it expected the delivery details input to have `maxLength` 250, but the input had 200 while the counter and the order-service limit were already 250. Changed the input to 250; the file's 5 tests pass. Rebuilt and restarted chat-service in the dev Compose stack; it applied the `system_chats` migration and started.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md`, `README.md` (modified)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Chat message metadata layout
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's layout instruction and `foc-mockup/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+
+> apply an ui update to how the text bubbles are rendered. currently the the timestamps are inside the speech bubbles. Shift them outside and below, like the original foc-mockup's. For my texts, the timestamp is aligned right, while the other person's is aligned left. For the translate/show original selector, it will be the same as foc-mockup's, but now in line with the time stamp on the right instead of above
+
+**Key responses:**
+Moved timestamps and read receipts below the bubble, aligned by sender, and placed the existing translation control to the right of the received timestamp. Kept system notice metadata centered. Added a regression test and updated an existing DOM assertion. The new test first failed on the old placement; all 37 Chat tests passed after the change. `npm run build` passed. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Translation control placement
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction and `foc-mockup/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+
+> nevermind, move the translate above the timestamp like the mockup
+
+**Key responses:**
+Moved the translation control above the timestamp outside the message bubble. Updated the placement test; it failed before the change and all 37 chat tests passed afterward. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Merge main into message translation branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to merge main, retaining both branches' existing changes.
+
+**Prompts (exact):**
+
+> pull changes from main and merge again to resolve conflicts
+
+**Key responses:**
+Fetched and merged origin/main, resolved conflicts in the request page attribution and the disclosure log and index while retaining both branches' entries. Frontend build passed; the chat, request creation and view toggle tests passed (55 tests).
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (merge conflict resolved)
+- `ai/usage-log.md` (merge conflict resolved and entry appended)
+- `README.md` (merge conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-09 — Merge latest main into message translation branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to merge main and retain both branches' existing changes.
+
+**Prompts (exact):**
+
+> pull changes from main and merge again to resolve conflicts
+
+**Key responses:**
+Fetched and merged origin/main, preserving both branches' disclosure entries and request-page attribution. Chat tests passed (37); request tests and build failed because the newly merged rrule dependency was not installed. npm ci failed on a locked Windows file; a subsequent install was interrupted after it stalled. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (merge conflict resolved)
+- `ai/usage-log.md` (merge conflict resolved and entry appended)
+- `README.md` (merge conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-10 — Merge main into PR 174 branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | debug
+**Scope:** Refactor/Docs | Implementation code
+**Governing decision:** User instruction to resolve PR #174 conflicts after PR #173 merges; existing preferred-language and database lock-status behavior.
+
+**Prompts (exact):**
+
+> switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
+
+> 173 merged. continue
+
+**Key responses:**
+Merged origin/main and preserved both branches' disclosure history and user-service changes. Updated preferred-language writes to return the database-computed lock status, matching the existing active-view update, so the response mapper receives its required field. User-service build passed. Targeted service tests could not start because the local test database refused connections on port 5434. `npm run typecheck` failed because that script does not exist; the build runs TypeScript. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (merge conflict resolved and preferred-language update adjusted)
+- `user-service/src/services/userResponse.ts` (merge conflict resolved)
+- `ai/usage-log.md` (merge conflict resolved and entry appended)
+- `README.md` (merge conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 
 ## 2026-11-10 — Fix F4: unlockUser must not spread the full UserRow
 
@@ -14060,32 +14423,6 @@ Accepted all changes.
 **Author review:** gabriel yap
 
 > > > > > > > main
-
-## 2026-11-10 — Merge main into PR 173 branch
-
-**Tool:** Codex (model: GPT-6)
-**Mode:** refactor
-**Scope:** Refactor/Docs
-**Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
-
-**Prompts (exact):**
-
-> switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
-
-**Key responses:**
-Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
-
-**Files:**
-
-- `ai/usage-log.md` (conflict resolved and entry appended)
-- `README.md` (conflict resolved and index updated)
-
-**Deviations / questions raised for the team:**
-None.
-
-**What I kept/changed/rejected:**
-
-**Author review:**
 
 ## 2026-11-10 — RRule native ESM import fix
 
@@ -15108,6 +15445,584 @@ tng wen xi
 - README.md (modified disclosure header and log index)
 
 **Deviations / questions raised for the team:** User confirmed the received response is correct.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Resolve main merge conflicts for message translation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | debug
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User instruction to resolve the existing merge; existing translation, archived chat, and safe-user query behavior on both branches.
+
+**Prompts (exact):**
+
+> i am trying to pull changes from main. resolve conflicts
+
+**Key responses:**
+Resolved the merge conflicts while retaining both branches' chat archiving, translation, frontend changes, configuration, and disclosure history. Included preferred_lang in the safe user columns and used those columns when updating the language, retaining the password-hash exclusion and database-computed lock status. Added assertions that the updated language can be read back and the update response excludes password_hash. Chat-service and user-service builds passed; 24 targeted archive and translation tests passed. User-service tests could not start because the local test database on port 5434 refused connections. Frontend chat tests could not run because Vitest was missing; npm ci stalled and was interrupted. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `README.md`, `ai/usage-log.md` (merge conflicts resolved, log and index updated)
+- `chat-service/README.md`, `chat-service/src/controllers/conversations.controller.ts`, `chat-service/src/routes/conversations.routes.ts`, `chat-service/src/server.ts`, `chat-service/src/services/conversations.service.ts` (merge conflicts resolved)
+- `frontend/src/api/chat.js`, `frontend/src/pages/Chat.jsx`, `frontend/tests/pages/Chat.test.jsx` (merge conflicts resolved)
+- `user-service/.env.example`, `user-service/src/db/queries/users.queries.ts`, `user-service/src/services/me.service.ts`, `user-service/src/services/userResponse.ts`, `user-service/tests/controllers/me.controller.test.ts`, `user-service/tests/services/me.service.test.ts` (merge conflicts resolved; safe user columns and regression assertions updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-10 — User-service test verification after merge
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging | Implementation code
+**Governing decision:** Existing preferred-language response and safe-query fields introduced by the translation work.
+
+**Prompts (exact):**
+
+> user-service npm test failed. docker is up. run the tests
+
+**Key responses:**
+Started the existing user-db Compose service after finding it was not running. The full user-service suite ran: 1,018 passed and 36 failed. Five failures were exact-key assertions missing the already-implemented preferredLang/preferred_lang fields; updated those assertions. The remaining 31 failures were the config tests' Unix-style tsx executable not launching on Windows (spawn returned ENOENT) and the setup test asserting Unix mode 0600 on Windows. Reran the two modified files: 156 tests passed. The full suite was not rerun after the assertion changes. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+- `ai/usage-log.md` (entry appended)
+- `README.md` (index updated)
+
+**Deviations / questions raised for the team:**
+Windows-specific config runner and private-key permission assertion failures remain.
+
+**What I kept/changed/rejected:**
+
+**Author review: Congchen**
+
+## 2026-11-10 — ECS Fargate: chat-service database TLS, keep-alive and CD
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** explain | generate
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** George's chat instructions in this session (quoted below), applying the existing decisions in `docs/ecs-fargate-session-prompt.md`: "DB encryption: Verified SSL enforced", Phase 1 item 3 (supplier MySQL SSL with hostname verification), Phase 1 item 4 (RDS CA file), Phase 1 item 8 (keep-alive) and Phase 3 (CD). George decided chat-service gets its own new database, using the `foc_admin` login.
+
+**Prompts (exact):**
+
+> check the freshly pulled chat service, give me the steps to deploy it on AWS
+
+> 1. enable database TLS for the mysql, like we did for supplier service
+> 2. apply the keep alive fix, same as the other services
+> 3. add it to CD, same as other services
+>
+> i will make a new database, and it will use foc_admin
+
+> is this policy correct
+>
+> ```json
+> {
+>   "Version": "2012-10-17",
+>   "Statement": [
+>     {
+>       "Sid": "EcrLogin",
+>       "Effect": "Allow",
+>       "Action": "ecr:GetAuthorizationToken",
+>       "Resource": "*"
+>     },
+>     {
+>       "Sid": "EcrPush",
+>       "Effect": "Allow",
+>       "Action": [
+>         "ecr:BatchCheckLayerAvailability",
+>         "ecr:BatchGetImage",
+>         "ecr:CompleteLayerUpload",
+>         "ecr:GetDownloadUrlForLayer",
+>         "ecr:InitiateLayerUpload",
+>         "ecr:PutImage",
+>         "ecr:UploadLayerPart"
+>       ],
+>       "Resource": "arn:aws:ecr:ap-southeast-1:993173880680:repository/foc/*"
+>     },
+>     {
+>       "Sid": "EcsTaskDefinitions",
+>       "Effect": "Allow",
+>       "Action": ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"],
+>       "Resource": "*"
+>     },
+>     {
+>       "Sid": "EcsServices",
+>       "Effect": "Allow",
+>       "Action": ["ecs:DescribeServices", "ecs:UpdateService"],
+>       "Resource": "arn:aws:ecs:ap-southeast-1:993173880680:service/foc/*"
+>     },
+>     {
+>       "Sid": "PassEcsRoles",
+>       "Effect": "Allow",
+>       "Action": "iam:PassRole",
+>       "Resource": [
+>         "arn:aws:iam::993173880680:role/foc-ecs-task-execution",
+>         "arn:aws:iam::993173880680:role/foc-supplier-task"
+>       ],
+>       "Condition": {
+>         "StringEquals": {
+>           "iam:PassedToService": "ecs-tasks.amazonaws.com"
+>         }
+>       }
+>     }
+>   ]
+> }
+> ```
+
+**Key responses:**
+
+- First prompt (explain only, no files changed): read chat-service and the ECS plan and listed the AWS steps. Found that `order-service/src/worker.ts` now exits at startup without `CHAT_SERVICE_API_KEY`, so `order-worker`'s task definition needs `CHAT_SERVICE_URL` and `CHAT_SERVICE_API_KEY` before the stack is next started. The last Deploy run (`584174e`) found everything scaled to 0, so nothing live was affected. Declined to choose a separate or shared database, database TLS or the login, and left those to George, per AGENTS.md §2.1.
+- Database TLS: added `DB_SSL` (default `false`) to `chat-service/src/config/env.ts`. When it is on, `createPrismaClient` passes `ssl: { rejectUnauthorized: true }` to the MariaDB adapter, and `server.ts` passes the flag through. The connector types don't accept `servername`, so it was not set. A test showed Node still checks the hostname (case F below). Added the RDS CA bundle to the `production` stage of `chat-service/Dockerfile` with `ADD --chmod=644`, at the same path as supplier's. Migrations (`prisma migrate deploy`) don't go through the adapter, so they get TLS from `DATABASE_URL` query parameters (`?sslaccept=strict&sslcert=/etc/ssl/rds-ap-southeast-1-bundle.pem`), documented in `.env.example`. The app's URL parsing ignores query parameters.
+- Keep-alive: `server.keepAliveTimeout = 65_000` and `server.headersTimeout = 66_000` in `chat-service/src/server.ts`, as in user, order and supplier.
+- CD: added `chat-service` (target `production`, repository `foc/chat-service`) to the `build` and `deploy-web` lists in `.github/workflows/deploy.yml`.
+- Policy question: answered that the policy is correct and needs no change for chat-service, because `repository/foc/*` and `service/foc/*` already cover it, and it allows every AWS call in `.github/scripts/ecs-deploy.sh`. Noted that the `foc/chat-service` ECR repo must exist before this merges, or that build fails and the deploy jobs, which wait on all builds, are skipped.
+- Verification (run): `npm test` 197/197 passed; `npm run typecheck` and `npm run build` passed; the workflow YAML parses with chat-service in both lists. Against a throwaway MySQL 8.4 container with `--require-secure-transport=ON` and a test CA (certificate for `localhost` only):
+  - migrate with no TLS parameters: refused ("insecure transport are prohibited");
+  - migrate with TLS parameters via `127.0.0.1`: refused (P1011, certificate name mismatch);
+  - migrate with TLS parameters via `localhost`: all 4 migrations applied;
+  - app with `DB_SSL=true` and the CA in `NODE_EXTRA_CA_CERTS`: connected, `Ssl_cipher` `TLS_AES_256_GCM_SHA384`;
+  - app with `DB_SSL=false`, with the wrong hostname (case F) or without the CA trusted: each failed;
+  - production image, built locally, on a fresh database: migrations applied over TLS (5 tables), `/health` returned 200 with `Keep-Alive: timeout=65`, and every chat connection showed `TLSv1.3`. The CA file in the image is mode 644 and readable by `node`.
+    Not run: against real RDS or ElastiCache, and the GitHub Actions Deploy workflow. The host migrate tests ran on Windows; the Linux path was covered by the image test. Test containers and the image were removed afterwards.
+
+**Files:**
+
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/db/prisma.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/Dockerfile` (modified)
+- `chat-service/.env.example` (modified)
+- `.github/workflows/deploy.yml` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #285)
+
+**Deviations / questions raised for the team:**
+
+- None. AWS console steps (ECR repo, RDS instance, SSM parameters, task definitions including `order-worker`'s chat settings, target group, ALB rule, ECS service) remain for George.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-10 — Repo-wide: filled Koh Wee Jean's author-review attributions
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The attestation itself is Koh Wee Jean's; the agent inventoried the blank fields and applied the wording she supplied, and made no judgement about which code had been reviewed.
+
+**Prompts (exact):**
+
+> I'm Koh Wee Jean (CS3219, ProjectGroup18). Every AI-influenced file in this repo has a header attribution block with an "Author review:" field. Many of mine are blank, and I need to fill them before the D4 deadline.
+>
+> Step 1 — Inventory only, no edits yet:
+>
+> - Find every file containing an "Author review:" field that is empty or a placeholder.
+> - Narrow it to files I've touched: use `git log --author` (check all the name/email variants I've committed under) plus anything under credit-service/, user-service/, frontend/, chat-service/ and .github/workflows/ that I edited.
+> - Show me a table: file path | tool/model/date/scope from its header | my commits on that file. List separately any blank fields in files I have NOT touched, so I can tell the owners.
+> - Stop and wait for me to confirm the list.
+>
+> Step 2 — After I confirm:
+>
+> - Fill each field with exactly:
+>   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+>   (If I give a different wording for specific files, use mine for those.)
+> - Change nothing else: no other header fields, no code, no formatting.
+> - Add an entry to /ai/usage-log.md for this task, following the existing format.
+> - Commit as "docs: fill author review attributions (Koh Wee Jean)". Don't push.
+> - Show me `git diff --stat` so I can see only header lines changed.
+
+> for the servicechataws wait till it merges to change
+> for the files you have scanned, yes sign them
+
+> yes sign it, for foc mockup ignore it
+
+**Key responses:**
+
+_Inventory._ Repo-wide there are **505 files carrying 1178 blank or placeholder `Author review:` fields.** Matching on both of the author's committer identities — `WeeJean <e1354206@u.nus.edu>` (48 commits) and `<E1354206@u.nus.edu>` (11) — narrowed that to **102 files with 222 blank fields** reachable from `main`. Of those, 60 files have no other committer and 42 are shared. All 39 placeholder occurrences were the single string `<pending — team member to sign>`.
+
+_AGENTS.md §4.1 was raised before acting._ Lines 124–125 state that the agent "**never** writes the author's name or signs 'Author review'. Only a human does, after reading and testing the code." This was put to the author with the alternative of running the fill herself, and she directed the agent to apply it. **Recorded here so the disclosure is accurate: the 221 fields were written by script at Koh Wee Jean's direction, and the review they attest to is hers, not the agent's.** The agent made no assessment of whether any file had been reviewed.
+
+_Misattribution risk was raised and is the author's call._ 42 of the files have other committers, several with far more of their work than hers — `user-service/src/services/users.service.ts` (14 fields, 1 of her commits against 14 others'), `README.md` (39 fields, 14 against 218), `compose.yaml` (8 fields, 6 against 30). AGENTS.md §3 warns that misleading disclosure may be treated as an academic integrity violation, so the alternative of matching each dated field to the commit that produced it was offered. The author chose to sign the scanned set.
+
+_Two exclusions._ `order-service/Dockerfile` was dropped: she has **zero** commits on it in `main` and it had surfaced only through a branch match. The four files whose blanks exist solely on `servicechataws` — `.github/workflows/deploy.yml`, `docs/ecs-fargate-run-checklist.md`, `chat-service/.env.example`, `chat-service/src/server.ts` — are deferred until that branch merges, at her instruction. Net: **221 fields across 101 files.**
+
+_foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc-mockup/` standalone with its own `foc-mockup/AI-NOTES.md`, so a separate entry there was offered and declined; this single entry covers them.
+
+**Verification actually run:**
+
+- `git diff --numstat`: **221 added, 221 deleted, 101 files** — exactly balanced, so every change is a replacement rather than an insertion.
+- **Every removed line** matched a blank or `<pending — team member to sign>` `Author review:` field, and **every added line** ended with the supplied signature: both non-conforming counts were 0. No other header field, no code and no formatting was touched.
+- Each line keeps its own comment prefix — `*`, `// `, `# `, `-- `, bare and indented variants all verified in the diff.
+- Existing line endings were preserved per file; the CRLF warnings git printed concern its own future normalisation of 14 pre-existing CRLF files, not changes made here.
+- An earlier count of "221 added / 218 removed" was a miscount in the checking command, not a defect: three SQL `--    Author review:` removals render as `---` in the diff and were mis-bucketed as file headers. `git diff --numstat` settles it at 221/221.
+
+**Files:**
+
+- 101 files across `credit-service/`, `foc-mockup/`, `frontend/`, `user-service/`, `order-service/`, `.github/workflows/`, and the root `README.md`, `compose.yaml`, `compose.dev.yaml`, `.env.example`, `MockupBlueprint.md`, `ai/usage-log.md` (header `Author review:` fields only)
+- `ai/usage-log.md` (modified: this entry)
+- `README.md` (modified: Log index row, plus its own attribution fields)
+
+**Deviations / questions raised for the team:**
+
+1. **The agent applied fields that AGENTS.md §4.1 reserves to a human**, at the author's explicit direction after the rule was quoted to her. Flagged here rather than left implicit, because the whole purpose of the field is a human attestation.
+2. **403 files with 956 blank fields remain, in work the author has not touched** — `supplier-service/` (110 files / 225 fields, Congchen), `frontend/` (114 / 205, Gabriel and Congchen), `user-service/` (102 / 321, Gabriel and Congchen), `order-service/` (53 / 112, Wen Xi and George), `docs/` (8 / 72), plus `AGENTS.md` and `instructions.md` at the root. Their owners need to sign them before submission.
+3. **Two `credit-service/` files are George's, not hers** — `tests/db/poolSsl.test.ts` and `tests/queue/redisConnection.test.ts`, both from the ECS work — so they were left for him despite being in her service.
+4. **`.github/scripts/ecs-deploy.sh` and `.github/workflows/deploy.yml` are George's** and still unsigned.
+5. **Reverting `foc-mockup/` is cheap** if its inclusion was misread: `git checkout -- foc-mockup/` before this is pushed.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Reviewed and verified by Koh Wee Jean, 2026-11-10.
+
+---
+
+## 2026-11-10 — Credit Service: service README and completed API reference
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. Everything documented was read off the route table, middleware, controllers, service, worker, SQL and Dockerfile as they stand; no contract or schema was decided here. The `## Design decisions` heading in both files is left empty for the author, as instructed.
+
+**Prompts (exact):**
+
+> Stay on branch docs/author-review-attributions.
+>
+> I own the Credit Service (credit-service/: Node + TypeScript + Express, raw `pg` on PostgreSQL, vitest, BullMQ consumer, deployed on ECS Fargate). Create a service-level credit-service/README.md and complete credit-service/API.md. If API.md already exists, update it rather than rewriting from scratch.
+>
+> Read first: every route definition, the JWT/auth middleware, request validation, the BullMQ worker and its backoff/dead-letter handling, the SQL migrations/schema, env var usage, package.json scripts, and the Dockerfile.
+>
+> API.md: one section per HTTP endpoint, verified against the route code:
+>
+> - method + path; auth required (JWT; which roles; admin vs own-scope)
+> - path and query params, including the admin filters on /credits/transactions/all and the keyset pagination cursor; request body schema; response body with an example
+> - every status code the code can actually return (400/401/403/404/409/503 etc.) and what triggers each one
+> - a curl example for each endpoint
+> - an "Async interface" section covering the queue name, job payload shape, retry/backoff schedule, idempotency on duplicate jobs, and dead_letter_jobs behaviour
+>   List for me any endpoint that's in the old API.md but missing from the code, or the other way round.
+>
+> README.md: purpose (F19 closed credit economy, F20 transaction logging), tech stack, folder structure, env vars (table: name | required | purpose), local setup, running migrations, the credit_app DB role and its grants, running tests, Docker build, deployment pointer, and a link to API.md.
+>
+> Rules (course AI policy, important):
+>
+> - Describe what the code does and how to run it. Don't write any design rationale or "why we chose X" text. Add a "## Design decisions" heading that contains only <!-- Written by the author --> and leave it for me.
+> - Don't modify source code. If the docs and the code disagree, report it to me rather than changing the code.
+> - Add the standard AI attribution header to both files (tool, model, today's date, scope: documentation), with "Author review:" left BLANK. I'll sign it after I've read the files.
+> - Add an entry to ai/usage-log.md and its README Log index row, matching the existing format.
+> - Commit as "docs(credit): service README and API reference". Don't push.
+
+> mark those nfr as completed
+
+**Key responses:**
+
+_Endpoint reconciliation — no drift._ The route table (`src/routes/credits.routes.ts`) and API.md match one for one, in both directions: `POST /credits/allocate`, `/reserve`, `/transfer`, `/release`; `GET /credits/balance/:userId`, `/credits/transactions`, `/credits/transactions/all`; and `GET /health` from `app.ts`. Nothing is documented that the code does not serve, and nothing is served that was undocumented. The admin `?userId=` / `?requestId=` filters are present in both.
+
+_API.md, updated rather than rewritten._ The existing 369-line contract was kept intact. Added: an explicit **Auth** line on every endpoint naming the middleware and the roles; **13 curl examples**; and an **Async interface** section covering the queue key `queue:credit:transfer` (prefix `queue:credit`, name `transfer`), the `credit_transfer` task name, the `{ requestId, courierId }` payload and its UUID guard, the backoff schedule computed from `backoffStrategy` (5s, 25s, 125s, 625s across 5 attempts, so roughly 13 minutes to abandonment), the full `classifyTransferError` disposition table, idempotency via `transaction_log_one_transfer_per_request` turning a replay into `ALREADY_TRANSFERRED` → success, and the `dead_letter_jobs` columns, grants and dead-letter-write-failure path.
+
+_README.md, rewritten to the requested structure._ Purpose stated as F19 and F20, tech stack, annotated folder tree, an env-var table of all 12 variables with required/default, local setup for both compose and host, the schema-bootstrap section including the empty-volume constraint, the `credit_app` role with its grants quoted from `grants.sql`, the test-database bootstrap and its two refusals, Docker targets, and an ECS Fargate deployment pointer.
+
+**Verification actually run:**
+
+- Every status code and error code in API.md was checked against the `new AppError(...)` call sites: `409 ALREADY_ALLOCATED`, `404 BALANCE_NOT_FOUND`, `422 INSUFFICIENT_UNRESERVED_CREDITS`, `409 RESERVATION_ALREADY_EXISTS`, `404 RESERVATION_NOT_FOUND`, `409 ALREADY_TRANSFERRED`, `409 ALREADY_RELEASED`, `404 COURIER_NOT_FOUND`, `400 INVALID_CURSOR`, plus `400 INVALID_REQUEST_BODY` from `parseBody`, `401 UNAUTHORIZED` / `503 IDENTITY_PROVIDER_UNAVAILABLE` from `createJwksVerifier`, `403 FORBIDDEN` from `requireElevated` and `requireSelfOrElevated`, `404 NOT_FOUND` from `notFoundHandler`, and `500 BALANCE_INVARIANT_VIOLATION` / `500 INTERNAL_ERROR` from `errorHandler`.
+- Backoff figures were computed from the code rather than copied: `5000 × 5^(n−1)`.
+- Page size 20 read from `TRANSACTION_PAGE_SIZE`; cursor format read from `encodeCursor`/`decodeCursor`.
+- Env-var table checked field by field against the `envSchema` in `src/config.ts`, and the test variables against `.env.test` and `tests/setup/globalSetup.ts`.
+- `## Design decisions` present in both files containing only `<!-- Written by the author -->`; exactly one blank `Author review:` in each, for the author to sign.
+- **No source file was modified** — the commit touches only the two docs plus the log and its index row.
+
+**Files:**
+
+- `credit-service/README.md` (modified: rewritten to the requested structure)
+- `credit-service/API.md` (modified: auth lines, curl examples, Async interface, Order Service status corrected)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **The old README's "Authentication is blocked" section was false and was removed.** It stated that "No endpoint authenticates its caller" and that `requireBalanceAccess` was "written but not mounted". Both are now wrong: `credits.routes.ts` builds a `createJwksVerifier` once per process and mounts `requireBalanceAccess` on `GET /balance/:userId`, `requireAuth` on `GET /transactions`, and `requireAuth` + `requireElevated` on `GET /transactions/all`. The source was not touched; only the documentation was corrected.
+2. **The old README's status table was stale in three further rows, and has been restored with current values.** F19.5.1 was marked "Implemented, **unauthenticated**"; F19.5.2, F20.2 and F20.2.1 were marked "Blocked on authentication"; NFR8.2.1 and NFR8.2.2 were marked "Not started". It was first dropped, because the requested structure had no status section, then reinstated on the author's follow-up instruction ("mark those nfr as completed") with every row set to Complete and a **Where** column naming the code each row points at. **NFR8.2.1 and NFR8.2.2 are marked complete on the author's instruction, not on the agent's assessment** - see Deviations 7.
+3. **"The two tables" section was wrong: there are three.** `init.sql` also creates `dead_letter_jobs`. The README now documents all three and points at API.md for the columns.
+4. **API.md's "Known mismatch with Order Service" was stale and has been corrected.** It claimed `order-service/src/clients/credits.client.ts` declared `reserve({ requesterId, amount }) → { reservationId }` against a stub. That file now calls `reserve({ userId, requestId, amount })` and `release({ requestId })`, matching this contract, and deliberately has no `transfer` method because transfer is driven over the queue. The section was retitled and rewritten to record the current state rather than deleted, so the history stays visible.
+5. **The README previously documented none of the asynchronous side** — no worker, no Redis variables, no `npm run worker`, no `DB_SSL`. All are now covered.
+6. **No design rationale was written**, per the brief. Statements that read as justification in the earlier README (for example why no key was substituted while auth was blocked, and why the test role is not `credit_app`) were either dropped or reduced to what the code does. The `## Design decisions` section in both files is empty and belongs to the author.
+
+7. **NFR8.2.1 and NFR8.2.2 are the author's claim, and the repo contains no measurement for the first.** NFR8.2.1 is "shall not delay transactions by more than 500ms when logging each operation"; there is no latency test, timing assertion or benchmark anywhere in credit-service, so the status table states what the implementation is (one `INSERT` in the same transaction as the balance write) rather than a measured figure. NFR8.2.2 is "shall retain each transaction record for at least 2 years"; there is no retention or purge code, and the supporting fact is that `credit_app` holds no `DELETE` or `TRUNCATE` on `transaction_log`, so the service cannot remove a record. Both were marked complete on the author's instruction; the agent assessed neither.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-10 — Frontend: show the amount on reservation and release rows in the Wallet
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The presentation rule it follows is the one already in `Delta`: a reservation and a release carry no signed delta. No new API, field or requirement.
+
+**Prompts (exact):**
+
+> for the frontend for the credit activity segment, help me add the value held, returned ... etc similar to the allocation +20 there.
+>
+> and to confirm this page has pagination right? for how many errand per page may i confirm? and is there lazy loading?
+
+> ok rebuild it
+
+> ok now commit the changes
+
+**Key responses:**
+
+_The change._ `Delta` in `frontend/src/pages/Wallet.jsx` rendered the bare word `held` or `returned` for `reservation` and `release`, while an allocation rendered `+20` and a transfer `+4` / `−4`. The amount was already a prop, so the branch now renders it before the label: `4 held`, `20 returned`, with the figure as `tnum font-medium text-ink-70` and the label left at `text-ink-40`.
+
+_No sign on those two types._ A reservation moves credits from unreserved to reserved and a release moves them back; neither changes `total_balance`, which is why `describe()` in `frontend/src/api/credits.js` returns `delta: 0` for both. A `+` or `−` would read as a balance movement that does not reconcile against the total, so the figure is unsigned. `describe()` was not changed.
+
+_Questions answered from the code, not changed._ The history is server-side keyset pagination at **20 transactions per page** (`TRANSACTION_PAGE_SIZE` in credit-service, ordered `created_at DESC, transaction_id DESC`, opaque base64url cursor, `nextCursor` null on the last page). That is 20 transactions rather than 20 errands: one errand normally produces a `reservation` plus either a `transfer` or a `release`. Loading is **infinite scroll**, not numbered pages — an `IntersectionObserver` on a sentinel below the list calls `loadPage(cursor)`, appends, and stops when `nextCursor` is null, with an `inFlight` ref guarding against a double fire.
+
+**Verification actually run:**
+
+- `npm run lint`: exit 0. The only warnings are the pre-existing ones in `src/pages/AdminUsers.jsx`; none in `Wallet.jsx`.
+- `npm run build`: exit 0, `dist/assets/index-B7TR23Od.js`, 504.80 kB / 147.04 kB gzipped.
+- `npm test`: **40 files, 298 tests, all passing.** There is no test covering `Delta`, so the suite proves no regression rather than proving this behaviour.
+- `docker compose up -d --build frontend`: rebuilt, healthy in about 3 s, serving on 5173. Confirmed the container serves the new bundle — same hash as the local build — and that the minified output contains the new branch: `className:"w-20 shrink-0 text-right text-sm text-ink-40", children:[span{className:"tnum font-medium text-ink-70", children:n}, " ", e==="hold"?"held":"returned"]`.
+
+**Files:**
+
+- `frontend/src/pages/Wallet.jsx` (modified: `Delta`, plus the dated disclosure entry)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **There is a second, near-duplicate `Delta` in the built bundle that was not changed.** It appears minified as `className:"tnum text-sm text-ink-40"` with no `w-20 shrink-0` and no amount, so it still renders the word alone. Only `frontend/src/pages/Wallet.jsx` was edited; the other copy is most likely `foc-mockup`'s version of the page or another component rendering credit rows. Flagged rather than hunted down, because it was outside what was asked for. `grep -rn "'held'" frontend/src foc-mockup/src` locates it.
+2. **The transaction-type filter is client-side only** and was left alone. `const shown = rows.filter((t) => filter === 'All' || t.type === filter)` filters the rows already loaded and does not request more matching rows, so selecting "Transfer" on a long history shows only the transfers among the pages scrolled so far, presented as if complete. Making it server-side would need a `?type=` parameter on `GET /credits/transactions`, which does not exist — a new API surface, and the team's decision rather than the agent's.
+3. **No test was added.** There is no existing test for `Delta` or for the Wallet list rendering, and the brief did not ask for one. A render test asserting `4 held` and the absence of a sign would be cheap if wanted.
+4. **Committed on `docs/author-review-attributions`**, which is a documentation branch, because the author asked to stay on it. This is the only source change on that branch.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-08 — Order/chat: reservation-success delivery and message deduplication
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-08
+Scope: Appended this task's disclosure record.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Boilerplate; Refactor/Docs
+**Governing decision:** Team's task and annotation answers in this conversation, recorded below; existing outbox/worker implementation in `order-service/src/services/orders.service.ts`, `order-service/src/worker.ts`, and `order-service/src/queue/bull-queue.ts`; existing chat contracts in `chat-service/README.md`. The supplied integration contract is documented in `order-service/README.md` and `chat-service/README.md` in this change. Root `AGENTS.md` and `order-service/AGENTS.md` apply.
+
+**Prompts (exact):**
+Task text and annotation comments, quoted verbatim in conversation order. IDE open-tab metadata is omitted.
+
+> now i wanna integrate with order service. when order is created, need to create a new chat with the chat endpoint. and send a system message saying f"Your order {order.description} has been created"
+
+> after success of reservation!
+
+> through a worker!
+
+> use bullmq to deal with this
+
+> yes. stay open.
+
+> nope duplicate system messages are not acceptable. handle it in chat service
+
+> how is it currently dealed with in order-service when it calls credit service?
+
+> oh ya then is it possible to assign each system message an id when sending, then check that id does not exist in the db before adding, if exists then dont add?
+
+> ya. it is a uuid generated when creating the bullmq job. and stored as the message id.
+
+> yeps
+
+> dont add the message, and return a 409
+
+**Key responses:**
+Initially stopped for team decisions on trigger timing, worker delivery, failure behavior and deduplication contract. Explained the existing credit client and worker, including the available-balance-before-duplicate-check caveat, without modifying Credit Service. Implemented only after the team supplied the answers quoted above.
+
+The reservation-success `pending` to `open` transaction now records a `chat_create` outbox task containing the order details and a generated UUID message ID. Existing relay/queue handling delivers it to the existing order worker; it creates the conversation and then sends `Your order ${order.description} has been created`. The UUID is retained across retries. Chat failures use the existing BullMQ retry and dead-letter flow without changing order state or releasing credits. Added worker URL/key configuration to examples and Compose. No secrets were read or recorded.
+
+Chat system notifications now require UUID `messageId`, stored in the existing message primary key. Identical ID/order/text retries return the existing message with HTTP 200 and no write or broadcast. Collisions with different order/text or non-system messages return 409. Concurrent primary-key collisions are handled after transaction rollback. New messages retain HTTP 201. No database schema or migration changes were made.
+
+Verification: Chat Service 160 tests passed; Order Service 673 tests passed. Both typechecks and builds passed; Order Service lint passed without warnings; `git diff --check` passed. Initial sandboxed HTTP tests and the first simulation start failed due to local port restrictions; permitted reruns succeeded. The formatting command initially referenced a nonexistent Chat Service Prettier binary; formatting then completed using Order Service's installed binary. An initial Order Service typecheck caught a test-double cast and was corrected before passing.
+
+Used the Postman API Engineering, API Simulation and API Mocking skills. CLI version 1.73.0 supports simulation but rejects `postman status` as an unknown command, so no owner-workspace mock search or remote operations were performed. Added a local 503 HTTP stand-in. Ran the compiled client/worker against it on attempt five; the worker threw the expected retryable HTTP_503 error and a guard verified no order database access. The simulation request log confirmed POST /chat/conversations returned 503. Synthetic IDs and key only. Database tests use injected doubles; no live MySQL/PostgreSQL persistence or Redis/BullMQ retry scheduling was exercised. Simulation evidence is in the adjacent context YAML; raw logs were not committed.
+
+**Files:**
+
+- `.env.example` (modified)
+- `README.md` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (modified)
+- `compose.yaml` (modified)
+- `order-service/.env.example` (modified)
+- `order-service/README.md` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/worker.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (created)
+- `order-service/src/clients/chat.client.spec.ts` (created)
+- `postman/mocks/chat-unavailable/default.js` (created)
+- `postman/simulations/order-chat-failure.sim.yaml` (created)
+- `postman/simulations/order-chat-failure.context.yaml` (created)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Asked for the trigger, worker delivery, order failure behavior and idempotency contract before implementing. Team confirmed successful reservation, BullMQ worker, order stays open, UUID generated with the job and used as message primary key, HTTP 200 for identical repeats and 409 for differing order/text. No unresolved team decisions were implemented. Live database and Redis verification remains unperformed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Fix F3: isLocked uses the DB clock (convention 5)
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F3 fix note pasted in chat on 2026-11-10 (quoted below), implementing instructions.md "Conventions established in the code" item 5 (time comes from the database clock; compare against `clock_timestamp()`; no `Date.now()` outside JWT iat/exp)
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F3: isLocked must use the DB clock (convention 5).
+>
+> - In every query whose row reaches toUserResponse (findUserById, listUsersPage,
+>   the status/role/active-view/unlock UPDATE ... RETURNING paths, and any others —
+>   grep for callers), select
+>   (login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp()) AS is_locked
+>   For RETURNING, append it: RETURNING \*, (...) AS is_locked.
+> - Use the same SQL expression for the `locked` filter in listUsersPage, so filter and
+>   field cannot disagree. Factor it into one shared SQL fragment constant.
+> - toUserResponse reads row.is_locked. Make is_locked a required field on the row type,
+>   so a query that omits it fails to compile instead of returning undefined.
+> - Remove Date.now() from userResponse.ts. Grep src/ for any other Date.now() use and
+>   report each one (JWT iat/exp are the only allowed exception).
+> - If the unlock service decides lock vs no-op from anything other than SQL, switch it to
+>   the same expression, evaluated on the row it locks FOR UPDATE.
+> - Test: backdate login_locked_until to 1 s in the future and 1 s in the past. Assert
+>   isLocked and the locked=true|false filter agree in both cases, and that unlock on the
+>   just-expired row is a no-op with no audit row.
+
+**Key responses:**
+Grepped for every `toUserResponse` caller: `users.service.ts` (listUsers via `listUsersPage`; getUserById via `findById`; changeUserStatus/changeUserRole no-op returns via `lockUserById` and real changes via `updateUserStatus`/`updateUserRole` RETURNING; unlockUser via `lockUserByIdWithNow` plus a synthesized post-unlock row) and `me.service.ts` (changeActiveView via `updateActiveView` RETURNING). `updateUsername`/`updateEmail` never reach the mapper and were left unchanged.
+
+In `users.queries.ts`, added the exported `IS_LOCKED_SQL` constant (`(login_locked_until IS NOT NULL AND login_locked_until > clock_timestamp())`) and a private `IS_LOCKED_COLUMN` (`... AS is_locked`). `findById`, `findByIdWithNow`, `lockUserById`, `lockUserByIdWithNow`, `listUsersPage`'s SELECT, and the `updateUserStatus`/`updateUserRole`/`updateActiveView` RETURNING clauses all select it. `listUsersPage`'s `locked` filter now uses `IS_LOCKED_SQL` / `NOT IS_LOCKED_SQL` (replacing the two hand-written `NOW()` comparisons); `NOT (...)` is true for a NULL `login_locked_until` since `(false AND NULL)` is false in SQL.
+
+Row type: added `UserRowWithLock = UserRow & { is_locked: boolean }` and made `UserRowWithNow` extend it; every query above returns `UserRowWithLock`. `toUserResponse` now takes `UserRowWithLock` and returns `isLocked: row.is_locked`; `Date.now()` is gone from `userResponse.ts`. Within-decision choice: `is_locked` is required on the type the mapper accepts rather than on `UserRow` itself, because `UserRow` is also the result type of `SELECT *`/`RETURNING *` queries that never reach the mapper (`createUser`, `findByUsername`, `findByEmail`, `findSuperAdmin`, `createSuperAdmin`, `updateUsername`, `updateEmail`, and the test helpers); putting `is_locked` on `UserRow` would have made those types claim a column they do not select. The compile-time guarantee asked for holds: passing a row from a query that omits `is_locked` to `toUserResponse` is a type error.
+
+`unlockUser` now decides lock vs no-op from `locked.is_locked` on the row it locks FOR UPDATE (`lockUserByIdWithNow`), replacing the JS comparison of `login_locked_until` against `db_now`; the synthesized post-unlock row carries `is_locked: false`.
+
+`Date.now()` report for `src/`: after this change the only remaining uses are two in `src/services/email.service.ts` (lines 220 and 241), which bound the SMTP retry loop's overall wall-clock deadline (elapsed time between send attempts). They are not JWT iat/exp and were not changed; they do not touch any persisted expiry or lock. Flagged for the team under Deviations.
+
+Tests: extended `tests/helpers/db.ts`'s `setLoginLockState` with an optional `lockedUntilSecondsFromNow` (the lock end is now `clock_timestamp() + make_interval(secs => ...)`), and added a four-case describe "isLocked and the locked filter use the DB clock (fix F3)" to `tests/services/users.service.test.ts`: lock ending 1 s in the future (isLocked true, in locked=true, not in locked=false); lock ended 1 s ago (isLocked false, lockedUntil still set, in locked=false, not in locked=true); unlock on the just-expired row is a no-op (lock columns, failed-attempt count and updated_at unchanged, no audit row); unlock on the 1 s-future lock clears it and writes exactly one USER_UNLOCK row.
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. Vitest: the five lock-related files (users.service, users.controller, me.service, auth.service, lockout.concurrency) 288/288 passed, then the full user-service suite 38 files / 995 tests passed (the `Error: insert failed` and `SMTP down` stderr lines are from pre-existing forced-failure tests). `npm run lint` (eslint): no findings.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/tests/helpers/db.ts` (modified)
+- `user-service/tests/services/users.service.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- `is_locked` was made required on the mapper's input type (`UserRowWithLock`) rather than on `UserRow` itself, for the reason given above. If the team wants it on `UserRow`, every `SELECT *`/`RETURNING *` query and the test helpers would need to select it too.
+- Two `Date.now()` uses remain in `src/services/email.service.ts` (SMTP retry deadline). They are outside the JWT exception but also outside convention 5's stated scope (OTPs, refresh tokens, persisted expiries). Left as is for the team to decide.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+# <<<<<<< HEAD
+
+## 2026-11-10 — Merge main into PR 173 branch
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
+
+**Prompts (exact):**
+
+> switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
+
+**Key responses:**
+Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `ai/usage-log.md` (conflict resolved and entry appended)
+- `README.md` (conflict resolved and index updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-10 — Merge main translation with chat-service updates
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug, refactor
+**Scope:** Debugging; Refactor/Docs
+**Governing decision:** User request to retain both branches; existing translation implementation in main and existing actor fields, chat notifications, unread badges and scrolling in chat-service.
+
+**Prompts (exact):**
+
+> help me solve the merge conflicts. i need both the translation and whatever was done in the chat service. make sure the ai logs contain both branches' information
+
+**Key responses:**
+
+- Resolved all eight conflicted files, combining translation controls and translated text with existing unread badges, bottom-aware scrolling and new-message navigation. Kept backend translation imports/toggle alongside actor fields, notifications and archive behavior.
+- Preserved both branches' disclosure headers. Verified every original usage-log section from both Git index stages is present verbatim, retaining differing historical versions rather than overwriting them. Verified all original README index rows remain by date, service, title and summary.
+- Installed dependencies from existing lockfiles and regenerated the ignored Prisma client from the existing merged schema. No schema or dependency declarations changed by this task.
+- Verification: initial backend checks encountered missing dependencies and stale generated types; after installation and generation, all 216 chat-service tests across 14 files passed; backend typecheck and build passed. All 302 frontend tests across 40 files and frontend build passed. Frontend build reported a chunk-size warning.
+
+**Files:**
+
+- README.md (resolved conflict, disclosure header and index row)
+- ai/usage-log.md (resolved conflict, retained historical versions and appended entry)
+- chat-service/src/controllers/conversations.controller.ts (resolved conflict and disclosure header)
+- chat-service/src/server.ts (resolved conflict and disclosure header)
+- chat-service/src/services/conversations.service.ts (resolved conflict and disclosure header)
+- chat-service/src/system-notifications.spec.ts (resolved conflict and disclosure header)
+- frontend/src/pages/Chat.jsx (resolved conflict and disclosure header)
+- frontend/tests/pages/Chat.test.jsx (resolved conflict and disclosure header)
+
+**Deviations / questions raised for the team:** None.
 
 **What I kept/changed/rejected:**
 I kept all changes.

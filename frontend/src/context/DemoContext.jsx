@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component DemoContext.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
   *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Replaced the demo login flag with a real session (login, logout, silent restore through the refresh cookie) and exposed systemRole/isAdmin. `role` (requester/courier) and the order data stay mocked. No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -22,7 +22,7 @@
  *        instead of the hardcoded figures in src/data/users.js, so the nav pill and the
  *        create-request affordability check show the signed-in user's real credits.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: Per instructions.md Stage 16b and the user's answer to 16a item 2 (full split now),
@@ -31,7 +31,7 @@
  *        requester/courier role and the mocked request list; `loginPrompt` is dropped rather
  *        than kept as dead state, since nothing opens a modal anymore (LoginModal deleted).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'

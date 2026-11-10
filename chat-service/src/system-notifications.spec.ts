@@ -14,6 +14,9 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Updated the system notification response assertion to the documented actor field.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";

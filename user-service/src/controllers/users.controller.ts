@@ -4,30 +4,30 @@
  * Scope: Generated the users controllers (list, getById, updateStatus) as specified in
  *        instructions.md Stage 9.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added the changeRole controller as specified in instructions.md Stage 10.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Added listPublic and getPublicById for the public display-name lookup, so a
  *        non-admin can resolve another user's name. Requested by the user-service owner.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: `list` now validates pagination/search/filter/sort query params, per
  *        instructions.md Stage 15b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: `list` validates the new `locked` filter, and added the `unlock` controller, per
  *        instructions.md Stage 18d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: `list`, `getById`, `updateStatus` and `unlock` now pass req.user.user_id through as
@@ -35,7 +35,7 @@
  *        controller for GET /users/:id/full-email, which logs the VALIDATION_ERROR case itself
  *        since that id never reaches the service. Per instructions.md Stage 20 (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: `updateStatus`, `changeRole` and `unlock` now require and validate a `reason` (plus
@@ -43,7 +43,7 @@
  *        reason string and the User-Agent header through to the service, per instructions.md
  *        Stage 26b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: `fullEmail` now backs POST /users/:id/full-email (was GET): validates a `reason` body
@@ -51,19 +51,19 @@
  *        VALIDATION_ERROR path (that existed only to log the old console line, which is gone).
  *        Per instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: `updateStatus` and `changeRole` now read the `Elevated-Token` header and pass it,
  *        plus req.user.sid, through to the service. Per instructions.md Stage 27b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Added `workerStatus` for GET /users/worker/:id (behind the new service-key
  *        middleware, no `authenticate`/`authorize`), per instructions.md Stage 28b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { z } from 'zod';

@@ -3,7 +3,7 @@
 //  2026-10-16: Week 7/8 catch-up - tests for F19.3.1, F19.3.2 and F19.4.1.
 //    Requires a running credit-db; see credit-service/README.md.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { releaseCredits, transferCredits } from '../../src/services/credits.service.js';

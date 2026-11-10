@@ -19,9 +19,16 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified system notification endpoint.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
+ * Author review: Congchen
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -42,6 +49,7 @@ import {
   getMessages,
   getConversations,
   postConversation,
+  postTranslation,
 } from "../controllers/conversations.controller.js";
 export function conversationsRouter(
   prisma: PrismaClient,
@@ -50,6 +58,7 @@ export function conversationsRouter(
   verifyToken?: TokenVerifier,
   publish?: MessagePublisher,
   publishRead?: import("../realtime/messages.js").ReadPublisher,
+  enqueueTranslation?: import("../translation/queue.js").TranslationEnqueuer,
 ) {
   const router = Router();
   router.get(
@@ -73,7 +82,7 @@ export function conversationsRouter(
   router.post(
     "/:conversationID/messages",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
-    postMessage(prisma, publish),
+    postMessage(prisma, publish, enqueueTranslation),
   );
   // AI-generated
   router.post(
@@ -82,6 +91,12 @@ export function conversationsRouter(
     postRead(prisma, publishRead),
   );
   // AI-generated
+  router.post(
+    "/:conversationID/translation",
+    createAuthenticate(userServiceUrl, verifyToken),
+    postTranslation(prisma, enqueueTranslation),
+  );
+  // AI-generated (edited by <name>).
   router.post(
     "/:conversationID/participants",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
@@ -105,6 +120,7 @@ export function systemNotificationsRouter(
   userServiceUrl: string,
   verifyToken?: TokenVerifier,
   publish?: MessagePublisher,
+  enqueueTranslation?: import("../translation/queue.js").TranslationEnqueuer,
 ) {
   const router = Router();
   // AI-generated
@@ -135,7 +151,7 @@ export function systemNotificationsRouter(
       }
       next();
     },
-    postSystemNotification(prisma, publish),
+    postSystemNotification(prisma, publish, enqueueTranslation),
   );
   return router;
 }

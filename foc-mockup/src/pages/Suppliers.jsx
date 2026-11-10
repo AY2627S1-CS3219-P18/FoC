@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component Suppliers.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Filters and grouping use the API-contract fields (category and location reference data, `categories`, `location`); sort limited to A-Z / Z-A per §7.2; removed the activeRequests sort. No requirements, architecture, schema, or API decisions were
@@ -15,7 +15,7 @@
  * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
  *        no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { useMemo, useState } from 'react'

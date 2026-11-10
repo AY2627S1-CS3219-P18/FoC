@@ -6,7 +6,7 @@
 //    not its registration. The producer publishes backoff { type: 'custom' }, so an
 //    unregistered strategy means the agreed delays silently do not happen.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { redisOptions } from '../../src/queue/redisConnection.js';

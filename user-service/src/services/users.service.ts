@@ -4,35 +4,35 @@
  * Scope: Generated the users service (listUsers, getUserById, changeUserStatus) as specified in
  *        instructions.md Stage 9.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added changeUserRole as specified in instructions.md Stage 10.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Exported toPublicUser so me.service.ts can reuse it (Stage 11).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: listUsers takes pagination/search/filter/sort params and returns the paginated
  *        shape, per instructions.md Stage 15b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: Replaced toPublicUser/PublicUser with the shared toUserResponse mapper
  *        (src/services/userResponse.ts), per instructions.md Stage 15c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: listUsers takes the `locked` filter, and added unlockUser (POST /users/:id/unlock),
  *        per instructions.md Stage 18d. Its permission rules mirror changeUserStatus's.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: listUsers, getUserById, changeUserStatus, changeUserRole and unlockUser now take the
@@ -40,7 +40,7 @@
  *        getFullEmail (GET /users/:id/full-email) and logUnmaskValidationFailure, with the
  *        `[UNMASK EMAIL]` console log shared by both. Per instructions.md Stage 20.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: changeUserStatus, changeUserRole and unlockUser now take a `reason` and `userAgent`
@@ -50,7 +50,7 @@
  *        and unconditionally cleared the lock state); a non-locked target is now a no-op.
  *        Per instructions.md Stage 26b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: getFullEmail now backs POST /users/:id/full-email (was GET): takes `reason` instead
@@ -59,7 +59,7 @@
  *        formatUserAgent and logUnmaskValidationFailure (nothing else uses them). Per
  *        instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: changeUserStatus and changeUserRole now take the caller's `sid` and the
@@ -69,20 +69,20 @@
  *        403 ELEVATION_REQUIRED; unlock and full-email are unaffected. Per instructions.md
  *        Stage 27b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Added getWorkerStatus for GET /users/worker/:id (order-service's scheduler), per
  *        instructions.md Stage 28b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Fix F3 - unlockUser decides lock vs no-op from the DB-computed is_locked on the row it
  *        locks FOR UPDATE (same IS_LOCKED_SQL as the list filter and the isLocked field), and
  *        the synthesized post-unlock row carries is_locked: false.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Fix F4 - unlockUser no longer spreads the FOR UPDATE row (which carries password_hash)
@@ -90,7 +90,7 @@
  *        "before" value, and the response is built from resetLoginLock's RETURNING row (safe
  *        columns only).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 31c - extracted unlockUser's clearing step (resetLoginLock plus
@@ -100,7 +100,7 @@
  *        instructions.md Stage 31 ("What a valid click does": "Share the clearing code with
  *        the admin unlock; do not duplicate it."). No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import * as auditLogQueries from '../db/queries/auditLog.queries.js';

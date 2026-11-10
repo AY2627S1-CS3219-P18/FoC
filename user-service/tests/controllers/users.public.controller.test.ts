@@ -5,14 +5,14 @@
  *        GET /users/public/:id, the public display-name lookup. Kept in its own file so the
  *        existing users.controller.test.ts is untouched.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
  * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
  *        `request(app)` supertest servers with the shared loopback server in
  *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from '../helpers/server.js';

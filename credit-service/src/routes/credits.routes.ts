@@ -6,10 +6,10 @@
 //    Author review: Wee Jean
 //  2026-10-19: Week 9 - mount authentication; add the two history routes.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-10-16: Week 7/8 catch-up - transfer, release and balance routes.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';

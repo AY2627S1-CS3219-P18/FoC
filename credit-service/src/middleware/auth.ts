@@ -3,7 +3,7 @@
 //  2026-10-19: Week 9 - authentication and authorization middleware. "Administrator"
 //    means rank >= admin, so super admin is included (team decision 2026-10-19).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import type { NextFunction, Request, Response } from 'express';
 import { AppError } from '../utils/AppError.js';

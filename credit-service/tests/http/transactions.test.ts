@@ -3,7 +3,7 @@
 //  2026-10-19: Week 9 - F19.5.2 and F20.2 over HTTP: row scope, identical field sets,
 //    20-per-page keyset pagination, newest first, and the administrator gate.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';

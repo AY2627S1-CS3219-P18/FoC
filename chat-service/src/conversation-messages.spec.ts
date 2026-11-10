@@ -115,6 +115,7 @@ it("maps system messages and emits a reusable last-row cursor", async () => {
     content: null,
     triggeredByUserId: null,
     createdAt: new Date(time),
+    translations: [],
   };
   t.findMany.mockResolvedValue([row, row]);
   const res = await t.get().query({ limit: "1" });
@@ -129,6 +130,7 @@ it("maps system messages and emits a reusable last-row cursor", async () => {
         content: null,
         triggeredByUserId: row.triggeredByUserId,
         createdAt: time,
+        translatedContent: null,
       },
     ],
     pagination: {
@@ -166,6 +168,7 @@ it("retains revoked participant access", async () => {
           role: true,
           joinedAt: true,
           lastReadMessageId: true,
+          translateTo: true,
         },
       },
     },
@@ -180,6 +183,35 @@ it("handles database errors", async () => {
   } finally {
     log.mockRestore();
   }
+});
+// AI-generated (edited by <name>).
+it("exposes each participant's translateTo in history", async () => {
+  const t = setup();
+  Object.assign(t.row.participants[0]!, { translateTo: "es" });
+  const res = await t.get();
+  expect(res.body.participants[0].translateTo).toBe("es");
+});
+// AI-generated (edited by <name>).
+it("returns the requesting user's own translation, scoped by user id", async () => {
+  const t = setup();
+  t.findMany.mockResolvedValue([
+    {
+      id: conversationId,
+      chatId: conversationId,
+      senderId: "0192f0c4-0000-7000-8000-00000000000b",
+      type: "TEXT",
+      content: "Hello",
+      metadata: null,
+      createdAt: new Date(time),
+      translations: [{ content: "Hola" }],
+    },
+  ]);
+  const res = await t.get();
+  expect(res.body.data[0].translatedContent).toBe("Hola");
+  expect(t.findMany.mock.calls[0]![0].select.translations).toEqual({
+    where: { userId },
+    select: { content: true },
+  });
 });
 
 // AI-generated

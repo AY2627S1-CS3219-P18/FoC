@@ -7,7 +7,7 @@
 //    them green. These tests exercise the constraint itself.
 //    Requires a running credit-db; see credit-service/README.md.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import pool from '../../src/db/pool.js';
