@@ -991,3 +991,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 288 | 2026-11-10 | repository | ECS Fargate: chat deployment and email docs | Recorded chat-service, SMTP and new-setting steps in the ECS plan and run checklist. |
 | 289 | 2026-11-10 | frontend | Frontend: remove the nav notification bell | Removed the inert bell button; notifications arrive through chat. |
 | 291 | 2026-11-10 | repository | Resolve disclosure merge conflicts with main | Preserved both branches’ disclosures and verified merged frontend tests and build. |
+| 292 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |

@@ -17043,3 +17043,33 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — Fix login redirect to register page after visiting Register then Log in
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug, generate
+**Scope:** Debugging, Implementation code
+**Governing decision:** Bug fix to existing login/redirect behavior; no new requirements, schema, or API decisions. Implements the existing intent of `frontend/src/pages/Login.jsx`'s post-login redirect (go back to where the user came from) by excluding auth pages from being a valid "from" target.
+
+**Prompts (exact):**
+> bug! before logging in, when i click "register" then "login", then i login, i login successfully, but it goes to the "create your account" page.i can go to suppliers and errands normally
+>
+> help me find out what could have caused it
+>
+> go for it
+
+**Key responses:**
+Traced the bug: the nav's "Log in" button calls `AuthContext.requireAuth`/`goToLogin`, which captures the *current* page via `useLocation()` as `location.state.from`. If the user is on `/register` when they click "Log in," `/register` gets stored as `from`, and `Login.jsx`'s post-login `navigate(location.state?.from ?? '/', { replace: true })` then sends them back to `/register` instead of home. Fixed by checking whether `from`'s pathname is `/login` or `/register` and falling back to `/` in that case, in `frontend/src/pages/Login.jsx`. Verified: full frontend suite (305 tests, 40 files) passed after the change.
+
+**Files:**
+- `frontend/src/pages/Login.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
