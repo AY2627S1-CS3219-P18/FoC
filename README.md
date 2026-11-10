@@ -917,3 +917,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
 | 284 | 2026-11-10 | repo-wide | Repo-wide: filled Koh Wee Jean's author-review attributions | Signed 221 blank attribution fields across 101 files she has commits on |
 | 285 | 2026-11-10 | credit-service | Credit Service: service README and completed API reference | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md |
+| 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |

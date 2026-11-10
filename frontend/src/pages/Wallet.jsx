@@ -27,6 +27,12 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
  * Author review: Congchen
+ * Scope (2026-11-10, Claude Code, model: claude-opus-5): Reservation and release rows now show the
+ *        amount beside "held" / "returned", which previously rendered the word alone while an
+ *        allocation showed "+20". The amount was already passed to Delta; neither type is given a
+ *        signed delta, because neither changes total_balance.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -50,11 +56,14 @@ const TYPE_FILTERS = [
 
 const ICONS = { in: ArrowDown, out: ArrowUp, hold: Ban, return: RotateCcw }
 
-// A reservation holds credits rather than spending them, so it has no signed delta to show.
+// A reservation holds credits rather than spending them, and a release gives them back, so
+// neither changes total_balance and neither gets a signed delta. The amount is still shown, so
+// the row says how much moved, but without a + or − that would not add up against the total.
 function Delta({ direction, delta, amount }) {
   if (direction === 'hold' || direction === 'return') {
     return (
       <span className="w-20 shrink-0 text-right text-sm text-ink-40">
+        <span className="tnum font-medium text-ink-70">{amount}</span>{' '}
         {direction === 'hold' ? 'held' : 'returned'}
       </span>
     )

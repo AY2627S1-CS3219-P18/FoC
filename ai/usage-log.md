@@ -15195,3 +15195,54 @@ _README.md, rewritten to the requested structure._ Purpose stated as F19 and F20
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+---
+
+## 2026-11-10 — Frontend: show the amount on reservation and release rows in the Wallet
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The presentation rule it follows is the one already in `Delta`: a reservation and a release carry no signed delta. No new API, field or requirement.
+
+**Prompts (exact):**
+
+> for the frontend for the credit activity segment, help me add the value held, returned ... etc similar to the allocation +20 there.
+>
+> and to confirm this page has pagination right? for how many errand per page may i confirm? and is there lazy loading?
+
+> ok rebuild it
+
+> ok now commit the changes
+
+**Key responses:**
+
+_The change._ `Delta` in `frontend/src/pages/Wallet.jsx` rendered the bare word `held` or `returned` for `reservation` and `release`, while an allocation rendered `+20` and a transfer `+4` / `−4`. The amount was already a prop, so the branch now renders it before the label: `4 held`, `20 returned`, with the figure as `tnum font-medium text-ink-70` and the label left at `text-ink-40`.
+
+_No sign on those two types._ A reservation moves credits from unreserved to reserved and a release moves them back; neither changes `total_balance`, which is why `describe()` in `frontend/src/api/credits.js` returns `delta: 0` for both. A `+` or `−` would read as a balance movement that does not reconcile against the total, so the figure is unsigned. `describe()` was not changed.
+
+_Questions answered from the code, not changed._ The history is server-side keyset pagination at **20 transactions per page** (`TRANSACTION_PAGE_SIZE` in credit-service, ordered `created_at DESC, transaction_id DESC`, opaque base64url cursor, `nextCursor` null on the last page). That is 20 transactions rather than 20 errands: one errand normally produces a `reservation` plus either a `transfer` or a `release`. Loading is **infinite scroll**, not numbered pages — an `IntersectionObserver` on a sentinel below the list calls `loadPage(cursor)`, appends, and stops when `nextCursor` is null, with an `inFlight` ref guarding against a double fire.
+
+**Verification actually run:**
+
+- `npm run lint`: exit 0. The only warnings are the pre-existing ones in `src/pages/AdminUsers.jsx`; none in `Wallet.jsx`.
+- `npm run build`: exit 0, `dist/assets/index-B7TR23Od.js`, 504.80 kB / 147.04 kB gzipped.
+- `npm test`: **40 files, 298 tests, all passing.** There is no test covering `Delta`, so the suite proves no regression rather than proving this behaviour.
+- `docker compose up -d --build frontend`: rebuilt, healthy in about 3 s, serving on 5173. Confirmed the container serves the new bundle — same hash as the local build — and that the minified output contains the new branch: `className:"w-20 shrink-0 text-right text-sm text-ink-40", children:[span{className:"tnum font-medium text-ink-70", children:n}, " ", e==="hold"?"held":"returned"]`.
+
+**Files:**
+
+- `frontend/src/pages/Wallet.jsx` (modified: `Delta`, plus the dated disclosure entry)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **There is a second, near-duplicate `Delta` in the built bundle that was not changed.** It appears minified as `className:"tnum text-sm text-ink-40"` with no `w-20 shrink-0` and no amount, so it still renders the word alone. Only `frontend/src/pages/Wallet.jsx` was edited; the other copy is most likely `foc-mockup`'s version of the page or another component rendering credit rows. Flagged rather than hunted down, because it was outside what was asked for. `grep -rn "'held'" frontend/src foc-mockup/src` locates it.
+2. **The transaction-type filter is client-side only** and was left alone. `const shown = rows.filter((t) => filter === 'All' || t.type === filter)` filters the rows already loaded and does not request more matching rows, so selecting "Transfer" on a long history shows only the transfers among the pages scrolled so far, presented as if complete. Making it server-side would need a `?type=` parameter on `GET /credits/transactions`, which does not exist — a new API surface, and the team's decision rather than the agent's.
+3. **No test was added.** There is no existing test for `Delta` or for the Wallet list rendering, and the brief did not ask for one. A render test asserting `4 held` and the absence of a sign would be cheap if wanted.
+4. **Committed on `docs/author-review-attributions`**, which is a documentation branch, because the author asked to stay on it. This is the only source change on that branch.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
