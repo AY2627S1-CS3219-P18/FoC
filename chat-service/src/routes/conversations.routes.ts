@@ -29,6 +29,8 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -96,19 +98,6 @@ export function conversationsRouter(
     createAuthenticate(userServiceUrl, verifyToken),
     postTranslation(prisma, enqueueTranslation),
   );
-  // AI-generated (edited by <name>).
-  router.post(
-    "/:conversationID/participants",
-    authenticateMessage(apiKey, userServiceUrl, verifyToken),
-    (req, res, next) => {
-      if (req.user) {
-        res.sendStatus(403);
-        return;
-      }
-      next();
-    },
-    postParticipant(prisma),
-  );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;
 }
@@ -139,7 +128,7 @@ export function systemNotificationsRouter(
       }
       next();
     },
-    postParticipant(prisma, true),
+    postParticipant(prisma),
   );
   router.post(
     "/send-system-notification",

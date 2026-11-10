@@ -4,6 +4,8 @@
  * Scope: Tested the team-specified order-based participant endpoint.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -100,5 +102,17 @@ it.each([
   if (key) req.set("X-Service-Key", String(key));
   if (token) req.set("Authorization", `Bearer ${token}`);
   expect((await req.send({ userId, role: "COURIER" })).status).toBe(status);
+  expect(t.create).not.toHaveBeenCalled();
+});
+
+// AI-generated (edited by <name>).
+it("does not expose the removed conversation-ID participant endpoint", async () => {
+  const t = setup();
+  const response = await request(t.app)
+    .post(`/chat/conversations/${conversationId}/participants`)
+    .set("X-Service-Key", "test")
+    .send({ userId, role: "COURIER" });
+  expect(response.status).toBe(404);
+  expect(t.findUnique).not.toHaveBeenCalled();
   expect(t.create).not.toHaveBeenCalled();
 });

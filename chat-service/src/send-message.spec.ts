@@ -9,6 +9,8 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -122,8 +124,6 @@ it.each([
   { type: "TEXT", content: " \n\t" },
   { type: "TEXT" },
   { type: "TEXT", content: null },
-  { type: "IMAGE", content: "x" },
-  { type: "VIDEO", content: "x" },
   { type: "bad", content: "x" },
   { content: "x" },
 ])("rejects invalid payload %j", async (body) => {

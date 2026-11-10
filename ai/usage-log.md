@@ -17044,6 +17044,250 @@ I kept all changes.
 **Author review:**
 tng wen xi
 
+## 2026-11-10 — Chat service architecture and API documentation
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Added chat-service documentation disclosure and Log index entry.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing chat-service/README.md team-specified contracts, chat-service/SYSTEM-NOTIFICATIONS.md, checked-in chat routes/controllers/services, Prisma schema, authentication, realtime and translation implementation; existing order-service chat client. Documentation describes current behavior only.
+
+**Prompts (exact):**
+> look at chat service. can you generate a md in a new docs/ folder within chat service that includes:
+>
+> - the API endpoints and design choices that were made
+> - the architecture and design of the microservice
+>   - would be great if you could include an architecture diagram
+> - integration with other services
+>
+>
+>
+> also generate a docs/api.md:
+>
+> - containing a list of all API endpoints
+> - then go into each API in detail and go through payload, response format, error codes and statuses, validation done.
+
+**Key responses:**
+Created architecture.md describing existing layers, data ownership, implementation choices, runtime configuration and integrations, with a Mermaid architecture diagram. Created api.md listing all 12 HTTP endpoints and detailing authentication, validation, payloads, responses, statuses, errors, side effects, pagination and Socket.IO events. Recorded existing mixed error formats, translation fields, system notification deduplication, archive behavior and the `messsage:read` spelling. No decision rationales or new designs were generated. Used the Postman API documentation skill for source-based local documentation; no external publication or service calls were made.
+Verification: checked all local documentation links, balanced code fences, 12 detailed HTTP endpoint sections, and parsed every fenced JSON example. git diff --check passed before disclosure append; final whitespace check also passed. Runtime tests were not run for this documentation-only task; no live integrations were exercised.
+
+**Files:**
+- `chat-service/docs/architecture.md` (created)
+- `chat-service/docs/api.md` (created)
+- `README.md` (disclosure header and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None. Design documentation is limited to existing implementation facts; decision rationales were excluded under repository policy.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Chat documentation readability, schema and endpoint usage
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded documentation readability, schema reference and endpoint usage updates.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Existing chat-service Prisma schema and implementation; frontend chat client, Chat page and ChatBubble; Order Service chat client and worker. User requested documentation changes only.
+
+**Prompts (exact):**
+> - make it easier to read
+> - in architecture.md, also include a section on the db schema and values
+> - for api.md, also document how each endpoint is being used
+
+**Key responses:**
+Reorganized architecture prose, added database relationship diagram and per-table column/type/default/value references, distinguished database constraints from application validation, and tabulated configuration. Added Current usage sections for all 12 endpoints with links to inspected callers, explicitly identifying supported operations without a found production caller. Expanded fenced JSON examples and split error summaries for scanning. No implementation or schema changes were made.
+Verification: local file links checked (internal anchor checked separately), balanced fences, all fenced JSON parsed, and 12 endpoint sections and usage sections confirmed. git diff --check passed. No runtime tests were run for documentation-only changes.
+
+**Files:**
+- `chat-service/docs/architecture.md` (modified)
+- `chat-service/docs/api.md` (modified)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Recorded chat endpoint discussions
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded recovery of prior endpoint discussions into documentation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** Previously recorded chat endpoint discussions in this log, chat-service README and SYSTEM-NOTIFICATIONS.md, current chat implementation, frontend translation toggle, and Order Service notification implementation.
+
+**Prompts (exact):**
+> do you remember all that we discussed for each endpoint? also put all those in the docs
+
+**Key responses:**
+Clarified access to this conversation and repository records, without claiming recall of unrecorded sessions. Added recorded-discussion sections to all 12 HTTP endpoints: final agreements, later amendments, idempotency/concurrency, unchanged-position receipts, participant event absence, personal chat transaction boundaries, notification text and actor behavior, translation display controls, superseded proposals and deferred work. Linked historical entries and architecture documentation. Preserved the recorded translation language-change edge case rather than resolving it. No new design or decision rationales were generated.
+Verification: local file links, balanced fences, JSON examples, all 12 endpoint and recorded-discussion sections, and historical entry targets checked. git diff --check passed. No runtime tests or live integration calls were run for this documentation-only update.
+
+**Files:**
+- `chat-service/docs/api.md` (modified)
+- `chat-service/docs/architecture.md` (modified)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+Unrecorded conversations cannot be reconstructed. Earlier proposed routes/schema and notification wording are distinguished from final implementation. No new requirements or decisions supplied.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Integrate implemented chat behavior into documentation
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded implementation-only chat documentation revision.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** User instruction below; existing implementation behavior already described in chat-service/docs and checked-in chat/frontend/order source files.
+
+**Prompts (exact):**
+> remove the references to our discussion and previous decisions. only talk about what was eventually implemented. and dont put it in a separate section, integrate it into the information.
+
+**Key responses:**
+Removed discussion coverage, historical entry links, per-endpoint discussion sections, superseded proposals and deferred-work text from visible documentation. Integrated implementation details into endpoint request/response descriptions; placed notification wording with its endpoint. Removed architecture discussion-history section and renamed design-choice heading to Service behavior. Retained current translation edge-case behavior. Preserved append-only attribution history and required usage log. Corrected inline error-heading formatting and a split error-summary bullet.
+Verification: checked local links, balanced fences, all fenced JSON examples, all 12 endpoint sections, and absence of discussion-history sections/usage-log links in visible docs. git diff --check passed. Runtime tests were not run for documentation-only edits.
+
+**Files:**
+- `chat-service/docs/api.md` (modified)
+- `chat-service/docs/architecture.md` (modified)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None. Mandatory append-only AI disclosure history remains in comments/log.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Remove chat image and video message types
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-specified message enum cleanup and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User instruction quoted below; updated enum in `chat-service/prisma/schema.prisma` and implemented behavior in `chat-service/README.md`.
+
+**Prompts (exact):**
+> remove image / video from the enum in messages table for chat service. also check for other references to images and video attachements in the code and remove them.
+
+**Key responses:**
+Removed IMAGE/VIDEO from MessageType and added a forward migration narrowing messages.type to TEXT/SYSTEM. Updated listing tests to cover only supported types, removed obsolete media payload cases (generic invalid-type rejection remains), and removed media/attachment references from current chat documentation. No attachment upload/send implementation was found. Historical migrations, append-only disclosure history, Docker image references, unrelated supplier photos, and the transitive media-typer dependency were retained. Regenerated the ignored Prisma client. Did not apply the migration to a database or change existing message data.
+Verification: Prisma generation, typecheck and build passed. Sandboxed HTTP tests encountered listen EPERM; rerunning with local socket access passed all 14 test files / 212 tests. git diff --check passed. Database migration execution was not tested.
+
+**Files:**
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/prisma/migrations/20261110010000_remove_media_message_types/migration.sql` (created)
+- `chat-service/src/conversations-list.spec.ts` (modified)
+- `chat-service/src/send-message.spec.ts` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/docs/api.md` (modified; already untracked before this task)
+- `chat-service/docs/architecture.md` (modified; already untracked before this task)
+- `chat-service/src/generated/prisma/` (regenerated ignored client output; no manual headers)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None. No conversion or deletion of existing media rows was specified or performed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Remove conversation-ID participant endpoint
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-specified endpoint removal and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User instruction quoted below; existing order-ID participant contract in `chat-service/README.md` and `chat-service/docs/api.md`.
+
+**Prompts (exact):**
+> oh ok help me remoe the conversation id participant endpoint
+
+**Key responses:**
+Removed POST /chat/conversations/:conversationID/participants. Simplified the participant controller and service to resolve conversations by order ID only, removing the byOrderId switch. Preserved the order-ID endpoint's authentication, roles, membership checks and response. Moved existing participant test coverage onto the order-ID route and added a regression test asserting the removed route returns 404 without database access. Consolidated participant documentation under the order-ID endpoint.
+Verification: typecheck and build passed; all 14 test files / 213 tests passed with local socket access outside the sandbox. git diff --check passed. No live database verification was performed.
+
+**Files:**
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (modified)
+- `chat-service/src/order-participants.spec.ts` (modified)
+- `chat-service/docs/api.md` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 ## 2026-11-10 — Fix login redirect to register page after visiting Register then Log in
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -17073,3 +17317,37 @@ None
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+
+## 2026-11-10 — Resolve usage-log merge conflict
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Resolved the append-only usage-log conflict and indexed this task.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | docs
+**Scope:** Refactor/Docs
+**Governing decision:** AGENTS.md §5 append-only disclosure policy; both existing branch versions of ai/usage-log.md.
+
+**Prompts (exact):**
+> bro help me solve the merge conflicts.
+
+**Key responses:**
+Resolved the sole unmerged file, ai/usage-log.md, by preserving both branches' complete entries and removing conflict markers. Retained the already-merged README index rows and staged frontend login change without modifying implementation. Added this disclosure and its README index row.
+Verification: confirmed that the resolved log preserves the complete HEAD version followed by the incoming branch's appended entry; checked for remaining conflict markers and whitespace errors. No runtime tests run because the resolution only changes disclosure Markdown.
+
+**Files:**
+- `ai/usage-log.md` (resolved conflict and appended this entry)
+- `README.md` (appended disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

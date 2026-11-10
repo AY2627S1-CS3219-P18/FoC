@@ -1,5 +1,25 @@
 <!--
 AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Added chat-service documentation disclosure and Log index entry.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed chat documentation readability, schema reference and endpoint usage updates.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed recovered chat endpoint discussion documentation.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed implementation-only chat documentation revision.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
+Author review: tng wen xi
+
+Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Resolved usage-log merge conflict and added the required Log index row.
+Author review: tng wen xi
+-->
+<!--
+AI Assistance Disclosure:
 Scope (2026-11-10, Codex, model: GPT-6): Resolved README and usage-log merge conflicts while retaining both branches.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
@@ -968,27 +988,33 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 283 | 2026-11-10 | frontend                                                      | Corner unread tab badges hidden at zero                                                                          | Matched chat icon badge placement and hid zero counts.                                                                                          |
 | 284 | 2026-11-10 | frontend                                                      | Nudge tab unread badges outward                                                                                  | Moved unread badges slightly further up and right.                                                                                              |
 | 285 | 2026-11-10 | chat-service                                                  | Align system notification test with actor field                                                                  | Updated stale assertions and verified all 197 tests pass.                                                                                       |
-
-| 253 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
-| 254 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
-| 255 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
-| 256 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
-| 257 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
-| 258 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
-| 259 | 2026-11-09 | frontend | Merge main into message translation branch | Resolved conflicts and verified frontend. |
-| 261 | 2026-11-09 | frontend | Merge latest main into message translation branch | Resolved merge conflicts and checked frontend. |
-| 267 | 2026-11-10 | user-service | Merge main into PR 174 branch | Resolved merge conflicts and retained lock status for language updates. |
-| 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
-| 284 | 2026-11-10 | repo-wide | Repo-wide: filled Koh Wee Jean's author-review attributions | Signed 221 blank attribution fields across 101 files she has commits on |
-| 285 | 2026-11-10 | credit-service | Credit Service: service README and completed API reference | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md |
-| 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |
-| 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
-| 285 | 2026-11-10 | chat-service | ECS Fargate: chat-service database TLS, keep-alive and CD | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD. |
-| 287 | 2026-11-10 | chat-service, frontend | Merge main translation with chat-service updates | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds. |
-| 288 | 2026-11-10 | order-service | Order-service test verification and assertion fixes | Updated stale chat outbox assertions; verified unit and E2E tests. |
-| 289 | 2026-11-10 | frontend | Fix duplicate mode-switch toasts | Batched mode navigation updates and guarded repeated redirect feedback. |
-| 287 | 2026-11-10 | supplier-service                                              | Supplier worker Compose environment fix                                                                          | Passed SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker so it boots under Compose.                                                             |
-| 288 | 2026-11-10 | repository | ECS Fargate: chat deployment and email docs | Recorded chat-service, SMTP and new-setting steps in the ECS plan and run checklist. |
-| 289 | 2026-11-10 | frontend | Frontend: remove the nav notification bell | Removed the inert bell button; notifications arrive through chat. |
-| 291 | 2026-11-10 | repository | Resolve disclosure merge conflicts with main | Preserved both branches’ disclosures and verified merged frontend tests and build. |
-| 292 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
+| 286 | 2026-11-09 | chat-service, user-service                                    | chat-service/user-service: Message auto-translation                                                              | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting.                                             |
+| 287 | 2026-11-09 | frontend, chat-service                                        | frontend/chat-service: Translation UI and participant translateTo                                                | Added Auto-translate switch, Show original/Translate controls and preferred-language setting.                                                   |
+| 288 | 2026-11-09 | user-service                                                  | user-service: Prisma migrations for the user database                                                            | Added Prisma migrate with baseline and preferred_lang migrations.                                                                               |
+| 289 | 2026-11-09 | frontend                                                      | frontend: Delivery details input length                                                                          | Aligned delivery details input maxLength with the 250 limit.                                                                                    |
+| 290 | 2026-11-09 | frontend                                                      | Chat message metadata layout                                                                                     | Moved timestamps and translation controls below message bubbles.                                                                                |
+| 291 | 2026-11-09 | frontend                                                      | Translation control placement                                                                                    | Moved translation control above the timestamp.                                                                                                  |
+| 292 | 2026-11-09 | frontend                                                      | Merge main into message translation branch                                                                       | Resolved conflicts and verified frontend.                                                                                                       |
+| 293 | 2026-11-09 | frontend                                                      | Merge latest main into message translation branch                                                                | Resolved merge conflicts and checked frontend.                                                                                                  |
+| 294 | 2026-11-10 | user-service                                                  | Merge main into PR 174 branch                                                                                    | Resolved merge conflicts and retained lock status for language updates.                                                                         |
+| 295 | 2026-11-10 | repository                                                    | Resolve main merge conflicts for message translation                                                             | Reconciled chat, frontend, user-service, and disclosure changes.                                                                                |
+| 296 | 2026-11-10 | repo-wide                                                     | Repo-wide: filled Koh Wee Jean's author-review attributions                                                      | Signed 221 blank attribution fields across 101 files she has commits on                                                                         |
+| 297 | 2026-11-10 | credit-service                                                | Credit Service: service README and completed API reference                                                       | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md                                                     |
+| 298 | 2026-11-10 | frontend                                                      | Frontend: show the amount on reservation and release rows in the Wallet                                          | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word                                                          |
+| 299 | 2026-11-10 | user-service                                                  | User-service test verification after merge                                                                       | Updated language-field assertions and ran tests.                                                                                                |
+| 300 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |
+| 301 | 2026-11-10 | chat-service, frontend                                        | Merge main translation with chat-service updates                                                                 | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds.                                                 |
+| 302 | 2026-11-10 | order-service                                                 | Order-service test verification and assertion fixes                                                              | Updated stale chat outbox assertions; verified unit and E2E tests.                                                                              |
+| 303 | 2026-11-10 | frontend                                                      | Fix duplicate mode-switch toasts                                                                                 | Batched mode navigation updates and guarded repeated redirect feedback.                                                                         |
+| 304 | 2026-11-10 | supplier-service                                              | Supplier worker Compose environment fix                                                                          | Passed SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker so it boots under Compose.                                                             |
+| 305 | 2026-11-10 | repository                                                    | ECS Fargate: chat deployment and email docs                                                                      | Recorded chat-service, SMTP and new-setting steps in the ECS plan and run checklist.                                                            |
+| 306 | 2026-11-10 | frontend                                                      | Frontend: remove the nav notification bell                                                                       | Removed the inert bell button; notifications arrive through chat.                                                                               |
+| 307 | 2026-11-10 | repository                                                    | Resolve disclosure merge conflicts with main                                                                     | Preserved both branches’ disclosures and verified merged frontend tests and build.                                                              |
+| 308 | 2026-11-10 | chat-service                                                  | Chat service architecture and API documentation                                                                  | Documented existing architecture, integrations, HTTP endpoints and socket events.                                                               |
+| 309 | 2026-11-10 | chat-service                                                  | Chat documentation readability, schema and endpoint usage                                                        | Expanded schema reference and endpoint callers; improved document readability.                                                                  |
+| 310 | 2026-11-10 | chat-service                                                  | Recorded chat endpoint discussions                                                                               | Added recorded endpoint agreements, amendments, edge cases and deferred work.                                                                   |
+| 311 | 2026-11-10 | chat-service                                                  | Integrate implemented chat behavior into documentation                                                           | Removed discussion history and integrated current behavior into endpoint descriptions.                                                          |
+| 312 | 2026-11-10 | chat-service                                                  | Remove chat image and video message types                                                                        | Removed media enum values and updated tests and documentation.                                                                                  |
+| 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
+| 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
+| 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |

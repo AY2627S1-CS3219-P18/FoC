@@ -1,6 +1,12 @@
 <!-- Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts in disclosure history.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review: -->
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
+Author review: tng wen xi
+
+Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+Author review: tng wen xi
+-->
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-07
@@ -182,7 +188,7 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 }
 ```
 
-The supplied `messages` table has UUID `id`, `chat_id` referencing conversations, nullable UUID `sender_id` (null for system), type TEXT/IMAGE/VIDEO/SYSTEM, nullable text `content`, nullable UUID `triggered_by_user_id` (the user who triggered an order action), and `created_at`. Apply its checked-in migration with `npm run db:deploy` before using the endpoint.
+The supplied `messages` table has UUID `id`, `chat_id` referencing conversations, nullable UUID `sender_id` (null for system), type TEXT/SYSTEM, nullable text `content`, nullable UUID `triggered_by_user_id` (the user who triggered an order action), and `created_at`. Apply its checked-in migration with `npm run db:deploy` before using the endpoint.
 
 `USER_SERVICE_URL` selects the JWKS host (default `http://user-service:3001` for Compose); set it to `http://localhost:3001` for local host execution. No additional package is required: the verifier is copied from order-service with its existing attribution preserved.
 
@@ -244,7 +250,7 @@ Team-specified contract supplied in the 2026-11-08 implementation conversation:
 - Order by `createdAt DESC, id DESC`, with an exclusive cursor boundary.
 - Pagination follows conversation listing: `nextCursor` is an object to encode for the next request, or null on the final page. It uses the last returned message. `hasMore` indicates additional older messages.
 - Team update (2026-11-08): Every message-history page also returns `participants`, with `userId`, `role`, ISO `joinedAt`, and nullable `lastReadMessageId` for each participant. Null preserves the existing stored value when no read position exists. No schema change.
-- Each message exposes messageId, conversationId, senderId, type, content, triggeredByUserId and createdAt. Nullable values are preserved; attachments are omitted for MVP. No schema changes.
+- Each message exposes messageId, conversationId, senderId, type, content, triggeredByUserId and createdAt. Nullable values are preserved.
 
 ```json
 {
@@ -298,13 +304,13 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 
 Verification: all 109 tests passed, including 13 read endpoint cases and a real local WebSocket receipt-delivery check. Typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency and Redis cross-replica delivery were not exercised.
 
-## POST /chat/conversations/:conversationId/participants
+## POST /chat/orders/:orderId/participants
 
 Team decisions supplied in the 2026-11-08 implementation conversation:
 
 - Require `X-Service-Key` matching CHAT_SERVICE_API_KEY; no `X-Service-Name` is required. Reuse message authentication: a supplied key takes precedence; invalid/missing credentials return 401, and a valid Bearer-only user returns 403.
-- Body: `{ "userId": "<User Service UUID>", "role": "COURIER" }`. Both COURIER and REQUESTER are allowed. Invalid conversation/user UUIDs or roles return 400. The caller supplies the user ID; this endpoint does not call User Service.
-- Missing conversation returns 404. Archived conversation or any existing membership for that user, including revoked membership, returns 409. Existing memberships are not changed.
+- Body: `{ "userId": "<User Service UUID>", "role": "COURIER" }`. Both COURIER and REQUESTER are allowed. Invalid order/user UUIDs or roles return 400. The caller supplies the user ID; this endpoint does not call User Service.
+- The order ID resolves to a conversation inside the membership transaction. An order without a conversation returns 404. Archived conversation or any existing membership for that user, including revoked membership, returns 409. Existing memberships are not changed.
 - Return 200 with the object below directly. Insert the participant using existing schema defaults. The transaction locks the active conversation before checking membership and inserting; no schema changes or realtime event were added.
 
 ```json
@@ -349,18 +355,6 @@ order ID or text returns 409; IDs belonging to non-system messages also conflict
 New messages return 201. The primary key also handles concurrent duplicate inserts;
 the losing transaction rolls back and reads the committed message. Missing or
 malformed `messageId` returns 400. No schema migration is needed.
-
-## POST /chat/orders/:orderId/participants
-
-Team decision supplied on 2026-11-08: behave exactly like
-`POST /chat/conversations/:conversationId/participants`, resolving the conversation
-by orderId. The same service authentication, UUID/body validation, transaction,
-participant limits, response shape and status codes apply. The response still
-contains the resolved conversationId. An order without a conversation returns 404.
-No schema changes.
-
-Verification: 169 tests passed, including order-based participant endpoint cases;
-typecheck and build passed. Endpoint tests use injected Prisma doubles.
 
 ### Frontend realtime integration
 

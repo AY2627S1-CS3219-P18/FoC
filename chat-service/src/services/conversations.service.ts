@@ -43,6 +43,8 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -466,19 +468,16 @@ export async function markConversationRead(
 // AI-generated
 export async function addParticipant(
   prisma: PrismaClient,
-  conversationId: string,
+  orderId: string,
   input: { userId: string; role: "COURIER" | "REQUESTER" },
-  byOrderId = false,
 ) {
   return prisma.$transaction(async (tx) => {
-    if (byOrderId) {
-      const conversation = await tx.conversation.findUnique({
-        where: { orderId: conversationId },
-        select: { conversationId: true },
-      });
-      if (!conversation) return { status: 404 as const };
-      conversationId = conversation.conversationId;
-    }
+    const orderConversation = await tx.conversation.findUnique({
+      where: { orderId },
+      select: { conversationId: true },
+    });
+    if (!orderConversation) return { status: 404 as const };
+    const { conversationId } = orderConversation;
     // Serialize additions on this conversation before checking existing membership.
     const locked = await tx.conversation.updateMany({
       where: { conversationId, status: "ACTIVE" },
