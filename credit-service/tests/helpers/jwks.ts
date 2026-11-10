@@ -3,7 +3,7 @@
 //  2026-10-19: Week 9 - throwaway keypair and stub JWKS server, so the suite never
 //    needs a live user-service.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { createServer, type Server } from 'node:http';
 import { SignJWT, exportJWK, generateKeyPair, type KeyObject } from 'jose';

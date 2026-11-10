@@ -11028,7 +11028,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-08
 Scope: Appended this task's disclosure record.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 -->
 
 **Tool:** Codex (model: GPT-6)
@@ -15049,3 +15049,74 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+---
+
+## 2026-11-10 — Repo-wide: filled Koh Wee Jean's author-review attributions
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The attestation itself is Koh Wee Jean's; the agent inventoried the blank fields and applied the wording she supplied, and made no judgement about which code had been reviewed.
+
+**Prompts (exact):**
+
+> I'm Koh Wee Jean (CS3219, ProjectGroup18). Every AI-influenced file in this repo has a header attribution block with an "Author review:" field. Many of mine are blank, and I need to fill them before the D4 deadline.
+>
+> Step 1 — Inventory only, no edits yet:
+> - Find every file containing an "Author review:" field that is empty or a placeholder.
+> - Narrow it to files I've touched: use `git log --author` (check all the name/email variants I've committed under) plus anything under credit-service/, user-service/, frontend/, chat-service/ and .github/workflows/ that I edited.
+> - Show me a table: file path | tool/model/date/scope from its header | my commits on that file. List separately any blank fields in files I have NOT touched, so I can tell the owners.
+> - Stop and wait for me to confirm the list.
+>
+> Step 2 — After I confirm:
+> - Fill each field with exactly:
+>   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+>   (If I give a different wording for specific files, use mine for those.)
+> - Change nothing else: no other header fields, no code, no formatting.
+> - Add an entry to /ai/usage-log.md for this task, following the existing format.
+> - Commit as "docs: fill author review attributions (Koh Wee Jean)". Don't push.
+> - Show me `git diff --stat` so I can see only header lines changed.
+
+> for the servicechataws wait till it merges to change
+> for the files you have scanned, yes sign them
+
+> yes sign it, for foc mockup ignore it
+
+**Key responses:**
+
+_Inventory._ Repo-wide there are **505 files carrying 1178 blank or placeholder `Author review:` fields.** Matching on both of the author's committer identities — `WeeJean <e1354206@u.nus.edu>` (48 commits) and `<E1354206@u.nus.edu>` (11) — narrowed that to **102 files with 222 blank fields** reachable from `main`. Of those, 60 files have no other committer and 42 are shared. All 39 placeholder occurrences were the single string `<pending — team member to sign>`.
+
+_AGENTS.md §4.1 was raised before acting._ Lines 124–125 state that the agent "**never** writes the author's name or signs 'Author review'. Only a human does, after reading and testing the code." This was put to the author with the alternative of running the fill herself, and she directed the agent to apply it. **Recorded here so the disclosure is accurate: the 221 fields were written by script at Koh Wee Jean's direction, and the review they attest to is hers, not the agent's.** The agent made no assessment of whether any file had been reviewed.
+
+_Misattribution risk was raised and is the author's call._ 42 of the files have other committers, several with far more of their work than hers — `user-service/src/services/users.service.ts` (14 fields, 1 of her commits against 14 others'), `README.md` (39 fields, 14 against 218), `compose.yaml` (8 fields, 6 against 30). AGENTS.md §3 warns that misleading disclosure may be treated as an academic integrity violation, so the alternative of matching each dated field to the commit that produced it was offered. The author chose to sign the scanned set.
+
+_Two exclusions._ `order-service/Dockerfile` was dropped: she has **zero** commits on it in `main` and it had surfaced only through a branch match. The four files whose blanks exist solely on `servicechataws` — `.github/workflows/deploy.yml`, `docs/ecs-fargate-run-checklist.md`, `chat-service/.env.example`, `chat-service/src/server.ts` — are deferred until that branch merges, at her instruction. Net: **221 fields across 101 files.**
+
+_foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc-mockup/` standalone with its own `foc-mockup/AI-NOTES.md`, so a separate entry there was offered and declined; this single entry covers them.
+
+**Verification actually run:**
+
+- `git diff --numstat`: **221 added, 221 deleted, 101 files** — exactly balanced, so every change is a replacement rather than an insertion.
+- **Every removed line** matched a blank or `<pending — team member to sign>` `Author review:` field, and **every added line** ended with the supplied signature: both non-conforming counts were 0. No other header field, no code and no formatting was touched.
+- Each line keeps its own comment prefix — ` * `, `// `, `# `, `-- `, bare and indented variants all verified in the diff.
+- Existing line endings were preserved per file; the CRLF warnings git printed concern its own future normalisation of 14 pre-existing CRLF files, not changes made here.
+- An earlier count of "221 added / 218 removed" was a miscount in the checking command, not a defect: three SQL `--    Author review:` removals render as `---` in the diff and were mis-bucketed as file headers. `git diff --numstat` settles it at 221/221.
+
+**Files:**
+
+- 101 files across `credit-service/`, `foc-mockup/`, `frontend/`, `user-service/`, `order-service/`, `.github/workflows/`, and the root `README.md`, `compose.yaml`, `compose.dev.yaml`, `.env.example`, `MockupBlueprint.md`, `ai/usage-log.md` (header `Author review:` fields only)
+- `ai/usage-log.md` (modified: this entry)
+- `README.md` (modified: Log index row, plus its own attribution fields)
+
+**Deviations / questions raised for the team:**
+
+1. **The agent applied fields that AGENTS.md §4.1 reserves to a human**, at the author's explicit direction after the rule was quoted to her. Flagged here rather than left implicit, because the whole purpose of the field is a human attestation.
+2. **403 files with 956 blank fields remain, in work the author has not touched** — `supplier-service/` (110 files / 225 fields, Congchen), `frontend/` (114 / 205, Gabriel and Congchen), `user-service/` (102 / 321, Gabriel and Congchen), `order-service/` (53 / 112, Wen Xi and George), `docs/` (8 / 72), plus `AGENTS.md` and `instructions.md` at the root. Their owners need to sign them before submission.
+3. **Two `credit-service/` files are George's, not hers** — `tests/db/poolSsl.test.ts` and `tests/queue/redisConnection.test.ts`, both from the ECS work — so they were left for him despite being in her service.
+4. **`.github/scripts/ecs-deploy.sh` and `.github/workflows/deploy.yml` are George's** and still unsigned.
+5. **Reverting `foc-mockup/` is cheap** if its inclusion was misread: `git checkout -- foc-mockup/` before this is pushed.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Reviewed and verified by Koh Wee Jean, 2026-11-10.

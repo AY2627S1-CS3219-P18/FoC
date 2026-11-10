@@ -11,7 +11,7 @@
 --    Columns mirror the sibling services'; snake_case per the team decision of
 --    2026-10-22. No requirements, architecture, schema, or API decisions were made by
 --    the AI tool.
---    Author review:
+--    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 -- ---------------------------------------------------------------------------
 -- Transaction types (F20.1.1)

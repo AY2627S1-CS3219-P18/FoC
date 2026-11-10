@@ -4,20 +4,20 @@
  * Scope: Generated UI mockup component Wallet.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Wired the balance and the transaction list onto Credit Service, replacing the hardcoded
  *        figures from src/data. Filter options now follow Credit Service's four transaction types.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Every row with a request_id now shows its errand reference, transfers included, so a
  *        reservation and its transfer read as one errand. Counterparty names resolve for all
  *        users via GET /users/public, keeping the shortened-id fallback.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: /wallet is now wrapped in RequireAuth (App.jsx), which replaces the gating effect

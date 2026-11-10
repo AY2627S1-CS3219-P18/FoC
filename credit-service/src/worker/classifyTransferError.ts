@@ -4,7 +4,7 @@
 //    order-service on 2026-10-20. One table, not scattered catch blocks, so the
 //    disposition of every outcome can be read in one place.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { AppError } from '../utils/AppError.js';
 

@@ -8,11 +8,11 @@
 //  2026-10-16: Week 7/8 catch-up - queries for transfer (F19.3.1), release (F19.4.1)
 //    and balance read (F19.5.1), following the write-path table in context §5.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-11-04: Admin filters - listTransactions takes a TransactionFilters object so the
 //    administrator view can narrow by user or by order. No schema change.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import type pg from 'pg';
 import type { Queryable } from '../transaction.js';

@@ -4,17 +4,17 @@
    2026-10-16: Week 7/8 catch-up - published API contract for Order Service to build
      against. Methods and paths are the team's (credit-service-context.md §8); items
      marked INVENTED were not covered by any requirement or team decision.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-10-19: Week 9 - JWKS authentication, the two transaction-history endpoints,
      and the pagination contract.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-11-04: Optional ?userId= and ?requestId= filters on the administrator
      transaction view. No new route, no new fields, no requirement behind it.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-10-22 (Claude Code, model: claude-sonnet-5): Updated a doc path reference after
      user-service's docs/local-dev-setup.md was renamed to docs/user-service-instructions.md.
      No requirements, architecture, schema, or API decisions were made by the AI tool.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 -->
 
 # Credit Service API

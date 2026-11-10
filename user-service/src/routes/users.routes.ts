@@ -4,41 +4,41 @@
  * Scope: Generated the users router (GET /, GET /:id, PUT /:id/status) as specified in
  *        instructions.md Stage 9.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added PUT /:id/role as specified in instructions.md Stage 10.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Added GET /public and GET /public/:id, the public display-name lookup.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added POST /:id/unlock, per instructions.md Stage 18d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Added GET /:id/full-email, per instructions.md Stage 20 (NFR3.1.1). Registered
  *        before GET /:id per the stage's explicit route-order instruction.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: GET /:id/full-email -> POST /:id/full-email, per instructions.md Stage 26c. Still
  *        registered before GET /:id for the same route-order reason.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Added GET /worker/:id, behind authenticateServiceKey instead of
  *        authenticate/authorize, per instructions.md Stage 28b. Registered before
  *        POST /:id/full-email and GET /:id for the same route-order reason as those two.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { Router } from 'express';

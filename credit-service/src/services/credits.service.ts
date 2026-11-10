@@ -8,12 +8,12 @@
 //    Author review: Wee Jean
 //  2026-10-19: Week 9 - transaction history for F19.5.2 and F20.2, keyset-paginated.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-11-04: Admin filters - getAllTransactions accepts optional userId / requestId
 //    filters. No new route, no new fields; see credit-service-context.md §10 item 10 for
 //    the missing requirement behind this surface.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { INITIAL_ALLOCATION_CREDITS } from '../domain/constants.js';
 import { withTransaction } from '../db/transaction.js';

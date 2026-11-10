@@ -6,7 +6,7 @@ Scope: Updated a doc path reference after user-service's docs/local-dev-setup.md
        decisions were made by the AI tool. Note for the team: this file has been materially
        edited by AI tools in earlier sessions (see ai/usage-log.md) without a header being
        added at the time; this entry only covers today's edit, not that earlier history.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 -->
 
 # Credit Service — Development Context

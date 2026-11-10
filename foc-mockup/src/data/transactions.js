@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component transactions.js from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 // Wallet history (Credit F1.5.2). Each row expands to the logged detail from F2.1.1.

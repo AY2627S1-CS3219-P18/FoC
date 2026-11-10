@@ -5,12 +5,12 @@
  *        the contract in credit-service/API.md. Holds the single shape transform between the API rows
  *        and what the Wallet page renders. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Counterparty names now come from GET /users/public, so non-admins resolve them too.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Stage 24 of instructions.md - added listOrderTransactions (GET
@@ -19,7 +19,7 @@
  *        reservation and release, signed for transfer), relative to the viewed user rather
  *        than the signed-in viewer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { request } from './http'

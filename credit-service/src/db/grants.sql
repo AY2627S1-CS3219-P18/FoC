@@ -5,11 +5,11 @@
 --    Applied by both grant-app-role.sh (container) and tests/setup/globalSetup.ts, so
 --    the runtime and the test harness enforce identical privileges.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
---    Author review:
+--    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 --  2026-10-22: Credit transfer consumer - dead_letter_jobs privileges, granted per
 --    table so transaction_log's append-only guarantee is untouched.
 --    No requirements, architecture, schema, or API decisions were made by the AI tool.
---    Author review:
+--    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 -- The role name is a fixed constant. The team specified "a named least-privilege role"
 -- without naming it; `credit_app` is used throughout. Role creation (and its password)

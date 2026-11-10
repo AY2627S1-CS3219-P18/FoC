@@ -3,7 +3,7 @@
 # Scope: Added SUPPLIER_ORDER_SERVICE_API_KEY to supplier-service's environment, per
 #        instructions.md Stage 28 c1. No requirements, architecture, schema, or API decisions
 #        were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 # Scope (2026-11-10, Codex, model: GPT-6): Passed existing scheduled-worker keys and service URLs into order-worker.
 # Author review: tng wen xi
 # AI Assistance Disclosure:
@@ -34,24 +34,24 @@
 # Scope (2026-10-22): Credit transfer consumer - REDIS_HOST/REDIS_PORT on credit-service
 #        and a credit-worker service consuming queue:credit:transfer from order-redis.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 # Tool: Claude Code (model: claude-opus-5), date: 2026-11-04
 # Scope (2026-11-04): frontend service on its new prod target, so `docker compose up`
 #        serves the built app through nginx. compose.dev.yaml already overrides it to
 #        the Vite dev server, the same base-prod / override-dev split order-service uses.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
 # Scope (2026-10-22): order-redis persistence (George, 2026-10-22: RDB + AOF) - append-only
 #        file with everysec fsync alongside the default RDB snapshots, on the named volume
 #        order-redis-data, so queued credit jobs survive container recreation.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
 # Scope (2026-10-23): SUPPLIER_SERVICE_URL on order-service for the supplier / delivery-
 #        location existence check on create and edit.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
@@ -69,7 +69,7 @@
 # Scope (2026-11-09): CREDIT_SERVICE_URL on order-service - POST /orders now reserves
 #        credits in the request (George, 2026-11-09).
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 name: foc
 
 services:
@@ -227,7 +227,7 @@ services:
   #   24/09/2026: Stage 3b - user-db + user-service compose services
   #     Author review: No changes needed.
   #   26/09/2026: Stage 7 - publish user-db on host port 5434 for the test suite (REVERSE BEFORE DEPLOY)
-  #     Author review:
+  #     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
   user-db:
     image: postgres:16-alpine
     container_name: foc-user-db
@@ -272,7 +272,7 @@ services:
   # Tool: Claude Code (model: claude-opus-5), date: 2026-09-26
   #   2026-09-26: Recess iteration - credit-db + credit-service compose services.
   #     No requirements, architecture, schema, or API decisions were made by the AI tool.
-  #     Author review:
+  #     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
   credit-db:
     image: postgres:16-alpine
     container_name: foc-credit-db

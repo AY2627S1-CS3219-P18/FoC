@@ -7,11 +7,11 @@
 //    what this service is. The reconnect options implement the team's requirement
 //    that the worker survive the broker being unavailable (2026-10-22).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-11-06: ECS Fargate migration - optional TLS, per George's ECS Fargate plan, Phase 1
 //    item 5. Tool: Claude Code (model: claude-opus-5-5). No requirements, architecture, schema,
 //    or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { Redis, type RedisOptions } from 'ioredis';
 

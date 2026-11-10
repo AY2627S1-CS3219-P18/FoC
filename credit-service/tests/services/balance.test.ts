@@ -4,7 +4,7 @@
 //    guards it. The rule is tested as a pure function because the middleware cannot be
 //    mounted yet; see src/middleware/requireBalanceAccess.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { getBalance, reserveCredits } from '../../src/services/credits.service.js';
