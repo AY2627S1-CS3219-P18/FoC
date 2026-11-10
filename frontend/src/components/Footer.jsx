@@ -5,6 +5,11 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
+ * Scope (2026-11-10): Removed the "UI prototype" wording from the footer text, per George's
+ *        chat instruction. No requirements, architecture, schema, or API decisions were made
+ *        by the AI tool.
+ * Author review:
  */
 
 import Logo from './Logo'
@@ -19,7 +24,7 @@ export default function Footer() {
         </div>
         <p className="max-w-prose text-xs text-ink-40">
           Credits stay inside FoC. They are not money and cannot be bought, cashed out, or
-          transferred outside a completed errand. CS3219 AY2627S1 Group 18 — UI prototype.
+          transferred outside a completed errand. CS3219 AY2627S1 Group 18.
         </p>
       </div>
     </footer>
