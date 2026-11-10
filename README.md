@@ -428,6 +428,10 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #28
        nav notification bell. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #316 for the
+       order-service README overview and architecture diagrams. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -1018,3 +1022,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
 | 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
 | 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
+| 316 | 2026-11-10 | order-service | order-service: README overview and architecture diagrams | Documented the service's processes, lifecycle, API, events, queues and config; drew two PUML diagrams. |

@@ -17348,6 +17348,37 @@ Verification: confirmed that the resolved log preserves the complete HEAD versio
 **Deviations / questions raised for the team:**
 None.
 
+## 2026-11-10 — order-service: README overview and architecture diagrams
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs
+**Governing decision:** The existing order-service code on `main` (`584174e`), `order-service/prisma/schema.prisma`, `.github/workflows/deploy.yml`, `docs/ecs-fargate-session-prompt.md` and `docs/ecs-fargate-run-checklist.md`. The docs describe these as they are; nothing new was decided.
+
+**Prompts (exact):**
+> 1. look through all the work ive done, see if theres any author review unfilled that i need to sign off, then produce the cmd for me to use to automatically fill it in with "George Yeo"
+> 2. once done, focus only on order service, produce a clean architecture diagram using PUML and output the file here in the session not in the repo
+> 3. then create a README detailing order service
+> 4. then focus on the CD AWS deployment next, create another architecture diagram using PUML to represent all the AWS instances working together, a high level view
+> 5. for the PUMLs make sure they use basic syntax and can be rendered online
+
+**Key responses:**
+
+- Author review sign-off (prompt 1): wrote a Python script, kept outside the repo in the session scratchpad. It lists blank `Author review` fields that `git blame` attributes to `george-yeo`/`George`, counting a field only when both the blank line and most of its Scope block (or log entry) trace to those authors. It writes nothing without `--apply`, and the user runs it. The dry run on `584174e` found 143 such fields and 11 mixed-author ones, which it leaves alone. The agent did not sign any field.
+- Diagrams (prompts 2, 4, 5): two PlantUML files in the session scratchpad, not in the repo. One shows order-service's API and worker processes, `order-db`, `order-redis` and the services it calls. The other shows the AWS stack (CloudFront, ALB, 8 ECS Fargate services, 4 RDS instances, 2 ElastiCache clusters, S3, ECR, SSM, CloudWatch, IAM/OIDC) and the GitHub Actions deploy flow. Both use basic syntax with no `!include`. They were not rendered here because no PlantUML renderer is installed.
+- README (prompt 3): added sections to `order-service/README.md` on what the service does, its two processes, the order lifecycle (from `src/domain/order-status.ts`), API routes (from `src/routes/`), Socket.IO events, outbox tasks and queues, data tables, the services it calls and environment variables (from `src/config/env.ts`). Also updated the Layout tree. The existing sections, written by teammates, are unchanged.
+- Verification: checked each route, status transition, event name, queue key, retry count and env default against the source files. Did not run tests, because no code changed.
+
+**Files:**
+
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #316)
+
+**Deviations / questions raised for the team:**
+
+None.
+
 **What I kept/changed/rejected:**
 
 **Author review:**
