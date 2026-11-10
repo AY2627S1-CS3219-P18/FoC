@@ -87,6 +87,14 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Pinned system chats and displayed their messages as incoming from FoC.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Hid the chat list on individual chat pages per user instruction.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested requested active/archived chat list tabs using the existing status filter.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Restored the pinned system chat independently of the selected status tab.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Restricted system chat to the Active list per user correction.
+ * Author review: tng wen xi
  */
 
 import {
@@ -139,19 +147,23 @@ function pinSystemChat(conversations) {
 }
 
 // Details supplies each stored title.
-async function loadChatPage(role, cursor) {
-  const page = await listChats(role, cursor);
-  let rows = page.conversations;
-  if (!cursor && !rows.some((chat) => chat.orderId === null)) {
-    // A system chat may be older than the first page. Find it without changing
-    // the order-chat cursor; later pages are deduplicated when loaded normally.
-    let searchPage = page;
+async function loadChatPage(role, cursor, status) {
+  const page = await listChats(role, cursor, status);
+  let rows =
+    status === "archived"
+      ? page.conversations.filter((chat) => chat.orderId !== null)
+      : page.conversations;
+  if (
+    status !== "archived" &&
+    !cursor &&
+    !rows.some((chat) => chat.orderId === null)
+  ) {
+    // AI-generated (edited by <name>).
+    // System chat stays pinned in Active, even when absent from its filtered page.
+    // Search unfiltered pages without changing the selected tab's order cursor.
+    let searchPage = await listChats(role);
     const visited = new Set();
-    while (searchPage.hasMore && searchPage.nextCursor) {
-      const key = JSON.stringify(searchPage.nextCursor);
-      if (visited.has(key)) break;
-      visited.add(key);
-      searchPage = await listChats(role, searchPage.nextCursor);
+    while (true) {
       const systemChat = searchPage.conversations.find(
         (chat) => chat.orderId === null,
       );
@@ -159,6 +171,11 @@ async function loadChatPage(role, cursor) {
         rows = [...rows, systemChat];
         break;
       }
+      if (!searchPage.hasMore || !searchPage.nextCursor) break;
+      const key = JSON.stringify(searchPage.nextCursor);
+      if (visited.has(key)) break;
+      visited.add(key);
+      searchPage = await listChats(role, searchPage.nextCursor);
     }
   }
   const conversations = await Promise.all(
@@ -215,6 +232,9 @@ function ChatView() {
   const orderId = params.get("orderId");
   const { user } = useAuth();
   const navigate = useNavigate();
+  // AI-generated (edited by <name>).
+  const [status, setStatus] = useState("active");
+  const [hasArchived, setHasArchived] = useState(false);
   const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -227,7 +247,9 @@ function ChatView() {
     setPage(null);
     setError(null);
     setLoading(true);
-    const load = orderId ? findOrderChat(orderId, role) : loadChatPage(role);
+    const load = orderId
+      ? findOrderChat(orderId, role)
+      : loadChatPage(role, undefined, status);
     load
       .then((result) => {
         if (!live) return;
@@ -247,13 +269,34 @@ function ChatView() {
     return () => {
       live = false;
     };
-  }, [role, orderId, navigate, retry, errandReturnTo]);
+  }, [role, orderId, navigate, retry, errandReturnTo, status]);
+
+  // AI-generated (edited by <name>).
+  useEffect(() => {
+    if (id || orderId) return;
+    let live = true;
+    listChats(role, undefined, "archived")
+      .then((result) => {
+        if (!live) return;
+        const exists = result.conversations.some(
+          (chat) => chat.orderId !== null,
+        );
+        setHasArchived(exists);
+        if (!exists) setStatus("active");
+      })
+      .catch((err) => {
+        if (live) setError(err.message);
+      });
+    return () => {
+      live = false;
+    };
+  }, [role, retry, id, orderId]);
 
   const more = async () => {
     setLoading(true);
     setError(null);
     try {
-      const next = await loadChatPage(role, page.nextCursor);
+      const next = await loadChatPage(role, page.nextCursor, status);
       setPage((prev) => ({
         ...next,
         conversations: pinSystemChat([
@@ -292,70 +335,99 @@ function ChatView() {
         </button>
       )}
       <div className="flex gap-6">
-        <aside
-          className={
-            (id ? "hidden md:block " : "") +
-            (id ? "w-full md:w-80 " : "w-full ") +
-            "shrink-0 rounded-card border border-line bg-surface p-4"
-          }
-        >
-          <h1 className="mb-4 text-lg font-semibold">Chats</h1>
-          {error && (
-            <div role="alert">
-              {error}{" "}
-              <button onClick={() => setRetry((v) => v + 1)}>Retry</button>
-            </div>
-          )}
-          {page?.conversations.length === 0 && <p>No chats in {role} mode.</p>}
-          <ul>
-            {page?.conversations.map((chat) => (
-              <li key={chat.id} className="border-b border-line last:border-0">
-                <Link
-                  state={errandReturnTo ? { errandReturnTo } : null}
-                  to={"/chat/" + chat.id}
-                  aria-current={id === chat.id ? "page" : undefined}
-                  className="flex items-center gap-3 rounded-btn px-2 py-4 hover:bg-surface-alt"
+        {/* AI-generated (edited by <name>). */}
+        {!id && (
+          <aside className="w-full shrink-0 rounded-card border border-line bg-surface p-4">
+            <h1 className="mb-4 text-lg font-semibold">Chats</h1>
+            {/* AI-generated (edited by <name>). */}
+            {hasArchived && (
+              <div
+                role="tablist"
+                aria-label="Chat status"
+                className="mb-4 flex gap-2"
+              >
+                {["active", "archived"].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    disabled={loading}
+                    aria-selected={status === value}
+                    onClick={() => setStatus(value)}
+                    className={
+                      "rounded-btn px-4 py-2 text-sm font-semibold " +
+                      (status === value
+                        ? "bg-ink text-white"
+                        : "bg-surface-alt text-ink-70")
+                    }
+                  >
+                    {value === "active" ? "Active" : "Archived"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {error && (
+              <div role="alert">
+                {error}{" "}
+                <button onClick={() => setRetry((v) => v + 1)}>Retry</button>
+              </div>
+            )}
+            {page?.conversations.length === 0 && (
+              <p>No chats in {role} mode.</p>
+            )}
+            <ul>
+              {page?.conversations.map((chat) => (
+                <li
+                  key={chat.id}
+                  className="border-b border-line last:border-0"
                 >
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-alt text-ink-70">
-                    <MessageCircle size={22} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-3">
-                      <span className="truncate font-semibold">
-                        <ChatTitle chat={chat} role={role} />
+                  <Link
+                    state={errandReturnTo ? { errandReturnTo } : null}
+                    to={"/chat/" + chat.id}
+                    aria-current={id === chat.id ? "page" : undefined}
+                    className="flex items-center gap-3 rounded-btn px-2 py-4 hover:bg-surface-alt"
+                  >
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-surface-alt text-ink-70">
+                      <MessageCircle size={22} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-3">
+                        <span className="truncate font-semibold">
+                          <ChatTitle chat={chat} role={role} />
+                        </span>
+                        <time
+                          dateTime={chat.updatedAt}
+                          className="shrink-0 text-xs text-ink-40"
+                        >
+                          {chatListTime(chat.updatedAt)}
+                        </time>
                       </span>
-                      <time
-                        dateTime={chat.updatedAt}
-                        className="shrink-0 text-xs text-ink-40"
+                      <span className="mt-1 block truncate text-sm text-ink-70">
+                        {chat.lastMessage?.content ??
+                          (chat.lastMessage
+                            ? chat.lastMessage.type
+                            : "No messages yet")}
+                      </span>
+                    </span>
+                    {chat.unreadCount > 0 && (
+                      <span
+                        aria-label={`${chat.unreadCount} unread messages`}
+                        className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-ink px-1.5 text-xs font-semibold text-white"
                       >
-                        {chatListTime(chat.updatedAt)}
-                      </time>
-                    </span>
-                    <span className="mt-1 block truncate text-sm text-ink-70">
-                      {chat.lastMessage?.content ??
-                        (chat.lastMessage
-                          ? chat.lastMessage.type
-                          : "No messages yet")}
-                    </span>
-                  </span>
-                  {chat.unreadCount > 0 && (
-                    <span
-                      aria-label={`${chat.unreadCount} unread messages`}
-                      className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-ink px-1.5 text-xs font-semibold text-white"
-                    >
-                      {chat.unreadCount}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          {page?.hasMore && (
-            <button disabled={loading} onClick={more}>
-              Load more chats
-            </button>
-          )}
-        </aside>
+                        {chat.unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {page?.hasMore && (
+              <button disabled={loading} onClick={more}>
+                Load more chats
+              </button>
+            )}
+          </aside>
+        )}
         {id && (
           <Thread
             key={id + ":" + role}

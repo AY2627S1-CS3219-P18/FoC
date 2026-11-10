@@ -72,9 +72,9 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
- * Author review:
+ * Author review:tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review:tng wen xi
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
  *        worker-only stub methods to the fake client in the supplier-service reference check
  *        tests, per Stage 28 c2's interface change; no test logic changed. No requirements,
@@ -90,6 +90,8 @@
  *        insufficient / rejected / unavailable outcomes and the pending-order 409 check.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Verified terminal transitions enqueue archiving after notification.
+ * Author review:tng wen xi
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -98,7 +100,13 @@ import { ErrorCode } from '../constants/errors.js';
 it('requires delivery details when creating an order', async () => {
   const { prisma } = fakes();
   const { deliveryDetails: _details, ...withoutDetails } = valid;
-  const result = await createOrder(prisma, REQUESTER, withoutDetails as CreateOrderPayload, REFS, CREDITS);
+  const result = await createOrder(
+    prisma,
+    REQUESTER,
+    withoutDetails as CreateOrderPayload,
+    REFS,
+    CREDITS,
+  );
   expect(result).toEqual({ ok: false, errors: ['MISSING_DELIVERY_DETAILS'] });
 });
 import type { PrismaClient } from '../db/prisma.js';
@@ -137,16 +145,47 @@ it.each([
   [12, ErrorCode.INVALID_DELIVERY_DETAILS],
   ['x'.repeat(251), ErrorCode.INVALID_DELIVERY_DETAILS],
 ])('validates delivery details %s', async (deliveryDetails, code) => {
-  const result = await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails } as CreateOrderPayload, REFS, CREDITS);
+  const result = await createOrder(
+    fakes().prisma,
+    REQUESTER,
+    { ...valid, deliveryDetails } as CreateOrderPayload,
+    REFS,
+    CREDITS,
+  );
   expect(result).toEqual({ ok: false, errors: [code] });
 });
 
 it('trims delivery details on create and requires them on edit', async () => {
   const { prisma, create } = fakes();
-  expect((await createOrder(prisma, REQUESTER, { ...valid, deliveryDetails: '  Lobby  ' }, REFS, CREDITS)).ok).toBe(true);
-  expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ deliveryDetails: 'Lobby' }) });
-  expect((await createOrder(fakes().prisma, REQUESTER, { ...valid, deliveryDetails: 'x'.repeat(250) }, REFS, CREDITS)).ok).toBe(true);
-  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({ ok: false, errors: [ErrorCode.MISSING_DELIVERY_DETAILS] });
+  expect(
+    (
+      await createOrder(
+        prisma,
+        REQUESTER,
+        { ...valid, deliveryDetails: '  Lobby  ' },
+        REFS,
+        CREDITS,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(create).toHaveBeenCalledWith({
+    data: expect.objectContaining({ deliveryDetails: 'Lobby' }),
+  });
+  expect(
+    (
+      await createOrder(
+        fakes().prisma,
+        REQUESTER,
+        { ...valid, deliveryDetails: 'x'.repeat(250) },
+        REFS,
+        CREDITS,
+      )
+    ).ok,
+  ).toBe(true);
+  expect(await editOrderImpl(prisma, REQUESTER, 'id', {}, REFS)).toEqual({
+    ok: false,
+    errors: [ErrorCode.MISSING_DELIVERY_DETAILS],
+  });
 });
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
@@ -857,7 +896,13 @@ describe('supplier-service reference check (create / edit)', () => {
   it('create checks both ids with the caller token, then writes', async () => {
     const { client, refs } = suppliersAnswering('found', 'found');
     const deps = fakes();
-    const result = await createOrder(deps.prisma, REQUESTER, valid, refs, deps.credits);
+    const result = await createOrder(
+      deps.prisma,
+      REQUESTER,
+      valid,
+      refs,
+      deps.credits,
+    );
     expect(result.ok).toBe(true);
     expect(client.supplierExists).toHaveBeenCalledWith(SUPPLIER, 'Bearer abc');
     expect(client.locationExists).toHaveBeenCalledWith(12, 'Bearer abc');
@@ -1223,7 +1268,12 @@ describe('transitionOrder', () => {
             taskName: 'credit_transfer',
             payload: { requestId: orderId, courierId },
           }),
-          notificationRow(orderId, 4, 'The order has been marked as completed'),
+          notificationRow(
+            orderId,
+            4,
+            'The order has been marked as completed',
+            true,
+          ),
         ],
       });
     },
@@ -1347,7 +1397,7 @@ describe('transitionOrder', () => {
     expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
       data: [
         ...releaseRow(orderId, 4).data,
-        notificationRow(orderId, 4, 'The order has been cancelled'),
+        notificationRow(orderId, 4, 'The order has been cancelled', true),
       ],
     });
   });
@@ -1658,13 +1708,19 @@ describe('transitionOrder', () => {
 });
 
 // AI-generated (edited by <name>).
-function notificationRow(orderId: string, version: number, message: string) {
+function notificationRow(
+  orderId: string,
+  version: number,
+  message: string,
+  archiveAfter = false,
+) {
   return {
     taskName: 'chat_notification',
     version,
     payload: {
       orderId,
       message,
+      ...(archiveAfter ? { archiveAfter: true } : {}),
       messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     },
   };

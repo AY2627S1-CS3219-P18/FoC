@@ -11,7 +11,7 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
- * Author review:
+ * Author review: tng wen xi
  */
 import "dotenv/config";
 import { createServer } from "node:http";

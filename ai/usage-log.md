@@ -13979,6 +13979,8 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+# <<<<<<< HEAD
+
 ## 2026-11-10 — Fix F4: unlockUser must not spread the full UserRow
 
 **Tool:** Claude Code (model: claude-fable-5-1)
@@ -14057,6 +14059,8 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+> > > > > > > main
+
 ## 2026-11-10 — Merge main into PR 173 branch
 
 **Tool:** Codex (model: GPT-6)
@@ -14082,6 +14086,299 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — RRule native ESM import fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing rrule library selection and recurrence behavior in instructions.md Stage 28 e and order-service/src/domain/series-rule.ts; native ESM stack specified in order-service/AGENTS.md.
+
+**Prompts (exact):**
+
+> ```swift
+> order-service-1       | /app/src/domain/series-rule.ts:14
+> order-service-1       | import { RRule } from 'rrule';
+> order-service-1       |          ^
+> order-service-1       | SyntaxError: The requested module 'rrule' does not provide an export named 'RRule'
+> order-service-1       |     at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+> order-service-1       |     at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+> order-service-1       |     at async node:internal/modules/esm/loader:647:26
+> order-service-1       |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+> order-service-1       |
+> order-service-1       | Node.js v24.22.2
+> ```
+
+**Key responses:**
+Changed the runtime import to the package's default CommonJS export and destructured RRule; retained a type-only RRule import under an alias. No recurrence behavior, library, API or schema decisions changed. Regenerated the existing Prisma client in Docker after checks found stale generated types; no database migrations or schema edits were performed.
+
+Verification: host typecheck/build failed because rrule was absent and generated Prisma types were stale; host recurrence tests and built-module smoke check failed because rrule was absent. Initial Docker typecheck also failed on stale Prisma types. After Prisma generation, Docker typecheck, build, lint (zero warnings/errors), all eight existing recurrence unit tests, and a native ESM built-module import/recurrence smoke check passed. Recent container logs confirmed order-service listening on port 3000 after automatic restart.
+
+**Files:**
+
+- `order-service/src/domain/series-rule.ts` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `order-service/src/generated/prisma/` (regenerated ignored client artifacts)
+- `order-service/dist/` (generated ignored build artifacts)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Order chat archiving on completion and cancellation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Refactor/Docs
+**Governing decision:** User-supplied archive endpoint contract and corrections in this conversation; final ordering/retry confirmation below. Recorded implementation contract in `chat-service/README.md` (POST /chat/orders/:id/archive) and `order-service/README.md` (Chat archiving on completion and cancellation). Existing notification/outbox delivery remains in use.
+
+**Prompts (exact):**
+
+> i need to implement such that when an order is completed or cancelled, its chat gets set to archived. could u do that?
+
+> oh okay let me decide the archive endpoint.
+>
+> `POST /chats/conversations/:id/archive`
+>
+> payload:
+>
+> none.&#x20;
+>
+> verification:
+>
+> - use api key authentication or user authentication (both allowed)
+> - if user authentication, ensure that user is participant
+> - else, 403 forbidden
+> - if id doesnt exist but is uuid, 404 not found. if id isnt even uuid, 400
+
+User corrections supplied as response annotations (verbatim comment text):
+
+> yes sorry my typo. `/chat`.
+
+> 200. if already archived just return success.
+
+> oh sorry my bad. change it to `/chats/orders/:id/archive` then.
+
+> ?
+
+Final confirmation of the assistant's question, “send the final status message first, then archive; retry temporary failures through the existing outbox?”:
+
+> ohhh correct. status message first. then archive. and correct retry through outbox
+
+**Key responses:**
+
+- Added POST `/chat/orders/:orderId/archive`, using the existing dual service-key/Bearer authentication. Authenticated users must be conversation participants. Invalid UUIDs return 400, missing conversations 404, nonparticipants 403, and successful/repeated archiving 200. Existing authentication middleware returns 401 for invalid/missing credentials.
+- Completed and cancelled transitions set an optional internal `archiveAfter` flag on the existing notification outbox task. The HTTP client strips that flag before posting the notification, then calls archive with no body only on notification success. Existing worker error classification and retries apply. Retries retain the message UUID and rely on the existing notification deduplication, which runs before the archived-state check.
+- Added endpoint coverage, final transition assertions, HTTP sequencing/failure tests, and a worker retry test. No schema or dependency changes.
+- Verification: full chat-service suite passed (197 tests); chat typecheck and build passed. Focused order suites passed (135 tests: chat client, order service, transitions, worker). Initial full order test run had 7 suites unable to import missing `rrule`, plus 3 terminal-payload assertions subsequently updated and verified in the focused run. Order typecheck remains blocked by missing `rrule` and stale generated Prisma types unrelated to this change. Order lint passed with warnings; the newly introduced test stringification warning was corrected and rechecked below. Initial chat tests could not open local listeners in the sandbox; rerunning with local-listener permission passed. No live databases, Redis retry scheduling, or Postman simulation were exercised; verification used mocked persistence and fetch. Read the existing Postman failure-simulation context but did not change its historical claims.
+- Preserved pre-existing edits to `series-rule.ts`, README, and the usage log.
+
+**Files:**
+
+- `chat-service/src/archive.spec.ts` (created)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/README.md` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Stopped before implementation to request the team's archive route, authentication, success/idempotency behavior, order-ID lookup, message ordering, and retry decisions. The team supplied these in the prompts above. Combined the singular `/chat` correction with the order-based path correction, as stated in the clarification the user confirmed. Existing invalid-credential 401 behavior was retained.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Order worker Compose environment fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** Existing `order-service/src/worker.ts` required keys, `order-service/src/config/env.ts` URL/key configuration, and `instructions.md` Stage 28 fire-time checks, c1/c2 and d. Existing Compose service addresses and supplier key interpolation retained.
+
+**Prompts (exact):**
+
+> ```vbnet
+> order-worker-1        | Error: SUPPLIER_ORDER_SERVICE_API_KEY is required by the order worker
+> order-worker-1        |     at <anonymous> (/app/src/worker.ts:117:9)
+> order-worker-1        |     at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+> order-worker-1        |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/esm/loader:647:26)
+> order-worker-1        |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+> order-worker-1        |
+> order-worker-1        | Node.js v24.22.2
+> ```
+>
+> i already have it tho
+
+**Key responses:**
+
+- Found keys in local service env files but no supplier/user worker key or URL mappings in the Compose order-worker environment. Added both existing key variables and internal service URLs to that block; no authentication behavior changed.
+- Added the user key placeholder to root `.env.example`. Copied the existing matching local user-service/order-service key into ignored root `.env` for Compose interpolation; no secret values were printed or recorded here. Retained the root supplier key: both Compose supplier-service and order-worker interpolate that same value. Reported that local supplier keys differ across files.
+- `docker compose config --quiet` passed. Parsed production and merged development Compose JSON without displaying secrets: both worker keys match their respective target container keys and both internal URLs are correct.
+- Did not recreate containers or run database migrations. Provided the worker recreation command; environment changes require recreation.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `.env.example` (modified)
+- `.env` (modified locally; ignored; secret values excluded from disclosure)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None. Existing local supplier key differences were reported; secret values were not changed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Hide chat list on individual chat pages
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in this conversation: hide the chat list on individual chat pages. Existing routes in `frontend/src/App.jsx` and layout in `frontend/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+
+> inn the individual chat page can u not show the chat list
+
+**Key responses:**
+Conditionally rendered the conversation list only when no conversation ID is selected. Individual `/chat/:id` pages show the thread without the sidebar at any viewport width; the separate list page keeps its existing list. Added the dated disclosure scope and inline marker. No API, schema, architecture, or security decisions were made.
+
+Verification: `npm test -- tests/pages/Chat.test.jsx` in `frontend` passed all 29 existing tests. `npm run build` failed because the existing series-rule module cannot resolve the missing `rrule` dependency. An initial test command from the repository root failed because there is no root package.json; reran from frontend successfully. No new tests or dependencies added.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: header/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Active and archived chat list tabs
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below; existing `GET /chat/conversations` status/role/cursor contract in `chat-service/README.md`. No backend contract changes.
+
+**Prompts (exact):**
+
+> now in the chat list, can you have a separate tab for archived chats and active chats (if the user has any archived chats, if not only show active)
+
+**Key responses:**
+
+- Added Active/Archived tabs to the chat list using the existing API status filter, with Active selected initially. Queried the archived list for the current role to determine whether tabs should appear; when no archived chats exist, only the active list is displayed. The archived-existence check refreshes on the existing socket/retry signals, and individual chat pages still hide the list.
+- Passed the selected status through the frontend API wrapper, title loading, pinned system-chat lookup, and pagination. Existing callers without status retain their original queries. Disabled tab switching during a list request so pagination cannot mix statuses.
+- Updated role-filter assertions and added coverage for no-archive visibility, tab switching, archived pagination, and HTTP status query serialization. Focused chat page/API tests passed (36 tests); frontend lint passed with warnings. An initial lint command from the repository root failed because no root package.json exists, then succeeded from frontend. Build was not repeated: the preceding task's frontend build was blocked by missing `rrule`. No live service or browser checks were performed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Preserve system chat across status tabs
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Implementation code
+**Governing decision:** User instruction below, existing pinned system-chat behavior in `frontend/src/pages/Chat.jsx`, and existing unfiltered/filtered conversation list contract in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> system chat is now gone. make sure system chat is still there
+
+**Key responses:**
+Changed the existing system-chat lookup to search unfiltered conversation pages when the selected status page does not include it. The system chat remains pinned on both status tabs while order chats and their pagination retain the selected status filter. No API changes. Added a regression test where the system chat is only on a later unfiltered page, checking its presence and first position on Active and Archived without leaking active order chats into Archived.
+
+Verification: focused chat page/API suites passed all 37 tests. Build not repeated; previously blocked by the unrelated missing `rrule` dependency. No browser or live service verification performed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Show system chat only in Active
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Implementation code; Debugging
+**Governing decision:** User correction below to the preceding status-tab task.
+
+**Prompts (exact):**
+
+> system chat should not be at archvied.
+
+**Key responses:**
+Restricted the pinned system-chat lookup to Active. Excluded system-chat rows from Archived, including paginated rows, and from the archived-availability check. Updated the regression test to assert that the system chat is pinned in Active, absent in Archived even if supplied by the filtered response, and restored when switching back to Active.
+
+Verification: focused chat page/API suites passed 37 tests. No live browser/service verification or build repeated; previous build was blocked by missing `rrule`.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None; applied the user's correction.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-11-10 — Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite
 

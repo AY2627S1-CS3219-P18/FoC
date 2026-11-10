@@ -37,7 +37,7 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): POST /orders gets the credits client and event sink for the synchronous
  *        reserve (George, 2026-11-09).

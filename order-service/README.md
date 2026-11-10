@@ -5,13 +5,15 @@ Scope: Documented the team-specified admin user order history endpoint.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented the supplied order/chat delivery contract and disclosure index.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Updated system message wording per user instruction.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified status notifications.
-Author review:
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order participant endpoint and courier delivery.
-Author review:
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
+Author review: tng wen xi
 -->
 
 # order-service
@@ -186,18 +188,19 @@ The worker requires `CHAT_SERVICE_API_KEY` matching Chat Service's key.
 sets `http://chat-service:3000`. Set these in the deployed worker environment too.
 
 <!-- AI-generated (edited by <name>). -->
+
 ## Status change notifications
 
 The team specified these messages in the 2026-11-08 implementation conversation:
 
-| Transition | System message |
-| --- | --- |
-| Any allowed transition to cancelled | The order has been cancelled |
-| open → expired | The order has expired |
-| open → accepted | The order has been accepted by &lt;username&gt; |
-| accepted → picked_up | The order has been picked up |
-| picked_up → delivered | The order has been delivered |
-| delivered → completed | The order has been marked as completed |
+| Transition                          | System message                                  |
+| ----------------------------------- | ----------------------------------------------- |
+| Any allowed transition to cancelled | The order has been cancelled                    |
+| open → expired                      | The order has expired                           |
+| open → accepted                     | The order has been accepted by &lt;username&gt; |
+| accepted → picked_up                | The order has been picked up                    |
+| picked_up → delivered               | The order has been delivered                    |
+| delivered → completed               | The order has been marked as completed          |
 
 Each successful transition writes a `chat_notification` outbox task in the same
 transaction as the status change, alongside any existing credit tasks. Its payload
@@ -212,7 +215,6 @@ An unsuccessful lookup, network error, malformed response or missing username
 uses `The order has been accepted`. Only the final text is queued; the bearer
 token is not stored in the outbox. Delivery uses the existing
 `POST /chat/send-system-notification` endpoint.
-
 
 ## Courier chat participation on acceptance
 
@@ -230,3 +232,14 @@ Verification: 691 tests passed; typecheck, build and lint passed. A local Postma
 HTTP simulation returned 503 then 409 to the compiled client/worker: the first
 error was retryable, the second was final, and neither accessed order or credit
 state. No real Redis retry scheduling or live cross-service persistence was tested.
+
+## Chat archiving on completion and cancellation
+
+Team decision supplied in chat (2026-11-10): send the final status message first,
+then archive the conversation using `POST /chat/orders/:id/archive`, with no body
+and the existing service key. Completed orders (including automatic completion)
+and cancelled orders set `archiveAfter: true` in their existing `chat_notification`
+outbox payload. The client sends the notification before calling archive.
+Transient failures use the existing worker retry policy; retries reuse the message
+ID, which chat-service deduplicates even after archiving. Other status
+notifications do not archive chats. No database schema change is required.

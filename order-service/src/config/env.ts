@@ -29,7 +29,7 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: SUPPLIER_ORDER_SERVICE_API_KEY for the scheduled-errands worker's supplier-service
  *        calls, per instructions.md Stage 28 c2. Optional like CHAT_SERVICE_API_KEY: only the

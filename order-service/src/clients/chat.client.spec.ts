@@ -3,13 +3,15 @@
  * Tool: Codex (model: GPT-6), date: 2026-11-08
  * Scope: Tested the supplied order-to-chat request contract and retry behavior.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Removed the description from system message text per user instruction.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification HTTP calls and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added tests for order-based participant delivery.
- * Author review:
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
  */
 import { createHttpChatClient } from './chat.client.js';
 const input = {
@@ -146,4 +148,62 @@ it.each([
       },
     }),
   );
+});
+
+// AI-generated (edited by <name>).
+it('sends the final notification before archiving and safely retries archive failure', async () => {
+  const fetchImpl = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response('{}', { status: 201 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+  const client = createHttpChatClient(
+    'http://chat-service:3000',
+    'test-key',
+    fetchImpl,
+  );
+  const payload = {
+    orderId: input.orderId,
+    messageId: input.messageId,
+    message: 'The order has been cancelled',
+    archiveAfter: true,
+  };
+  expect(await client.notify(payload)).toMatchObject({
+    ok: false,
+    kind: 'transient',
+  });
+  expect(await client.notify(payload)).toEqual({ ok: true });
+  expect(fetchImpl.mock.calls.map(([url]) => (url as URL).pathname)).toEqual([
+    '/chat/send-system-notification',
+    `/chat/orders/${input.orderId}/archive`,
+    '/chat/send-system-notification',
+    `/chat/orders/${input.orderId}/archive`,
+  ]);
+  expect(fetchImpl.mock.calls[0]![1]?.body).toBe(
+    fetchImpl.mock.calls[2]![1]?.body,
+  );
+  expect(
+    JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string),
+  ).not.toHaveProperty('archiveAfter');
+  expect(fetchImpl.mock.calls[1]![1]?.body).toBeUndefined();
+});
+it('does not archive when the final notification fails', async () => {
+  const fetchImpl = vi
+    .fn<typeof fetch>()
+    .mockResolvedValue(new Response('{}', { status: 503 }));
+  const client = createHttpChatClient(
+    'http://chat-service:3000',
+    'test-key',
+    fetchImpl,
+  );
+  await expect(
+    client.notify({
+      orderId: input.orderId,
+      messageId: input.messageId,
+      message: 'Done',
+      archiveAfter: true,
+    }),
+  ).resolves.toMatchObject({ ok: false, kind: 'transient' });
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
 });

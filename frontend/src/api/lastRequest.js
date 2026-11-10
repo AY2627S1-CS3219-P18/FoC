@@ -4,9 +4,14 @@
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
-import { request } from './http'
+import { request } from "./http";
 
-export const getLastRequest = () => request('/users/me/last-request')
-export const saveLastRequest = (locationId, details) => request('/users/me/last-request', {
-  method: 'PUT', json: { last_req_del_loc_id: Number(locationId), last_req_del_loc_details: details },
-})
+export const getLastRequest = () => request("/users/me/last-request");
+export const saveLastRequest = (locationId, details) =>
+  request("/users/me/last-request", {
+    method: "PUT",
+    json: {
+      last_req_del_loc_id: Number(locationId),
+      last_req_del_loc_details: details,
+    },
+  });

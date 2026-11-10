@@ -3,7 +3,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Documented the implemented creation endpoint and local setup.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: tng wen xi
 Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Added Docker and Compose setup instructions.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -44,6 +44,8 @@ Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Documented the team-specified system conversations.
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Documented the approved health endpoint.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
 Author review: tng wen xi
 -->
 
@@ -385,3 +387,12 @@ cd chat-service
 npm run db:generate
 npm run db:deploy
 ```
+
+## POST /chat/orders/:id/archive
+
+Team-specified contract (2026-11-10): `id` is the order UUID; no request body.
+Accepts the existing `X-Service-Key` authentication or a user Bearer token.
+Authenticated users must be participants; nonparticipants receive 403. Existing
+authentication failures return 401. Malformed UUIDs return 400; an order without
+a conversation returns 404. Sets the conversation status to `ARCHIVED` and
+returns 200, including when already archived.

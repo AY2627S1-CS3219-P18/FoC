@@ -78,9 +78,9 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification HTTP calls and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Included courier participant task in acceptance assertions.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added the two new SuppliersClient
  *        worker-only stub methods to the `answering` fake client, per Stage 28 c2's interface
  *        change; no test logic changed. No requirements, architecture, schema, or API decisions
@@ -190,9 +190,12 @@ function appWith(
     req.user = { user_id: userId, role: req.get('x-role') ?? 'user' };
     next();
   };
-  return Object.assign(createApp({ prisma, authenticate, suppliers, credits }), {
-    outbox,
-  });
+  return Object.assign(
+    createApp({ prisma, authenticate, suppliers, credits }),
+    {
+      outbox,
+    },
+  );
 }
 
 beforeEach(() => {
@@ -239,7 +242,8 @@ describe('POST /orders', () => {
       .set('authorization', bearer(USER))
       .send(body)
       .expect(409, {
-        message: 'Another order request is currently pending, please try again.',
+        message:
+          'Another order request is currently pending, please try again.',
       });
     expect(reserve).not.toHaveBeenCalled();
   });
@@ -268,15 +272,18 @@ describe('POST /orders', () => {
       503,
       'Credits could not be reserved right now. Please try again.',
     ],
-  ] as const)('%s -> %i, answered immediately', async (_name, result, status, message) => {
-    const { client, reserve } = creditsAnswering(result);
-    await request(appWith(undefined, {}, undefined, client))
-      .post('/orders')
-      .set('authorization', bearer(USER))
-      .send(body)
-      .expect(status, { message });
-    expect(reserve).toHaveBeenCalledTimes(1);
-  });
+  ] as const)(
+    '%s -> %i, answered immediately',
+    async (_name, result, status, message) => {
+      const { client, reserve } = creditsAnswering(result);
+      await request(appWith(undefined, {}, undefined, client))
+        .post('/orders')
+        .set('authorization', bearer(USER))
+        .send(body)
+        .expect(status, { message });
+      expect(reserve).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('400 when complete-by is in the past', async () => {
     await request(appWith())

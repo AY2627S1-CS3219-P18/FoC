@@ -16,11 +16,11 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md), Notifications section - extended
  *        ChatNotificationPayload with a nullable `orderId` and a `recipient` (required when
@@ -30,6 +30,8 @@
  *        buildChatNotificationTask (order-scoped notices) is unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
  */
 
 import { randomUUID } from 'node:crypto';
@@ -157,15 +159,23 @@ export interface ChatNotificationPayload {
   recipient?: string;
   messageId: string;
   message: string;
+  /** Archive only after this notification has succeeded. */
+  archiveAfter?: boolean;
 }
 
 export function buildChatNotificationTask(
   orderId: string,
   message: string,
+  archiveAfter = false,
 ): OutboxTask {
   return {
     taskName: CHAT_NOTIFICATION_TASK,
-    payload: { orderId, messageId: randomUUID(), message },
+    payload: {
+      orderId,
+      messageId: randomUUID(),
+      message,
+      ...(archiveAfter ? { archiveAfter: true } : {}),
+    },
   };
 }
 
@@ -175,7 +185,10 @@ export function isChatNotificationPayload(
   const v = p as Partial<ChatNotificationPayload> | null;
   if (!v || typeof v.messageId !== 'string' || typeof v.message !== 'string')
     return false;
-  if (v.orderId === null) return typeof v.recipient === 'string';
+  if (v.archiveAfter !== undefined && typeof v.archiveAfter !== 'boolean')
+    return false;
+  if (v.orderId === null)
+    return typeof v.recipient === 'string' && !v.archiveAfter;
   return typeof v.orderId === 'string';
 }
 
