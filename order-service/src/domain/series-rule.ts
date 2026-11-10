@@ -13,10 +13,8 @@
  * Author review: tng wen xi
  */
 
-// AI-generated
 import rrule, { type RRule as RRuleInstance } from 'rrule';
 
-// The runtime package is CommonJS; native ESM exposes its exports via default.
 const { RRule } = rrule;
 
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
