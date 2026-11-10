@@ -3,7 +3,7 @@
 //  2026-11-06: ECS Fargate migration - checks DB_SSL reaches the pg pool. Implements the
 //    decision in George's ECS Fargate plan, Phase 1 item 1.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: George Yeo
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

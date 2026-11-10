@@ -17,6 +17,15 @@
 //        counts changed. No requirements, architecture, schema, or API decisions were made by
 //        the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+// Scope: Bug fix - the 'concurrent verify-otp' and the registration case of 'concurrent
+//        resend-otp / forgot-password' now attach that test's own registerPending pendingToken
+//        cookie (via the new pendingCookie fixture helper), since those endpoints now require
+//        it. The forgot_password cases are untouched. No assertions, worker counts or iteration
+//        counts changed. Governing decision: bug report + team decisions recorded in this
+//        task's conversation (pending-token cookie mechanism). No requirements, architecture,
+//        schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { api } from '../helpers/server.js';
 import pool from '../../src/db/pool.js';
@@ -42,6 +51,7 @@ import {
   createActiveUser,
   loginTokens,
   loginUser,
+  pendingCookie,
   refreshCookie,
   registerPending,
   userInput,
@@ -126,7 +136,9 @@ describe('concurrent verify-otp', () => {
 
     const rs = await Promise.all(
       Array.from({ length: N }, () =>
-        post('/auth/verify-otp').send({ email: user.email, otp, purpose: 'registration' }),
+        post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(user.pendingToken))
+          .send({ email: user.email, otp, purpose: 'registration' }),
       ),
     );
 
@@ -144,7 +156,9 @@ describe('concurrent verify-otp', () => {
 
     const rs = await Promise.all(
       Array.from({ length: 4 }, () =>
-        post('/auth/verify-otp').send({ email: user.email, otp: bad, purpose: 'registration' }),
+        post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(user.pendingToken))
+          .send({ email: user.email, otp: bad, purpose: 'registration' }),
       ),
     );
 
@@ -160,7 +174,9 @@ describe('concurrent resend-otp / forgot-password', () => {
 
     const rs = await Promise.all(
       Array.from({ length: N }, () =>
-        post('/auth/resend-otp').send({ email: user.email, purpose: 'registration' }),
+        post('/auth/resend-otp')
+          .set('Cookie', pendingCookie(user.pendingToken))
+          .send({ email: user.email, purpose: 'registration' }),
       ),
     );
 

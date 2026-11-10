@@ -7,7 +7,7 @@
  *        via membership in GET /api/v1/suppliers/reference/location. The 3 s timeout is by
  *        convention and flagged for review.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Stage 28 c2 - added the
  *        Supplier-Order-Service-Key path for the scheduled-errands worker
  *        (`supplierStatusForWorker` / `locationExistsForWorker`), reusing the same two GET

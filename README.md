@@ -27,6 +27,8 @@ Scope (2026-11-10, Codex, model: GPT-6): Indexed moving errand form actions belo
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Indexed mobile chat title and composer styling updates.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed restoration of complete disclosure entries during merge resolution.
+Author review: tng wen xi
 -->
 <!--
 AI Assistance Disclosure:
@@ -390,7 +392,7 @@ Author review: Congchen
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #285 for chat-service
        database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
        were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Codex, model: GPT-6): Added the order message toast log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
@@ -433,11 +435,23 @@ Author review:
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #287 for the
        supplier-worker Compose fix, and row #288 for the ECS chat deployment docs. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #289 for removing the
        nav notification bell. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
+Author review: George Yeo
+Scope (2026-11-10, Claude Code, model: claude-sonnet-5): Added Log index row #318 for the
+       Manage users mobile horizontal-scroll fix. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #319 for the
+       order-service README overview and architecture diagrams. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review: George Yeo
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #320 for the
+       order-service API reference and frontend footer wording. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review: George Yeo
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -1025,11 +1039,17 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 310 | 2026-11-10 | chat-service                                                  | Recorded chat endpoint discussions                                                                               | Added recorded endpoint agreements, amendments, edge cases and deferred work.                                                                   |
 | 311 | 2026-11-10 | chat-service                                                  | Integrate implemented chat behavior into documentation                                                           | Removed discussion history and integrated current behavior into endpoint descriptions.                                                          |
 | 312 | 2026-11-10 | chat-service                                                  | Remove chat image and video message types                                                                        | Removed media enum values and updated tests and documentation.                                                                                  |
-| 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
-| 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
-| 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
-| 316 | 2026-11-10 | frontend | Automatically load more chats on bottom scrolling | Replaced chat pagination button with automatic loading. |
-| 317 | 2026-11-10 | frontend | Remove bottom-left demo button | Removed the global demo controls from the app. |
-| 318 | 2026-11-10 | frontend | Fix clipped searchable errand filters | Allowed filter menus to appear outside the wrapping filter row. |
-| 319 | 2026-11-10 | frontend | Move errand form actions below Anything else | Replaced fixed mobile action bar with inline form actions. |
-| 320 | 2026-11-10 | frontend | Compact mobile chat composer and align title | Left-aligned mobile title and reduced input and Send button sizing. |
+| 313 | 2026-11-10 | chat-service                                                  | Remove conversation-ID participant endpoint                                                                      | Removed unused endpoint and updated participant code, tests and documentation.                                                                  |
+| 314 | 2026-11-10 | frontend                                                      | Fix login redirect to register page after visiting Register then Log in                                          | Excluded auth pages from the post-login "return to" redirect target.                                                                            |
+| 315 | 2026-11-10 | repository                                                    | Resolve usage-log merge conflict                                                                                 | Preserved both branches’ disclosure entries.                                                                                                    |
+| 316 | 2026-11-10 | frontend                                                      | Automatically load more chats on bottom scrolling                                                                | Replaced chat pagination button with automatic loading.                                                                                         |
+| 317 | 2026-11-10 | frontend                                                      | Remove bottom-left demo button                                                                                   | Removed the global demo controls from the app.                                                                                                  |
+| 318 | 2026-11-10 | frontend                                                      | Fix clipped searchable errand filters                                                                            | Allowed filter menus to appear outside the wrapping filter row.                                                                                 |
+| 319 | 2026-11-10 | frontend                                                      | Move errand form actions below Anything else                                                                     | Replaced fixed mobile action bar with inline form actions.                                                                                      |
+| 320 | 2026-11-10 | frontend                                                      | Compact mobile chat composer and align title                                                                     | Left-aligned mobile title and reduced input and Send button sizing.                                                                             |
+| 321 | 2026-11-10 | frontend                                                      | Fix: ResendButton countdown not shown on first successful resend                                                 | Started the cooldown on resend success, not only on the server's cooldown error.                                                                |
+| 322 | 2026-11-10 | user-service                                                  | Fix: pending-account OTP verification could be redirected to a different account                                 | Tied verify/resend-OTP to a login/register-issued pending-token cookie, not the submitted email.                                                |
+| 323 | 2026-11-10 | frontend                                                      | Bug fix: Manage users page scrolls horizontally on mobile                                                        | Added `min-w-0` to the main flex item so only the wide table scrolls, not the whole page.                                                       |
+| 324 | 2026-11-10 | order-service                                                 | order-service: README overview and architecture diagrams                                                         | Documented the service's processes, lifecycle, API, events, queues and config; drew two PUML diagrams.                                          |
+| 325 | 2026-11-10 | order-service, frontend                                       | order-service API reference; frontend footer wording                                                             | Added order-service/API.md for every route; removed "UI prototype" from the footer.                                                             |
+| 326 | 2026-11-10 | repository                                                    | Restore complete usage-log entries during merge                                                                  | Preserved both branches’ entries and existing author reviews.                                                                                   |

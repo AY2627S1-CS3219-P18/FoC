@@ -32,16 +32,16 @@
  * Scope (2026-10-21): Credit transfer - e2e check that completing an order relays a
  *        credit_transfer job ({ requestId, courierId }) to queue:credit:transfer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
  * Scope (2026-10-22): listOrders takes the caller's id (authz fix); the open-listing walk
  *        passes REQUESTER.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): createOrder takes the supplier-service reference check; stubbed here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Synchronous reservation (George, 2026-11-09) - createOrder reserves in
  *        the request: open / failed outcomes, the transient failure's release, and the
@@ -49,7 +49,7 @@
  *        the real database's advisory lock). Pending rows for the listing test are seeded
  *        directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { config as loadDotenv } from 'dotenv';

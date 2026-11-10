@@ -23,7 +23,7 @@
  * Scope: Passed DB_SSL to the Prisma client, and added the keep-alive timeouts the other services use
  *        (ECS Fargate plan, Phase 1 item 8). No requirements, architecture, schema, or API decisions
  *        were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi

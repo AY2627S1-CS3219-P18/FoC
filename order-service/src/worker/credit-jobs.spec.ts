@@ -30,7 +30,7 @@
  *        synchronously, George 2026-11-09); its cases are replaced by one asserting a
  *        leftover job fails without retries.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md) - test for the extended chat_notification payload
  *        (orderId null + recipient, for series notices) via isChatNotificationPayload.

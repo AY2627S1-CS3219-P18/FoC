@@ -14,6 +14,15 @@ Scope (2026-11-08, Codex, model: GPT-6): Documented team-specified order partici
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
 Author review: tng wen xi
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added the overview, processes, order
+       lifecycle, API, real-time, background-work, data, dependencies and configuration
+       sections, and updated the Layout tree, all describing the code as it is on main
+       (584174e). No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: George Yeo
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Linked API.md and corrected the
+       cancel row of the lifecycle table to match src/domain/order-status.ts. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review: George Yeo
 -->
 
 # order-service
@@ -21,6 +30,179 @@ Author review: tng wen xi
 FoC order microservice. **Node.js · Express 5 · TypeScript (ESM, strict) · Prisma 7 · PostgreSQL 17**
 
 Owns its own database (`order-db`). No other service reads or writes it directly.
+
+## What it does
+
+order-service holds every errand ("order request") from creation to a final state:
+
+- Requesters post orders (one-off, or recurring through a series). Credits are reserved
+  with credit-service when the order is created.
+- Couriers browse open orders, accept one, then mark it picked up and delivered.
+  The requester (or the system, after a delay) marks it completed, which triggers the
+  credit transfer to the courier.
+- Open orders past their complete-by time expire, and their credits are released.
+- Every change is pushed live to the browser over Socket.IO, and chat-service is told
+  about it so the order's conversation stays in step.
+
+## Processes
+
+The same image runs as two processes, sharing `order-db` and `order-redis`:
+
+| Process | Entry point | Runs |
+| ------- | ----------- | ---- |
+| API (`order-service`) | `src/server.ts` | Express REST API and the Socket.IO server on one HTTP server. Socket.IO uses the Redis adapter so emits reach sockets on every replica. |
+| Worker (`order-worker`) | `src/worker.ts` | Maintenance sweep (every 60 s), outbox relay (every 1 s), job worker for `queue:order:credit`, release re-drive (every 60 s), series scheduler (every 1 s), and the optional bull-board dashboard. |
+
+```text
+browser ──REST / Socket.IO──▶ API ──Prisma──▶ order-db ◀── worker
+                               │                │ outbox rows
+                               │                ▼
+                               └──pub/sub──  order-redis  ◀─ BullMQ jobs ─▶ credit-service, chat-service
+```
+
+A write and the background tasks it causes are committed together: the API writes the
+order and its `outbox` rows in one transaction, and the worker's relay moves the rows
+into BullMQ.
+
+## Order lifecycle
+
+Statuses (`RequestStatus` in `prisma/schema.prisma`) and who may move an order between
+them (`src/domain/order-status.ts`):
+
+| From | To | Who |
+| ---- | -- | --- |
+| `pending` | `open`, `failed` | system (credit reservation outcome) |
+| `open` | `accepted` | any user other than the requester |
+| `open` | `expired` | system (complete-by passed) |
+| `open` | `cancelled` | requester |
+| `accepted`, `picked_up` | `cancelled` | requester, once complete-by has passed |
+| `accepted` | `picked_up` | courier |
+| `picked_up` | `delivered` | courier |
+| `delivered` | `completed` | requester, or system (auto-complete) |
+
+`completed`, `expired`, `cancelled` and `failed` are final. Writes use the order's
+`version` column for optimistic concurrency.
+
+## API
+
+Full reference with parameters, bodies and responses: [API.md](API.md).
+
+All `/orders` routes need a user's bearer token. The `authenticate` middleware verifies
+the RS256 JWT against user-service's JWKS (`GET /auth/.well-known/jwks.json`, cached).
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| GET | `/health` | Liveness and database check (no auth) |
+| POST | `/orders` | Create an order; reserves credits synchronously with credit-service |
+| GET | `/orders` | Open-order listing: filters `status`, `location`, `minCredits`, `maxCredits`, `expiresBefore`, `expiresAfter`; `sort` (`completeBy`, `credits`, `createdAt`), `order`, keyset `cursor`; 50 per page |
+| GET | `/orders/active` | The caller's active deliveries (as courier) |
+| GET | `/orders/mine` | The caller's own orders, `?as=requester` (default) or `?as=courier` |
+| GET | `/orders/admin/users/:userId` | Admin view of a user's orders (see [below](#admin-user-order-history)) |
+| GET | `/orders/:id` | One order: its requester, courier or an admin; anyone else only while open |
+| PATCH | `/orders/:id/edit` | Edit an open order (requester) |
+| POST | `/orders/:id/accept` | `open` → `accepted` |
+| POST | `/orders/:id/pickup` | `accepted` → `picked_up` |
+| POST | `/orders/:id/deliver` | `picked_up` → `delivered` |
+| POST | `/orders/:id/complete` | `delivered` → `completed` |
+| POST | `/orders/:id/cancel` | → `cancelled` |
+| POST | `/orders/series` | Create a recurring errand (RFC 5545 RRULE) |
+| GET | `/orders/series/mine` | The caller's series |
+| GET | `/orders/series/:seriesId` | One series |
+| PATCH | `/orders/series/:seriesId/edit` | Edit a series |
+| DELETE | `/orders/series/:seriesId` | Delete a series |
+
+Errors use the `{ "message": "..." }` envelope; codes and messages live in
+`src/constants/errors.ts`. The series router is mounted before `/orders/:id`, so `series`
+is never read as an order id.
+
+## Real-time events
+
+Socket.IO shares the API's port and path (`/socket.io`). The handshake carries the same
+JWT; the connection is closed when the token expires. On connect the server joins the
+socket to `user:{id}` and to the room of each of the user's active orders, then emits
+`ready`. Clients opt into the open-order feed with `listing:subscribe` /
+`listing:unsubscribe`.
+
+Events (`src/realtime/order-events.ts`): `order:created`, `order:accepted`,
+`order:pickedUp`, `order:delivered`, `order:completed`, `order:cancelled`,
+`order:expired`, `order:failed`, `order:edited`. Payloads are thin
+(`orderId`, `status`, `version`, `occurredAt`, plus listing fields where needed); REST stays
+the source of truth.
+
+Events raised in the worker are published on the Redis channel `order-events`; every API
+replica subscribes and emits them to its own sockets.
+
+## Background work
+
+| Outbox task | Queue | Handled by | Does |
+| ----------- | ----- | ---------- | ---- |
+| `credit_release` | `queue:order:credit` | order-worker | `POST /credits/release` on credit-service |
+| `credit_transfer` | `queue:credit:transfer` | credit-service's worker | Pays the courier on completion |
+| `chat_create` | `queue:order:credit` | order-worker | Creates the order's conversation |
+| `chat_notification` | `queue:order:credit` | order-worker | Posts a status system message; archives the chat on completion or cancellation |
+| `chat_participant` | `queue:order:credit` | order-worker | Adds the courier to the chat on acceptance |
+
+Jobs on `queue:order:credit` get 5 attempts with exponential backoff. A job that runs out
+of attempts, or fails permanently, is written to `dead_letter_jobs`. The release re-drive
+moves transient `credit_release` dead letters back into the outbox every minute.
+
+Scheduled work in the worker:
+
+- **Maintenance sweep** (`order-request-maintenance`, every 60 s): expires open orders
+  past complete-by (queuing their credit release) and auto-completes delivered orders.
+- **Series scheduler** (every 1 s): for each due series, checks the requester
+  (user-service), the supplier's opening hours and the delivery location
+  (supplier-service), then creates the occurrence order and reserves its credits.
+  Failed checks are retried and recorded on the series.
+
+Set `QUEUE_DASHBOARD_PORT` to serve a read-only bull-board over all of these queues.
+
+## Data
+
+`prisma/schema.prisma`, PostgreSQL 17:
+
+| Table | Model | Holds |
+| ----- | ----- | ----- |
+| `requests` | `OrderRequest` | Orders: requester, courier, supplier and delivery location ids, credits, complete-by, status, timestamps, `version` |
+| `order_series` | `OrderSeries` | Recurring errands: RRULE, next fire time, retry state |
+| `outbox` | `Outbox` | Tasks committed with an order write, waiting for the relay |
+| `dead_letter_jobs` | `DeadLetterJob` | Jobs that exhausted their retries |
+
+Supplier and location ids are supplier-service ids; user ids are user-service UUIDs.
+There are no cross-database foreign keys.
+
+## Dependencies on other services
+
+| Service | Called by | For |
+| ------- | --------- | --- |
+| user-service | API, worker | JWKS; `GET /users/me` (courier username), `GET /users/:id` (admin view); `GET /users/worker/:id` with a service key (series) |
+| supplier-service | API, worker | Supplier and delivery-location existence on create/edit; opening hours (series) |
+| credit-service | API, worker | `POST /credits/reserve` on create; `POST /credits/release`; transfers through `queue:credit:transfer` |
+| chat-service | worker | Conversations, system notifications, participants, archive (service key) |
+
+## Configuration
+
+Validated at start-up by `src/config/env.ts`; the process exits if a value is invalid.
+
+| Variable | Default | Used by |
+| -------- | ------- | ------- |
+| `NODE_ENV` | `development` | both |
+| `PORT` | `3000` | API |
+| `DATABASE_URL` | required | both |
+| `USER_SERVICE_URL` | `http://localhost:3001` | API |
+| `SUPPLIER_SERVICE_URL` | `http://localhost:3004` | both |
+| `CREDIT_SERVICE_URL` | `http://localhost:3003` | both |
+| `CHAT_SERVICE_URL` | `http://localhost:3005` | worker |
+| `CHAT_SERVICE_API_KEY` | none (worker refuses to start without it) | worker |
+| `USER_ORDER_SERVICE_URL` | `http://localhost:3001` | worker (series) |
+| `USER_ORDER_SERVICE_API_KEY` | none (required by the worker) | worker (series) |
+| `SUPPLIER_ORDER_SERVICE_API_KEY` | none (required by the worker) | worker (series) |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | both |
+| `REDIS_TLS` | `false` | both |
+| `QUEUE_DASHBOARD_PORT` | unset (off) | worker |
+
+On AWS the API and worker run as the ECS services `order-service` and `order-worker`,
+deployed by `.github/workflows/deploy.yml`; see `docs/ecs-fargate-run-checklist.md`.
 
 ## Quick start
 
@@ -88,14 +270,23 @@ order-service/
 │   └── migrations/            # created by db:migrate (commit these)
 ├── prisma.config.ts           # Prisma 7 config (datasource URL from env)
 ├── src/
-│   ├── server.ts              # entrypoint: env → prisma → app.listen, graceful shutdown
-│   ├── app.ts                 # createApp({ prisma }): middleware + routers (no listen)
+│   ├── server.ts              # API entrypoint: HTTP server, Express + Socket.IO, shutdown
+│   ├── worker.ts              # worker entrypoint: sweep, relay, job worker, series, dashboard
+│   ├── app.ts                 # createApp({ prisma, ... }): middleware + routers (no listen)
 │   ├── config/env.ts          # zod-validated env: every var the service reads
-│   ├── db/prisma.ts           # createPrismaClient() (pg driver adapter)
-│   ├── routes/                # one router factory per resource
-│   ├── middleware/            # 404 + error handler
+│   ├── constants/errors.ts    # error codes and messages
+│   ├── routes/                # router factories: health, orders, series
+│   ├── controllers/           # HTTP handlers: parse, call services, map results to status codes
+│   ├── services/              # orders, order-listing, series business logic
+│   ├── domain/                # pure rules: status transitions, access, series RRULE
+│   ├── clients/               # HTTP clients: user, supplier, credit, chat
+│   ├── db/                    # Prisma client, outbox and dead-letter repositories
+│   ├── queue/                 # task names → queues, BullMQ helpers
+│   ├── realtime/              # Socket.IO server, event building, Redis relay
+│   ├── worker/                # credit/chat jobs, outbox relay, re-drive, series, dashboard
+│   ├── middleware/            # JWT authenticate, 404 + error handler
 │   └── generated/             # Prisma client (generated, git-ignored)
-└── test/                      # e2e specs
+└── test/                      # e2e specs (need a database)
 ```
 
 ## Conventions / gotchas

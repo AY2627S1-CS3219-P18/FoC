@@ -37,6 +37,16 @@
  *        reports instead of the hardcoded "about an hour" string in errorMessages.js.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Bug fix - handleClick now also calls setCooldown(DEFAULT_COOLDOWN_SECONDS) right
+ *        after a successful onResend(), not only on the OTP_RESEND_COOLDOWN error path.
+ *        Previously the countdown only appeared starting from the second click, because the
+ *        success response carries no retryAfterSeconds and the first click's success path
+ *        never set cooldown. DEFAULT_COOLDOWN_SECONDS (60) already matched the server's
+ *        configured OTP_RESEND_COOLDOWN_SECONDS before this fix.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
@@ -67,6 +77,7 @@ const ResendButton = forwardRef(function ResendButton(
     setBusy(true)
     try {
       await onResend()
+      setCooldown(DEFAULT_COOLDOWN_SECONDS)
     } catch (err) {
       if (err.code === 'OTP_RESEND_COOLDOWN') {
         setCooldown(err.retryAfterSeconds ?? DEFAULT_COOLDOWN_SECONDS)

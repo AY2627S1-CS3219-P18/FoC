@@ -8,7 +8,7 @@
  * Scope: Verified TLS to MySQL when DB_SSL is on, matching supplier-service's DB_SSL, per George's
  *        ECS Fargate plan (docs/ecs-fargate-session-prompt.md, "DB encryption") and his chat
  *        instruction. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "../generated/prisma/client.js";

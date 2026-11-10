@@ -17,17 +17,17 @@
  * Scope (2026-10-22): optional QUEUE_DASHBOARD_PORT - the worker serves bull-board only
  *        when it is set (dev compose sets it).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
  * Scope (2026-11-06): ECS Fargate migration - REDIS_TLS (default off) and one shared
  *        builder for Redis connection options, per George's ECS Fargate plan, Phase 1 item 5.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): SUPPLIER_SERVICE_URL for the create / edit existence check;
  *        localhost default is supplier-service's published port (3004).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09

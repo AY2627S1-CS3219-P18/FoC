@@ -5,7 +5,7 @@
  *        endpoint when no keys are set, using local stand-ins for that endpoint and S3, per George's task
  *        role decision of 2026-11-06. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { createServer, type IncomingHttpHeaders, type RequestListener, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';

@@ -5544,7 +5544,7 @@ Asked George which status a non-UUID `:id` returns and where the check lives; im
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-10-22 — Credit Service: BullMQ credit-transfer queue consumer
 
@@ -9362,7 +9362,7 @@ Facts found while testing:
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add to docs
 
@@ -9396,7 +9396,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: record team repo and CD trigger decisions
 
@@ -9440,7 +9440,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate Phase 3: CD workflow
 
@@ -9477,7 +9477,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add audit log route
 
@@ -9507,7 +9507,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
 
@@ -9564,7 +9564,7 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
 
@@ -9594,7 +9594,7 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: ship the order supplier check
 
@@ -9645,7 +9645,7 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: start and stop checklist
 
@@ -9678,7 +9678,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-08 — Precise delivery location: design spec and implementation plan
 
@@ -13365,7 +13365,7 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
 
@@ -13426,7 +13426,7 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
 
@@ -13461,7 +13461,7 @@ Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both d
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
 
@@ -16192,12 +16192,14 @@ Accepted all changes.
 **Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
 
 **Prompts (exact):**
+
 > switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
 
 **Key responses:**
 Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `ai/usage-log.md` (conflict resolved and entry appended)
 - `README.md` (conflict resolved and index updated)
 
@@ -16216,34 +16218,31 @@ None.
 **Governing decision:** Team decisions given in chat on 2026-11-09 (quoted below) and the interface names the user confirmed with "Use these". Mockup behaviour: `MockupBlueprint.md` §7.6.
 
 **Prompts (exact):**
+
 > A new message service has been added into the application. I want to build the translation feature within the chat service. How it works:
 >
-> * within the user settings, the user will store their preferred language (use a standard language list as the list of options)
-> * by default, no translation will be applied
-> * just as the mockup page suggest, all chat windows will come with an  "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
-> * if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
-> * The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
-> * translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
-> * this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each  message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
-> * The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
+> - within the user settings, the user will store their preferred language (use a standard language list as the list of options)
+> - by default, no translation will be applied
+> - just as the mockup page suggest, all chat windows will come with an "Auto-translate" toggle. If this is toggled on, all received messages will be sent to an LLM translation model to translate them into the preferred language . this means that the table storing messages will also contain an additional col for the translated variant "translated_msg", which is what will be displayed in the UI. All subsequent messages will be sent as well.
+> - if the auto translate toggle is off, the original texts will be displayed (even if translation already occured), and incoming texts would not get sent to the translation model. This arragement keeps costs low
+> - The translation model is called via a supplied TRANSLATION_LLM_KEY, with a simple system prompt asking to translate the supplied messages into <preferred language> if not already. all received messages will be supplied in a json format as key value pairs, and the output will be also in a json format of the reused keys, and the translated values will also be returned as a json. if the message was already in the preferred language, the returned value will just be fixed as "SAME"
+> - translation is invoked on toggle activation, sending all past received but non-translated results; as well as when a msg is received - this will be asynchronous (are there any existing queues in the messaging service?)
+> - this means that the api response that queries the messages will contain the original and the translated fields. (non-translated will just have nil for the translated field, just like how the table reflects.) this classification allows for all translated texts to show a "show original" selector under each message, as shown in the frontend mockup that can very easily toggle that single message to the original and back to the translated variant. messages that are non translated or contain the SAME keyword will not have that option
+> - The "Translate" option shown in the mockup for non preferred language messages will not invoke the tranlation LLM. It will only serve as a toggle back to the translated version
 
 > are the conversation stored based on the user or the order?; new user-service col, and fetched when the message tab is launched; BullMQ on shared Redis; gemini key. are we even operating with an event driven architecture thus far in the messaging service? i was thinking when the model returns, the db gets updated and would that by default lead to the ui updating?
 
 > 1. in this case,
 >
-> * conversation_participants will store an additional "auto_translate" bool
-> * messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
+> - conversation_participants will store an additional "auto_translate" bool
+> - messages will store 2 additional cols, "translated_for_courier" and "translated_for_requester"
 >
 > the idea is that messages sent by the courier will be default contain "NA" for "translated_for_courier" since they are the courier, but "translated_for_requester" is where translated versions will be kept in the requester's preferred language if invoked, and vice versa. if a courier is switched half way, all requester messages' "translated_for_courier" cols will be cleared, so if the new courier has auto translate on, the past messages will be regenerated accordingly
 >
 > 2. the user-db will store an additional "preferred_lang" col, stored as ISO 639-1 codes, and will be interacted with in the same flow as all other user-level settings and configs.
->
 > 3. when is user data queried in the entire flow? i think it is good if the lang was just sent together and kept on the client side - it will only be 2 chars, very small overhead to keep around, and saves an additional dedicated endpoint call during translation invocation.
->
 > 4. Since we are already using event-driven architecture, lets follow and have a socket event to signal completion of translation to notify UI
->
 > 5. gemini 3.1 flash-lite. i will link it with a single api key from google ai studio. pros and cons of sdk vs http calls? recommended for this application?
->
 > 6. 1 changes things slightly
 > 7. 1 changes this
 
@@ -16270,6 +16269,7 @@ Future enhancement (recorded as instructed): remove/replace-courier route and cl
 Verification: chat-service 192 tests passed (23 new), typecheck and build passed. user-service: typecheck passed; me/users controller and service suites (262 tests) passed against the local test database. Not run: live Redis/BullMQ, live Gemini calls, live MySQL migration, the rest of the user-service suite, and any frontend (the frontend toggle, show-original/Translate controls, language setting and `message:translated` handling are not built).
 
 **Files:**
+
 - `chat-service/prisma/schema.prisma` (modified)
 - `chat-service/prisma/migrations/20261109000000_add_translation/migration.sql` (created)
 - `chat-service/src/translation/languages.ts` (created)
@@ -16314,6 +16314,7 @@ Asked for and received the toggle storage, language storage, queue, SDK, socket 
 **Governing decision:** The translation decisions recorded in the previous entry (2026-11-09, chat-service/user-service: Message auto-translation); `MockupBlueprint.md` §7.6 and `foc-mockup/src/pages/Chat.jsx` for the switch and Translate/Show original controls.
 
 **Prompts (exact):**
+
 > Yes, build it
 
 Answer to a multiple-choice question (via the question dialog): the saved Auto-translate state is learned by adding a nullable `translateTo` to each entry of `participants` in `GET /chat/conversations/:id/messages` (chosen over adding it to chat details or keeping it browser-side).
@@ -16323,6 +16324,7 @@ Stopped to ask before changing the chat-service API contract (§2.1), then added
 Verification: chat-service 193 tests passed, typecheck/build passed earlier in the stage. Frontend: 187 of 188 tests passed and the production build passed; the one failure, `CreateRequest.test.jsx` "requires details and lets the requester reuse a saved location", also fails with these changes stashed, so it is not caused by this work. New tests cover the switch, translated display, Show original/Translate, no control for SAME/untranslated/own messages, the socket event, failure handling and the Account language section. Not exercised: a real browser, live sockets, a live Gemini call.
 
 **Files:**
+
 - `chat-service/src/services/conversations.service.ts` (modified)
 - `chat-service/src/conversation-messages.spec.ts` (modified)
 - `chat-service/README.md` (modified)
@@ -16351,10 +16353,10 @@ Asked where the frontend learns the saved toggle state; answered above. Open: th
 **Governing decision:** Team decision in chat on 2026-11-09: use Prisma migrate (order/chat style) for user-service.
 
 **Prompts (exact):**
-> * gemini is tested and works
-> * update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
-> * blank log entries are accepted
->
+
+> - gemini is tested and works
+> - update the existing database so that it is similar to the other DBs so migrations can be applied independently instead of purely from init.sql
+> - blank log entries are accepted
 >
 > after updating the database, generate a PR message
 
@@ -16364,6 +16366,7 @@ Answer to a multiple-choice question (via the question dialog): "Prisma migrate 
 Stopped to ask which migration tooling to use (§2.1; the other services differ: order and chat use Prisma migrate, supplier uses a `migrate.ts` script, credit uses only `init.sql`). Added Prisma as a dev dependency with a model-less `prisma/schema.prisma`, `prisma.config.ts` reading `DATABASE_URL`, `npm run db:deploy`, a baseline migration (a copy of `init.sql` before `preferred_lang`) and a second migration adding `users.preferred_lang`. Verified on scratch databases that an empty database migrates fully, and that a database built from `init.sql` migrates after `prisma migrate resolve --applied 20261109000000_baseline`; a second deploy reported no pending migrations. Applied the same baseline-resolve and deploy to the local dev `user_service` database (5 existing users kept); scratch databases were dropped. Typecheck and ESLint of the config passed. Not done: wiring `db:deploy` into the Compose or ECS startup, and removing `init.sql` (the test database, CI and fresh Compose volumes still use it, so it must keep every migrated column).
 
 **Files:**
+
 - `user-service/prisma/schema.prisma` (created)
 - `user-service/prisma.config.ts` (created)
 - `user-service/prisma/migrations/20261109000000_baseline/migration.sql` (created)
@@ -16388,12 +16391,14 @@ Asked which migration approach to use; answered above. Open: `prisma migrate dev
 **Governing decision:** Existing 250-character delivery details limit (`order-service/src/services/orders.service.ts`, `order-service/prisma/schema.prisma`) and the `/250` counter in `frontend/src/pages/CreateRequest.jsx`.
 
 **Prompts (exact):**
+
 > quick fix for createrequest in frontend, restart chat-service so i can check the current ui
 
 **Key responses:**
 Ran the failing `CreateRequest.test.jsx` test: it expected the delivery details input to have `maxLength` 250, but the input had 200 while the counter and the order-service limit were already 250. Changed the input to 250; the file's 5 tests pass. Rebuilt and restarted chat-service in the dev Compose stack; it applied the `system_chats` migration and started.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md`, `README.md` (modified)
 
@@ -16412,12 +16417,14 @@ None
 **Governing decision:** User's layout instruction and `foc-mockup/src/pages/Chat.jsx`.
 
 **Prompts (exact):**
+
 > apply an ui update to how the text bubbles are rendered. currently the the timestamps are inside the speech bubbles. Shift them outside and below, like the original foc-mockup's. For my texts, the timestamp is aligned right, while the other person's is aligned left. For the translate/show original selector, it will be the same as foc-mockup's, but now in line with the time stamp on the right instead of above
 
 **Key responses:**
 Moved timestamps and read receipts below the bubble, aligned by sender, and placed the existing translation control to the right of the received timestamp. Kept system notice metadata centered. Added a regression test and updated an existing DOM assertion. The new test first failed on the old placement; all 37 Chat tests passed after the change. `npm run build` passed. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/tests/pages/Chat.test.jsx` (modified)
 - `README.md` (modified)
@@ -16438,12 +16445,14 @@ None.
 **Governing decision:** User instruction and `foc-mockup/src/pages/Chat.jsx`.
 
 **Prompts (exact):**
+
 > nevermind, move the translate above the timestamp like the mockup
 
 **Key responses:**
 Moved the translation control above the timestamp outside the message bubble. Updated the placement test; it failed before the change and all 37 chat tests passed afterward. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/tests/pages/Chat.test.jsx` (modified)
 - `README.md` (modified)
@@ -16464,12 +16473,14 @@ None.
 **Governing decision:** User instruction to merge main, retaining both branches' existing changes.
 
 **Prompts (exact):**
+
 > pull changes from main and merge again to resolve conflicts
 
 **Key responses:**
 Fetched and merged origin/main, resolved conflicts in the request page attribution and the disclosure log and index while retaining both branches' entries. Frontend build passed; the chat, request creation and view toggle tests passed (55 tests).
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (merge conflict resolved)
 - `ai/usage-log.md` (merge conflict resolved and entry appended)
 - `README.md` (merge conflict resolved and index updated)
@@ -16489,12 +16500,14 @@ None.
 **Governing decision:** User instruction to merge main and retain both branches' existing changes.
 
 **Prompts (exact):**
+
 > pull changes from main and merge again to resolve conflicts
 
 **Key responses:**
 Fetched and merged origin/main, preserving both branches' disclosure entries and request-page attribution. Chat tests passed (37); request tests and build failed because the newly merged rrule dependency was not installed. npm ci failed on a locked Windows file; a subsequent install was interrupted after it stalled. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (merge conflict resolved)
 - `ai/usage-log.md` (merge conflict resolved and entry appended)
 - `README.md` (merge conflict resolved and index updated)
@@ -16514,6 +16527,7 @@ None.
 **Governing decision:** User instruction to resolve PR #174 conflicts after PR #173 merges; existing preferred-language and database lock-status behavior.
 
 **Prompts (exact):**
+
 > switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
 
 > 173 merged. continue
@@ -16522,6 +16536,7 @@ None.
 Merged origin/main and preserved both branches' disclosure history and user-service changes. Updated preferred-language writes to return the database-computed lock status, matching the existing active-view update, so the response mapper receives its required field. User-service build passed. Targeted service tests could not start because the local test database refused connections on port 5434. `npm run typecheck` failed because that script does not exist; the build runs TypeScript. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `user-service/src/db/queries/users.queries.ts` (merge conflict resolved and preferred-language update adjusted)
 - `user-service/src/services/userResponse.ts` (merge conflict resolved)
 - `ai/usage-log.md` (merge conflict resolved and entry appended)
@@ -16593,12 +16608,14 @@ Accepted all changes.
 **Governing decision:** User instruction to resolve the existing merge; existing translation, archived chat, and safe-user query behavior on both branches.
 
 **Prompts (exact):**
+
 > i am trying to pull changes from main. resolve conflicts
 
 **Key responses:**
 Resolved the merge conflicts while retaining both branches' chat archiving, translation, frontend changes, configuration, and disclosure history. Included preferred_lang in the safe user columns and used those columns when updating the language, retaining the password-hash exclusion and database-computed lock status. Added assertions that the updated language can be read back and the update response excludes password_hash. Chat-service and user-service builds passed; 24 targeted archive and translation tests passed. User-service tests could not start because the local test database on port 5434 refused connections. Frontend chat tests could not run because Vitest was missing; npm ci stalled and was interrupted. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `README.md`, `ai/usage-log.md` (merge conflicts resolved, log and index updated)
 - `chat-service/README.md`, `chat-service/src/controllers/conversations.controller.ts`, `chat-service/src/routes/conversations.routes.ts`, `chat-service/src/server.ts`, `chat-service/src/services/conversations.service.ts` (merge conflicts resolved)
 - `frontend/src/api/chat.js`, `frontend/src/pages/Chat.jsx`, `frontend/tests/pages/Chat.test.jsx` (merge conflicts resolved)
@@ -16619,12 +16636,14 @@ None.
 **Governing decision:** Existing preferred-language response and safe-query fields introduced by the translation work.
 
 **Prompts (exact):**
+
 > user-service npm test failed. docker is up. run the tests
 
 **Key responses:**
 Started the existing user-db Compose service after finding it was not running. The full user-service suite ran: 1,018 passed and 36 failed. Five failures were exact-key assertions missing the already-implemented preferredLang/preferred_lang fields; updated those assertions. The remaining 31 failures were the config tests' Unix-style tsx executable not launching on Windows (spawn returned ENOENT) and the setup test asserting Unix mode 0600 on Windows. Reran the two modified files: 156 tests passed. The full suite was not rerun after the assertion changes. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `user-service/tests/controllers/users.controller.test.ts` (modified)
 - `user-service/tests/db/queries/users.queries.test.ts` (modified)
 - `ai/usage-log.md` (entry appended)
@@ -16645,12 +16664,12 @@ Windows-specific config runner and private-key permission assertion failures rem
 **Governing decision:** George's chat instructions in this session (quoted below), applying the existing decisions in `docs/ecs-fargate-session-prompt.md`: "DB encryption: Verified SSL enforced", Phase 1 item 3 (supplier MySQL SSL with hostname verification), Phase 1 item 4 (RDS CA file), Phase 1 item 8 (keep-alive) and Phase 3 (CD). George decided chat-service gets its own new database, using the `foc_admin` login.
 
 **Prompts (exact):**
+
 > check the freshly pulled chat service, give me the steps to deploy it on AWS
 
 > 1. enable database TLS for the mysql, like we did for supplier service
 > 2. apply the keep alive fix, same as the other services
 > 3. add it to CD, same as other services
->
 >
 > i will make a new database, and it will use foc_admin
 
@@ -16658,65 +16677,60 @@ Windows-specific config runner and private-key permission assertion failures rem
 >
 > ```json
 > {
->     "Version": "2012-10-17",
->     "Statement": [
->         {
->             "Sid": "EcrLogin",
->             "Effect": "Allow",
->             "Action": "ecr:GetAuthorizationToken",
->             "Resource": "*"
->         },
->         {
->             "Sid": "EcrPush",
->             "Effect": "Allow",
->             "Action": [
->                 "ecr:BatchCheckLayerAvailability",
->                 "ecr:BatchGetImage",
->                 "ecr:CompleteLayerUpload",
->                 "ecr:GetDownloadUrlForLayer",
->                 "ecr:InitiateLayerUpload",
->                 "ecr:PutImage",
->                 "ecr:UploadLayerPart"
->             ],
->             "Resource": "arn:aws:ecr:ap-southeast-1:993173880680:repository/foc/*"
->         },
->         {
->             "Sid": "EcsTaskDefinitions",
->             "Effect": "Allow",
->             "Action": [
->                 "ecs:DescribeTaskDefinition",
->                 "ecs:RegisterTaskDefinition"
->             ],
->             "Resource": "*"
->         },
->         {
->             "Sid": "EcsServices",
->             "Effect": "Allow",
->             "Action": [
->                 "ecs:DescribeServices",
->                 "ecs:UpdateService"
->             ],
->             "Resource": "arn:aws:ecs:ap-southeast-1:993173880680:service/foc/*"
->         },
->         {
->             "Sid": "PassEcsRoles",
->             "Effect": "Allow",
->             "Action": "iam:PassRole",
->             "Resource": [
->                 "arn:aws:iam::993173880680:role/foc-ecs-task-execution",
->                 "arn:aws:iam::993173880680:role/foc-supplier-task"
->             ],
->             "Condition": {
->                 "StringEquals": {
->                     "iam:PassedToService": "ecs-tasks.amazonaws.com"
->                 }
->             }
+>   "Version": "2012-10-17",
+>   "Statement": [
+>     {
+>       "Sid": "EcrLogin",
+>       "Effect": "Allow",
+>       "Action": "ecr:GetAuthorizationToken",
+>       "Resource": "*"
+>     },
+>     {
+>       "Sid": "EcrPush",
+>       "Effect": "Allow",
+>       "Action": [
+>         "ecr:BatchCheckLayerAvailability",
+>         "ecr:BatchGetImage",
+>         "ecr:CompleteLayerUpload",
+>         "ecr:GetDownloadUrlForLayer",
+>         "ecr:InitiateLayerUpload",
+>         "ecr:PutImage",
+>         "ecr:UploadLayerPart"
+>       ],
+>       "Resource": "arn:aws:ecr:ap-southeast-1:993173880680:repository/foc/*"
+>     },
+>     {
+>       "Sid": "EcsTaskDefinitions",
+>       "Effect": "Allow",
+>       "Action": ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition"],
+>       "Resource": "*"
+>     },
+>     {
+>       "Sid": "EcsServices",
+>       "Effect": "Allow",
+>       "Action": ["ecs:DescribeServices", "ecs:UpdateService"],
+>       "Resource": "arn:aws:ecs:ap-southeast-1:993173880680:service/foc/*"
+>     },
+>     {
+>       "Sid": "PassEcsRoles",
+>       "Effect": "Allow",
+>       "Action": "iam:PassRole",
+>       "Resource": [
+>         "arn:aws:iam::993173880680:role/foc-ecs-task-execution",
+>         "arn:aws:iam::993173880680:role/foc-supplier-task"
+>       ],
+>       "Condition": {
+>         "StringEquals": {
+>           "iam:PassedToService": "ecs-tasks.amazonaws.com"
 >         }
->     ]
+>       }
+>     }
+>   ]
 > }
 > ```
 
 **Key responses:**
+
 - First prompt (explain only, no files changed): read chat-service and the ECS plan and listed the AWS steps. Found that `order-service/src/worker.ts` now exits at startup without `CHAT_SERVICE_API_KEY`, so `order-worker`'s task definition needs `CHAT_SERVICE_URL` and `CHAT_SERVICE_API_KEY` before the stack is next started. The last Deploy run (`584174e`) found everything scaled to 0, so nothing live was affected. Declined to choose a separate or shared database, database TLS or the login, and left those to George, per AGENTS.md §2.1.
 - Database TLS: added `DB_SSL` (default `false`) to `chat-service/src/config/env.ts`. When it is on, `createPrismaClient` passes `ssl: { rejectUnauthorized: true }` to the MariaDB adapter, and `server.ts` passes the flag through. The connector types don't accept `servername`, so it was not set. A test showed Node still checks the hostname (case F below). Added the RDS CA bundle to the `production` stage of `chat-service/Dockerfile` with `ADD --chmod=644`, at the same path as supplier's. Migrations (`prisma migrate deploy`) don't go through the adapter, so they get TLS from `DATABASE_URL` query parameters (`?sslaccept=strict&sslcert=/etc/ssl/rds-ap-southeast-1-bundle.pem`), documented in `.env.example`. The app's URL parsing ignores query parameters.
 - Keep-alive: `server.keepAliveTimeout = 65_000` and `server.headersTimeout = 66_000` in `chat-service/src/server.ts`, as in user, order and supplier.
@@ -16729,9 +16743,10 @@ Windows-specific config runner and private-key permission assertion failures rem
   - app with `DB_SSL=true` and the CA in `NODE_EXTRA_CA_CERTS`: connected, `Ssl_cipher` `TLS_AES_256_GCM_SHA384`;
   - app with `DB_SSL=false`, with the wrong hostname (case F) or without the CA trusted: each failed;
   - production image, built locally, on a fresh database: migrations applied over TLS (5 tables), `/health` returned 200 with `Keep-Alive: timeout=65`, and every chat connection showed `TLSv1.3`. The CA file in the image is mode 644 and readable by `node`.
-  Not run: against real RDS or ElastiCache, and the GitHub Actions Deploy workflow. The host migrate tests ran on Windows; the Linux path was covered by the image test. Test containers and the image were removed afterwards.
+    Not run: against real RDS or ElastiCache, and the GitHub Actions Deploy workflow. The host migrate tests ran on Windows; the Linux path was covered by the image test. Test containers and the image were removed afterwards.
 
 **Files:**
+
 - `chat-service/src/config/env.ts` (modified)
 - `chat-service/src/db/prisma.ts` (modified)
 - `chat-service/src/server.ts` (modified)
@@ -16742,6 +16757,7 @@ Windows-specific config runner and private-key permission assertion failures rem
 - `README.md` (Log index row #285)
 
 **Deviations / questions raised for the team:**
+
 - None. AWS console steps (ECR repo, RDS instance, SSM parameters, task definitions including `order-worker`'s chat settings, target group, ALB rule, ECS service) remain for George.
 
 **What I kept/changed/rejected:**
@@ -16762,12 +16778,14 @@ Windows-specific config runner and private-key permission assertion failures rem
 > I'm Koh Wee Jean (CS3219, ProjectGroup18). Every AI-influenced file in this repo has a header attribution block with an "Author review:" field. Many of mine are blank, and I need to fill them before the D4 deadline.
 >
 > Step 1 — Inventory only, no edits yet:
+>
 > - Find every file containing an "Author review:" field that is empty or a placeholder.
 > - Narrow it to files I've touched: use `git log --author` (check all the name/email variants I've committed under) plus anything under credit-service/, user-service/, frontend/, chat-service/ and .github/workflows/ that I edited.
 > - Show me a table: file path | tool/model/date/scope from its header | my commits on that file. List separately any blank fields in files I have NOT touched, so I can tell the owners.
 > - Stop and wait for me to confirm the list.
 >
 > Step 2 — After I confirm:
+>
 > - Fill each field with exactly:
 >   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 >   (If I give a different wording for specific files, use mine for those.)
@@ -16797,7 +16815,7 @@ _foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc
 
 - `git diff --numstat`: **221 added, 221 deleted, 101 files** — exactly balanced, so every change is a replacement rather than an insertion.
 - **Every removed line** matched a blank or `<pending — team member to sign>` `Author review:` field, and **every added line** ended with the supplied signature: both non-conforming counts were 0. No other header field, no code and no formatting was touched.
-- Each line keeps its own comment prefix — ` * `, `// `, `# `, `-- `, bare and indented variants all verified in the diff.
+- Each line keeps its own comment prefix — `*`, `// `, `# `, `-- `, bare and indented variants all verified in the diff.
 - Existing line endings were preserved per file; the CRLF warnings git printed concern its own future normalisation of 14 pre-existing CRLF files, not changes made here.
 - An earlier count of "221 added / 218 removed" was a miscount in the checking command, not a defect: three SQL `--    Author review:` removals render as `---` in the diff and were mis-bucketed as file headers. `git diff --numstat` settles it at 221/221.
 
@@ -16837,16 +16855,18 @@ _foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc
 > Read first: every route definition, the JWT/auth middleware, request validation, the BullMQ worker and its backoff/dead-letter handling, the SQL migrations/schema, env var usage, package.json scripts, and the Dockerfile.
 >
 > API.md: one section per HTTP endpoint, verified against the route code:
+>
 > - method + path; auth required (JWT; which roles; admin vs own-scope)
 > - path and query params, including the admin filters on /credits/transactions/all and the keyset pagination cursor; request body schema; response body with an example
 > - every status code the code can actually return (400/401/403/404/409/503 etc.) and what triggers each one
 > - a curl example for each endpoint
 > - an "Async interface" section covering the queue name, job payload shape, retry/backoff schedule, idempotency on duplicate jobs, and dead_letter_jobs behaviour
-> List for me any endpoint that's in the old API.md but missing from the code, or the other way round.
+>   List for me any endpoint that's in the old API.md but missing from the code, or the other way round.
 >
 > README.md: purpose (F19 closed credit economy, F20 transaction logging), tech stack, folder structure, env vars (table: name | required | purpose), local setup, running migrations, the credit_app DB role and its grants, running tests, Docker build, deployment pointer, and a link to API.md.
 >
 > Rules (course AI policy, important):
+>
 > - Describe what the code does and how to run it. Don't write any design rationale or "why we chose X" text. Add a "## Design decisions" heading that contains only <!-- Written by the author --> and leave it for me.
 > - Don't modify source code. If the docs and the code disagree, report it to me rather than changing the code.
 > - Add the standard AI attribution header to both files (tool, model, today's date, scope: documentation), with "Author review:" left BLANK. I'll sign it after I've read the files.
@@ -16914,6 +16934,7 @@ The prompt was written by another Claude Code session (George's ECS deployment s
 > In the FoC repo (team repo `AY2627S1-CS3219-P18/FoC`, branch from current `main`), the `supplier-worker` service in `compose.yaml` is missing `SUPPLIER_ORDER_SERVICE_API_KEY`. `supplier-service/src/config.ts` requires it (`z.string().min(1)`, no default; `safeParse(process.env)` at import time, then `process.exit(1)` on failure), and `supplier-service/src/worker/main.ts` imports that config. So the worker should exit at startup under `docker compose up`. The `supplier-service` block in the same file already sets it as `SUPPLIER_ORDER_SERVICE_API_KEY: ${SUPPLIER_ORDER_SERVICE_API_KEY:?set SUPPLIER_ORDER_SERVICE_API_KEY in .env}`.
 >
 > Task:
+>
 > 1. Confirm the failure: run `docker compose up --build supplier-worker` with a root `.env` from `.env.example`, or reason from the code if Docker is unavailable, and record what you saw.
 > 2. Add the same line to the `supplier-worker` environment block, mirroring `supplier-service`. Change nothing else.
 > 3. Verify supplier-worker starts and connects to supplier-redis.
@@ -16941,7 +16962,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — ECS Fargate: chat deployment and email docs
 
@@ -16951,11 +16972,13 @@ None.
 **Governing decision:** George's chat decisions in this session: "i will make a new database, and it will use foc_admin" (chat-service RDS instance); "enable database TLS for the mysql, like we did for supplier service"; "yes switch to use the SMTP, set secure in prod, and startup check in prod too" (Email decision change). Recorded in `docs/ecs-fargate-session-prompt.md`.
 
 **Prompts (exact):**
+
 > any new PRs to be made?
 
 > ok update docs and PR everything in 1 PR
 
 **Key responses:**
+
 - Walked George through the AWS console steps for deploying chat-service (explain only, no repo files changed by those turns). The steps: ECR repo, checking the RDS instance, a one-off task creating `chat_service`, SSM parameters, log group, task definition JSON, new revisions for `order-worker`, `user-service`, `supplier-service` and `supplier-worker`, the `foc-chat` target group, load balancer rule 6, the ECS service, start order, and a smoke test. Found along the way and recorded in the docs:
   - Settings that `main` made required after the 2026-11-07 deploy. Found by diffing each service's config schema since that date.
   - A `user-service` schema gap (`preferred_lang`, two `users_otps` columns, `last_request`) that broke login. Fixed with a one-off task running the statements copied from `init.sql`.
@@ -16971,18 +16994,20 @@ None.
 - Verification: docs only, so nothing was run beyond reading. The SQL and resource names in the docs match what George reported creating and what the repo contains. The README index already had duplicate row numbers (#284, #285) from earlier merges. Those were left as they are.
 
 **Files:**
+
 - `docs/ecs-fargate-run-checklist.md` (modified)
 - `docs/ecs-fargate-session-prompt.md` (modified)
 - `ai/usage-log.md` (this entry)
 - `README.md` (Log index row #288 and header scope line)
 
 **Deviations / questions raised for the team:**
+
 - `user-service` has Prisma migrations, but its production image doesn't run them, and the AWS database predates their baseline. How the team wants future user-service schema changes applied on AWS is for the team to decide. The checklist documents the one-off approach used on 2026-11-10.
 - The README Log index has duplicate row numbers (#284, #285) from earlier merges. Not renumbered.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Frontend: remove the nav notification bell
 
@@ -16992,23 +17017,27 @@ None.
 **Governing decision:** George's chat instruction in this session (quoted below): notifications are delivered through the chat system, so the bell is removed.
 
 **Prompts (exact):**
+
 > hold on, also remove the notification bell on the frontend, since our notifs are delivered through the chat system, do it in the same PR
 
 **Key responses:**
+
 - The bell was a `<button aria-label="Notifications">` in `TopNav.jsx`'s logged-in desktop nav, with a static orange dot, no click handler and no data source. The mobile drawer had no bell. Removed the button and the now-unused `Bell` import. Nothing else referenced it, in code or tests.
 - Verification: `npx vitest run` in `frontend/`: 40 files, 298/298 passed. `npm run build` succeeded. `oxlint` on `TopNav.jsx` reports only an existing `set-state-in-effect` warning in an effect this change didn't touch. Not checked visually in a browser.
 
 **Files:**
+
 - `frontend/src/components/TopNav.jsx` (modified)
 - `ai/usage-log.md` (this entry)
 - `README.md` (Log index row #289 and header scope line)
 
 **Deviations / questions raised for the team:**
+
 - `MockupBlueprint.md` (team-authored) still lists "a bell icon" in the logged-in nav (line 262). Left for the team to update.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Resolve disclosure merge conflicts with main
 
@@ -17026,12 +17055,14 @@ Author review: tng wen xi
 **Governing decision:** User instruction to resolve the in-progress merge; existing content of both Git merge stages and root AGENTS.md append-only disclosure requirements.
 
 **Prompts (exact):**
+
 > help me resolve the merge conflicts
 
 **Key responses:**
 Resolved README.md and ai/usage-log.md conflicts, retaining both branches' disclosures and index rows. Kept the current branch's complete log and appended incoming historical sections absent verbatim from it; differing historical versions remain intact. Verified no historical section from either Git index stage was lost and no original index row was lost when comparing date, service, title and summary. Left existing index numbering unchanged. Other files already merged automatically were not edited. Frontend: all 305 tests across 40 files passed; production build passed with a chunk-size warning. git diff --check passed. Marked the two resolved files in the Git index; did not create a merge commit.
 
 **Files:**
+
 - `README.md` (resolved conflict, disclosure header and Log index row)
 - `ai/usage-log.md` (resolved conflict and appended entry)
 
@@ -17060,14 +17091,13 @@ Author review: tng wen xi
 **Governing decision:** Existing chat-service/README.md team-specified contracts, chat-service/SYSTEM-NOTIFICATIONS.md, checked-in chat routes/controllers/services, Prisma schema, authentication, realtime and translation implementation; existing order-service chat client. Documentation describes current behavior only.
 
 **Prompts (exact):**
+
 > look at chat service. can you generate a md in a new docs/ folder within chat service that includes:
 >
 > - the API endpoints and design choices that were made
 > - the architecture and design of the microservice
 >   - would be great if you could include an architecture diagram
 > - integration with other services
->
->
 >
 > also generate a docs/api.md:
 >
@@ -17079,6 +17109,7 @@ Created architecture.md describing existing layers, data ownership, implementati
 Verification: checked all local documentation links, balanced code fences, 12 detailed HTTP endpoint sections, and parsed every fenced JSON example. git diff --check passed before disclosure append; final whitespace check also passed. Runtime tests were not run for this documentation-only task; no live integrations were exercised.
 
 **Files:**
+
 - `chat-service/docs/architecture.md` (created)
 - `chat-service/docs/api.md` (created)
 - `README.md` (disclosure header and required Log index row)
@@ -17109,6 +17140,7 @@ Author review:
 **Governing decision:** Existing chat-service Prisma schema and implementation; frontend chat client, Chat page and ChatBubble; Order Service chat client and worker. User requested documentation changes only.
 
 **Prompts (exact):**
+
 > - make it easier to read
 > - in architecture.md, also include a section on the db schema and values
 > - for api.md, also document how each endpoint is being used
@@ -17118,6 +17150,7 @@ Reorganized architecture prose, added database relationship diagram and per-tabl
 Verification: local file links checked (internal anchor checked separately), balanced fences, all fenced JSON parsed, and 12 endpoint sections and usage sections confirmed. git diff --check passed. No runtime tests were run for documentation-only changes.
 
 **Files:**
+
 - `chat-service/docs/architecture.md` (modified)
 - `chat-service/docs/api.md` (modified)
 - `README.md` (disclosure scope and required Log index row)
@@ -17148,6 +17181,7 @@ Author review: tng wen xi
 **Governing decision:** Previously recorded chat endpoint discussions in this log, chat-service README and SYSTEM-NOTIFICATIONS.md, current chat implementation, frontend translation toggle, and Order Service notification implementation.
 
 **Prompts (exact):**
+
 > do you remember all that we discussed for each endpoint? also put all those in the docs
 
 **Key responses:**
@@ -17155,6 +17189,7 @@ Clarified access to this conversation and repository records, without claiming r
 Verification: local file links, balanced fences, JSON examples, all 12 endpoint and recorded-discussion sections, and historical entry targets checked. git diff --check passed. No runtime tests or live integration calls were run for this documentation-only update.
 
 **Files:**
+
 - `chat-service/docs/api.md` (modified)
 - `chat-service/docs/architecture.md` (modified)
 - `README.md` (disclosure scope and required Log index row)
@@ -17185,6 +17220,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction below; existing implementation behavior already described in chat-service/docs and checked-in chat/frontend/order source files.
 
 **Prompts (exact):**
+
 > remove the references to our discussion and previous decisions. only talk about what was eventually implemented. and dont put it in a separate section, integrate it into the information.
 
 **Key responses:**
@@ -17192,6 +17228,7 @@ Removed discussion coverage, historical entry links, per-endpoint discussion sec
 Verification: checked local links, balanced fences, all fenced JSON examples, all 12 endpoint sections, and absence of discussion-history sections/usage-log links in visible docs. git diff --check passed. Runtime tests were not run for documentation-only edits.
 
 **Files:**
+
 - `chat-service/docs/api.md` (modified)
 - `chat-service/docs/architecture.md` (modified)
 - `README.md` (disclosure scope and required Log index row)
@@ -17222,6 +17259,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction quoted below; updated enum in `chat-service/prisma/schema.prisma` and implemented behavior in `chat-service/README.md`.
 
 **Prompts (exact):**
+
 > remove image / video from the enum in messages table for chat service. also check for other references to images and video attachements in the code and remove them.
 
 **Key responses:**
@@ -17229,6 +17267,7 @@ Removed IMAGE/VIDEO from MessageType and added a forward migration narrowing mes
 Verification: Prisma generation, typecheck and build passed. Sandboxed HTTP tests encountered listen EPERM; rerunning with local socket access passed all 14 test files / 212 tests. git diff --check passed. Database migration execution was not tested.
 
 **Files:**
+
 - `chat-service/prisma/schema.prisma` (modified)
 - `chat-service/prisma/migrations/20261110010000_remove_media_message_types/migration.sql` (created)
 - `chat-service/src/conversations-list.spec.ts` (modified)
@@ -17265,6 +17304,7 @@ Author review:
 **Governing decision:** User instruction quoted below; existing order-ID participant contract in `chat-service/README.md` and `chat-service/docs/api.md`.
 
 **Prompts (exact):**
+
 > oh ok help me remoe the conversation id participant endpoint
 
 **Key responses:**
@@ -17272,6 +17312,7 @@ Removed POST /chat/conversations/:conversationID/participants. Simplified the pa
 Verification: typecheck and build passed; all 14 test files / 213 tests passed with local socket access outside the sandbox. git diff --check passed. No live database verification was performed.
 
 **Files:**
+
 - `chat-service/src/routes/conversations.routes.ts` (modified)
 - `chat-service/src/controllers/conversations.controller.ts` (modified)
 - `chat-service/src/services/conversations.service.ts` (modified)
@@ -17288,6 +17329,7 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
 ## 2026-11-10 — Fix login redirect to register page after visiting Register then Log in
 
 **Tool:** Claude Code (model: claude-sonnet-5)
@@ -17296,6 +17338,7 @@ None.
 **Governing decision:** Bug fix to existing login/redirect behavior; no new requirements, schema, or API decisions. Implements the existing intent of `frontend/src/pages/Login.jsx`'s post-login redirect (go back to where the user came from) by excluding auth pages from being a valid "from" target.
 
 **Prompts (exact):**
+
 > bug! before logging in, when i click "register" then "login", then i login, i login successfully, but it goes to the "create your account" page.i can go to suppliers and errands normally
 >
 > help me find out what could have caused it
@@ -17303,9 +17346,10 @@ None.
 > go for it
 
 **Key responses:**
-Traced the bug: the nav's "Log in" button calls `AuthContext.requireAuth`/`goToLogin`, which captures the *current* page via `useLocation()` as `location.state.from`. If the user is on `/register` when they click "Log in," `/register` gets stored as `from`, and `Login.jsx`'s post-login `navigate(location.state?.from ?? '/', { replace: true })` then sends them back to `/register` instead of home. Fixed by checking whether `from`'s pathname is `/login` or `/register` and falling back to `/` in that case, in `frontend/src/pages/Login.jsx`. Verified: full frontend suite (305 tests, 40 files) passed after the change.
+Traced the bug: the nav's "Log in" button calls `AuthContext.requireAuth`/`goToLogin`, which captures the _current_ page via `useLocation()` as `location.state.from`. If the user is on `/register` when they click "Log in," `/register` gets stored as `from`, and `Login.jsx`'s post-login `navigate(location.state?.from ?? '/', { replace: true })` then sends them back to `/register` instead of home. Fixed by checking whether `from`'s pathname is `/login` or `/register` and falling back to `/` in that case, in `frontend/src/pages/Login.jsx`. Verified: full frontend suite (305 tests, 40 files) passed after the change.
 
 **Files:**
+
 - `frontend/src/pages/Login.jsx` (modified)
 - `ai/usage-log.md` (this entry)
 - `README.md` (Log index row)
@@ -17317,7 +17361,6 @@ None
 Accepted all changes.
 
 **Author review:** gabriel yap
-
 
 ## 2026-11-10 — Resolve usage-log merge conflict
 
@@ -17529,6 +17572,265 @@ Verification: Chat tests passed (42 tests); frontend production build passed wit
 **Files:**
 - `frontend/src/pages/Chat.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — order-service: README overview and architecture diagrams
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs
+**Governing decision:** The existing order-service code on `main` (`584174e`), `order-service/prisma/schema.prisma`, `.github/workflows/deploy.yml`, `docs/ecs-fargate-session-prompt.md` and `docs/ecs-fargate-run-checklist.md`. The docs describe these as they are; nothing new was decided.
+
+**Prompts (exact):**
+> 1. look through all the work ive done, see if theres any author review unfilled that i need to sign off, then produce the cmd for me to use to automatically fill it in with "George Yeo"
+> 2. once done, focus only on order service, produce a clean architecture diagram using PUML and output the file here in the session not in the repo
+> 3. then create a README detailing order service
+> 4. then focus on the CD AWS deployment next, create another architecture diagram using PUML to represent all the AWS instances working together, a high level view
+> 5. for the PUMLs make sure they use basic syntax and can be rendered online
+
+**Key responses:**
+
+- Author review sign-off (prompt 1): wrote a Python script, kept outside the repo in the session scratchpad. It lists blank `Author review` fields that `git blame` attributes to `george-yeo`/`George`, counting a field only when both the blank line and most of its Scope block (or log entry) trace to those authors. It writes nothing without `--apply`, and the user runs it. The dry run on `584174e` found 143 such fields and 11 mixed-author ones, which it leaves alone. The agent did not sign any field.
+- Diagrams (prompts 2, 4, 5): two PlantUML files in the session scratchpad, not in the repo. One shows order-service's API and worker processes, `order-db`, `order-redis` and the services it calls. The other shows the AWS stack (CloudFront, ALB, 8 ECS Fargate services, 4 RDS instances, 2 ElastiCache clusters, S3, ECR, SSM, CloudWatch, IAM/OIDC) and the GitHub Actions deploy flow. Both use basic syntax with no `!include`. They were not rendered here because no PlantUML renderer is installed.
+- README (prompt 3): added sections to `order-service/README.md` on what the service does, its two processes, the order lifecycle (from `src/domain/order-status.ts`), API routes (from `src/routes/`), Socket.IO events, outbox tasks and queues, data tables, the services it calls and environment variables (from `src/config/env.ts`). Also updated the Layout tree. The existing sections, written by teammates, are unchanged.
+- Verification: checked each route, status transition, event name, queue key, retry count and env default against the source files. Did not run tests, because no code changed.
+
+**Files:**
+
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #319)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:** George Yeo
+
+## 2026-11-10 — Fix: ResendButton countdown not shown on first successful resend
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** N/A — pure bug fix to existing behaviour; no new schema/API/design decision. DEFAULT_COOLDOWN_SECONDS (60) was already defined in ResendButton.jsx and already matched the server's configured OTP_RESEND_COOLDOWN_SECONDS.
+
+**Prompts (exact):**
+
+> read only for now
+>
+> when i click resend, it registers, then when i click again, it shows resend in 28s - i want it to immedaitely show resend in xxxs
+
+**Key responses:**
+Traced the bug to `frontend/src/components/ResendButton.jsx` `handleClick`: `setCooldown(...)` was only called in the `catch` branch when the server rejected a resend with `OTP_RESEND_COOLDOWN`. A successful first resend returns `{ message, code: 'OTP_SENT' }` with no retryAfterSeconds, so `cooldown` stayed at 0 and the button re-enabled immediately; only the second click (hitting the server's live cooldown) ever set the countdown. Confirmed via the backend handler (`user-service/src/controllers/auth.controller.ts` `resendOtp`) that the 200 response never carries a cooldown value, and that the server-side cooldown is `OTP_RESEND_COOLDOWN_SECONDS` = 60 in all checked-in env files, matching the component's existing `DEFAULT_COOLDOWN_SECONDS` constant. Fix: call `setCooldown(DEFAULT_COOLDOWN_SECONDS)` immediately after a successful `onResend()`, so the countdown starts on the first click. No new UI copy, schema, or API change. Verification: not run (no dev server/tests executed in this session); needs manual check in the Register/ForgotPassword/Account/ElevationOtpModal resend flows.
+
+**Files:**
+
+- `frontend/src/components/ResendButton.jsx` (modified)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Fix: pending-account OTP verification could be redirected to a different account
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug, generate
+**Scope:** Debugging, Implementation code
+**Governing decision:** Bug report plus follow-up decisions made by the user in this conversation (the original prompt's `<FILL IN: ...>` placeholder and the follow-on scope questions it raised), recorded here since no prior doc covered this case:
+
+- Mechanism: login (on hitting the pending-account case) and register both issue a short-lived `pendingToken` httpOnly cookie (same base options as the existing `refreshToken` cookie) identifying the account; verify-otp/resend-otp (registration purpose only) must cross-check the submitted `email` against that cookie's account before any OTP-related logic runs.
+- Token TTL = `config.otp.ttlMinutes` (same window as the registration OTP itself).
+- Mismatch, missing, or invalid/expired cookie all produce the same `403 EMAIL_MISMATCH` response, with no distinction between the three cases, and none of them touch the OTP attempt counter, resend cooldown, or resend count.
+- `forgot_password` purpose on the same two endpoints is intentionally unauthenticated and was left untouched.
+
+**Prompts (exact):**
+
+> Debugging task in user-service (CS3219 FoC). Follow the course AI usage policy:
+> help with debugging and implementation only, don't make design decisions, add the
+> AI attribution header at the top of every file you change, and give me the exact
+> prompt and key output to paste into /ai/usage-log.md.
+>
+> Bug: pending-account verification can be redirected to a different account.
+> Repro: two accounts, A and B, both in pending state. Log in as A by username.
+> The app then asks for an email. If I enter B's email, I can verify account B
+> (and I can use B's OTP) while holding A's login.
+>
+> Expected: the account being verified must always be the one identified at login.
+> The email entered at the prompt must not choose the target account.
+>
+> Steps:
+>
+> 1. Find the login path for pending accounts and what credential (token/session)
+>    it issues. Find the verify and resend-OTP handlers. Report which one takes the
+>    account from the request body, and whether OTP sending also uses the submitted
+>    email instead of the stored one. Show me the relevant code before changing anything.
+> 2. Fix it so the handlers derive the account only from the credential issued at
+>    login. On an email mismatch, behave as follows (my decision): <FILL IN: status
+>    code, error code, whether it counts toward OTP/lockout limits, what the response
+>    reveals>.
+> 3. Check the other flows that take an email or username in the body (resend OTP,
+>    admin elevation OTP, unlock) for the same pattern and list them. Don't change
+>    them without asking me.
+> 4. Add tests: (a) A's credential + B's email is rejected and B's status is
+>    unchanged; (b) A's credential + B's email + B's valid OTP is rejected;
+>    (c) the normal flow for A still works.
+> 5. Run the test suite and report results.
+>
+> Keep changes minimal and don't touch unrelated code.
+
+Follow-up decisions, collected via clarifying questions after the investigation showed pending-account login issues no credential at all today (so "the credential issued at login" did not yet exist to derive from):
+
+> [Q] How should the server tie "the account identified at login" to verify/resend-OTP, given pending-account login issues no token today? [A] Short-lived pending token.
+> [Q] On a mismatch, what should the response reveal and should it count toward OTP/lockout limits? [A] Email-keying comes before OTP, so it shouldn't be counted together.
+> [Q] Given that, how should a mismatch be handled? [A] Reject before the OTP check, with a distinct error code, and no counter at all.
+> [Q] Should register also set the pendingToken cookie, so the normal register → verify-otp flow (no login in between) keeps working? [A] Yes, register also sets the pendingToken cookie.
+> [Q] If verify-otp/resend-otp is called with no pendingToken cookie at all, what should happen? [A] Same 403 EMAIL_MISMATCH as a real mismatch.
+> [Q] How should the pending token travel between login/register and verify/resend-otp? [A] httpOnly cookie, like the refresh token.
+> [Q] What HTTP status + error code should the mismatch use? [A] 403 EMAIL_MISMATCH.
+> [Q] How long should the pending token stay valid? [A] Same as the current OTP expiry window.
+
+**Key responses:**
+Investigation (step 1): pending-account login throws `403 ACCOUNT_NOT_VERIFIED` before any token is issued (`auth.service.ts` `login()`), so there was no existing credential to derive from. `/auth/verify-otp` and `/auth/resend-otp` are public, unauthenticated endpoints that resolve the target account purely from the request body's `email` via `userQueries.findByEmail`. All other endpoints combining a body email/username with an auth credential (`me.controller.ts`, admin-elevation OTP) already derive the account from the credential, never the body — those were left alone, as instructed.
+
+Fix: added a `signPendingVerificationToken`/`verifyPendingVerificationToken` JWT pair (`src/utils/jwt.ts`, header `typ: pv+JWT`, TTL `config.otp.ttlMinutes`); extended `AppError` with an optional `cookie` field so a thrown error can carry a `Set-Cookie` through the central error middleware (`src/app.ts`); `register()` and the pending branch of `login()` (`src/services/auth.service.ts`) now issue a `pendingToken` httpOnly cookie for the account; `verifyRegistrationOtp`/`resendRegistrationOtp` now reject with `403 EMAIL_MISMATCH` (via a shared `assertPendingTokenMatches` check, run before any OTP attempt/cooldown/count logic) if the cookie is missing, invalid, or names a different account than the submitted email; `auth.controller.ts` wires the cookie through for the registration-purpose branches only and clears it on successful verification. `forgot_password` branches of both endpoints are untouched.
+
+Tests: added cases for A's token + B's email/OTP (rejected, B unchanged), no cookie at all (rejected), and confirmed A's own flow still succeeds, for both verify-otp and resend-otp; updated existing registration-purpose tests and test helpers (`tests/helpers/fixtures.ts`, `tests/services/auth.service.test.ts`, the two concurrency test files) to carry the new cookie through, since register/verify/resend's contracts changed. `forgot_password` test blocks were not touched.
+
+Verification: `npx tsc --noEmit` clean; `npx vitest run` — 1061 passed, 0 failed, 38/38 test files.
+
+**Files:**
+
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/src/utils/AppError.ts` (modified)
+- `user-service/src/app.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/tests/helpers/fixtures.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/concurrency/lock-recheck.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+The spec only named `tests/controllers/auth.controller.test.ts` for test updates; making the suite pass also required the same `pendingToken` plumbing in `tests/services/auth.service.test.ts` and the two concurrency test files, since they call the now-stricter service/HTTP functions directly for the registration purpose. This is mechanical fallout from the already-decided contract change, not a new decision, but is flagged here since it wasn't explicitly named upfront.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Bug fix: Manage users page scrolls horizontally on mobile
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** N/A — mobile-viewport CSS bug fix, no requirements/architecture/schema/API decision involved; reported directly by the user with an iPhone-width screenshot of /admin/users.
+
+**Prompts (exact):**
+> this is the manage users page on iphone dimensions - help me resolve this (using git workflow e.g. PR)
+> [attached screenshot of AdminUsers page clipped on a narrow viewport]
+
+**Key responses:**
+Root cause: `App.jsx`'s `<main className="flex-1">` is a flex item inside a `flex min-h-screen flex-col` container. Without `min-w-0`, a flex item's default `min-width: auto` lets its content (here, AdminUsers.jsx's table, which has `min-w-[720px]` inside an `overflow-x-auto` wrapper) stretch the flex item itself, so the whole page scrolled horizontally instead of just the table's own scroll wrapper. Fix: added `min-w-0` to `<main>` (`frontend/src/App.jsx`), a one-line class change; no change to AdminUsers.jsx or any other page was needed.
+Verification: dev server start and any available build/lint/test checks run via a verification subagent; manual login-gated visual check of /admin/users on a simulated iPhone width was not performed in this session.
+
+**Files:**
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — order-service API reference; frontend footer wording
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs; Implementation code
+**Governing decision:** The API reference documents the routes, validation and error codes already implemented in `order-service/src` (routes, controllers, services, `constants/errors.ts`, `realtime/socket-server.ts`). The footer change is George's chat instruction quoted below.
+
+**Prompts (exact):**
+> ok the diagrams are very messy, lets pivot and find another way of working this together
+>
+> commit the readme and make a PR first, we will also add other changes
+>
+> 1. remove the  "UI Prototype" text at the bottom of each page in the frontend
+
+> also add an API document for order service, that gives the endpoints of every exposed API and its description and necessary parameters
+
+**Key responses:**
+
+- Committed the order-service README work and George's Author review signatures, and opened the team-repo PR. The branch was rebuilt on the latest `main`: 122 of the 143 signatures applied, and 21 fields that Koh Wee Jean had already signed on `main` were left with her signature.
+- Footer: removed "— UI prototype" from `frontend/src/components/Footer.jsx`, the footer shown on every page. "CS3219 AY2627S1 Group 18." stays.
+- Added `order-service/API.md`: authentication, the error envelope and status codes, the order object, and every route (health, orders, status changes, admin history, series) with its path/query/body parameters, rules and responses, plus the Socket.IO handshake and events. All of it was read from the code; nothing was changed in the service.
+- The doc records two behaviours as they are: status-change routes return `{ ok: false, error }` instead of the `{ message }` envelope, and `PATCH /orders/:id/edit` requires `deliveryDetails` on every edit.
+- Corrected the README lifecycle table: an accepted or picked-up order can be cancelled only after its complete-by (`src/domain/order-status.ts`). Linked API.md from the README.
+- Verification: frontend `oxlint` on Footer.jsx clean, `vitest run` 305/305 passed, `vite build` succeeded. The API doc was checked against the source, not against a running service.
+
+**Files:**
+
+- `frontend/src/components/Footer.jsx` (modified)
+- `order-service/API.md` (created)
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #320)
+
+**Deviations / questions raised for the team:**
+
+- `src/types/series.ts` says an omitted `durationMinutes` defaults to 1440, but `series.service.ts` uses 60. The API doc follows the code (60).
+- `POST /orders/series` returns the stored row (including `nextFireAt` and retry fields), while GET and PATCH return the public series shape. Documented as is.
+
+**What I kept/changed/rejected:**
+
+**Author review:** George Yeo
+
+
+## 2026-11-10 — Restore complete usage-log entries during merge
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Restored complete disclosure entries from both merge stages and indexed the resolution.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** AGENTS.md append-only disclosure requirements and the existing stage-2/stage-3 Git versions of ai/usage-log.md.
+
+**Prompts (exact):**
+> help me solve this merge conflict
+
+**Key responses:**
+Resolved the sole unmerged file, ai/usage-log.md. Reconstructed its interleaved tail using complete entries from Git's merge stages: preserved incoming shared history and its existing signatures, restored the complete local Resolve usage-log merge conflict entry and five frontend entries, then retained all five incoming entries. Preserved existing author reviews without signing new ones. Added the required README index row. Left other merged implementation files unchanged.
+Verification: programmatic checks confirmed preservation of the incoming shared prefix, complete local tail and complete incoming tail, with no active conflict markers in the restored file. No runtime tests run because this resolution only changes disclosure Markdown.
+
+**Files:**
+- `ai/usage-log.md` (resolved and appended this entry)
 - `README.md` (disclosure scope and Log index row)
 
 **Deviations / questions raised for the team:**

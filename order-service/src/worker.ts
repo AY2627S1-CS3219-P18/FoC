@@ -33,19 +33,19 @@
  *        a read-only bull-board over every queue on order-redis, including credit-service's
  *        transfer queue.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
  * Scope (2026-11-06): ECS Fargate migration - Redis TLS through redisConnectionOptions,
  *        per George's ECS Fargate plan, Phase 1 item 5.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): The credit job processor no longer takes the event sink (it no longer settles
  *        reservations; George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09): Stage 28 f (instructions.md) - wires up the scheduled-errands worker
  *        (1-second series scheduler), its user/supplier service-key HTTP clients, and its
  *        queue in the dashboard/shutdown lists, mirroring the existing credit-job/outbox-relay

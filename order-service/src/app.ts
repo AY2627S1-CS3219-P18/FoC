@@ -21,16 +21,16 @@
  * Scope (2026-10-23): AppDeps takes the supplier-service client (or its URL, default
  *        http://localhost:3004, supplier-service's published port) for the orders router.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
  * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): AppDeps takes a credits client (HTTP to CREDIT_SERVICE_URL by default) for the
  *        synchronous reserve on POST /orders (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import express, { type Express } from 'express';

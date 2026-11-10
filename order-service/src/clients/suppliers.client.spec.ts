@@ -5,7 +5,7 @@
  *        (200 found, 404 not_found, anything else / network / timeout unavailable), location
  *        membership, and the caller's token forwarded.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Stage 28 c2 - added tests for
  *        supplierStatusForWorker / locationExistsForWorker: the service-key header, closed/
  *        next-opening mapping, and an empty openingHours list treated as a failure. No

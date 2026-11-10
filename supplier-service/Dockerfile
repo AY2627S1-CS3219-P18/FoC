@@ -6,7 +6,7 @@
 # Scope: ECS Fargate migration - add the RDS CA bundle to the prod stage, per George's ECS Fargate
 #        plan, Phase 1 item 4. No requirements, architecture, schema, or API decisions were made by
 #        the AI tool.
-# Author review:
+# Author review: George Yeo
 FROM node:24-alpine AS base
 WORKDIR /app
 COPY package.json package-lock.json ./

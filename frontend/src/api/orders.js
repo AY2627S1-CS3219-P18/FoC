@@ -17,7 +17,7 @@
  * Scope (2026-11-09): createOrder's comment describes the synchronous POST /orders (George,
  *        2026-11-09); reserveFailureMessage, used only by the removed socket wait, is gone.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 /*

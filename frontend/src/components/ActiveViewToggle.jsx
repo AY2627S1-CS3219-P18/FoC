@@ -18,7 +18,7 @@
  *        (George, 2026-11-09; replaces Stage 22's "user stays on the current page" for the
  *        toggle). Opening another view's page directly still shows the blocked page.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 29 - the leaving-page redirect now replaces the history entry (instructions.md

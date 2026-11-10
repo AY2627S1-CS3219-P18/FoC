@@ -30,12 +30,12 @@
  *        SUPPLIER_SERVICE_UNAVAILABLE (503) for the supplier-service existence check
  *        (George, 2026-10-23). Names and messages follow the existing codes' convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): CREDIT_RESERVE_REJECTED and ORDER_PENDING_EXISTS (message wording from George,
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md) - series error codes (SERIES_NOT_FOUND 404,
  *        SERIES_CONFLICT 409, INVALID_RULE, MISSING_RULE, INVALID_DURATION, INVALID_START,

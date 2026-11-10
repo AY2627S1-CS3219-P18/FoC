@@ -3,7 +3,7 @@
 # Scope: ECS Fargate migration - allowlist for the seed image's repo-root build context, per George's
 #        ECS Fargate plan, Phase 1 item 9. No requirements, architecture, schema, or API decisions were
 #        made by the AI tool.
-# Author review:
+# Author review: George Yeo
 #
 # Everything is excluded first, so .env files, JWT keys and node_modules cannot reach the image.
 *

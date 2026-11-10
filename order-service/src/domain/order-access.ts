@@ -5,7 +5,7 @@
  *        courier sees the full order, anyone else only while it is `open`, and an admin
  *        always. "Admin" means the user-service roles `admin` and `super admin`.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import type { OrderRequest } from '../generated/prisma/client.js';

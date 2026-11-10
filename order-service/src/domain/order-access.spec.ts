@@ -4,7 +4,7 @@
  * Scope (2026-10-22): Unit tests for canViewOrder (GET /orders/:id read rule, George's
  *        spec): every status against requester, courier, other user, admin, super admin.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import {
