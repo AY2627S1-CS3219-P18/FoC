@@ -100,9 +100,6 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Aligned dropdown chevrons by moving field spacing outside the control.
  * Author review: Congchen
- * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Raised the delivery details input maxLength from 200 to 250 to match the existing 250 limit (order-service validation and the on-screen counter).
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Complete-by toggle - the ASAP option reads "ASAP" / "By 1 hour from
  *        now" (George, 2026-11-09); order-service fills in the one-hour default.
@@ -112,9 +109,6 @@
  *        response and shows its message on failure; the socket wait and /orders/mine re-check
  *        for the reservation outcome are removed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
- * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts in disclosure headers.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 g (instructions.md) - added `seriesMode`: the same form now also creates/
@@ -126,9 +120,6 @@
  *        date/time picker whose gap from the start time becomes durationMinutes. The normal
  *        order path (seriesMode omitted/false) is unchanged.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
- * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflict in disclosure header.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
 
@@ -519,7 +510,7 @@ function RequestForm({ order, series, seriesMode }) {
             {label('Exact delivery details', 'delivery-details', true)}
             <input 
               id="delivery-details"
-              type="text" maxLength={250}
+              type="text" maxLength={200}
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               placeholder="e.g. Meet at the side entrance."

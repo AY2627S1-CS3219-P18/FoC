@@ -4,47 +4,42 @@
  * Scope: Generated the me router (PUT /active-view) as specified in
  *        instructions.md Stage 11.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added GET / as specified in instructions.md Stage 12a.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added PUT /username as specified in instructions.md Stage 12b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added PUT /email as specified in instructions.md Stage 12c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added POST /verify-otp and POST /resend-otp as specified in instructions.md Stage 12d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added PUT /password and POST /confirm-password-change as specified in
  *        instructions.md Stage 12e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-05
  * Scope: Added GET /bookmarks, PUT /bookmarks/:supplierId and DELETE /bookmarks/:supplierId, per
  *        the 2026-11-05 supplier-bookmarking spec.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Added last-request routes per the spec.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
- *
- * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-09
- * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  */
 
 import { Router } from 'express';
@@ -59,7 +54,6 @@ router.put('/last-request', authenticate, lastRequestController.update);
 
 router.get('/', authenticate, meController.getProfile);
 router.put('/active-view', authenticate, meController.updateActiveView);
-router.put('/preferred-lang', authenticate, meController.updatePreferredLang);
 router.put('/username', authenticate, meController.changeUsername);
 router.put('/email', authenticate, meController.changeEmail);
 router.post('/verify-otp', authenticate, meController.verifyOtp);

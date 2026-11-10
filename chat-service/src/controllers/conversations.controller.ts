@@ -24,19 +24,11 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
- * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
- * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
-import { LANGUAGE_CODES } from "../translation/languages.js";
-import type { TranslationEnqueuer } from "../translation/queue.js";
 import type { PrismaClient } from "../db/prisma.js";
 import {
   archiveOrderConversation,
@@ -48,7 +40,6 @@ import {
   listMessages,
   getConversationDetails,
   createConversation,
-  setTranslation,
 } from "../services/conversations.service.js";
 const bodySchema = z.object({
   orderId: z.uuid(),
@@ -279,26 +270,9 @@ const sendMessageSchema = z.object({
   type: z.literal("TEXT"),
   content: z.string().refine((value) => value.trim().length > 0),
 });
-// Queues translations for recipients with auto-translate on; failures never affect the send.
-function enqueueTranslations(
-  enqueue: TranslationEnqueuer | undefined,
-  message: { conversationId: string; messageId: string },
-  targets: { userId: string; language: string }[] | undefined,
-) {
-  if (!enqueue || !targets?.length) return;
-  enqueue(
-    targets.map((target) => ({
-      conversationId: message.conversationId,
-      userId: target.userId,
-      language: target.language as (typeof LANGUAGE_CODES)[number],
-      messageIds: [message.messageId],
-    })),
-  ).catch((error) => console.error(error));
-}
 export function postMessage(
   prisma: PrismaClient,
   publish?: import("../realtime/messages.js").MessagePublisher,
-  enqueue?: TranslationEnqueuer,
 ): RequestHandler {
   return async (req, res) => {
     const id = z.uuid().safeParse(req.params.conversationID);
@@ -327,7 +301,6 @@ export function postMessage(
       } catch (error) {
         console.error(error);
       }
-      enqueueTranslations(enqueue, result.message!, result.translateTargets);
       res.status(201).json(result.message);
     } catch (error) {
       console.error(error);
@@ -414,7 +387,6 @@ export function postParticipant(
 export function postSystemNotification(
   prisma: PrismaClient,
   publish?: import("../realtime/messages.js").MessagePublisher,
-  enqueue?: TranslationEnqueuer,
 ): RequestHandler {
   return async (req, res) => {
     const body = z
@@ -444,53 +416,7 @@ export function postSystemNotification(
       } catch (error) {
         console.error(error);
       }
-      if (result.status === 201)
-        enqueueTranslations(enqueue, result.message!, result.translateTargets);
       res.status(result.status).json(result.message);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Internal server error." });
-    }
-  };
-}
-
-// AI-generated (edited by <name>).
-const translationSchema = z.discriminatedUnion("enabled", [
-  z.object({ enabled: z.literal(false) }),
-  z.object({ enabled: z.literal(true), language: z.enum(LANGUAGE_CODES) }),
-]);
-export function postTranslation(
-  prisma: PrismaClient,
-  enqueue?: TranslationEnqueuer,
-): RequestHandler {
-  return async (req, res) => {
-    const id = z.uuid().safeParse(req.params.conversationID);
-    const body = translationSchema.safeParse(req.body);
-    if (!id.success || !body.success) {
-      res.sendStatus(400);
-      return;
-    }
-    try {
-      const result = await setTranslation(
-        prisma,
-        id.data,
-        req.user!.user_id,
-        body.data,
-      );
-      if (result.status !== 200) {
-        res.sendStatus(result.status);
-        return;
-      }
-      // Backfill every untranslated received message; a failed enqueue is logged only.
-      if (body.data.enabled && enqueue)
-        enqueue([
-          {
-            conversationId: id.data,
-            userId: req.user!.user_id,
-            language: body.data.language,
-          },
-        ]).catch((error) => console.error(error));
-      res.status(200).json(result.translation);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });
