@@ -26,6 +26,10 @@
  *        PHOTO_STORE_REGION (default us-east-1, which MinIO ignores), per George's ECS Fargate plan,
  *        Phase 1 item 6. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): added SUPPLIER_ORDER_SERVICE_API_KEY,
+ *        per instructions.md Stage 28 c1 (order-service worker access to the supplier lookups).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from "zod";
@@ -48,6 +52,9 @@ const envSchema = z.object({
   // "true" connects to Redis over TLS. Off for Compose and CI.
   REDIS_TLS: z.enum(["true", "false"]).default("false"),
   USER_SERVICE_URL: z.string().min(1),
+  // Alternative to a user JWT on GET /suppliers/:id and GET /suppliers/reference/location,
+  // for order-service's scheduled-errands worker. Same value as order-service's own secret.
+  SUPPLIER_ORDER_SERVICE_API_KEY: z.string().min(1),
   PHOTO_STORE_ENDPOINT: z.string().min(1).optional(),
   PHOTO_STORE_BUCKET: z.string().min(1).optional(),
   PHOTO_STORE_ACCESS_KEY: z.string().min(1).optional(),
@@ -87,6 +94,7 @@ export const config = Object.freeze({
     tls: values.REDIS_TLS === "true",
   }),
   userServiceUrl: values.USER_SERVICE_URL,
+  supplierOrderServiceApiKey: values.SUPPLIER_ORDER_SERVICE_API_KEY,
   photoStore: Object.freeze({
     endpoint: values.PHOTO_STORE_ENDPOINT,
     bucket: values.PHOTO_STORE_BUCKET,
