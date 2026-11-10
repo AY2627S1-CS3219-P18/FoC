@@ -320,6 +320,9 @@ Author review:
 Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -843,6 +846,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 
 | 242 | 2026-11-09 | user-service | Scheduled Errands Stage 28b: User-service worker endpoint | Added GET /users/worker/:id behind a new service-key check, returning status/lockedUntil. |
 | 243 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
+| 244 | 2026-11-09 | supplier-service | Scheduled Errands Stage 28 c1: supplier-service service-key access (PR, not merged) | Added a service-key alternative to a JWT on 2 supplier read routes, for order-service's worker. |
+
 | 245 | 2026-11-09 | order-service | Scheduled Errands Stage 28 c2: order-service supplier client | Added a service-key path to the supplier client for the worker's closed/next-opening checks. |
 | 246 | 2026-11-09 | order-service | Scheduled Errands Stage 28 d: order-service user client | Added a user-service client for the worker's fire-time status/lock check. |
 | 247 | 2026-11-09 | order-service | order-service: Default complete-by of one hour | One-hour default complete-by; edit null keeps it; ASAP relabelled. |
@@ -865,3 +870,11 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 260 | 2026-11-09 | frontend | Scheduled Errands Stage 28 g: Frontend | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip. |
 
 | 261 | 2026-11-09 | frontend | Merge latest main into message translation branch | Resolved merge conflicts and checked frontend. |
+
+| 262 | 2026-11-09 | frontend | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one | Resend-limit text now comes from the server's err.message, not a hardcoded string. |
+| 263 | 2026-11-10 | frontend | Stage 29: Auto-redirect instead of the blocked-page message | Opening another view's page now redirects to the current view's main page with a toast. |
+| 264 | 2026-11-10 | frontend | Stage 30: Email unmask on the admin user page | Admin user page's profile email gets the shared eye-icon unmask from /admin/users. |
+| 265 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
+| 266 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+
+| 267 | 2026-11-10 | user-service | Merge main into PR 174 branch | Resolved merge conflicts and retained lock status for language updates. |

@@ -75,16 +75,26 @@
  *        per the stage's "reason already entered is kept" rule.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Stage 30 of instructions.md - moved the inline email eye-icon logic (canUnmaskEmail,
+ *        the per-row unmasked state, 60 s timers, remask/remaskAll, toggleUnmask) into the
+ *        shared utils/emailUnmask.js hook and components/EmailUnmaskButton.jsx so the admin
+ *        user page can reuse it. Behaviour on this page is unchanged: a refetch still re-masks
+ *        every row, and the existing Stage 20b tests pass unmodified.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp, Eye, EyeOff, MoreVertical } from 'lucide-react'
+import { ChevronDown, ChevronUp, MoreVertical } from 'lucide-react'
 import ActionMenu from '../components/ActionMenu'
 import Button from '../components/Button'
 import ElevateTimer from '../components/ElevateTimer'
 import ElevationOtpModal from '../components/ElevationOtpModal'
+import EmailUnmaskButton from '../components/EmailUnmaskButton'
 import FieldError from '../components/FieldError'
 import { useBalance } from '../api/lookups'
 import EmptyState from '../components/EmptyState'
@@ -92,18 +102,11 @@ import { Pager, useApiNotice } from '../components/ApiNotice'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../context/AuthContext'
 import { useApi } from '../api/useApi'
-import { getFullEmail, listUsers, unlockUser, updateUserRole, updateUserStatus } from '../api/users'
+import { listUsers, unlockUser, updateUserRole, updateUserStatus } from '../api/users'
 import { describeError } from '../api/errorMessages'
 import { ACTION_TO_AUDIT_ACTION, AUDIT_REASON_CODES } from '../constants/auditReasons'
 import { useElevatedActionFlow } from '../utils/elevation'
-
-// No eye icon for the caller's own row (already unmasked everywhere else) or a super admin's
-// row, per instructions.md Stage 20b.
-function canUnmaskEmail(viewer, row) {
-  return row.id !== viewer.id && row.role !== 'super admin'
-}
-
-const UNMASK_TIMEOUT_MS = 60_000
+import { canUnmaskEmail, useEmailUnmask } from '../utils/emailUnmask'
 
 const inputClass =
   'h-11 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink md:h-10 md:text-sm'
@@ -399,11 +402,8 @@ export default function AdminUsers() {
   const [busy, setBusy] = useState(false)
   // Patches successful actions into the current page's rows until the next load replaces them.
   const [rowOverrides, setRowOverrides] = useState({})
-  // Per-row unmasked email (Stage 20b), keyed by user id; absent = masked.
-  const [unmaskedEmails, setUnmaskedEmails] = useState({})
-  const unmaskTimersRef = useRef({})
-  // The row id currently mid-flight on an unmask request (masked -> revealing).
-  const [unmaskBusyId, setUnmaskBusyId] = useState(null)
+  // Per-row unmasked email (Stage 20b), keyed by user id; shared hook since Stage 30.
+  const unmask = useEmailUnmask()
 
   useEffect(() => {
     const t = setTimeout(() => setUsername(usernameInput.trim()), 300)
@@ -425,58 +425,13 @@ export default function AdminUsers() {
   const notice = useApiNotice({ loading: loading && !data, error }, 'users')
   const rows = (data?.users ?? []).map((u) => rowOverrides[u.id] ?? u)
 
-  function remaskRow(id) {
-    clearTimeout(unmaskTimersRef.current[id])
-    delete unmaskTimersRef.current[id]
-    setUnmaskedEmails((prev) => {
-      if (!(id in prev)) return prev
-      const next = { ...prev }
-      delete next[id]
-      return next
-    })
-  }
-
-  function remaskAllRows() {
-    Object.values(unmaskTimersRef.current).forEach(clearTimeout)
-    unmaskTimersRef.current = {}
-    setUnmaskedEmails({})
-  }
-
   // Any refetch (filter/sort/page change, or a row action's reload()) re-masks every row and
   // clears their 60s timers, per the stage's rule.
+  const { remaskAll } = unmask
   useEffect(() => {
     setRowOverrides({})
-    remaskAllRows()
-  }, [data])
-
-  // Clear any still-running timers on unmount.
-  useEffect(() => {
-    return () => {
-      Object.values(unmaskTimersRef.current).forEach(clearTimeout)
-    }
-  }, [])
-
-  // Re-masking (already unmasked) is unchanged and sends no request. Revealing calls
-  // getFullEmail directly - no confirmation/reason dialog (Stage 26 "Reasons" amendment).
-  async function toggleUnmask(targetUser) {
-    if (targetUser.id in unmaskedEmails) {
-      remaskRow(targetUser.id)
-      return
-    }
-    setUnmaskBusyId(targetUser.id)
-    try {
-      const { email } = await getFullEmail(targetUser.id)
-      setUnmaskedEmails((prev) => ({ ...prev, [targetUser.id]: email }))
-      unmaskTimersRef.current[targetUser.id] = setTimeout(
-        () => remaskRow(targetUser.id),
-        UNMASK_TIMEOUT_MS,
-      )
-    } catch (err) {
-      showToast(describeError(err).message, 'error')
-    } finally {
-      setUnmaskBusyId(null)
-    }
-  }
+    remaskAll()
+  }, [data, remaskAll])
 
   function toggleSort(column) {
     if (sortBy === column) {
@@ -641,28 +596,8 @@ export default function AdminUsers() {
                       <td className="py-2.5 pr-2 font-medium text-ink">{u.username}</td>
                       <td className="py-2.5 pr-2 text-ink-70">
                         <span className="inline-flex items-center gap-1.5">
-                          <span>{unmaskedEmails[u.id] ?? u.email}</span>
-                          {canUnmaskEmail(viewer, u) && (
-                            <button
-                              type="button"
-                              aria-label={
-                                (u.id in unmaskedEmails ? 'Hide email for ' : 'Show email for ') +
-                                u.username
-                              }
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleUnmask(u)
-                              }}
-                              disabled={unmaskBusyId === u.id}
-                              className="shrink-0 text-ink-40 hover:text-ink disabled:opacity-50"
-                            >
-                              {u.id in unmaskedEmails ? (
-                                <EyeOff size={14} aria-hidden="true" />
-                              ) : (
-                                <Eye size={14} aria-hidden="true" />
-                              )}
-                            </button>
-                          )}
+                          <span>{unmask.unmaskedEmails[u.id] ?? u.email}</span>
+                          {canUnmaskEmail(viewer, u) && <EmailUnmaskButton user={u} unmask={unmask} />}
                         </span>
                       </td>
                       <td className="py-2.5 pr-2">

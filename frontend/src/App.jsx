@@ -86,6 +86,13 @@
  *        instructions.md Stage 26e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 29 - no route wiring changed here; ViewGate (components/RouteGuards.jsx) now
+ *        redirects instead of showing the blocked-page message, so every <ViewGate
+ *        requiredView={...}> wrapper below picks up the new behaviour automatically.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef } from "react";

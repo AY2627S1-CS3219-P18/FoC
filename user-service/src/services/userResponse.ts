@@ -21,9 +21,18 @@
  * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F3 - isLocked now reads the DB-computed row.is_locked (clock_timestamp(),
+ *        convention 5) instead of comparing against Date.now(); the mapper takes
+ *        UserRowWithLock so a query that omits is_locked fails to compile.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge disclosure conflict.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import type { UserRow } from '../db/queries/users.queries.js';
+import type { UserRowWithLock } from '../db/queries/users.queries.js';
 import { maskEmail } from '../utils/maskEmail.js';
 
 export interface UserResponse {
@@ -44,7 +53,9 @@ export interface UserResponse {
 // password_hash must never leave the service layer, and DB columns stay snake_case -
 // this is the one place that maps a user row to the camelCase shape every response uses.
 // requesterId masks email (Stage 20) unless the row is the requester's own.
-export function toUserResponse(row: UserRow, requesterId: string): UserResponse {
+// isLocked is decided in SQL (IS_LOCKED_SQL, fix F3): the row type requires is_locked, so a
+// query that forgets to select it is a compile error rather than a silently false field.
+export function toUserResponse(row: UserRowWithLock, requesterId: string): UserResponse {
   return {
     id: row.id,
     username: row.username,
@@ -55,7 +66,7 @@ export function toUserResponse(row: UserRow, requesterId: string): UserResponse 
     preferredLang: row.preferred_lang,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    isLocked: row.login_locked_until !== null && row.login_locked_until.getTime() > Date.now(),
+    isLocked: row.is_locked,
     lockedUntil: row.login_locked_until,
     lockLevel: row.login_lock_level,
   };

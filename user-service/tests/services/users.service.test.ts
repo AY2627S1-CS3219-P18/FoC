@@ -59,6 +59,13 @@
  *        (Stage 27b); existing assertions are unchanged. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F3 - added "isLocked and the locked filter use the DB clock": a lock 1 s in the
+ *        future / 1 s in the past, asserting isLocked and locked=true|false agree, and that
+ *        unlock on the just-expired row is a no-op with no audit row.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as usersService from '../../src/services/users.service.js';
@@ -488,6 +495,76 @@ describe('listUsers locked filter (Stage 18d)', () => {
       requesterId: UNKNOWN_ID,
     });
     expect(result.users.map((r) => r.id)).toContain(u.id);
+  });
+});
+
+// Fix F3: isLocked, the `locked` filter and unlock's lock-vs-no-op decision all come from one
+// SQL expression against clock_timestamp(), so they cannot disagree even 1 s either side of the
+// boundary (the old mapper compared against the app server's Date.now()).
+describe('isLocked and the locked filter use the DB clock (fix F3)', () => {
+  const listIds = async (locked: boolean) =>
+    (
+      await usersService.listUsers({
+        page: 1,
+        locked,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+        requesterId: UNKNOWN_ID,
+      })
+    ).users.map((u) => u.id);
+
+  it('a lock ending 1 s in the future: isLocked true, in locked=true, not in locked=false', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilSecondsFromNow: 1 });
+
+    const shown = await usersService.getUserById(u.id, UNKNOWN_ID);
+    expect(shown.isLocked).toBe(true);
+    expect(await listIds(true)).toEqual([u.id]);
+    expect(await listIds(false)).toEqual([]);
+  });
+
+  it('a lock that ended 1 s ago: isLocked false, in locked=false, not in locked=true', async () => {
+    const u = await createActiveUser(1);
+    await setLoginLockState(u.id, { lockLevel: 1, lockedUntilSecondsFromNow: -1 });
+
+    const shown = await usersService.getUserById(u.id, UNKNOWN_ID);
+    expect(shown.isLocked).toBe(false);
+    expect(shown.lockedUntil).not.toBeNull();
+    expect(await listIds(false)).toEqual([u.id]);
+    expect(await listIds(true)).toEqual([]);
+  });
+
+  it('unlock on a lock that ended 1 s ago is a no-op: nothing cleared, no audit row', async () => {
+    const target = await createActiveUser(1);
+    await setLoginLockState(target.id, {
+      lockLevel: 2,
+      lockedUntilSecondsFromNow: -1,
+      failedAttempts: 3,
+    });
+    const before = (await getUserById(target.id))!;
+
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id, null);
+    expect(result.isLocked).toBe(false);
+    expect(result.lockLevel).toBe(2);
+    expect(result.lockedUntil).toEqual(before.login_locked_until);
+
+    const after = (await getUserById(target.id))!;
+    expect(after.login_locked_until).toEqual(before.login_locked_until);
+    expect(after.login_lock_level).toBe(2);
+    expect(after.login_failed_attempts).toBe(3);
+    expect(after.updated_at).toEqual(before.updated_at);
+    expect(await getAuditLogRowsForTarget(target.id)).toEqual([]);
+  });
+
+  it('unlock on a lock ending 1 s in the future clears it and writes one USER_UNLOCK row', async () => {
+    const target = await createActiveUser(1);
+    await setLoginLockState(target.id, { lockLevel: 1, lockedUntilSecondsFromNow: 1 });
+
+    const result = await usersService.unlockUser(UNKNOWN_ID, 'admin', target.id, null);
+    expect(result).toMatchObject({ isLocked: false, lockedUntil: null, lockLevel: 0 });
+
+    const rows = await getAuditLogRowsForTarget(target.id);
+    expect(rows.map((r) => r.action)).toEqual(['USER_UNLOCK']);
   });
 });
 

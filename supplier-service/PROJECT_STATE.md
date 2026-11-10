@@ -20,6 +20,12 @@ Scope (2026-11-04, Codex, model: GPT-6): Updated Phase 5 status from the recorde
 Scope (2026-11-02, Codex, model: GPT-6): Updated current authentication descriptions to match
        the implemented JWKS verification; preserved dated historical records.
 Author review: Congchen
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5): Added workstream W9 (Supplier-Order-Service-Key
+       access on GET /suppliers/:id and GET /suppliers/reference/location, for order-service's
+       scheduled-errands worker per its instructions.md Stage 28 c1); recorded decision C54; added the
+       Done ledger line. This is a branch/PR for Congchen to review, not merged. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # Project State — Supplier Service (FoC)
@@ -30,9 +36,9 @@ every boundary, not at the end of the session.
 
 - **Phase:** Phases 0–4 implemented; Phase 5 is in progress. Authorization and response tests exist; the recorded local load run missed targets; the no-UI and cross-role suites were recorded as passing. See W6 and Q1.
 - **Stack:** TypeScript, Node.js, Express 4, MySQL 8 (`mysql2`), Redis (`ioredis`) with BullMQ, `zod`, `multer`, `@aws-sdk/client-s3` (MinIO locally), Vitest + Supertest
-- **Branch:** `supplier-bookmarking` (created from `main` 2026-11-05; W8). Earlier: `supplier-phase-5` (observed 2026-11-04).
+- **Branch:** `feat/stage-c1-supplier-service-key-access` (created from `main` 2026-11-09; W9, an order-service-initiated PR for Congchen to review). Earlier: `supplier-bookmarking` (created from `main` 2026-11-05; W8); `supplier-phase-5` (observed 2026-11-04).
 - **Method:** Spec → plan (`docs/superpowers/plans/`) → subagent-driven development, one implementer per task with reviewer subagents (see C49); every change disclosed per root `AGENTS.md`
-- **Last updated:** 2026-11-05 — W8 supplier bookmarking added (Planned); other sections retain their earlier dates.
+- **Last updated:** 2026-11-09 — W9 Supplier-Order-Service-Key access added (In review); other sections retain their earlier dates.
 - **Last verified against repo:** 2026-10-01
 - **Developer guide:** not created (the `update-documentation` skill is not installed in this repo; Guide column is `—` throughout)
 
@@ -130,6 +136,7 @@ priority (C47).
 | W6 | Phase 5 — Hardening and verification (NFR6.1, NFR7.1, no-UI demo, cross-role demo) | Blocked — needs human | [spec](SupplierServiceSpec.md) | [plan](../docs/superpowers/plans/2026-09-30-supplier-service-phase-5.md) | Authorization tests and no-UI/cross-role suites run; response tests partial; local load targets missed (Q1) | — |
 | W7 | OpenAPI description, seed-as-test, response ids (`location_id`, `faculty_id`, category ids) | In review | [architecture §7.3, §9 item 23](SupplierServiceArchitecture.md) | — | Ids committed (`05a0386`); openapi/seed uncommitted: Q5 | — |
 | W8 | Supplier bookmarking — `ids` filter and `unavailable` array (bookmarks themselves live in the user-service) | In review | [spec](../docs/superpowers/specs/2026-11-05-supplier-bookmarking-design.md) | [plan](../docs/superpowers/plans/2026-11-05-supplier-bookmarking.md) | Tasks A1–C5 done; D1 browser check run (admin UI soft-delete path not run) | — |
+| W9 | Supplier-Order-Service-Key access on `GET /suppliers/:id` and `GET /suppliers/reference/location`, for order-service's scheduled-errands worker | In review | [`../instructions.md`](../instructions.md) Stage 28 c1 | — | 444/444 tests pass; branch pushed, PR opened for Congchen's review, not merged | — |
 
 Cross-project (not a supplier workstream): the **frontend** project's supplier screens call this
 API — see D15 for what it exposed.
@@ -374,6 +381,7 @@ Decisions that do **not** shape the architecture — process, priorities, scope,
 | C51 | 2026-09-30 | Build the real frontend as a copy of `foc-mockup/` named `frontend/`, wired to services through their APIs; supplier data first from the compose `supplier-db`; seed by replaying the creation process as a test | The team wanted the frontend to reference real supplier data; frontend auth = real login, access token in memory, refresh cookie carries the session | Chat (frontend); Log |
 | C52 | 2026-10-01 | Treat each service as its own project with its own `PROJECT_STATE.md` under the `maintaining-project-state` skill copied from the SnoozeShare repo | Team instruction (this session) | This bootstrap |
 | C53 | 2026-11-05 | `GET /api/v1/suppliers` accepts `ids` (up to 20 comma-separated ids) and then also returns `unavailable: [{id, status: hidden\|deleted\|invalid}]`; the service never calls the user-service | Asked by the team in chat (2026-11-05); reason not recorded | Chat (supplier bookmarking); spec B8–B12, B15 |
+| C54 | 2026-11-09 | `GET /suppliers/:id` and `GET /suppliers/reference/location` accept header `Supplier-Order-Service-Key` (secret `SUPPLIER_ORDER_SERVICE_API_KEY`) as an alternative to a user JWT, on those two routes only; constant-time compare; wrong key with no valid JWT → `401` `{error: "INVALID_SERVICE_KEY"}` (the service's envelope has no `code` field, so the code goes in `error` — the team chose this over putting it in `message`); a valid JWT still wins when both are sent | Fully specified by order-service's team in `instructions.md` Stage 28 c1, for the scheduled-errands worker's fire-time supplier/location checks | `../instructions.md` Stage 28 c1 |
 
 ---
 
