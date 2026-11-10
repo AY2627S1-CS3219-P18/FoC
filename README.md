@@ -428,11 +428,15 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #28
        nav notification bell. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
 Author review: George Yeo
-Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #316 for the
+Scope (2026-11-10, Claude Code, model: claude-sonnet-5): Added Log index row #318 for the
+       Manage users mobile horizontal-scroll fix. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #319 for the
        order-service README overview and architecture diagrams. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
 Author review: George Yeo
-Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #317 for the
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #320 for the
        order-service API reference and frontend footer wording. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
 Author review: George Yeo
@@ -1026,5 +1030,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
 | 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
 | 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
-| 316 | 2026-11-10 | order-service | order-service: README overview and architecture diagrams | Documented the service's processes, lifecycle, API, events, queues and config; drew two PUML diagrams. |
-| 317 | 2026-11-10 | order-service, frontend | order-service API reference; frontend footer wording | Added order-service/API.md for every route; removed "UI prototype" from the footer. |
+| 316 | 2026-11-10 | frontend | Fix: ResendButton countdown not shown on first successful resend | Started the cooldown on resend success, not only on the server's cooldown error. |
+| 317 | 2026-11-10 | user-service | Fix: pending-account OTP verification could be redirected to a different account | Tied verify/resend-OTP to a login/register-issued pending-token cookie, not the submitted email. |
+| 318 | 2026-11-10 | frontend | Bug fix: Manage users page scrolls horizontally on mobile | Added `min-w-0` to the main flex item so only the wide table scrolls, not the whole page. |
+| 319 | 2026-11-10 | order-service | order-service: README overview and architecture diagrams | Documented the service's processes, lifecycle, API, events, queues and config; drew two PUML diagrams. |
+| 320 | 2026-11-10 | order-service, frontend | order-service API reference; frontend footer wording | Added order-service/API.md for every route; removed "UI prototype" from the footer. |
