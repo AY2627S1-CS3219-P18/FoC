@@ -85,6 +85,9 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated pagination tests to trigger bottom intersection.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import {
@@ -162,7 +165,16 @@ function renderChat(initialEntries) {
   );
 }
 
+let chatListObserver;
+
+// AI-generated
 beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback) { this.callback = callback; }
+    observe() { chatListObserver = this; }
+    disconnect() {}
+  });
+  chatListObserver = undefined;
   chatApi.markMessagesRead.mockResolvedValue({});
   chatApi.listChats.mockResolvedValue({
     conversations: [],
@@ -184,6 +196,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Chat outer back arrow", () => {
@@ -1067,11 +1080,12 @@ it("pins an older FoC conversation found beyond the first page without duplicati
     systemLink.compareDocumentPosition(orderLink) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+  await waitFor(() => expect(chatListObserver).toBeDefined());
+  act(() => chatListObserver.callback([{ isIntersecting: true }]));
   await waitFor(() =>
     expect(
-      screen.queryByRole("button", { name: "Load more chats" }),
-    ).not.toBeInTheDocument(),
+      chatApi.listChats,
+    ).toHaveBeenCalledWith("requester", cursor, "active"),
   );
   expect(screen.getAllByRole("link", { name: /FoC/ })).toHaveLength(1);
 });
@@ -1151,7 +1165,8 @@ describe("Active and archived chat tabs", () => {
       screen.queryByRole("link", { name: /active-1/ }),
     ).not.toBeInTheDocument();
     expect(archived).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+    await waitFor(() => expect(chatListObserver).toBeDefined());
+  act(() => chatListObserver.callback([{ isIntersecting: true }]));
     await screen.findByRole("link", { name: /archived-2/ });
     expect(chatApi.listChats).toHaveBeenCalledWith(
       "requester",

@@ -21,6 +21,9 @@
  *        /requests/:id/edit (RequireAuth, ViewGate requiredView REQUESTER).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the bottom-left demo controls from the app per user instruction.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 32 (instructions.md) - removed /series/new: the normal errand form
  *        (/requests/new) now also creates recurring/delayed errands, so there is no longer a
@@ -127,7 +130,6 @@ import {
 import SessionExpiryBanner from "./components/SessionExpiryBanner";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
-import DemoControls from "./components/DemoControls";
 import ChatBubble from "./components/ChatBubble";
 import { RequireAuth, RequireRole, ViewGate } from "./components/RouteGuards";
 import { VIEWS } from "./routing/views";
@@ -389,7 +391,6 @@ export default function App() {
       </main>
       {showFooter && <Footer />}
       <ChatBubble />
-      <DemoControls />
     </div>
   );
 }
