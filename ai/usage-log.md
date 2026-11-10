@@ -14350,3 +14350,54 @@ Accepted all changes.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31e: Tests (Vitest)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code (tests)
+**Governing decision:** instructions.md Stage 31e ("Follow the Stage 7 ground rules and the Stage 19 mocking policy... Every Verification bullet in 31a-31d that does not need Docker or a real browser is a required test case.")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+> on with e
+
+**Key responses:**
+
+- Awaiting the fire-and-forget unlock-email send deterministically, without changing production behaviour: `triggerUnlockEmail` (auth.service.ts) calls `sendUnlockEmail(...).catch(() => {})` without awaiting it, so the caller's own promise (a supertest response, or authService.login's rejection) can settle before the mocked send does. The call to the mock itself, though, happens synchronously - `sendUnlockEmail(...)` is invoked, and `.catch()` attached, entirely before `triggerUnlockEmail` returns, which is itself before the HTTP response is written. So by the time the triggering request/call has resolved, the mock's call and the Promise it returned are already recorded in `sendUnlockEmailMock.mock.results`. Added `awaitLastUnlockEmail()` (`tests/helpers/email.ts`) which just reads and awaits that already-captured promise (`mock.results.at(-1)`). No change to any production file, no polling, no fake timers - it is reading a result that already exists by the time the test calls it.
+- `tests/helpers/keys.ts` / `tests/utils/jwt.test.ts` (Stage 31a): added `signUnlockToken` (mirrors `signElevationToken`). Extended `verifyAccessToken`/`verifyElevationToken`'s existing cross-type-rejection tests with the new `ul+JWT` case, and added `signUnlockToken`/`verifyUnlockToken` describe blocks covering claim shape (`sub`/`iat`/`exp`/`lck`), the 1 hour expiry, and every cross-type/expired/tampered/wrong-key rejection, mirroring the existing elevation-token coverage.
+- `tests/helpers/email.ts` / `tests/services/email.service.test.ts` (Stage 31b): added `sendUnlockEmailMock`, `unlockEmailCallsFor`, `latestUnlockUrlFor`, `awaitLastUnlockEmail` (global mock already added in setupFiles.ts for 31b). Added a `sendUnlockEmail` describe block covering subject/link content, the "too many failed attempts" wording with no lock-length/OTP/password text, the dev-fallback `[DEV EMAIL] ... url=...` line, and the `[OTP EMAIL] ... purpose=account_unlock ...` log line - the last two prove it goes through the shared `sendMailWithRetry`/`PURPOSE_COPY`-free path rather than a copy. Did not re-test the full transient/non-transient/backoff/deadline matrix for `sendUnlockEmail` purpose-by-purpose, since that logic is generic and already covered by the `sendOtpEmail` retry describe block above it (same principle `me.service.test.ts`'s own header comment states for not duplicating generic OTP logic per call site); one transient-failure case is included only to demonstrate the retry path is actually taken.
+- `tests/services/auth.service.test.ts` (Stage 31b/31c): extended the `login lockout (Stage 18b)` describe block with: each of the three escalating login locks sending exactly one unlock email whose link's token verifies with `lck` matching the row; a pending or suspended account never emailed (via real `login()` calls, not direct DB writes, since `countsTowardLock` already excludes both); attempts during an existing lock sending no additional email; and that `login()` still rejects with `ACCOUNT_LOCKED` even when the mocked send rejects (the lock stands; the send is never awaited). Added `describe('unlockByToken (Stage 31c)')` covering every service-level Verification bullet: a valid token unlocks (lock, escalation, and OTP send blocks/escalations for all three purposes cleared, and the user can then log in); the same token reused, a token for an earlier lock after a newer lock, a token after an admin-style lock clear, a time-expired lock, and a suspended/pending/unknown account all give `ALREADY_UNLOCKED` with nothing changed; malformed/tampered/wrong-`typ`/expired tokens give `INVALID_UNLOCK_TOKEN`; a locked super admin can unlock; and no audit row is ever written.
+- `tests/controllers/auth.controller.test.ts` (Stage 31c): added `describe('POST /auth/unlock (Stage 31c)')` for the HTTP-level bullets not already exercised at the service layer: the `200 UNLOCKED`/`ALREADY_UNLOCKED` and `401 INVALID_UNLOCK_TOKEN` response shapes, Zod `.strict()` validation (missing/empty/non-string token, unknown body key), working with no `Authorization` header and ignoring one that is present, a locked super admin unlocking via the link, no audit row, and that admin `POST /users/:id/unlock` is unchanged (still requires auth, still audits).
+- `tests/concurrency/lockout.concurrency.test.ts` (Stage 31b/31c): added the unlock-email assertion (exactly one email) to the existing N-concurrent-wrong-logins test, and a new describe block for N concurrent clicks of the same unlock link: exactly one `UNLOCKED`, the rest `ALREADY_UNLOCKED`, lock fully cleared.
+- `frontend/tests/pages/UnlockAccount.test.jsx` (Stage 31d): promoted the throwaway scratch RTL test used during 31d's own verification into a permanent test, covering every 31d Verification bullet that does not need a real browser: no request until pressed (missing and valid token), `UNLOCKED`/`ALREADY_UNLOCKED` redirect-to-`/login`-with-toast, `INVALID_UNLOCK_TOKEN` staying on the page with the banner, and a double-click sending exactly one request.
+- Manual verification still needed (cannot be done in this environment, and is explicitly listed for manual follow-up in the stage's own text): phone-width viewport usability of `/unlock-account`; opening the unlock link in a fresh tab through the Vite dev proxy and through the nginx production image to confirm the SPA fallback serves the page rather than a 404; a full real-browser click-through of the email-link flow end to end.
+- Verification: backend - `npx tsc --noEmit -p tests/tsconfig.json` and `npx eslint src tests` clean; full suite `npx vitest run`: 38 files, 1047/1047 passed (up from 1002 before this stage; no regressions, Stage 18 lockout and admin-unlock tests included). Frontend - `npx vitest run`: 40 files, 284/285 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to Stage 31) was confirmed pre-existing via `git stash` during Stage 31d's own review and is untouched here.
+- Did not modify any application code to make a test pass, per the stage's own instruction; every assertion added here matches already-implemented 31a-31d behaviour.
+
+**Files:**
+
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/helpers/email.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `frontend/tests/pages/UnlockAccount.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #265)
+
+**Deviations / questions raised for the team:**
+
+- None beyond what is already flagged above (the three manual-verification items the stage itself defers, and the deliberate choice not to re-test the generic OTP retry/backoff matrix a second time for `sendUnlockEmail`).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
