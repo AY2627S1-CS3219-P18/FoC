@@ -3,8 +3,14 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 g (instructions.md) - tests for ScheduledSeriesSection: the rule summary
  *        and next-dates list, the pause/resume/delete reminder dialogs (including the
- *        pending+open count text) and that they call the right series API function, and the
- *        "New" button's navigation.
+ *        pending+open count text) and that they call the right series API function.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - removed the stale claim that this file tested the
+ *        "New" button's navigation; no test here ever exercised it, and the button itself is
+ *        now removed (CreateRequest.test.jsx/CreateRequestSeries.test.jsx cover the unified
+ *        create form it was replaced by).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */

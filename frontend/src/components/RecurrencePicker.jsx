@@ -12,6 +12,11 @@
  *        parsing RRULE text happens there, not here. No requirements, architecture, schema,
  *        or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - the "after N occurrences" end condition now shows the
+ *        word "time"/"times" after the stepper (was screen-reader only before).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { Minus, Plus } from 'lucide-react'
@@ -250,13 +255,16 @@ export default function RecurrencePicker({ value, onChange }) {
             />
           )}
           {value.end.type === 'after' && (
-            <Stepper
-              value={value.end.count}
-              onChange={(count) => set({ end: { type: 'after', count } })}
-              min={1}
-              max={999}
-              label="occurrences"
-            />
+            <div className="flex items-center gap-2">
+              <Stepper
+                value={value.end.count}
+                onChange={(count) => set({ end: { type: 'after', count } })}
+                min={1}
+                max={999}
+                label="occurrences"
+              />
+              <span className="text-sm text-ink-70">{value.end.count === 1 ? 'time' : 'times'}</span>
+            </div>
           )}
         </div>
       </div>
