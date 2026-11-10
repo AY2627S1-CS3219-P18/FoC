@@ -78,6 +78,12 @@
  *        helper instead of a hardcoded INVALID_OTP throw, per instructions.md Stage 25.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F4 - initiateEmailChange and initiatePasswordChange's pre-lock bcrypt checks read
+ *        the hash via findPasswordHashById, since findById no longer selects password_hash.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -222,8 +228,9 @@ export async function initiateEmailChange(
     throw new AppError(400, 'Please enter a valid email', 'VALIDATION_ERROR');
   }
 
-  // Unlocked read first: bcrypt is slow, so verify before taking the row lock.
-  const user = await userQueries.findById(userId);
+  // Unlocked read first: bcrypt is slow, so verify before taking the row lock. Only the hash is
+  // read (fix F4: findById no longer selects password_hash).
+  const user = await userQueries.findPasswordHashById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
@@ -393,8 +400,9 @@ export async function initiatePasswordChange(
     throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
   }
 
-  // Unlocked read first: bcrypt is slow, so verify before taking the row lock.
-  const user = await userQueries.findById(userId);
+  // Unlocked read first: bcrypt is slow, so verify before taking the row lock. Only the hash is
+  // read (fix F4: findById no longer selects password_hash).
+  const user = await userQueries.findPasswordHashById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }

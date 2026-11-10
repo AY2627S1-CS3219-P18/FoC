@@ -13,6 +13,13 @@
 //   lookup). Governing decision: instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Fix F4 (Tool: Claude Code, model: claude-fable-5-1) - updatePasswordHash's test reads
+//   the hash via findPasswordHashById (findById no longer selects it); added tests that findById,
+//   resetLoginLock's RETURNING row, listUsersPage's rows and SAFE_USER_COLUMNS carry no
+//   password_hash (listUsersPage's test previously asserted the opposite). Governing
+//   decision: the team's F4 fix note (chat, 2026-11-10).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pool from '../../../src/db/pool.js';
 import { withTransaction } from '../../../src/db/transaction.js';
@@ -274,15 +281,53 @@ describe('updatePasswordHash', () => {
     await new Promise((r) => setTimeout(r, 20));
     await users.updatePasswordHash(u.id, 'new-hash');
     const after = (await users.findById(u.id))!;
-    expect(after.password_hash).toBe('new-hash');
+    expect((await users.findPasswordHashById(u.id))!.password_hash).toBe('new-hash');
     expect(after.updated_at.getTime()).toBeGreaterThan(u.updated_at.getTime());
+  });
+});
+
+describe('safe user columns (fix F4)', () => {
+  it('SAFE_USER_COLUMNS never names password_hash', () => {
+    expect(users.SAFE_USER_COLUMNS).not.toContain('password_hash');
+    expect(users.SAFE_USER_COLUMNS).toContain('AS is_locked');
+  });
+
+  it('findById returns every non-secret column plus is_locked, and no password_hash', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    const row = (await users.findById(u.id))!;
+    expect(Object.keys(row).sort()).toEqual(
+      [
+        'id', 'username', 'email', 'created_at', 'updated_at', 'status', 'role', 'active_view',
+        'login_failed_attempts', 'login_failure_window_start', 'login_locked_until',
+        'login_lock_level', 'is_locked',
+      ].sort(),
+    );
+    expect(row).not.toHaveProperty('password_hash');
+    expect(await users.findPasswordHashById(u.id)).toEqual({ password_hash: 'hash' });
+    expect(await users.findPasswordHashById('00000000-0000-0000-0000-000000000000')).toBeNull();
+  });
+
+  it('resetLoginLock returns the cleared row without password_hash, or null for an unknown id', async () => {
+    const u = await users.createUser({ ...base, status: 'active' });
+    await users.lockLoginAccount(u.id, { lockedUntil: new Date(Date.now() + 60_000), lockLevel: 2 });
+    const cleared = (await users.resetLoginLock(u.id))!;
+    expect(cleared).toMatchObject({
+      id: u.id,
+      login_failed_attempts: 0,
+      login_failure_window_start: null,
+      login_locked_until: null,
+      login_lock_level: 0,
+      is_locked: false,
+    });
+    expect(cleared).not.toHaveProperty('password_hash');
+    expect(await users.resetLoginLock('00000000-0000-0000-0000-000000000000')).toBeNull();
   });
 });
 
 describe('listUsersPage', () => {
   const defaultPage = { sortBy: 'createdAt' as const, sortDir: 'desc' as const, limit: 50, offset: 0 };
 
-  it('returns users of every status, newest first, including password_hash, and the total', async () => {
+  it('returns users of every status, newest first, without password_hash (fix F4), and the total', async () => {
     const a = await users.createUser({ ...base, status: 'active' });
     const b = await users.createUser({
       username: 'bob',
@@ -301,7 +346,7 @@ describe('listUsersPage', () => {
     const { rows, total } = await users.listUsersPage(defaultPage);
     expect(rows.map((r) => r.status).sort()).toEqual(['active', 'pending', 'suspended']);
     expect(rows.map((r) => r.id)).toEqual([c.id, b.id, a.id]);
-    expect(rows[0]).toHaveProperty('password_hash');
+    for (const r of rows) expect(r).not.toHaveProperty('password_hash');
     expect(total).toBe(3);
   });
 
