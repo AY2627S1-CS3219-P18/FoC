@@ -17514,3 +17514,31 @@ The spec only named `tests/controllers/auth.controller.test.ts` for test updates
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Bug fix: Manage users page scrolls horizontally on mobile
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** N/A — mobile-viewport CSS bug fix, no requirements/architecture/schema/API decision involved; reported directly by the user with an iPhone-width screenshot of /admin/users.
+
+**Prompts (exact):**
+> this is the manage users page on iphone dimensions - help me resolve this (using git workflow e.g. PR)
+> [attached screenshot of AdminUsers page clipped on a narrow viewport]
+
+**Key responses:**
+Root cause: `App.jsx`'s `<main className="flex-1">` is a flex item inside a `flex min-h-screen flex-col` container. Without `min-w-0`, a flex item's default `min-width: auto` lets its content (here, AdminUsers.jsx's table, which has `min-w-[720px]` inside an `overflow-x-auto` wrapper) stretch the flex item itself, so the whole page scrolled horizontally instead of just the table's own scroll wrapper. Fix: added `min-w-0` to `<main>` (`frontend/src/App.jsx`), a one-line class change; no change to AdminUsers.jsx or any other page was needed.
+Verification: dev server start and any available build/lint/test checks run via a verification subagent; manual login-gated visual check of /admin/users on a simulated iPhone width was not performed in this session.
+
+**Files:**
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+
+**Author review:**
