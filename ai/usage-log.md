@@ -16941,7 +16941,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — ECS Fargate: chat deployment and email docs
 
@@ -16982,7 +16982,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Frontend: remove the nav notification bell
 
@@ -17008,7 +17008,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Resolve disclosure merge conflicts with main
 
@@ -17381,7 +17381,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — order-service API reference; frontend footer wording
 
@@ -17423,4 +17423,4 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo

@@ -13,7 +13,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
  * Scope: Added DB_SSL (default off), matching supplier-service, per George's ECS Fargate plan.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { z } from "zod";
 const schema = z.object({

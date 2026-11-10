@@ -9,7 +9,7 @@
  * Scope (2026-11-10): Removed the "UI prototype" wording from the footer text, per George's
  *        chat instruction. No requirements, architecture, schema, or API decisions were made
  *        by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import Logo from './Logo'

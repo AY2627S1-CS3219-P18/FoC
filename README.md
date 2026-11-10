@@ -380,7 +380,7 @@ Author review: Congchen
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #285 for chat-service
        database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
        were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Codex, model: GPT-6): Added the order message toast log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
@@ -423,19 +423,19 @@ Author review:
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #287 for the
        supplier-worker Compose fix, and row #288 for the ECS chat deployment docs. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #289 for removing the
        nav notification bell. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #316 for the
        order-service README overview and architecture diagrams. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #317 for the
        order-service API reference and frontend footer wording. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)

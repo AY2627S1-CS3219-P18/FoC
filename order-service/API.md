@@ -5,7 +5,7 @@ Scope: Documentation only - wrote this API reference by reading the routes, cont
        services, validation, error codes and Socket.IO server as they are on main. No source
        code was changed. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # Order Service API

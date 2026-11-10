@@ -10,7 +10,7 @@ Scope: Added the chat-service resources George created on 2026-11-10 (its RDS in
        target group and load balancer rule), the schema-change and new-setting steps, and matching
        troubleshooting rows. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # ECS Fargate: starting and stopping a test run

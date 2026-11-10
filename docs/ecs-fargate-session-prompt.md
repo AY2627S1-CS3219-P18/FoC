@@ -36,7 +36,7 @@ Scope: Recorded George's 2026-11-10 chat decisions (deploy chat-service with its
        NODE_ENV=production for user-service) and the facts found while carrying them out. The
        decisions are George's; no requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment

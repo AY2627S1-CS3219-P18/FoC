@@ -10,7 +10,7 @@
 #        supplier-worker's environment, mirroring the supplier-service line (both load
 #        supplier-service/src/config.ts). No requirements, architecture, schema, or API decisions
 #        were made by the AI tool.
-# Author review:
+# Author review: George Yeo
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-11-08
 # Scope: Configured the team-specified order worker Chat Service connection.

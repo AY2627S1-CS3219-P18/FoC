@@ -8,7 +8,7 @@
 # Scope: Added chat-service to the build and deploy-web lists, like the other web services, per
 #        George's chat instruction. No requirements, architecture, schema, or API decisions were made
 #        by the AI tool.
-# Author review:
+# Author review: George Yeo
 
 name: Deploy
 

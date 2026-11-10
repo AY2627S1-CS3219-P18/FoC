@@ -18,11 +18,11 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added the overview, pro
        lifecycle, API, real-time, background-work, data, dependencies and configuration
        sections, and updated the Layout tree, all describing the code as it is on main
        (584174e). No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Linked API.md and corrected the
        cancel row of the lifecycle table to match src/domain/order-status.ts. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # order-service

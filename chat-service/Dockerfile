@@ -8,7 +8,7 @@
 # Scope: Added the RDS CA bundle to the production stage, as in the other backend images (ECS Fargate
 #        plan, Phase 1 item 4). No requirements, architecture, schema, or API decisions were made by
 #        the AI tool.
-# Author review:
+# Author review: George Yeo
 
 ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-slim AS base
