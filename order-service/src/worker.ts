@@ -40,7 +40,7 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): The credit job processor no longer takes the event sink (it no longer settles
  *        reservations; George, 2026-11-09).
@@ -114,7 +114,9 @@ const events = createRedisEventPublisher(redis);
 
 // ---- Stage 28 f: scheduled-errands worker ----------------------------------
 if (!env.SUPPLIER_ORDER_SERVICE_API_KEY)
-  throw new Error('SUPPLIER_ORDER_SERVICE_API_KEY is required by the order worker');
+  throw new Error(
+    'SUPPLIER_ORDER_SERVICE_API_KEY is required by the order worker',
+  );
 if (!env.USER_ORDER_SERVICE_API_KEY)
   throw new Error('USER_ORDER_SERVICE_API_KEY is required by the order worker');
 const seriesWorkerSuppliers = createHttpSuppliersClient(

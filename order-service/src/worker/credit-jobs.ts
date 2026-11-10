@@ -29,11 +29,11 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Removed the credit_reserve job and its retry / retries-exhausted
  *        handling; createOrder now reserves synchronously (George, 2026-11-09). Release
@@ -61,10 +61,7 @@ import {
 } from '../queue/tasks.js';
 import type { CreditsClient } from '../clients/credits.client.js';
 import type { PrismaClient } from '../db/prisma.js';
-import {
-  CREDIT_RELEASE_TASK,
-  isReleasePayload,
-} from '../queue/tasks.js';
+import { CREDIT_RELEASE_TASK, isReleasePayload } from '../queue/tasks.js';
 
 /** Start of the error a transient release failure throws; the re-drive matches on it. */
 export const TRANSIENT_RELEASE_FAILURE = 'Credit release failed (transient)';

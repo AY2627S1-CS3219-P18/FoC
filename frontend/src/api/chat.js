@@ -13,15 +13,25 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added setTranslation for POST /chat/conversations/:id/translation.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested requested active/archived chat list tabs using the existing status filter.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from "./http";
 
 export const encodeCursor = (cursor) =>
   cursor ? btoa(JSON.stringify(cursor)) : undefined;
-export const listChats = (role, cursor) =>
+// AI-generated (edited by <name>).
+export const listChats = (role, cursor, status) =>
   request("/chat/conversations", {
-    query: { role, cursor: encodeCursor(cursor) },
+    query: {
+      role,
+      cursor: encodeCursor(cursor),
+      ...(status ? { status } : {}),
+    },
   });
 export const getChat = (id) =>
   request("/chat/conversations/" + encodeURIComponent(id));

@@ -40,6 +40,11 @@
 //    Stage 28b. No requirements, architecture, schema, or API decisions were made by the AI
 //    tool.
 //    Author review:
+//  2026-11-10: Stage 31a - add FRONTEND_BASE_URL (must parse as a URL) for the lockout unlock
+//    link. Tool: Claude Code (model: claude-fable-5-1). Governing decision: instructions.md
+//    Stage 31 (Config table). No requirements, architecture, schema, or API decisions were made
+//    by the AI tool.
+//    Author review:
 
 import { z } from "zod";
 
@@ -102,6 +107,9 @@ const envSchema = z
 
     // Shared secret for order-service's worker lookup (GET /users/worker/:id).
     USER_ORDER_SERVICE_API_KEY: z.string().min(1),
+
+    // Public origin of the frontend; the lockout unlock link (Stage 31) is built on it.
+    FRONTEND_BASE_URL: z.string().url(),
   })
   .superRefine((env, ctx) => {
     // SMTP settings may be blank only in development (emails are logged instead).
@@ -191,5 +199,9 @@ export const config = {
   },
   userOrderService: {
     apiKey: env.USER_ORDER_SERVICE_API_KEY,
+  },
+  frontend: {
+    // Trailing slash stripped (as for CREDIT_SERVICE_URL) so paths can be appended directly.
+    baseUrl: env.FRONTEND_BASE_URL.replace(/\/$/, ""),
   },
 } as const;

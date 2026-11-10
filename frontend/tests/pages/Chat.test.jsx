@@ -64,6 +64,15 @@
  * Scope (2026-11-09, Codex, model: GPT-6): Tested message metadata placement.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested requested active/archived chat list tabs using the existing status filter.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Restored the pinned system chat independently of the selected status tab.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Restricted system chat to the Active list per user correction.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -208,7 +217,11 @@ describe("Live chat list", () => {
     expect(
       await screen.findByText("No chats in requester mode."),
     ).toBeInTheDocument();
-    expect(chatApi.listChats).toHaveBeenCalledWith("requester", undefined);
+    expect(chatApi.listChats).toHaveBeenCalledWith(
+      "requester",
+      undefined,
+      "active",
+    );
   });
 
   it("filters the HTTP call by courier mode and opens the conversation ID", async () => {
@@ -228,7 +241,11 @@ describe("Live chat list", () => {
     renderChat(["/chats"]);
     const link = await screen.findByRole("link", { name: /Errand chat/ });
     expect(link).toHaveAttribute("href", "/chat/conversation-1");
-    expect(chatApi.listChats).toHaveBeenCalledWith("courier", undefined);
+    expect(chatApi.listChats).toHaveBeenCalledWith(
+      "courier",
+      undefined,
+      "active",
+    );
     expect(screen.getByLabelText("2 unread messages")).toHaveTextContent("2");
   });
 
@@ -1042,4 +1059,109 @@ it("shows system-chat notifications as incoming FoC messages and prevents sendin
   expect(screen.getByRole("textbox", { name: "Message" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   expect(chatApi.sendMessage).not.toHaveBeenCalled();
+});
+
+// AI-generated (edited by <name>).
+describe("Active and archived chat tabs", () => {
+  it("shows only the active list when there are no archived chats", async () => {
+    renderChat(["/chats"]);
+    await screen.findByText("No chats in requester mode.");
+    expect(chatApi.listChats).toHaveBeenCalledWith(
+      "requester",
+      undefined,
+      "archived",
+    );
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("separates statuses and keeps the archived filter when loading more", async () => {
+    const cursor = { id: "archived-1", updatedAt: "2026-11-10T00:00:00Z" };
+    const row = (id) => ({ id, orderId: id, updatedAt: cursor.updatedAt });
+    chatApi.listChats.mockImplementation(async (_role, next, status) => ({
+      conversations: [
+        row(
+          status === "active" ? "active-1" : next ? "archived-2" : "archived-1",
+        ),
+      ],
+      hasMore: status === "archived" && !next,
+      nextCursor: status === "archived" && !next ? cursor : null,
+    }));
+    chatApi.getChat.mockImplementation(async (id) => ({
+      title: id,
+      participants: [],
+    }));
+    renderChat(["/chats"]);
+    await screen.findByRole("link", { name: /active-1/ });
+    const archived = await screen.findByRole("tab", { name: "Archived" });
+    expect(screen.getByRole("tab", { name: "Active" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.queryByRole("link", { name: /archived-1/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(archived);
+    await screen.findByRole("link", { name: /archived-1/ });
+    expect(
+      screen.queryByRole("link", { name: /active-1/ }),
+    ).not.toBeInTheDocument();
+    expect(archived).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+    await screen.findByRole("link", { name: /archived-2/ });
+    expect(chatApi.listChats).toHaveBeenCalledWith(
+      "requester",
+      cursor,
+      "archived",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Active" }));
+    await screen.findByRole("link", { name: /active-1/ });
+    expect(
+      screen.queryByRole("link", { name: /archived-1/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// AI-generated (edited by <name>).
+it("keeps system chat pinned in Active and excludes it from Archived", async () => {
+  const row = (id, orderId) => ({
+    id,
+    orderId,
+    updatedAt: "2026-11-10T00:00:00Z",
+  });
+  const cursor = { id: "older", updatedAt: "2026-11-09T00:00:00Z" };
+  chatApi.listChats.mockImplementation(async (_role, next, status) => {
+    if (status)
+      return {
+        conversations: [
+          row(status + "-chat", "order-" + status),
+          ...(status === "archived" ? [row("system-chat", null)] : []),
+        ],
+        hasMore: false,
+      };
+    return next
+      ? { conversations: [row("system-chat", null)], hasMore: false }
+      : {
+          conversations: [row("active-chat", "order-active")],
+          hasMore: true,
+          nextCursor: cursor,
+        };
+  });
+  chatApi.getChat.mockImplementation(async (id) => ({
+    title: id === "system-chat" ? "FoC" : id,
+    participants: [],
+  }));
+  renderChat(["/chats"]);
+  await screen.findByRole("link", { name: /FoC/ });
+  expect(screen.getAllByRole("link")[0]).toHaveAttribute(
+    "href",
+    "/chat/system-chat",
+  );
+  fireEvent.click(await screen.findByRole("tab", { name: "Archived" }));
+  await screen.findByRole("link", { name: /archived-chat/ });
+  expect(screen.queryByRole("link", { name: /FoC/ })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: /active-chat/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Active" }));
+  await screen.findByRole("link", { name: /FoC/ });
 });

@@ -14,6 +14,11 @@
 //   signElevationToken for the new `ep+JWT` token. Governing decision: instructions.md
 //   Stage 27. No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31e - added signUnlockToken, a test-side `ul+JWT` signer (mirrors
+//   signElevationToken) for jwt.test.ts's unlock-token coverage. Governing decision:
+//   instructions.md Stage 31a.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import jwt from 'jsonwebtoken';
@@ -71,6 +76,18 @@ export function signElevationToken(claims: { sub?: string; role?: string; sid?: 
     expiresIn: '15m',
     keyid: process.env.JWT_KEY_ID,
     header: { alg: 'RS256', typ: 'ep+JWT' },
+  });
+}
+
+// Valid RS256 unlock token (header typ: ul+JWT), signed by the real key.
+export function signUnlockToken(claims: { sub?: string; lck?: number } = {}): string {
+  const { sub = 'user-id-1', lck = Math.floor(Date.now() / 1000) } = claims;
+  return jwt.sign({ lck }, privateKey(), {
+    algorithm: 'RS256',
+    subject: sub,
+    expiresIn: '1h',
+    keyid: process.env.JWT_KEY_ID,
+    header: { alg: 'RS256', typ: 'ul+JWT' },
   });
 }
 

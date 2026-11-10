@@ -27,6 +27,11 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -34,6 +39,7 @@ import { LANGUAGE_CODES } from "../translation/languages.js";
 import type { TranslationEnqueuer } from "../translation/queue.js";
 import type { PrismaClient } from "../db/prisma.js";
 import {
+  archiveOrderConversation,
   sendSystemNotification,
   addParticipant,
   markConversationRead,
@@ -485,6 +491,28 @@ export function postTranslation(
           },
         ]).catch((error) => console.error(error));
       res.status(200).json(result.translation);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  };
+}
+
+// AI-generated (edited by <name>).
+export function postArchive(prisma: PrismaClient): RequestHandler {
+  return async (req, res) => {
+    const id = z.uuid().safeParse(req.params.orderId);
+    if (!id.success) {
+      res.sendStatus(400);
+      return;
+    }
+    try {
+      const result = await archiveOrderConversation(
+        prisma,
+        id.data,
+        req.user?.user_id,
+      );
+      res.sendStatus(result.status);
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error." });

@@ -25,6 +25,15 @@
 //   Stage 27's OTP table (exact subject line given there). No requirements, architecture,
 //   schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31b - extracted sendOtpEmail's attempt loop into the shared
+//   sendMailWithRetry (same attempts/backoff/per-attempt cap/overall deadline/[OTP EMAIL] log
+//   line; sendOtpEmail's own behaviour, log lines and dev fallback are unchanged), and added
+//   sendUnlockEmail, which reuses it with purpose='account_unlock' for the lockout unlock
+//   email (its own dev-fallback line distinguishes it from an OTP, since it carries a link,
+//   not a code). Tool: Claude Code (model: claude-fable-5-1). Governing decision:
+//   instructions.md Stage 31 ("When the email is sent" / "The unlock link and token" tables).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
@@ -188,6 +197,43 @@ function sendWithCap(mailOptions: OtpMailOptions, capMs: number): Promise<void> 
   });
 }
 
+// Stage 19's retry mechanism: same attempt count, per-attempt cap, full-jitter backoff, overall
+// deadline and [OTP EMAIL] log line, shared by sendOtpEmail and sendUnlockEmail (Stage 31b).
+// `purpose` is only ever used as the log line's value here (and, for sendOtpEmail, to pick the
+// template beforehand) - callers that are not OTPs pass their own value, e.g. 'account_unlock'.
+async function sendMailWithRetry(
+  mailOptions: OtpMailOptions,
+  { username, to, purpose }: { username: string; to: string; purpose: string },
+): Promise<void> {
+  const startedAt = Date.now();
+
+  for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
+    try {
+      await sendWithCap(mailOptions, PER_ATTEMPT_TIMEOUT_MS);
+      logOtpEmailAttempt("sent", { username, to, purpose, attempt });
+      return;
+    } catch (err) {
+      logOtpEmailAttempt("failed", {
+        username,
+        to,
+        purpose,
+        attempt,
+        error: describeAttemptError(err),
+      });
+
+      if (!isTransientError(err) || attempt === MAX_SEND_ATTEMPTS) {
+        throw err;
+      }
+
+      const waitMs = backoffMs(attempt);
+      if (Date.now() - startedAt + waitMs > OVERALL_DEADLINE_MS) {
+        throw err;
+      }
+      await delay(waitMs);
+    }
+  }
+}
+
 export async function sendOtpEmail({
   to,
   otp,
@@ -217,31 +263,39 @@ export async function sendOtpEmail({
     html: `<p>${copy.intro}</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${otp}</p><p>${expiry}</p>`,
   };
 
-  const startedAt = Date.now();
+  await sendMailWithRetry(mailOptions, { username, to, purpose });
+}
 
-  for (let attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
-    try {
-      await sendWithCap(mailOptions, PER_ATTEMPT_TIMEOUT_MS);
-      logOtpEmailAttempt("sent", { username, to, purpose, attempt });
-      return;
-    } catch (err) {
-      logOtpEmailAttempt("failed", {
-        username,
-        to,
-        purpose,
-        attempt,
-        error: describeAttemptError(err),
-      });
+// Stage 31b: emailed on every login lock (not OTP send blocks), to the registered address,
+// after the lock's transaction has committed. No OTP, password or lock length ever appears in
+// it. Reuses sendMailWithRetry, logging with purpose='account_unlock' per instructions.md
+// Stage 31's logging rule.
+const UNLOCK_EMAIL_SUBJECT = "Your FoC account has been locked";
+const UNLOCK_EMAIL_PURPOSE = "account_unlock";
 
-      if (!isTransientError(err) || attempt === MAX_SEND_ATTEMPTS) {
-        throw err;
-      }
-
-      const waitMs = backoffMs(attempt);
-      if (Date.now() - startedAt + waitMs > OVERALL_DEADLINE_MS) {
-        throw err;
-      }
-      await delay(waitMs);
-    }
+export async function sendUnlockEmail({
+  to,
+  username,
+  unlockUrl,
+}: {
+  to: string;
+  username: string;
+  unlockUrl: string;
+}): Promise<void> {
+  if (useDevFallback || !transport) {
+    console.log(`[DEV EMAIL] to=${to} purpose=${UNLOCK_EMAIL_PURPOSE} url=${unlockUrl}`);
+    return;
   }
+
+  const intro =
+    "Your FoC account was locked after too many failed attempts. Use the link below to unlock it.";
+  const mailOptions = {
+    from: config.email.from,
+    to,
+    subject: UNLOCK_EMAIL_SUBJECT,
+    text: `${intro}\n\n${unlockUrl}`,
+    html: `<p>${intro}</p><p><a href="${unlockUrl}">${unlockUrl}</a></p>`,
+  };
+
+  await sendMailWithRetry(mailOptions, { username, to, purpose: UNLOCK_EMAIL_PURPOSE });
 }

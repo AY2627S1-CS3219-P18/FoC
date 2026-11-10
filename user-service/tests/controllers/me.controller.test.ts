@@ -19,10 +19,20 @@
  *        otp.service.test.ts and me.service.test.ts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import {
   backdateOtps,
   expireOtps,
@@ -45,20 +55,20 @@ const VALIDATION = (message: string) => ({ message, code: 'VALIDATION_ERROR' });
 const EXTRA_FIELD = VALIDATION('Request contains unexpected fields');
 
 const putActiveView = (token: string | undefined, body: unknown) => {
-  const r = request(app).put('/users/me/active-view');
+  const r = api().put('/users/me/active-view');
   return (token ? r.set('Authorization', bearer(token)) : r).send(body as object);
 };
 
 const meGet = (token: string | undefined, path = '') => {
-  const r = request(app).get('/users/me' + path);
+  const r = api().get('/users/me' + path);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
 const mePut = (token: string | undefined, path: string, body: unknown) => {
-  const r = request(app).put('/users/me' + path);
+  const r = api().put('/users/me' + path);
   return (token ? r.set('Authorization', bearer(token)) : r).send(body as object);
 };
 const mePost = (token: string | undefined, path: string, body: unknown) => {
-  const r = request(app).post('/users/me' + path);
+  const r = api().post('/users/me' + path);
   return (token ? r.set('Authorization', bearer(token)) : r).send(body as object);
 };
 
@@ -681,6 +691,8 @@ describe('PUT /users/me/preferred-lang', () => {
     const res = await mePut(token, '/preferred-lang', { preferredLang: 'ta' });
     expect(res.status).toBe(200);
     expect(res.body.preferredLang).toBe('ta');
+    expect(res.body).not.toHaveProperty('password_hash');
+    expect((await meGet(token)).body.preferredLang).toBe('ta');
     expect((await getUserByEmail(user.email))!.preferred_lang).toBe('ta');
   });
 

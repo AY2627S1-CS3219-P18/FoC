@@ -23,6 +23,12 @@
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -34,6 +40,7 @@ import {
   type TokenVerifier,
 } from "../middleware/authenticate.js";
 import {
+  postArchive,
   postSystemNotification,
   postParticipant,
   postRead,
@@ -116,6 +123,12 @@ export function systemNotificationsRouter(
   enqueueTranslation?: import("../translation/queue.js").TranslationEnqueuer,
 ) {
   const router = Router();
+  // AI-generated (edited by <name>).
+  router.post(
+    "/orders/:orderId/archive",
+    authenticateMessage(apiKey, userServiceUrl, verifyToken),
+    postArchive(prisma),
+  );
   router.post(
     "/orders/:orderId/participants",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),

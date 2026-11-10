@@ -14,14 +14,23 @@
 //   mismatch). Governing decision: instructions.md Stage 27. No requirements, architecture,
 //   schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31e - added coverage for signUnlockToken/verifyUnlockToken (Stage 31a):
+//   claim shape (sub/iat/exp/lck), the 1 hour expiry, cross-type rejection in both directions
+//   (verifyAccessToken/verifyElevationToken reject ul+JWT; verifyUnlockToken rejects at+JWT,
+//   ep+JWT and a plain JWT), and the existing expired/bad-signature cases applied to the new
+//   verifier. Governing decision: instructions.md Stage 31a's own Verification bullets.
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import jwt from 'jsonwebtoken';
 import { describe, expect, it } from 'vitest';
 import {
   getJwks,
   signAccessToken,
   signElevationToken,
+  signUnlockToken,
   verifyAccessToken,
   verifyElevationToken,
+  verifyUnlockToken,
 } from '../../src/utils/jwt.js';
 import {
   privateKey,
@@ -29,6 +38,7 @@ import {
   signElevationToken as signTestElevationToken,
   signExpiredToken,
   signToken,
+  signUnlockToken as signTestUnlockToken,
   signWithOtherKey,
   tamperSignature,
 } from '../helpers/keys.js';
@@ -125,6 +135,10 @@ describe('verifyAccessToken', () => {
     expect(() => verifyAccessToken(signTestElevationToken())).toThrow();
   });
 
+  it('rejects an unlock token (typ: ul+JWT)', () => {
+    expect(() => verifyAccessToken(signTestUnlockToken())).toThrow();
+  });
+
   it("rejects a plain JWT (jsonwebtoken's default header typ: 'JWT')", () => {
     const plain = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
       algorithm: 'RS256',
@@ -164,6 +178,10 @@ describe('verifyElevationToken', () => {
     expect(() => verifyElevationToken(signToken())).toThrow();
   });
 
+  it('rejects an unlock token (typ: ul+JWT)', () => {
+    expect(() => verifyElevationToken(signTestUnlockToken())).toThrow();
+  });
+
   it("rejects a plain JWT (jsonwebtoken's default header typ: 'JWT')", () => {
     const plain = jwt.sign({ role: 'user', sid: 'sid-1' }, privateKey(), {
       algorithm: 'RS256',
@@ -186,6 +204,77 @@ describe('verifyElevationToken', () => {
       },
     );
     expect(() => verifyElevationToken(expired)).toThrow();
+  });
+});
+
+describe('signUnlockToken', () => {
+  it('produces an RS256 token (header typ: ul+JWT) with claims { sub, iat, exp, lck } and a 1 hour expiry', () => {
+    const lockedUntil = new Date(Date.now() + 60 * 60 * 1000);
+    const token = signUnlockToken({ userId: 'abc', lockedUntil });
+    const decoded = jwt.decode(token, { complete: true })!;
+    const payload = decoded.payload as jwt.JwtPayload;
+
+    expect(decoded.header.alg).toBe('RS256');
+    expect(decoded.header.typ).toBe('ul+JWT');
+    expect(payload.sub).toBe('abc');
+    expect(payload.lck).toBe(Math.floor(lockedUntil.getTime() / 1000));
+    expect(payload.exp! - payload.iat!).toBe(60 * 60);
+    expect(Object.keys(payload).sort()).toEqual(['exp', 'iat', 'lck', 'sub']);
+  });
+
+  it('is verifiable with the public key', () => {
+    const token = signUnlockToken({ userId: 'abc', lockedUntil: new Date(Date.now() + 3600_000) });
+    expect(() => jwt.verify(token, publicKey(), { algorithms: ['RS256'] })).not.toThrow();
+  });
+});
+
+describe('verifyUnlockToken', () => {
+  it('returns { user_id, lck } from a valid token', () => {
+    expect(verifyUnlockToken(signTestUnlockToken({ sub: 'u1', lck: 1234567890 }))).toEqual({
+      user_id: 'u1',
+      lck: 1234567890,
+    });
+  });
+
+  it('rejects an access token (typ: at+JWT)', () => {
+    expect(() => verifyUnlockToken(signToken())).toThrow();
+  });
+
+  it('rejects an elevation token (typ: ep+JWT)', () => {
+    expect(() => verifyUnlockToken(signTestElevationToken())).toThrow();
+  });
+
+  it("rejects a plain JWT (jsonwebtoken's default header typ: 'JWT')", () => {
+    const plain = jwt.sign({ lck: 123 }, privateKey(), {
+      algorithm: 'RS256',
+      subject: 'u1',
+      expiresIn: '1h',
+      keyid: process.env.JWT_KEY_ID,
+    });
+    expect(jwt.decode(plain, { complete: true })!.header.typ).toBe('JWT');
+    expect(() => verifyUnlockToken(plain)).toThrow();
+  });
+
+  it('throws on an expired unlock token', () => {
+    const expired = jwt.sign(
+      { lck: 123, exp: Math.floor(Date.now() / 1000) - 60 },
+      privateKey(),
+      {
+        algorithm: 'RS256',
+        subject: 'u1',
+        keyid: process.env.JWT_KEY_ID,
+        header: { alg: 'RS256', typ: 'ul+JWT' },
+      },
+    );
+    expect(() => verifyUnlockToken(expired)).toThrow();
+  });
+
+  it('throws on a tampered signature', () => {
+    expect(() => verifyUnlockToken(tamperSignature(signTestUnlockToken()))).toThrow();
+  });
+
+  it('throws on a token signed by a different key pair', () => {
+    expect(() => verifyUnlockToken(signWithOtherKey())).toThrow();
   });
 });
 

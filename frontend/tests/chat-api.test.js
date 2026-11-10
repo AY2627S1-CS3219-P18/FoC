@@ -9,6 +9,8 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or verified marking displayed chat messages as read.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Verified existing status filters on chat list requests.
+ * Author review: tng wen xi
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -104,5 +106,18 @@ it("POSTs the displayed read position with the session bearer", async () => {
       },
       body: JSON.stringify({ lastReadMessageId: "message-1" }),
     }),
+  );
+});
+
+// AI-generated
+it("passes the existing archived status filter to the list endpoint", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(response({ conversations: [], hasMore: false }));
+  vi.stubGlobal("fetch", fetch);
+  await listChats("requester", undefined, "archived");
+  expect(fetch).toHaveBeenCalledWith(
+    "/chat/conversations?role=requester&status=archived",
+    expect.anything(),
   );
 });

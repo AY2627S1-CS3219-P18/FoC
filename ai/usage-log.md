@@ -14330,3 +14330,722 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — Fix F4: unlockUser must not spread the full UserRow
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F4 fix note pasted in chat on 2026-11-10 (quoted below); the documented user response shape is instructions.md Stage 9 / Stage 15c (camelCase) / Stage 18d (`isLocked`, `lockedUntil`, `lockLevel`), as already encoded in `toUserResponse`
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F4: unlockUser must not spread the full UserRow.
+>
+> - Define one shared constant in users.queries.ts listing the safe user columns (every
+>   column toUserResponse needs, plus the lock columns and the is_locked expression from
+>   F3), explicitly excluding password_hash. Use it for RETURNING / SELECT in user-facing
+>   queries instead of `*` where the row ends up in a response.
+> - unlockUser: keep the SELECT ... FOR UPDATE row internal, used only for the
+>   lock-vs-no-op decision and the audit "before" value. Do the clears in an
+>   UPDATE ... RETURNING <safe columns> and pass the returned row to toUserResponse.
+>   No object spread, no hand-assigned reset fields.
+> - Grep src/ for `...` spreads of user rows (`...user`, `...locked`, `...row`) and for
+>   `SELECT *` / `RETURNING *` on users whose result reaches a response or a log. Report
+>   each hit; fix any that carry password_hash outside a function that needs it
+>   (login, password change/reset).
+> - Test: for unlock (both the unlocked and no-op paths) and the other admin endpoints,
+>   assert the response body's keys equal exactly the documented set, and that
+>   JSON.stringify(body) contains neither "password_hash" nor "passwordHash".
+
+**Key responses:**
+Branched `fix/f4-unlock-safe-columns` off `main`.
+
+`users.queries.ts`: added the exported `SAFE_USER_COLUMNS` constant (`id, username, email, created_at, updated_at, status, role, active_view, login_failed_attempts, login_failure_window_start, login_locked_until, login_lock_level, <IS_LOCKED_SQL> AS is_locked`; `password_hash` deliberately absent) and the `SafeUserRow` type (`Omit<UserRow, 'password_hash'> & { is_locked: boolean }`). `findById`, `listUsersPage`'s SELECT, and the `updateUserStatus` / `updateUserRole` / `updateActiveView` RETURNING clauses now use `SAFE_USER_COLUMNS` instead of `*` and return `SafeUserRow`. `resetLoginLock` now ends in `RETURNING ${SAFE_USER_COLUMNS}` and returns the cleared `SafeUserRow | null` (its other callers, login and the two password paths, ignore the return value and are unchanged). `toUserResponse` now takes `SafeUserRow`; `UserRowWithLock` (the FOR UPDATE reads) still satisfies it structurally, so the no-op paths of changeUserStatus/changeUserRole compile unchanged, and the mapper body is untouched.
+
+`unlockUser`: the `lockUserByIdWithNow` row stays internal (lock-vs-no-op via `is_locked`, audit "before" value). The clears go through `resetLoginLock`, whose RETURNING row is passed straight to `toUserResponse`. The `{ ...locked, login_failed_attempts: 0, ... }` spread and its five hand-assigned fields are gone.
+
+Within-decision choice: `findById` was also used by `me.service.ts`'s `initiateEmailChange` and `initiatePasswordChange` for a pre-lock `bcrypt.compare` against `user.password_hash`. Rather than leave `findById` selecting `*` for those two callers (which would have left the admin `GET /users/:id` path fetching the hash), added `findPasswordHashById` (selects only `password_hash`) and switched those two pre-lock reads to it. Their in-transaction re-check against `locked.password_hash` is unchanged.
+
+Grep report (`src/`), spreads of user rows:
+
+- `users.service.ts` unlockUser `...locked`: carried `password_hash` into the mapper's input object. **Fixed** (removed, see above).
+- `users.queries.ts` listUsersPage `({ full_count, ...row }) => row`: now only ever sees `SAFE_USER_COLUMNS`, so it cannot carry the hash. Kept, with a comment.
+- `auditLog.queries.ts:158` same `full_count` pattern on audit-log rows, not user rows. Not a hit.
+  `SELECT *` / `RETURNING *` on `users`:
+- `findById`, `listUsersPage`, `updateUserStatus`, `updateUserRole`, `updateActiveView`: results reach responses via `toUserResponse`. **Fixed** (safe columns).
+- `lockUserById` / `lockUserByIdWithNow` (`SELECT * ... FOR UPDATE`): shared by login, refresh, the password/email change paths and the OTP services, which need `password_hash`; the admin no-op paths pass the row to `toUserResponse`, which copies only its listed fields. Kept; reported.
+- `findByUsername` / `findByEmail`: login needs the hash; the other callers (register duplicate checks, me.service uniqueness checks, forgot-password/reset flows, bootstrap) use `id`/`status` only and never return or log the row. Kept; reported.
+- `createUser` / `createSuperAdmin` (`RETURNING *`): callers use `.id` only; bootstrap's `console.log` prints the configured username, not the row. Kept; reported.
+- `updateUsername` / `updateEmail` (`RETURNING *`): `changeUsername` returns `{ username, email }` picked from it; `updateEmail`'s result is unused. Kept; reported.
+- `findSuperAdmin`: bootstrap existence check only. Kept; reported.
+- `findByIdWithNow` (`SELECT *` + `db_now`): no longer has any caller in `src/` (its Stage 20 caller was replaced in Stage 26c); only `tests/db/queries/users.queries.test.ts` exercises it. Left in place; flagged under Deviations.
+  Logs: no `console.*` call in `src/` prints a user row object.
+
+Tests: `tests/controllers/users.controller.test.ts` gained `USER_RESPONSE_KEYS` + `expectExactUserResponse(body)` (keys sorted-equal to the documented set; `JSON.stringify(body)` contains neither `password_hash` nor `passwordHash`) and a describe "response bodies carry exactly the documented keys (fix F4)" covering POST unlock (locked → cleared, and non-locked no-op), PUT status (changed and no-op), PUT role (changed and no-op), GET /users/:id and every item of GET /users. `tests/db/queries/users.queries.test.ts`: `updatePasswordHash`'s test reads the hash via `findPasswordHashById`; the `listUsersPage` test that asserted rows _include_ `password_hash` now asserts the opposite; added a "safe user columns (fix F4)" block (constant names no `password_hash`; `findById` key set; `resetLoginLock` RETURNING row and null for unknown id).
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. `npm run lint` (eslint): no findings. Vitest: the five directly affected files 324/325 on the first run (the one failure was the pre-existing `listUsersPage ... including password_hash` assertion, then updated as above); first full run 1000/1002 with two failures in `tests/controllers/adminOtp.controller.test.ts` (`a regular user gets 403 FORBIDDEN`, `an invalid Elevated-Token does not block sending`) that passed 29/29 when that file ran alone and passed on the immediate full-suite rerun: 38 files / 1002 tests passed. Treated as a cross-file timing flake, not caused by this change. The `Error: insert failed` / `EMAIL_SEND_FAILED` stderr lines come from pre-existing forced-failure tests.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- Added `findPasswordHashById` so `findById` could drop `password_hash` without leaving the two me.service pre-lock bcrypt checks without a hash. If the team prefers no new query function, the alternative is to leave `findById` on `SELECT *` and only fix the RETURNING paths and the unlock spread.
+- `findByIdWithNow` has no remaining caller in `src/`. Left as is; the team may want to remove it (and its test) separately.
+- `lockUserById` / `lockUserByIdWithNow` still select `*` because login and the password paths need the hash from the same locked row; their rows reach `toUserResponse` only on the admin no-op paths, where the mapper copies named fields. Reported, not changed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+> > > > > > > main
+
+## 2026-11-10 — RRule native ESM import fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing rrule library selection and recurrence behavior in instructions.md Stage 28 e and order-service/src/domain/series-rule.ts; native ESM stack specified in order-service/AGENTS.md.
+
+**Prompts (exact):**
+
+> ```swift
+> order-service-1       | /app/src/domain/series-rule.ts:14
+> order-service-1       | import { RRule } from 'rrule';
+> order-service-1       |          ^
+> order-service-1       | SyntaxError: The requested module 'rrule' does not provide an export named 'RRule'
+> order-service-1       |     at #asyncInstantiate (node:internal/modules/esm/module_job:455:21)
+> order-service-1       |     at async ModuleJob.run (node:internal/modules/esm/module_job:553:5)
+> order-service-1       |     at async node:internal/modules/esm/loader:647:26
+> order-service-1       |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+> order-service-1       |
+> order-service-1       | Node.js v24.22.2
+> ```
+
+**Key responses:**
+Changed the runtime import to the package's default CommonJS export and destructured RRule; retained a type-only RRule import under an alias. No recurrence behavior, library, API or schema decisions changed. Regenerated the existing Prisma client in Docker after checks found stale generated types; no database migrations or schema edits were performed.
+
+Verification: host typecheck/build failed because rrule was absent and generated Prisma types were stale; host recurrence tests and built-module smoke check failed because rrule was absent. Initial Docker typecheck also failed on stale Prisma types. After Prisma generation, Docker typecheck, build, lint (zero warnings/errors), all eight existing recurrence unit tests, and a native ESM built-module import/recurrence smoke check passed. Recent container logs confirmed order-service listening on port 3000 after automatic restart.
+
+**Files:**
+
+- `order-service/src/domain/series-rule.ts` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `order-service/src/generated/prisma/` (regenerated ignored client artifacts)
+- `order-service/dist/` (generated ignored build artifacts)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Order chat archiving on completion and cancellation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Refactor/Docs
+**Governing decision:** User-supplied archive endpoint contract and corrections in this conversation; final ordering/retry confirmation below. Recorded implementation contract in `chat-service/README.md` (POST /chat/orders/:id/archive) and `order-service/README.md` (Chat archiving on completion and cancellation). Existing notification/outbox delivery remains in use.
+
+**Prompts (exact):**
+
+> i need to implement such that when an order is completed or cancelled, its chat gets set to archived. could u do that?
+
+> oh okay let me decide the archive endpoint.
+>
+> `POST /chats/conversations/:id/archive`
+>
+> payload:
+>
+> none.&#x20;
+>
+> verification:
+>
+> - use api key authentication or user authentication (both allowed)
+> - if user authentication, ensure that user is participant
+> - else, 403 forbidden
+> - if id doesnt exist but is uuid, 404 not found. if id isnt even uuid, 400
+
+User corrections supplied as response annotations (verbatim comment text):
+
+> yes sorry my typo. `/chat`.
+
+> 200. if already archived just return success.
+
+> oh sorry my bad. change it to `/chats/orders/:id/archive` then.
+
+> ?
+
+Final confirmation of the assistant's question, “send the final status message first, then archive; retry temporary failures through the existing outbox?”:
+
+> ohhh correct. status message first. then archive. and correct retry through outbox
+
+**Key responses:**
+
+- Added POST `/chat/orders/:orderId/archive`, using the existing dual service-key/Bearer authentication. Authenticated users must be conversation participants. Invalid UUIDs return 400, missing conversations 404, nonparticipants 403, and successful/repeated archiving 200. Existing authentication middleware returns 401 for invalid/missing credentials.
+- Completed and cancelled transitions set an optional internal `archiveAfter` flag on the existing notification outbox task. The HTTP client strips that flag before posting the notification, then calls archive with no body only on notification success. Existing worker error classification and retries apply. Retries retain the message UUID and rely on the existing notification deduplication, which runs before the archived-state check.
+- Added endpoint coverage, final transition assertions, HTTP sequencing/failure tests, and a worker retry test. No schema or dependency changes.
+- Verification: full chat-service suite passed (197 tests); chat typecheck and build passed. Focused order suites passed (135 tests: chat client, order service, transitions, worker). Initial full order test run had 7 suites unable to import missing `rrule`, plus 3 terminal-payload assertions subsequently updated and verified in the focused run. Order typecheck remains blocked by missing `rrule` and stale generated Prisma types unrelated to this change. Order lint passed with warnings; the newly introduced test stringification warning was corrected and rechecked below. Initial chat tests could not open local listeners in the sandbox; rerunning with local-listener permission passed. No live databases, Redis retry scheduling, or Postman simulation were exercised; verification used mocked persistence and fetch. Read the existing Postman failure-simulation context but did not change its historical claims.
+- Preserved pre-existing edits to `series-rule.ts`, README, and the usage log.
+
+**Files:**
+
+- `chat-service/src/archive.spec.ts` (created)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/README.md` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/worker/credit-jobs.spec.ts` (modified)
+- `order-service/README.md` (modified)
+- `README.md` (modified)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+Stopped before implementation to request the team's archive route, authentication, success/idempotency behavior, order-ID lookup, message ordering, and retry decisions. The team supplied these in the prompts above. Combined the singular `/chat` correction with the order-based path correction, as stated in the clarification the user confirmed. Existing invalid-credential 401 behavior was retained.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Order worker Compose environment fix
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** Existing `order-service/src/worker.ts` required keys, `order-service/src/config/env.ts` URL/key configuration, and `instructions.md` Stage 28 fire-time checks, c1/c2 and d. Existing Compose service addresses and supplier key interpolation retained.
+
+**Prompts (exact):**
+
+> ```vbnet
+> order-worker-1        | Error: SUPPLIER_ORDER_SERVICE_API_KEY is required by the order worker
+> order-worker-1        |     at <anonymous> (/app/src/worker.ts:117:9)
+> order-worker-1        |     at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+> order-worker-1        |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/esm/loader:647:26)
+> order-worker-1        |     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+> order-worker-1        |
+> order-worker-1        | Node.js v24.22.2
+> ```
+>
+> i already have it tho
+
+**Key responses:**
+
+- Found keys in local service env files but no supplier/user worker key or URL mappings in the Compose order-worker environment. Added both existing key variables and internal service URLs to that block; no authentication behavior changed.
+- Added the user key placeholder to root `.env.example`. Copied the existing matching local user-service/order-service key into ignored root `.env` for Compose interpolation; no secret values were printed or recorded here. Retained the root supplier key: both Compose supplier-service and order-worker interpolate that same value. Reported that local supplier keys differ across files.
+- `docker compose config --quiet` passed. Parsed production and merged development Compose JSON without displaying secrets: both worker keys match their respective target container keys and both internal URLs are correct.
+- Did not recreate containers or run database migrations. Provided the worker recreation command; environment changes require recreation.
+
+**Files:**
+
+- `compose.yaml` (modified)
+- `.env.example` (modified)
+- `.env` (modified locally; ignored; secret values excluded from disclosure)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None. Existing local supplier key differences were reported; secret values were not changed.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Hide chat list on individual chat pages
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in this conversation: hide the chat list on individual chat pages. Existing routes in `frontend/src/App.jsx` and layout in `frontend/src/pages/Chat.jsx`.
+
+**Prompts (exact):**
+
+> inn the individual chat page can u not show the chat list
+
+**Key responses:**
+Conditionally rendered the conversation list only when no conversation ID is selected. Individual `/chat/:id` pages show the thread without the sidebar at any viewport width; the separate list page keeps its existing list. Added the dated disclosure scope and inline marker. No API, schema, architecture, or security decisions were made.
+
+Verification: `npm test -- tests/pages/Chat.test.jsx` in `frontend` passed all 29 existing tests. `npm run build` failed because the existing series-rule module cannot resolve the missing `rrule` dependency. An initial test command from the repository root failed because there is no root package.json; reran from frontend successfully. No new tests or dependencies added.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: header/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Active and archived chat list tabs
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below; existing `GET /chat/conversations` status/role/cursor contract in `chat-service/README.md`. No backend contract changes.
+
+**Prompts (exact):**
+
+> now in the chat list, can you have a separate tab for archived chats and active chats (if the user has any archived chats, if not only show active)
+
+**Key responses:**
+
+- Added Active/Archived tabs to the chat list using the existing API status filter, with Active selected initially. Queried the archived list for the current role to determine whether tabs should appear; when no archived chats exist, only the active list is displayed. The archived-existence check refreshes on the existing socket/retry signals, and individual chat pages still hide the list.
+- Passed the selected status through the frontend API wrapper, title loading, pinned system-chat lookup, and pagination. Existing callers without status retain their original queries. Disabled tab switching during a list request so pagination cannot mix statuses.
+- Updated role-filter assertions and added coverage for no-archive visibility, tab switching, archived pagination, and HTTP status query serialization. Focused chat page/API tests passed (36 tests); frontend lint passed with warnings. An initial lint command from the repository root failed because no root package.json exists, then succeeded from frontend. Build was not repeated: the preceding task's frontend build was blocked by missing `rrule`. No live service or browser checks were performed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/src/api/chat.js` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `frontend/tests/chat-api.test.js` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Preserve system chat across status tabs
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Implementation code
+**Governing decision:** User instruction below, existing pinned system-chat behavior in `frontend/src/pages/Chat.jsx`, and existing unfiltered/filtered conversation list contract in `chat-service/README.md`.
+
+**Prompts (exact):**
+
+> system chat is now gone. make sure system chat is still there
+
+**Key responses:**
+Changed the existing system-chat lookup to search unfiltered conversation pages when the selected status page does not include it. The system chat remains pinned on both status tabs while order chats and their pagination retain the selected status filter. No API changes. Added a regression test where the system chat is only on a later unfiltered page, checking its presence and first position on Active and Archived without leaking active order chats into Archived.
+
+Verification: focused chat page/API suites passed all 37 tests. Build not repeated; previously blocked by the unrelated missing `rrule` dependency. No browser or live service verification performed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Show system chat only in Active
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Implementation code; Debugging
+**Governing decision:** User correction below to the preceding status-tab task.
+
+**Prompts (exact):**
+
+> system chat should not be at archvied.
+
+**Key responses:**
+Restricted the pinned system-chat lookup to Active. Excluded system-chat rows from Archived, including paginated rows, and from the archived-availability check. Updated the regression test to assert that the system chat is pinned in Active, absent in Archived even if supplied by the filtered response, and restored when switching back to Active.
+
+Verification: focused chat page/API suites passed 37 tests. No live browser/service verification or build repeated; previous build was blocked by missing `rrule`.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified: disclosure/index)
+
+**Deviations / questions raised for the team:**
+None; applied the user's correction.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor/Docs (test code only, under `user-service/tests/`)
+**Governing decision:** Team-authored fix note F2 pasted in chat (quoted below); Stage 7 ground rule 3 in `instructions.md` (no `src/` changes to make tests pass); `vitest.config.ts` (`fileParallelism: false`, unchanged).
+
+**Prompts (exact):**
+
+> don't forget the git workflow
+>
+> Fix finding F2 (Medium): reproducible ECONNRESET / "socket hang up" plus an unhandled rejection in the concurrency tests.
+>
+> Scope: test code only, under user-service/tests/. Do NOT modify anything in src/ (Stage 7 ground rule 3). If you find that a src/ change is needed, stop and report it as a separate finding instead.
+>
+> Context:
+>
+> - user-service/tests/concurrency/races.concurrency.test.ts uses `const post = (path) => request(app).post(path)` (line ~46), called in a tight 3-worker loop (lines ~251-257) with no error handling.
+> - supertest starts and closes a new ephemeral server on every `request(app)` call. I suspect that under rapid concurrent calls this resets sockets (ECONNRESET / "socket hang up").
+> - ai/usage-log.md reports the same failure signature in users.controller.test.ts and tests/concurrency/me.concurrency.test.ts under full-suite load, so treat this as systemic.
+>
+> Steps:
+>
+> 1. Read all three files, ai/usage-log.md and vitest.config.ts first. Reproduce the failure in races.concurrency.test.ts in isolation and show me the output before changing anything.
+> 2. Confirm the root cause. Check whether the per-call ephemeral server is the cause. Also check whether the unhandled rejection comes from a worker promise that is never awaited or caught. Tell me what you find. Don't assume my hypothesis is right.
+> 3. Fix it with the smallest change that addresses the confirmed cause. My expected approach:
+>    - Create one `http.createServer(app)` listening on port 0 in `beforeAll`, close it in `afterAll`, and call `request(server)` so all requests share one listener.
+>    - Collect worker results with `Promise.allSettled` and assert on them, so a transport error fails the test with a clear message and never becomes an unhandled rejection.
+>    - If the same pattern appears in the other two files, put a shared helper in tests/concurrency/ (or tests/helpers/) and use it in all three. Don't duplicate the fix.
+> 4. Do NOT add retry-on-ECONNRESET logic. It would mask real connection failures.
+> 5. Do NOT weaken or remove any assertion, and do not change the number of workers or iterations.
+> 6. Verify: run races.concurrency.test.ts in isolation at least 10 times in a row, then the full suite at least 3 times. Report pass/fail counts.
+> 7. Don't touch vitest.config.ts unless the root cause requires it. If you think it does (for example fileParallelism is not false), explain why and ask first.
+>
+> AI-usage policy (CS3219 Appendix 2):
+>
+> - Add this header comment to every file you change or create:
+>   // AI Assistance Disclosure:
+>   // Tool: Claude Code (model: <your model>), date: 2026-11-09
+>   // Scope: Debugged ECONNRESET flake in concurrency tests; replaced per-call supertest servers with a shared server and allSettled result handling.
+>   // Author review: Reviewed, edited and tested by Gabriel.
+> - Append an entry to ai/usage-log.md with a timestamp, this prompt, and a summary of the key response and changes.
+>
+> When done, give me a short summary: root cause confirmed or not, files changed, and the before/after run results.
+
+**Key responses:**
+
+Reproduction before any change (branch `fix/f2-concurrency-econnreset` off `main` after PR #186): `races.concurrency.test.ts` alone, 10 runs: 9 passed, 1 failed. The failure was _not_ a transport error: "refresh racing logout" got a 401 whose body had no `code` (`expected undefined to be 'INVALID_REFRESH_TOKEN'`). One full-suite run: 1001/1002, the failure being `socket hang up` (`ECONNRESET`, `Socket.socketOnEnd`) in a plain sequential test in `auth.controller.test.ts`, i.e. not in a concurrency file at all.
+
+Root cause investigation, and the user's hypothesis was not confirmed as stated:
+
+- Hammering the per-call `request(app)` pattern with 3 workers × 400 refresh requests (a throwaway test, deleted) produced 0 anomalies, and so did a shared server. Rapid per-call server creation on its own does not reset sockets.
+- supertest 7.3.0 creates `http.createServer(app)` per `request(app)` call and runs `listen(0)` on the wildcard address (`::`), closing it after the one request; superagent uses `agent: false`, so no keep-alive reuse is involved.
+- Every 401 the app can emit carries a `code`, so a 401 without one did not come from the app. The "socket hang up" is a clean server-side FIN with no response, which a supertest server never does to its own single connection.
+- Confirmed mechanism (macOS, Node 22.15.0): a wildcard `listen(0)` can be handed a port that another process already holds on `127.0.0.1`, because libuv sets `SO_REUSEADDR` and the kernel then skips the conflict when the bind addresses differ. The loopback client's connection then goes to the _other_ process. A throwaway script (`portcollide.mjs`, not committed) did 40,000 wildcard `listen(0)` calls: 6 of them returned a port held by one of three VS Code helper processes listening on `127.0.0.1` in the ephemeral range, and probing those ports got back that process's own `401 Unauthorized` text body, a `401` JSON body and a `404` HTML page, exactly the "401 with no code" seen in the isolated repro; a process that drops the connection instead yields the `socket hang up`. With 3 such ports in a 16,384-port range the odds are about 1 in 5,500 per request, which matches the observed 0–2 failures per full suite (several thousand requests) and roughly 1 in 10 isolated runs of a ~500-request file. The same script binding explicitly to `127.0.0.1`: 40,000 listens, 0 collisions, because the kernel then sees the exact conflict and skips the port.
+- The per-call ephemeral server is therefore the _amplifier_ (one dice roll per request), not the direct cause; the root cause is the wildcard bind.
+- Unhandled rejection: confirmed by code reading and a standalone demo. In the two `while (running)` worker loops the worker promises were created and only awaited ~250 ms later with `Promise.all(workers)`; a worker that throws in that window is reported by Node as an unhandled rejection (then "handled asynchronously"). Attaching `Promise.allSettled` at creation time yields 0 unhandled-rejection events and still surfaces both failures.
+
+Fix (test code only, no `src/`, `vitest.config.ts` untouched since `fileParallelism` is already `false`):
+
+- New `tests/helpers/server.ts`: starts one `http.createServer(app)` on `127.0.0.1:0` in a `beforeAll` registered at import time, closes it in `afterAll`, and exports `api()` as a drop-in for `request(app)` (returns `request(server)`).
+- Replaced every `request(app)` call site with `api()` and dropped the now-unused `supertest`/`app` imports. This was widened beyond the three files named in the prompt: `tests/helpers/fixtures.ts` had to move too (the concurrency tests do most of their HTTP through `loginUser`/`createActiveUser`), and the remaining ten test files were migrated because the baseline full-suite failure was in `auth.controller.test.ts`, and every remaining per-request wildcard listen keeps the same per-request odds. No test logic, assertions, worker counts or iteration counts changed. No retry logic added.
+- `races.concurrency.test.ts`: the two worker groups are now `Promise.allSettled(...)` collected at start, and a small `expectAllFulfilled()` fails the test with the worker's error message if any worker rejected.
+- Header note: the prompt asked for `date: 2026-11-09` and `Author review: Reviewed, edited and tested by Gabriel.` Headers use the actual date (2026-11-10) and leave `Author review` blank, per AGENTS.md §4.1 (the agent never signs the review); the author fills it in.
+
+Verification: `npx tsc -p tests/tsconfig.json --noEmit` clean; `npx eslint tests` clean. After the fix: `races.concurrency.test.ts` alone, 10 consecutive runs, 10 passed / 0 failed; full suite 3 consecutive runs, 3 passed / 0 failed (38 files, 1002 tests each). Before the fix, the same measurements were 9/10 and 1 failure in the single full run. The two stderr stack traces in the full-suite output come from pre-existing forced-failure tests and appeared identically in the baseline run.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/tests/helpers/server.ts` (created)
+- `user-service/tests/helpers/fixtures.ts` (modified)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/me.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/adminOtp.controller.test.ts` (modified)
+- `user-service/tests/controllers/auditLog.controller.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/bookmarks.controller.test.ts` (modified)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.public.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #260)
+
+**Deviations / questions raised for the team:**
+
+- Scope widened from the three named files to all 14 test files that called `request(app)` (see Key responses for why). Reverting any file to the old pattern is a one-line change per call site if the team prefers the narrower scope.
+- The README "Log index" table has a blank line between rows #258 and #259 (left over from a merge), which splits the table when rendered. Not changed here; flagged.
+- No `src/` change was found to be needed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31a: Config and unlock-token utilities
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, "Config" section, changes table rows 1-2, "Stage 31a: Config and unlock-token utilities")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+
+**Key responses:**
+
+Stage 31 has no remaining `[DECIDE]` placeholders, so 31a was implemented as written; per the stage's "implement one sub-stage at a time" rule, work stopped after 31a for the user's confirmation.
+
+- `src/config.ts`: `FRONTEND_BASE_URL` added to the Zod schema as `z.string().url()`, exposed as `config.frontend.baseUrl`. A trailing slash is stripped, mirroring the existing `CREDIT_SERVICE_URL` handling, so `'/unlock-account?token=...'` can be appended directly. A missing, empty or non-URL value exits at startup through the existing env-validation path, naming the variable (`FRONTEND_BASE_URL: Required` / `Invalid url`).
+- `.env.example`, `.env`, `.env.test`: `FRONTEND_BASE_URL=http://localhost:5173` added (`.env` is gitignored; listed for completeness).
+- `src/utils/jwt.ts`: `UNLOCK_TOKEN_TTL_SECONDS = 60 * 60` as a code constant at the top of the file (no env var). `signUnlockToken({ userId, lockedUntil: Date })` signs RS256 with the current key and `kid`, header `typ: ul+JWT`, claims exactly `sub`, `iat`, `exp` (1 h) and `lck` = `Math.floor(lockedUntil.getTime() / 1000)` (epoch seconds). `verifyUnlockToken(token)` asserts `typ === 'ul+JWT'` through the existing Stage 27 `assertTokenType`, resolves the key by `kid`, verifies RS256, and additionally throws if `sub` is not a string or `lck` is not a number; returns `{ user_id, lck }`. Because `verifyAccessToken` and `verifyElevationToken` already assert their own `typ`, they reject `ul+JWT` with no change to them.
+- Note for 31c: Postgres `timestamptz` carries microseconds while `lck` is whole seconds, so the "same instant" comparison in 31c must truncate `login_locked_until` to seconds (or compare `floor(extract(epoch ...))`) rather than compare raw values. Flagged here so it is not missed.
+- CORS report (report only, no change made): `src/app.ts` line 34 hardcodes `cors({ origin: 'http://localhost:5173', ... })`. It could read `config.frontend.baseUrl` instead; the dev value is identical. Left unchanged as instructed.
+- Tests for the 31a Verification bullets are scheduled for Stage 31e per the stage text; none were added here. Verification was done with a throwaway tsx script (not committed) covering every 31a bullet: `config.frontend.baseUrl` parsed; token header `ul+JWT`/RS256/`kid`; claims exactly `exp,iat,lck,sub`; `exp - iat = 3600`; `lck` equals the floored lock instant; the unlock verifier accepts the token and rejects `at+JWT`, `ep+JWT` and plain `JWT`; `verifyAccessToken` and `verifyElevationToken` reject `ul+JWT`; expired, tampered-signature and missing-`lck` tokens are rejected. All 14 checks passed. Startup with `FRONTEND_BASE_URL` empty and with `not-a-url` both exited with "Invalid or missing environment variables: - FRONTEND_BASE_URL: Invalid url".
+- `npx tsc --noEmit` (src and tests) clean; `npx eslint src tests` clean; `tests/config.test.ts` and `tests/utils/jwt.test.ts` 51/51 passed. Full suite (`npx vitest run`, real Postgres): 38 files, 1002/1002 passed. The two stderr stack traces are the pre-existing forced-failure tests.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified, gitignored)
+- `user-service/.env.test` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #261)
+
+**Deviations / questions raised for the team:**
+
+- The running `foc-user-service` dev container reads `user-service/.env` at start and will need a restart to pick up `FRONTEND_BASE_URL` once this is merged (it is only read by config at startup; nothing uses it until 31b).
+- `instructions.md` had uncommitted team edits in the working tree when the branch was created; they were left untouched and not staged.
+- Nothing else; no ambiguity found in rows 1-2.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31b: The email and sending it on every login lock
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("When the email is sent" table, changes table rows 3-4, "Stage 31b: The email and sending it on every login lock")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+
+**Key responses:**
+
+- `src/services/email.service.ts`: extracted `sendOtpEmail`'s attempt loop into a private `sendMailWithRetry(mailOptions, { username, to, purpose })` (identical attempts/backoff/per-attempt cap/overall deadline/`[OTP EMAIL]` log line; `sendOtpEmail`'s own signature, template lookup, dev fallback and log lines are byte-for-byte unchanged, so its contract holds). Added `sendUnlockEmail({ to, username, unlockUrl })`, which builds the unlock email and calls the same `sendMailWithRetry` with `purpose: 'account_unlock'`, so its log lines read `[OTP EMAIL] outcome=... purpose=account_unlock attempt=n/4` per the Stage 31 logging rule ("same log line format ... writes account_unlock"). Its own dev-fallback line is `[DEV EMAIL] to=... purpose=account_unlock url=...` (no otp field, since there is none) — the exact field name is an implementation detail, not specified by the stage; flagged here for review. Email content: subject `Your FoC account has been locked`; body states the account was locked after too many failed attempts and holds the link; never states the lock length, an OTP or anything about the password. Exact wording:
+  > Your FoC account was locked after too many failed attempts. Use the link below to unlock it.
+  >
+  > {unlockUrl}
+- `src/services/auth.service.ts`: `RecordLoginFailureResult`'s locked variant now also carries `lockedUntil: Date` and `user: { id, email, username }` (available on the already-locked `UserRowWithNow` row). Added exported `triggerUnlockEmail(user, lockedUntil)`: signs the unlock token (`signUnlockToken`, Stage 31a), builds `${config.frontend.baseUrl}/unlock-account?token=...`, and fires `sendUnlockEmail(...).catch(() => {})` without awaiting — the caller's response is never delayed and the rejection can never become unhandled. `login()` calls it (with the lock's `user`/`lockedUntil`) immediately after its transaction commits, before throwing `ACCOUNT_LOCKED`.
+- `src/services/me.service.ts`: `initiateEmailChange` and `initiatePasswordChange` call the same exported `triggerUnlockEmail` at their own `authOutcome.kind === 'locked'` sites, after their phase-1 transaction commits. No other change to either function.
+- "Pending and suspended: no email" is satisfied structurally, not by an extra check: `recordLoginFailure` (the only path that can produce a `locked` result) is called by all three sites only when `status !== 'pending' && status !== 'suspended'` already (Stage 18b's `countsTowardLock`), so a `locked` result's user is always `active`.
+- `tests/setup/setupFiles.ts`: added `sendUnlockEmail: vi.fn(async () => {})` to the global `email.service.js` mock (per the changes table row 10's mocking requirement) — without it, every existing Stage 18 lockout test that reaches the lock threshold would throw on the unmocked import.
+- Verification: a throwaway scratch test (not committed) against the real app and Postgres confirmed: 5 wrong logins → `429 ACCOUNT_LOCKED` plus exactly one `sendUnlockEmail` call whose token verifies and whose `lck` matches the row's `login_locked_until`; a wrong current password on `PUT /users/me/password` that locks sends one email; an OTP send-block (forgot-password cap) sends none; attempts during an active lock send nothing and do not change `login_locked_until`; N concurrent failures at the threshold produce exactly one email; every send attempt rejecting leaves the lock standing with zero `unhandledRejection` events. A second throwaway scratch test on `sendUnlockEmail` directly confirmed the exact subject, no OTP-shaped text, no mention of "password" or any duration wording, the retry/backoff/deadline reuse, the `account_unlock` log lines, and the dev-fallback line. Neither scratch file was committed.
+- `npx tsc --noEmit` (src and tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms the Stage 18 lockout tests still pass with the email transport mocked, and the OTP email flows are unchanged).
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/setup/setupFiles.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #262)
+
+**Deviations / questions raised for the team:**
+
+- The unlock email's dev-fallback console line format (`[DEV EMAIL] to=... purpose=account_unlock url=...`) was chosen to parallel the OTP dev-fallback line; the stage does not specify its exact fields. Flagging for review; easy to change.
+- Please review the email wording above (subject and body) before it ships.
+- No `[DECIDE]` placeholders remained in rows 3-4; no other ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31c: Unlock-by-link endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, changes table rows 5-6, "Stage 31c: Unlock-by-link endpoint")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+
+**Key responses:**
+
+- `src/services/users.service.ts`: extracted `unlockUser`'s clearing step into exported `clearLoginLock(userId, client)` (`resetLoginLock` + `otpQueries.clearSendBlocksForUser`, called inside the caller's own transaction against a row already locked FOR UPDATE), per the stage's "share the clearing code with the admin unlock; do not duplicate it." `unlockUser`'s own permission rules, audit row and response are unchanged; it now just calls `clearLoginLock` instead of inlining the same two calls.
+- `src/services/auth.service.ts`: added `unlockByToken(token)`. Verifies the token with `verifyUnlockToken` (Stage 31a); any throw (malformed, bad signature, wrong `typ`, expired) becomes `401 INVALID_UNLOCK_TOKEN`. Otherwise locks the target row FOR UPDATE (`lockUserByIdWithNow`) and returns `'ALREADY_UNLOCKED'` without writing anything when: the user no longer exists; the status is `pending` or `suspended`; `login_locked_until` is null or has passed the DB clock; or the token's `lck` (epoch seconds) does not equal `Math.floor(login_locked_until.getTime() / 1000)` — the truncation flagged in the Stage 31a log entry, applied here. Otherwise it calls the shared `clearLoginLock` and returns `'UNLOCKED'`. No audit row, per the stage's own rule. Concurrency falls out of the existing FOR UPDATE lock: whichever click reaches the row first clears it; every other one (whether it was already queued or arrives after) sees the cleared/mismatched state and gets `ALREADY_UNLOCKED`.
+- `src/controllers/auth.controller.ts` / `src/routes/auth.routes.ts`: added the `unlock` controller (Zod `.strict()`, `token` a non-empty string, `asyncHandler`) and `POST /auth/unlock`, mounted on the existing public `authRouter` with no `authenticate` — matching every other `/auth/*` route, so an `Authorization` header is simply never read.
+- Verification: `npx tsc --noEmit` (src, tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms `unlockUser`'s existing behaviour and audit row are unchanged). A throwaway scratch E2E test (not committed, against the real app and Postgres) covered every 31c Verification bullet: a valid token on a locked active account unlocks it (lock, escalation and OTP send blocks for all three purposes cleared) and the user can then log in; the same token reused is `ALREADY_UNLOCKED`; a token for an earlier lock after a newer lock was set is `ALREADY_UNLOCKED` with the newer lock standing; a token after an admin unlock, and after a direct lock-clear (standing in for a successful login/correct-password reset, which use the identical `resetLoginLock` write), are both `ALREADY_UNLOCKED`; an expired-by-time lock is `ALREADY_UNLOCKED`; a now-suspended account's token is `ALREADY_UNLOCKED` with nothing changed; a malformed token and a tampered-signature token are `401 INVALID_UNLOCK_TOKEN` with the exact message; a missing, empty, or extra-key body is `400 VALIDATION_ERROR`; a locked super admin can unlock; no audit row is written for any outcome; N concurrent clicks with the same token produce exactly one `UNLOCKED` and the rest `ALREADY_UNLOCKED`; the admin endpoint still requires auth and still audits; and the endpoint works with no `Authorization` header and ignores one that is present. Not committed.
+
+**Files:**
+
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #263)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in rows 5-6; no ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31d: Frontend page
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("Frontend (`/unlock-account`)" table, changes table rows 7-9, "Stage 31d: Frontend page")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+
+**Key responses:**
+
+- `src/pages/UnlockAccount.jsx` (new): reads `token` from the query string via `useSearchParams`. A missing/empty token shows the invalid-link banner immediately (reusing `errorMessages.INVALID_UNLOCK_TOKEN`'s text) and disables the button, sending no request, matching how the same banner appears after a failed `POST /auth/unlock`. Pressing the button calls `authApi.unlockAccount(token)`; the button is disabled while the call is in flight (`busy` state) and on success the component navigates away before `busy` is ever reset, so a double-click sends exactly one request. `UNLOCKED` and `ALREADY_UNLOCKED` both navigate to `/login` and then call `showToast` (the existing toast system from `components/Toast.jsx`, the same one `ViewGate` already uses) with the two exact strings the stage specifies. `INVALID_UNLOCK_TOKEN` stays on the page and shows the banner via `describeError`. Not wrapped in `RequireAuth` or `ViewGate` — same as `/login`, `/register`, `/forgot-password` — so it is reachable logged out and logged in and is not subject to the Stage 29 `ViewGate` redirect; confirmed it is also absent from `routing/views.js`'s `PAGE_VIEW` list, so no stop-and-ask was needed.
+- `src/api/auth.js`: added `unlockAccount(token)` — `POST /auth/unlock` with `{ token }`, returning `{ message, code }` unchanged (matches the backend contract from Stage 31c).
+- `src/api/errorMessages.js`: added `INVALID_UNLOCK_TOKEN` (banner), text matching the backend's `AppError` message exactly, as the file's other entries already do.
+- `src/App.jsx`: added `<Route path="/unlock-account" element={<UnlockAccount />} />`, alongside `/login`, `/register`, `/forgot-password`.
+- `frontend/vite.config.js`, `frontend/nginx/default.conf`: no changes. Checked both: `POST /auth/unlock` is already covered by the existing `/auth` proxy entry (vite) and `/auth` location (nginx) — Stage 31's own row 9 text says "do not add a whole prefix," and a new exact-path entry for `/auth/unlock` would duplicate what `/auth` already forwards. `/unlock-account` is a frontend-only route; checked that no other frontend route (`/login`, `/register`, `/forgot-password`) has its own nginx `location` block — they all rely on the existing SPA fallback (`location / { try_files ... /index.html; }`), so `/unlock-account` is already served the same way with no new entry.
+- Verification: `npm run build` (vite build) succeeded; `npm run lint` (oxlint) showed only pre-existing warnings in files I did not touch, nothing in the new/changed files. A throwaway scratch RTL test (`tests/pages/scratch_UnlockAccount.test.jsx`, not committed), using the existing Vitest + `@testing-library/react` setup with `api/auth` mocked, covered: missing-token banner + disabled button + no request; opening a valid-token link sends no request; pressing on `UNLOCKED` makes exactly one request and lands on `/login` showing the unlocked toast text; `ALREADY_UNLOCKED` lands on `/login` with the no-longer-locked toast text; `INVALID_UNLOCK_TOKEN` stays on the page showing the banner with no redirect; a double-click while the first call is still pending sends exactly one request. All 6 passed, then the file was deleted. Ran the full frontend suite afterward (`npx vitest run`): 278/279 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to this stage) was confirmed via `git stash` to pre-date this change and is not touched by anything in Stage 31d.
+- Manual verification still needed (cannot be done in this environment): phone-width viewport check; opening the link in a fresh tab through the dev proxy and through nginx (direct hit, not an in-app navigation) to confirm the SPA fallback serves the page rather than a 404; a real-browser click-through of the full email-link flow end to end.
+
+**Files:**
+
+- `frontend/src/pages/UnlockAccount.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #264)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in the Stage 31d rows; no ambiguity found. `vite.config.js`/`nginx/default.conf` were deliberately left unchanged (reasoning above), reported here rather than silently skipped.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31e: Tests (Vitest)
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code (tests)
+**Governing decision:** instructions.md Stage 31e ("Follow the Stage 7 ground rules and the Stage 19 mocking policy... Every Verification bullet in 31a-31d that does not need Docker or a real browser is a required test case.")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+> on with e
+
+**Key responses:**
+
+- Awaiting the fire-and-forget unlock-email send deterministically, without changing production behaviour: `triggerUnlockEmail` (auth.service.ts) calls `sendUnlockEmail(...).catch(() => {})` without awaiting it, so the caller's own promise (a supertest response, or authService.login's rejection) can settle before the mocked send does. The call to the mock itself, though, happens synchronously - `sendUnlockEmail(...)` is invoked, and `.catch()` attached, entirely before `triggerUnlockEmail` returns, which is itself before the HTTP response is written. So by the time the triggering request/call has resolved, the mock's call and the Promise it returned are already recorded in `sendUnlockEmailMock.mock.results`. Added `awaitLastUnlockEmail()` (`tests/helpers/email.ts`) which just reads and awaits that already-captured promise (`mock.results.at(-1)`). No change to any production file, no polling, no fake timers - it is reading a result that already exists by the time the test calls it.
+- `tests/helpers/keys.ts` / `tests/utils/jwt.test.ts` (Stage 31a): added `signUnlockToken` (mirrors `signElevationToken`). Extended `verifyAccessToken`/`verifyElevationToken`'s existing cross-type-rejection tests with the new `ul+JWT` case, and added `signUnlockToken`/`verifyUnlockToken` describe blocks covering claim shape (`sub`/`iat`/`exp`/`lck`), the 1 hour expiry, and every cross-type/expired/tampered/wrong-key rejection, mirroring the existing elevation-token coverage.
+- `tests/helpers/email.ts` / `tests/services/email.service.test.ts` (Stage 31b): added `sendUnlockEmailMock`, `unlockEmailCallsFor`, `latestUnlockUrlFor`, `awaitLastUnlockEmail` (global mock already added in setupFiles.ts for 31b). Added a `sendUnlockEmail` describe block covering subject/link content, the "too many failed attempts" wording with no lock-length/OTP/password text, the dev-fallback `[DEV EMAIL] ... url=...` line, and the `[OTP EMAIL] ... purpose=account_unlock ...` log line - the last two prove it goes through the shared `sendMailWithRetry`/`PURPOSE_COPY`-free path rather than a copy. Did not re-test the full transient/non-transient/backoff/deadline matrix for `sendUnlockEmail` purpose-by-purpose, since that logic is generic and already covered by the `sendOtpEmail` retry describe block above it (same principle `me.service.test.ts`'s own header comment states for not duplicating generic OTP logic per call site); one transient-failure case is included only to demonstrate the retry path is actually taken.
+- `tests/services/auth.service.test.ts` (Stage 31b/31c): extended the `login lockout (Stage 18b)` describe block with: each of the three escalating login locks sending exactly one unlock email whose link's token verifies with `lck` matching the row; a pending or suspended account never emailed (via real `login()` calls, not direct DB writes, since `countsTowardLock` already excludes both); attempts during an existing lock sending no additional email; and that `login()` still rejects with `ACCOUNT_LOCKED` even when the mocked send rejects (the lock stands; the send is never awaited). Added `describe('unlockByToken (Stage 31c)')` covering every service-level Verification bullet: a valid token unlocks (lock, escalation, and OTP send blocks/escalations for all three purposes cleared, and the user can then log in); the same token reused, a token for an earlier lock after a newer lock, a token after an admin-style lock clear, a time-expired lock, and a suspended/pending/unknown account all give `ALREADY_UNLOCKED` with nothing changed; malformed/tampered/wrong-`typ`/expired tokens give `INVALID_UNLOCK_TOKEN`; a locked super admin can unlock; and no audit row is ever written.
+- `tests/controllers/auth.controller.test.ts` (Stage 31c): added `describe('POST /auth/unlock (Stage 31c)')` for the HTTP-level bullets not already exercised at the service layer: the `200 UNLOCKED`/`ALREADY_UNLOCKED` and `401 INVALID_UNLOCK_TOKEN` response shapes, Zod `.strict()` validation (missing/empty/non-string token, unknown body key), working with no `Authorization` header and ignoring one that is present, a locked super admin unlocking via the link, no audit row, and that admin `POST /users/:id/unlock` is unchanged (still requires auth, still audits).
+- `tests/concurrency/lockout.concurrency.test.ts` (Stage 31b/31c): added the unlock-email assertion (exactly one email) to the existing N-concurrent-wrong-logins test, and a new describe block for N concurrent clicks of the same unlock link: exactly one `UNLOCKED`, the rest `ALREADY_UNLOCKED`, lock fully cleared.
+- `frontend/tests/pages/UnlockAccount.test.jsx` (Stage 31d): promoted the throwaway scratch RTL test used during 31d's own verification into a permanent test, covering every 31d Verification bullet that does not need a real browser: no request until pressed (missing and valid token), `UNLOCKED`/`ALREADY_UNLOCKED` redirect-to-`/login`-with-toast, `INVALID_UNLOCK_TOKEN` staying on the page with the banner, and a double-click sending exactly one request.
+- Manual verification still needed (cannot be done in this environment, and is explicitly listed for manual follow-up in the stage's own text): phone-width viewport usability of `/unlock-account`; opening the unlock link in a fresh tab through the Vite dev proxy and through the nginx production image to confirm the SPA fallback serves the page rather than a 404; a full real-browser click-through of the email-link flow end to end.
+- Verification: backend - `npx tsc --noEmit -p tests/tsconfig.json` and `npx eslint src tests` clean; full suite `npx vitest run`: 38 files, 1047/1047 passed (up from 1002 before this stage; no regressions, Stage 18 lockout and admin-unlock tests included). Frontend - `npx vitest run`: 40 files, 284/285 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to Stage 31) was confirmed pre-existing via `git stash` during Stage 31d's own review and is untouched here.
+- Did not modify any application code to make a test pass, per the stage's own instruction; every assertion added here matches already-implemented 31a-31d behaviour.
+
+**Files:**
+
+- `user-service/tests/helpers/keys.ts` (modified)
+- `user-service/tests/utils/jwt.test.ts` (modified)
+- `user-service/tests/helpers/email.ts` (modified)
+- `user-service/tests/services/email.service.test.ts` (modified)
+- `user-service/tests/services/auth.service.test.ts` (modified)
+- `user-service/tests/services/me.service.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `frontend/tests/pages/UnlockAccount.test.jsx` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #265)
+
+**Deviations / questions raised for the team:**
+
+- None beyond what is already flagged above (the three manual-verification items the stage itself defers, and the deliberate choice not to re-test the generic OTP retry/backoff matrix a second time for `sendUnlockEmail`).
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+
+## 2026-11-10 — Resolve main merge conflicts for message translation
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | debug
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User instruction to resolve the existing merge; existing translation, archived chat, and safe-user query behavior on both branches.
+
+**Prompts (exact):**
+> i am trying to pull changes from main. resolve conflicts
+
+**Key responses:**
+Resolved the merge conflicts while retaining both branches' chat archiving, translation, frontend changes, configuration, and disclosure history. Included preferred_lang in the safe user columns and used those columns when updating the language, retaining the password-hash exclusion and database-computed lock status. Added assertions that the updated language can be read back and the update response excludes password_hash. Chat-service and user-service builds passed; 24 targeted archive and translation tests passed. User-service tests could not start because the local test database on port 5434 refused connections. Frontend chat tests could not run because Vitest was missing; npm ci stalled and was interrupted. No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+- `README.md`, `ai/usage-log.md` (merge conflicts resolved, log and index updated)
+- `chat-service/README.md`, `chat-service/src/controllers/conversations.controller.ts`, `chat-service/src/routes/conversations.routes.ts`, `chat-service/src/server.ts`, `chat-service/src/services/conversations.service.ts` (merge conflicts resolved)
+- `frontend/src/api/chat.js`, `frontend/src/pages/Chat.jsx`, `frontend/tests/pages/Chat.test.jsx` (merge conflicts resolved)
+- `user-service/.env.example`, `user-service/src/db/queries/users.queries.ts`, `user-service/src/services/me.service.ts`, `user-service/src/services/userResponse.ts`, `user-service/tests/controllers/me.controller.test.ts`, `user-service/tests/services/me.service.test.ts` (merge conflicts resolved; safe user columns and regression assertions updated)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

@@ -25,6 +25,18 @@
  *        per instructions.md Stage 18b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 31e - added coverage that wrong current passwords on both functions that cause
+ *        a lock send exactly one unlock email, per instructions.md Stage 31b's "Trigger" row
+ *        ("A lock set from ... PUT /users/me/email or PUT /users/me/password ... sends the
+ *        email").
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as meService from '../../src/services/me.service.js';
@@ -41,11 +53,13 @@ import {
   truncateAll,
 } from '../helpers/db.js';
 import {
+  awaitLastUnlockEmail,
   emailCallsFor,
   failNextEmail,
   latestOtpFor,
   resetEmailMock,
   sendOtpEmailMock,
+  unlockEmailCallsFor,
   wrongOtp,
 } from '../helpers/email.js';
 import { createActiveUser } from '../helpers/fixtures.js';
@@ -267,6 +281,19 @@ describe('initiateEmailChange / initiatePasswordChange login lockout (Stage 18b)
       code: 'ACCOUNT_LOCKED',
     });
     expect((await getUserById(user.id))!.login_lock_level).toBe(1);
+  });
+
+  it.each([
+    ['initiateEmailChange', (id: string, pw: string) => meService.initiateEmailChange(id, { currentPassword: pw, newEmail })],
+    ['initiatePasswordChange', (id: string, pw: string) => meService.initiatePasswordChange(id, { currentPassword: pw, newPassword: NEW_PASSWORD })],
+  ])('%s: a wrong current password that causes a lock sends exactly one unlock email', async (_n, fn) => {
+    const user = await createActiveUser(1);
+    for (let i = 0; i < 4; i++) {
+      await expect(fn(user.id, 'Wrong!Pass1')).rejects.toMatchObject({ status: 401, code: 'INVALID_PASSWORD' });
+    }
+    await expect(fn(user.id, 'Wrong!Pass1')).rejects.toMatchObject({ status: 429, code: 'ACCOUNT_LOCKED' });
+    await awaitLastUnlockEmail();
+    expect(unlockEmailCallsFor(user.email)).toHaveLength(1);
   });
 
   it('a correct current password on initiateEmailChange resets the login-lockout counter', async () => {

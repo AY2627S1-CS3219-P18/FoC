@@ -26,6 +26,16 @@
 //   implemented. Governing decision: instructions.md Stage 27. No requirements, architecture,
 //   schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31e - added coverage for sendUnlockEmail: SMTP-path content (subject,
+//   link, no OTP/password/lock-length wording, no username in the body), the dev-fallback log
+//   line, and that it logs with purpose=account_unlock in the exact Stage 19 line format -
+//   proving it shares sendMailWithRetry rather than a copy (the retry/backoff/timeout/deadline
+//   logic itself is deliberately not re-tested purpose-by-purpose here, since it is already
+//   generic and covered by the sendOtpEmail retry describe block above; one transient-failure
+//   case is included only to show sendUnlockEmail goes through the same retry path).
+//   Governing decision: instructions.md Stage 31b ("When the email is sent" table).
+//   No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { sendMail, createTransport } = vi.hoisted(() => {
@@ -473,5 +483,78 @@ describe('sendOtpEmail (Stage 19: retry, backoff, deadline, logging)', () => {
     const { sendOtpEmail } = await loadEmailService({});
     await sendOtpEmail({ to: 'newaddr@example.com', otp: '123456', purpose: 'Change Email', username: 'bob' });
     expect(log).toHaveBeenCalledWith(expect.stringContaining('to=n***@example.com'));
+  });
+});
+
+describe('sendUnlockEmail (Stage 31b)', () => {
+  const unlockUrl = 'http://localhost:5173/unlock-account?token=abc.def.ghi';
+
+  it('sends to the recipient with subject "Your FoC account has been locked"; text and html carry the link', async () => {
+    const { sendUnlockEmail } = await loadEmailService({});
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const mail = sendMail.mock.calls[0]![0] as { to: string; subject: string; text: string; html: string };
+    expect(mail.to).toBe('a@example.com');
+    expect(mail.subject).toBe('Your FoC account has been locked');
+    expect(mail.text).toContain(unlockUrl);
+    expect(mail.html).toContain(unlockUrl);
+  });
+
+  it('states the account was locked after too many failed attempts, without naming the lock length', async () => {
+    const { sendUnlockEmail } = await loadEmailService({});
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    const mail = sendMail.mock.calls[0]![0] as { text: string; html: string };
+    for (const body of [mail.text, mail.html]) {
+      expect(body).toMatch(/too many failed attempts/i);
+      expect(body).not.toMatch(/hour|4 hours|24 hours|day/i);
+    }
+  });
+
+  it('never contains an OTP, a password, or a password hint', async () => {
+    const { sendUnlockEmail } = await loadEmailService({});
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    const mail = sendMail.mock.calls[0]![0] as { text: string; html: string };
+    for (const body of [mail.text, mail.html]) {
+      expect(body).not.toMatch(/password/i);
+      expect(body).not.toMatch(/\b\d{6}\b/);
+    }
+  });
+
+  it('logs with purpose=account_unlock in the Stage 19 line format (proving it shares sendMailWithRetry)', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { sendUnlockEmail } = await loadEmailService({});
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    expect(log).toHaveBeenCalledWith(
+      '[OTP EMAIL] outcome=sent user=alice to=a***@example.com purpose=account_unlock attempt=1/4',
+    );
+  });
+
+  it('retries a transient failure once, through the same retry path as sendOtpEmail', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    sendMail.mockRejectedValueOnce(makeError('ETIMEDOUT')).mockResolvedValueOnce({});
+    const { sendUnlockEmail } = await loadEmailService({});
+    const promise = sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await promise;
+    expect(sendMail).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs [DEV EMAIL] with the unlock url (not an otp) when NODE_ENV=development and SMTP_HOST is empty', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { sendUnlockEmail } = await loadEmailService({ env: 'development', smtpHost: '' });
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    expect(log).toHaveBeenCalledWith(`[DEV EMAIL] to=a@example.com purpose=account_unlock url=${unlockUrl}`);
+    expect(createTransport).not.toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
+  it('does not log the username in the email body itself (sendOtpEmail contract: username is log-only)', async () => {
+    const { sendUnlockEmail } = await loadEmailService({});
+    await sendUnlockEmail({ to: 'a@example.com', username: 'alice', unlockUrl });
+    const mail = sendMail.mock.calls[0]![0] as { text: string; html: string };
+    expect(mail.text).not.toContain('alice');
+    expect(mail.html).not.toContain('alice');
   });
 });

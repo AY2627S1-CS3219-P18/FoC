@@ -83,6 +83,24 @@
  * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F4 - initiateEmailChange and initiatePasswordChange's pre-lock bcrypt checks read
+ *        the hash via findPasswordHashById, since findById no longer selects password_hash.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Stage 31b - initiateEmailChange and initiatePasswordChange now call the shared
+ *        triggerUnlockEmail (auth.service.ts) when a wrong current password hits the login
+ *        lockout threshold, after the lock's transaction has committed. Governing decision:
+ *        instructions.md Stage 31 (changes table row 4). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -99,6 +117,7 @@ import {
   PASSWORD_REGEX,
   recordLoginFailure,
   throwIfLoginLocked,
+  triggerUnlockEmail,
   USERNAME_MESSAGE,
   USERNAME_REGEX,
 } from './auth.service.js';
@@ -249,8 +268,9 @@ export async function initiateEmailChange(
     throw new AppError(400, 'Please enter a valid email', 'VALIDATION_ERROR');
   }
 
-  // Unlocked read first: bcrypt is slow, so verify before taking the row lock.
-  const user = await userQueries.findById(userId);
+  // Unlocked read first: bcrypt is slow, so verify before taking the row lock. Only the hash is
+  // read (fix F4: findById no longer selects password_hash).
+  const user = await userQueries.findPasswordHashById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
@@ -287,6 +307,7 @@ export async function initiateEmailChange(
   });
 
   if (authOutcome.kind === 'locked') {
+    triggerUnlockEmail(authOutcome.result.user, authOutcome.result.lockedUntil);
     throw accountLockedAppError(authOutcome.result);
   }
   if (authOutcome.kind === 'invalid') {
@@ -420,8 +441,9 @@ export async function initiatePasswordChange(
     throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
   }
 
-  // Unlocked read first: bcrypt is slow, so verify before taking the row lock.
-  const user = await userQueries.findById(userId);
+  // Unlocked read first: bcrypt is slow, so verify before taking the row lock. Only the hash is
+  // read (fix F4: findById no longer selects password_hash).
+  const user = await userQueries.findPasswordHashById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
@@ -458,6 +480,7 @@ export async function initiatePasswordChange(
   });
 
   if (authOutcome.kind === 'locked') {
+    triggerUnlockEmail(authOutcome.result.user, authOutcome.result.lockedUntil);
     throw accountLockedAppError(authOutcome.result);
   }
   if (authOutcome.kind === 'invalid') {

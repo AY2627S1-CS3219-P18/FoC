@@ -323,6 +323,27 @@ Author review:
 Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Added rrule runtime import fix log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the order chat archiving log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the worker Compose environment fix log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the individual chat page list visibility change.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the active/archived chat tabs implementation.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the system-chat status-tab fix.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the Active-only system chat correction.
+Author review: tng wen xi
+Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #260 for fix F2
+       (shared loopback supertest server). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and updated the log index.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -878,3 +899,19 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 266 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
 
 | 267 | 2026-11-10 | user-service | Merge main into PR 174 branch | Resolved merge conflicts and retained lock status for language updates. |
+| 268 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 e: Series API and failed rows                                                         | Added series create/get/list/edit/delete endpoints and failed-row/notice handling.                                                              |
+| 269 | 2026-11-10 | user-service                                                  | Fix F4: unlockUser must not spread the full UserRow                                                              | User-facing queries select a shared safe-column list; unlock responds from RETURNING.                                                           |
+| 270 | 2026-11-10 | order-service                                                 | RRule native ESM import fix                                                                                      | Fixed CommonJS import and regenerated stale Prisma client.                                                                                      |
+| 271 | 2026-11-10 | order-service, chat-service                                   | Order chat archiving on completion and cancellation                                                              | Added authenticated archiving after final notifications with existing retries.                                                                  |
+| 272 | 2026-11-10 | order-service                                                 | Order worker Compose environment fix                                                                             | Passed required worker keys and service URLs through Compose.                                                                                   |
+| 273 | 2026-11-10 | frontend                                                      | Hide chat list on individual chat pages                                                                          | Removed the conversation sidebar from individual chat pages.                                                                                    |
+| 274 | 2026-11-10 | frontend                                                      | Active and archived chat list tabs                                                                               | Added conditional status tabs with filtered chat pagination.                                                                                    |
+| 275 | 2026-11-10 | frontend                                                      | Preserve system chat across status tabs                                                                          | Restored pinned system chat independently of status filters.                                                                                    |
+| 276 | 2026-11-10 | frontend                                                      | Show system chat only in Active                                                                                  | Kept system chat pinned only in the Active tab.                                                                                                 |
+| 277 | 2026-11-10 | user-service                                                  | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite                                       | Tests share one loopback supertest server instead of a wildcard server per request.                                                             |
+| 278 | 2026-11-10 | user-service                                                  | Stage 31a: Config and unlock-token utilities                                                                     | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair.                                                                   |
+| 279 | 2026-11-10 | user-service                                                  | Stage 31b: The email and sending it on every login lock                                                          | Every login lock now emails an unlock link in the background, reusing the Stage 19 retry mechanism.                                             |
+| 280 | 2026-11-10 | user-service                                                  | Stage 31c: Unlock-by-link endpoint                                                                               | Added POST /auth/unlock; shares the admin unlock's clearing code, no audit row, serialized by the row lock.                                     |
+| 281 | 2026-11-10 | frontend                                                      | Stage 31d: Frontend page                                                                                         | Added /unlock-account: reads the token, one button, routes to /login with the matching toast.                                                   |
+| 282 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
+| 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |

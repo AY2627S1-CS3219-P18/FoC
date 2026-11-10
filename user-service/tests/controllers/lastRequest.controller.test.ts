@@ -3,9 +3,14 @@
 // Scope: HTTP tests for last-request endpoints in the precise delivery location spec.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
-import request from 'supertest';
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import pool from '../../src/db/pool.js';
 import { truncateAll } from '../helpers/db.js';
 import { accessTokenFor, bearer, createActiveUser } from '../helpers/fixtures.js';
@@ -15,16 +20,16 @@ afterEach(truncateAll);
 
 it('requires authentication and saves trimmed details for the signed-in user', async () => {
   const path = '/users/me/last-request';
-  expect((await request(app).get(path)).status).toBe(401);
+  expect((await api().get(path)).status).toBe(401);
   const user = await createActiveUser(1);
   const token = bearer(await accessTokenFor(user));
-  expect((await request(app).get(path).set('Authorization', token)).body)
+  expect((await api().get(path).set('Authorization', token)).body)
     .toEqual({ last_req_del_loc_id: null, last_req_del_loc_details: 'Nil' });
-  expect((await request(app).put(path).set('Authorization', token)
+  expect((await api().put(path).set('Authorization', token)
     .send({ last_req_del_loc_id: 3, last_req_del_loc_details: ' Lobby ' })).status).toBe(200);
-  expect((await request(app).get(path).set('Authorization', token)).body)
+  expect((await api().get(path).set('Authorization', token)).body)
     .toEqual({ last_req_del_loc_id: 3, last_req_del_loc_details: 'Lobby' });
-  expect((await request(app).put(path).set('Authorization', token)
+  expect((await api().put(path).set('Authorization', token)
     .send({ last_req_del_loc_id: 0, last_req_del_loc_details: ' ' })).status).toBe(400);
 });
 
@@ -34,11 +39,11 @@ it('returns nulls for a missing row and cannot overwrite another user', async ()
   const token = bearer(await accessTokenFor(first));
   await pool.query('DELETE FROM last_request WHERE user_id = $1', [first.id]);
   const path = '/users/me/last-request';
-  expect((await request(app).get(path).set('Authorization', token)).body)
+  expect((await api().get(path).set('Authorization', token)).body)
     .toEqual({ last_req_del_loc_id: null, last_req_del_loc_details: null });
-  await request(app).put(path).set('Authorization', token).send({ user_id: second.id, last_req_del_loc_id: 1, last_req_del_loc_details: 'Lobby' }).expect(200);
+  await api().put(path).set('Authorization', token).send({ user_id: second.id, last_req_del_loc_id: 1, last_req_del_loc_details: 'Lobby' }).expect(200);
   const otherToken = bearer(await accessTokenFor(second));
-  expect((await request(app).get(path).set('Authorization', otherToken)).body)
+  expect((await api().get(path).set('Authorization', otherToken)).body)
     .toEqual({ last_req_del_loc_id: null, last_req_del_loc_details: 'Nil' });
 });
 
@@ -52,7 +57,7 @@ it.each([
 ])('rejects invalid last request values', async (body) => {
   const user = await createActiveUser(1);
   const token = bearer(await accessTokenFor(user));
-  const response = await request(app).put('/users/me/last-request').set('Authorization', token).send(body);
+  const response = await api().put('/users/me/last-request').set('Authorization', token).send(body);
   expect(response.status).toBe(400);
   expect(response.body.code).toBe('VALIDATION_ERROR');
 });

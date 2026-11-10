@@ -77,11 +77,29 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  *
- * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Fix F3 - unlockUser decides lock vs no-op from the DB-computed is_locked on the row it
  *        locks FOR UPDATE (same IS_LOCKED_SQL as the list filter and the isLocked field), and
  *        the synthesized post-unlock row carries is_locked: false.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Fix F4 - unlockUser no longer spreads the FOR UPDATE row (which carries password_hash)
+ *        into the response; the row stays internal for the lock-vs-no-op decision and the audit
+ *        "before" value, and the response is built from resetLoginLock's RETURNING row (safe
+ *        columns only).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 31c - extracted unlockUser's clearing step (resetLoginLock plus
+ *        clearSendBlocksForUser) into exported clearLoginLock, so auth.service.ts's new
+ *        POST /auth/unlock (unlockByToken) can share it instead of duplicating it. unlockUser's
+ *        own behaviour, permission rules and audit row are unchanged. Governing decision:
+ *        instructions.md Stage 31 ("What a valid click does": "Share the clearing code with
+ *        the admin unlock; do not duplicate it."). No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
  * Author review:
  */
 
@@ -89,7 +107,8 @@ import * as auditLogQueries from '../db/queries/auditLog.queries.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import * as tokenQueries from '../db/queries/tokens.queries.js';
 import * as userQueries from '../db/queries/users.queries.js';
-import { withTransaction } from '../db/transaction.js';
+import type { SafeUserRow } from '../db/queries/users.queries.js';
+import { withTransaction, type Queryable } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { isElevated } from '../utils/elevation.js';
 import { toUserResponse, type UserResponse } from './userResponse.js';
@@ -335,6 +354,20 @@ export async function changeUserRole(
   });
 }
 
+// Shared by unlockUser below and auth.service.ts's unlockByToken (Stage 31c: "Share the
+// clearing code with the admin unlock; do not duplicate it"). Call inside a transaction,
+// against a row already locked FOR UPDATE. Clears the login lock and its escalation, and the
+// OTP send blocks and their escalation for all three purposes. Returns the cleared row (safe
+// columns, fix F4) or null if the user no longer exists.
+export async function clearLoginLock(userId: string, client: Queryable): Promise<SafeUserRow | null> {
+  const cleared = await userQueries.resetLoginLock(userId, client);
+  if (!cleared) {
+    return null;
+  }
+  await otpQueries.clearSendBlocksForUser(userId, client);
+  return cleared;
+}
+
 // POST /users/:id/unlock. Permission rules mirror changeUserStatus's: SUPER_ADMIN_IMMUTABLE on
 // a super-admin target, FORBIDDEN when an admin targets another admin (Stage 18d).
 //
@@ -345,6 +378,10 @@ export async function changeUserRole(
 // Fix F3: lock vs no-op is decided by the DB-computed is_locked on the row locked FOR UPDATE
 // (IS_LOCKED_SQL in users.queries.ts), the same expression the `locked` list filter and the
 // isLocked response field use, so the three can never disagree.
+//
+// Fix F4: the FOR UPDATE row (`locked`) is a full SELECT * and carries password_hash. It stays
+// internal: it decides lock vs no-op and supplies the audit "before" value. The response comes
+// from resetLoginLock's UPDATE ... RETURNING <safe columns>, never from spreading `locked`.
 export async function unlockUser(
   requesterId: string,
   requestorRole: string,
@@ -368,10 +405,11 @@ export async function unlockUser(
       return toUserResponse(locked, requesterId);
     }
 
-    // Clears the login lock and its escalation, and the OTP send blocks and their escalation
-    // for all three purposes.
-    await userQueries.resetLoginLock(locked.id, client);
-    await otpQueries.clearSendBlocksForUser(locked.id, client);
+    // The row is locked FOR UPDATE above, so clearLoginLock's UPDATE cannot miss.
+    const cleared = await clearLoginLock(locked.id, client);
+    if (!cleared) {
+      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+    }
 
     await auditLogQueries.insertAuditLog(
       {
@@ -386,17 +424,7 @@ export async function unlockUser(
       client,
     );
 
-    return toUserResponse(
-      {
-        ...locked,
-        login_failed_attempts: 0,
-        login_failure_window_start: null,
-        login_locked_until: null,
-        login_lock_level: 0,
-        is_locked: false,
-      },
-      requesterId,
-    );
+    return toUserResponse(cleared, requesterId);
   });
 }
 

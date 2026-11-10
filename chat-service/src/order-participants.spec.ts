@@ -3,7 +3,7 @@
  * Tool: Codex (model: GPT-6), date: 2026-11-08
  * Scope: Tested the team-specified order-based participant endpoint.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -18,13 +18,11 @@ function setup() {
       where.orderId ? { conversationId } : { participants: [] },
     );
   const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-  const create = vi
-    .fn()
-    .mockImplementation(async ({ data }) => ({
-      ...data,
-      id: userId,
-      joinedAt: new Date("2026-11-08T00:00:00Z"),
-    }));
+  const create = vi.fn().mockImplementation(async ({ data }) => ({
+    ...data,
+    id: userId,
+    joinedAt: new Date("2026-11-08T00:00:00Z"),
+  }));
   const tx = {
     conversation: { findUnique, updateMany },
     chatParticipant: { create },
