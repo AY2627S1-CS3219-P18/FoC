@@ -17382,3 +17382,45 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — order-service API reference; frontend footer wording
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs; Implementation code
+**Governing decision:** The API reference documents the routes, validation and error codes already implemented in `order-service/src` (routes, controllers, services, `constants/errors.ts`, `realtime/socket-server.ts`). The footer change is George's chat instruction quoted below.
+
+**Prompts (exact):**
+> ok the diagrams are very messy, lets pivot and find another way of working this together
+>
+> commit the readme and make a PR first, we will also add other changes
+>
+> 1. remove the  "UI Prototype" text at the bottom of each page in the frontend
+
+> also add an API document for order service, that gives the endpoints of every exposed API and its description and necessary parameters
+
+**Key responses:**
+
+- Committed the order-service README work and George's Author review signatures, and opened the team-repo PR. The branch was rebuilt on the latest `main`: 122 of the 143 signatures applied, and 21 fields that Koh Wee Jean had already signed on `main` were left with her signature.
+- Footer: removed "— UI prototype" from `frontend/src/components/Footer.jsx`, the footer shown on every page. "CS3219 AY2627S1 Group 18." stays.
+- Added `order-service/API.md`: authentication, the error envelope and status codes, the order object, and every route (health, orders, status changes, admin history, series) with its path/query/body parameters, rules and responses, plus the Socket.IO handshake and events. All of it was read from the code; nothing was changed in the service.
+- The doc records two behaviours as they are: status-change routes return `{ ok: false, error }` instead of the `{ message }` envelope, and `PATCH /orders/:id/edit` requires `deliveryDetails` on every edit.
+- Corrected the README lifecycle table: an accepted or picked-up order can be cancelled only after its complete-by (`src/domain/order-status.ts`). Linked API.md from the README.
+- Verification: frontend `oxlint` on Footer.jsx clean, `vitest run` 305/305 passed, `vite build` succeeded. The API doc was checked against the source, not against a running service.
+
+**Files:**
+
+- `frontend/src/components/Footer.jsx` (modified)
+- `order-service/API.md` (created)
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #317)
+
+**Deviations / questions raised for the team:**
+
+- `src/types/series.ts` says an omitted `durationMinutes` defaults to 1440, but `series.service.ts` uses 60. The API doc follows the code (60).
+- `POST /orders/series` returns the stored row (including `nextFireAt` and retry fields), while GET and PATCH return the public series shape. Documented as is.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
