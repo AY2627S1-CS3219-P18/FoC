@@ -6,16 +6,20 @@
  *        starts the resend countdown; OTP_EXPIRED clears but keeps them enabled; a successful
  *        resend re-enables and clears the boxes and the error. api/profile is mocked.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Mocked the new preferred-language profile calls.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Account from '../../src/pages/Account'
 import * as profileApi from '../../src/api/profile'
 
 vi.mock('../../src/api/profile', () => ({
-  getProfile: vi.fn(),
+  getProfile: vi.fn().mockResolvedValue({ preferredLang: 'en' }),
+  setPreferredLang: vi.fn(),
   setActiveView: vi.fn(),
   changeUsername: vi.fn(),
   changeEmail: vi.fn(),
@@ -139,5 +143,22 @@ describe('Account PasswordSection OTP step (Stage 25 regression)', () => {
     const inputs = otpBoxes()
     expect(inputs.map((i) => i.value)).toEqual(['', '', '', '', '', ''])
     inputs.forEach((input) => expect(input).not.toBeDisabled())
+  })
+})
+
+// AI-generated (edited by <name>).
+describe('Account LanguageSection', () => {
+  it('loads the saved language and saves a new one', async () => {
+    vi.useRealTimers()
+    vi.mocked(profileApi.setPreferredLang).mockResolvedValue({ preferredLang: 'ta' })
+    render(<Account />)
+    const select = await screen.findByLabelText('Language')
+    await waitFor(() => expect(select).toHaveValue('en'))
+    const save = screen.getByRole('button', { name: 'Save language' })
+    expect(save).toBeDisabled()
+    fireEvent.change(select, { target: { value: 'ta' } })
+    fireEvent.click(save)
+    await waitFor(() => expect(profileApi.setPreferredLang).toHaveBeenCalledWith('ta'))
+    expect(await screen.findByText('Preferred language updated.')).toBeInTheDocument()
   })
 })

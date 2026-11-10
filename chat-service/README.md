@@ -1,8 +1,12 @@
+<!-- Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts in disclosure history.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: -->
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Documented the implemented creation endpoint and local setup.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 Author review: tng wen xi
 Tool: Codex (model: GPT-6), date: 2026-11-07
 Scope: Added Docker and Compose setup instructions.
@@ -45,6 +49,9 @@ Scope (2026-11-09, Codex, model: GPT-6): Documented the team-specified system co
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Documented the approved health endpoint.
 Author review: tng wen xi
+Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Documented the team-specified message translation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
 Author review: tng wen xi
 -->
@@ -365,6 +372,24 @@ Verification: Chat Service tests use real local WebSocket connections with injec
 membership/JWT verification. Frontend tests mock the socket transport. Live JWKS,
 Redis cross-instance delivery and authenticated browser end-to-end delivery were
 not exercised.
+
+## POST /chat/conversations/:conversationID/translation
+
+<!-- AI-generated (Claude Code, model: claude-sonnet-5-5, 2026-11-09). Author review: -->
+
+Team decisions supplied in the 2026-11-09 implementation conversation:
+
+- Bearer authentication. Body: `{ "enabled": false }` or `{ "enabled": true, "language": "<code>" }`, where `language` is one of `en`, `zh`, `hi`, `ta`, `ms`, `es`, `ar` (ISO 639-1; the user's `preferred_lang` from User Service, sent by the client). Invalid input returns 400; 401 unauthenticated, 404 missing conversation, 403 non-participant, 409 revoked participant.
+- Stores the language in `conversation_participants.translate_to` (null = off). Returns `{ "conversationId": "<UUID>", "userId": "<UUID>", "translateTo": "es" | null }`.
+- Turning on queues a BullMQ job that translates every received, untranslated message for that user. Turning off only clears `translate_to`; stored translations are kept and queued jobs for that user exit without calling the model. Choosing a different language while on deletes that user's stored translations for the chat before the backfill.
+- Queue: BullMQ on the shared Redis, prefix `queue:chat`, name `translation`, 5 attempts with exponential backoff (order-service's defaults). The worker runs inside the chat-service process so it can emit socket events.
+- After a message commits, one job per active participant other than the sender whose `translate_to` is non-null is queued (user messages and system notifications). A failed enqueue is logged; the send still succeeds.
+- The job calls Gemini (`@google/genai`, model `TRANSLATION_LLM_MODEL`, default `gemini-3.1-flash-lite`, key `TRANSLATION_LLM_KEY`) with a JSON object of `{ messageId: text }` and expects the same keys back, with the string `SAME` for text already in the target language. One row per message is stored in `translated_messages(id, message_id, user_id, content, created_at)`, unique on `(message_id, user_id)`; `SAME` is stored as the content. Messages the model omits stay untranslated and are picked up by the next job.
+- `GET /chat/conversations/:conversationID/messages` also adds `translateTo` (nullable language code) to each `participants` entry so the client can show the saved Auto-translate state (team decision, 2026-11-09), and adds `translatedContent` to each message: the requester's own translation, `SAME`, or `null`. The send response and `message:sent` payload are unchanged.
+- Completion signal: `message:translated` with `{ "messageId", "conversationId", "translatedContent" }` emitted to the target user's `user:<userId>` room only.
+- Future enhancement (not built): a remove/replace-courier route that clears the outgoing courier's translations.
+
+Verification: 192 chat-service tests passed (translation toggle, enqueue on send, job processor, history field); typecheck and build passed. Not exercised: live Redis/BullMQ, live Gemini, live MySQL migration, and the frontend.
 
 ## System conversations
 

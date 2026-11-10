@@ -1,49 +1,56 @@
+// Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflict and retained preferred language in safe user queries.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 4b - user queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 4e - super admin queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 5a - optional db param, status param, lock/activate/stale-cleanup queries
-// Author review:
+// Author review: Congchen
 // 25/09/2026: Stage 6d - updatePasswordHash
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 9 - listAllUsers, updateUserStatus
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 10 - updateUserRole
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 11 - active_view on UserRow, updateActiveView
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 12b - updateUsername
-// Author review:
+// Author review: Congchen
 // 27/09/2026: Stage 12d - updateEmail
-// Author review:
+// Author review: Congchen
 // 2026-10-19: findPublicSummariesByIds for the public lookup (GET /users/public).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-10-22: Stage 15b - replaced listAllUsers with listUsersPage (paginated, filtered,
 //   sorted). Governing decision: instructions.md Stage 15b.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-04: Stage 18a/18b/18d - added the login-lockout columns to UserRow, lockUserByIdWithNow,
 //   recordLoginFailure, lockLoginAccount, resetLoginLock, and the `locked` filter on
 //   listUsersPage. Governing decision: instructions.md Stage 18.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-04: Stage 20 - added findByIdWithNow, an unlocked read (no FOR UPDATE) alongside
 //   clock_timestamp(), for the unmask-email actor lookup (NFR3.1.1), which needs the DB clock
 //   for its log line but takes no lock since it writes no state. Governing decision:
 //   instructions.md Stage 20.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-06: Stage 26d - exported escapeLikePattern so auditLog.queries.ts's actor/target
 //   filters can reuse it. No requirements, architecture, schema, or API decisions were made by
 //   the AI tool.
-// Author review:
+// Author review: Congchen
+
+// 2026-11-09 (Claude Code, model: claude-sonnet-5-5): Added preferred_lang to UserRow and updatePreferredLang.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review: Congchen
 
 // Scope (2026-11-08, Codex, model: GPT-6): Added the default last-request row at user creation.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Congchen
 // 2026-11-10: Fix F3 (Tool: Claude Code, model: claude-fable-5-1) - added IS_LOCKED_SQL, the one
 //   SQL expression for "currently login-locked" against clock_timestamp() (convention 5), selected
 //   AS is_locked by every query whose row reaches toUserResponse and reused by listUsersPage's
@@ -51,6 +58,8 @@
 //   (chat, 2026-11-10) and instructions.md convention 5.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflict and retained DB lock status for preferred language updates.
+// No requirements, architecture, schema, or API decisions were made by the AI tool.
 // 2026-11-10: Fix F4 (Tool: Claude Code, model: claude-fable-5-1) - added SAFE_USER_COLUMNS (every
 //   users column except password_hash, plus is_locked) and the SafeUserRow type; findById,
 //   listUsersPage and the status/role/active-view RETURNING clauses select it instead of `*`;
@@ -73,6 +82,7 @@ export interface UserRow {
   status: "pending" | "active" | "suspended";
   role: "user" | "admin" | "super admin";
   active_view: "requester" | "courier";
+  preferred_lang: string;
   login_failed_attempts: number;
   login_failure_window_start: Date | null;
   login_locked_until: Date | null;
@@ -112,6 +122,7 @@ export const SAFE_USER_COLUMNS = [
   'status',
   'role',
   'active_view',
+  'preferred_lang',
   'login_failed_attempts',
   'login_failure_window_start',
   'login_locked_until',
@@ -508,6 +519,19 @@ export async function updateActiveView(
   const result = await db.query<SafeUserRow>(
     `UPDATE users SET active_view = $2, updated_at = NOW() WHERE id = $1 RETURNING ${SAFE_USER_COLUMNS}`,
     [userId, activeView],
+  );
+  return result.rows[0] ?? null;
+}
+
+// AI-generated (edited by <name>).
+export async function updatePreferredLang(
+  userId: string,
+  preferredLang: string,
+  db: Queryable = pool,
+): Promise<SafeUserRow | null> {
+  const result = await db.query<SafeUserRow>(
+    `UPDATE users SET preferred_lang = $2, updated_at = NOW() WHERE id = $1 RETURNING ${SAFE_USER_COLUMNS}`,
+    [userId, preferredLang],
   );
   return result.rows[0] ?? null;
 }
