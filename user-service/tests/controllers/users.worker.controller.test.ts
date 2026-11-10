@@ -6,10 +6,16 @@
  *        users.public.controller.test.ts's precedent for a route with its own auth scheme.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { setLoginLockState, setUserStatus, truncateAll } from '../helpers/db.js';
 import { resetEmailMock } from '../helpers/email.js';
 import { createActiveUser, registerPending } from '../helpers/fixtures.js';
@@ -22,7 +28,7 @@ const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 const RIGHT_KEY = process.env.USER_ORDER_SERVICE_API_KEY!;
 
 const get = (path: string, serviceKey?: string) => {
-  const r = request(app).get(path);
+  const r = api().get(path);
   return serviceKey !== undefined ? r.set('User-Order-Service-Key', serviceKey) : r;
 };
 

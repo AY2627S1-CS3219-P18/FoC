@@ -4,8 +4,14 @@
 // Author review:
 // 27/09/2026: Stage 9 - createUserWithRole, bearer
 // Author review:
-import request from 'supertest';
-import app from '../../src/app.js';
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
+import type request from 'supertest';
+import { api } from './server.js';
 import { getUserByEmail, setUserRole } from './db.js';
 import { latestOtpFor } from './email.js';
 import { PASSWORD } from './constants.js';
@@ -27,7 +33,7 @@ export async function registerPending(
   password = PASSWORD,
 ): Promise<TestUser> {
   const input = userInput(n, password);
-  const res = await request(app).post('/auth/register').send(input);
+  const res = await api().post('/auth/register').send(input);
   if (res.status !== 201)
     throw new Error(`register failed: ${res.status} ${JSON.stringify(res.body)}`);
   const row = (await getUserByEmail(input.email))!;
@@ -40,7 +46,7 @@ export async function createActiveUser(
   password = PASSWORD,
 ): Promise<TestUser> {
   const user = await registerPending(n, password);
-  const res = await request(app)
+  const res = await api()
     .post('/auth/verify-otp')
     .send({ email: user.email, otp: latestOtpFor(user.email), purpose: 'registration' });
   if (res.status !== 200)
@@ -49,7 +55,7 @@ export async function createActiveUser(
 }
 
 export async function loginUser(user: TestUser, password = user.password) {
-  return request(app).post('/auth/login').send({ identifier: user.email, password });
+  return api().post('/auth/login').send({ identifier: user.email, password });
 }
 
 // Logs in and returns the tokens plus the raw refresh cookie value.

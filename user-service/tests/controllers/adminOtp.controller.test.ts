@@ -6,11 +6,16 @@
 //        Stage 27's own Verification bullets. No requirements, architecture, schema, or API
 //        decisions were made by the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 
 import jwt from 'jsonwebtoken';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import {
   backdateOtps,
   expireOtps,
@@ -34,21 +39,21 @@ beforeEach(truncateAll);
 afterEach(truncateAll);
 
 const sendOtp = (token: string) =>
-  request(app).post('/admin/send-otp').set('Authorization', bearer(token)).send({ purpose: 'admin_action' });
+  api().post('/admin/send-otp').set('Authorization', bearer(token)).send({ purpose: 'admin_action' });
 
 const verifyOtp = (token: string, otp: string, extra: Record<string, unknown> = {}) =>
-  request(app)
+  api()
     .post('/admin/verify-otp')
     .set('Authorization', bearer(token))
     .send({ otp, purpose: 'admin_action', ...extra });
 
 const resendOtp = (token: string) =>
-  request(app).post('/admin/resend-otp').set('Authorization', bearer(token)).send({ purpose: 'admin_action' });
+  api().post('/admin/resend-otp').set('Authorization', bearer(token)).send({ purpose: 'admin_action' });
 
 // ---------------------------------------------------------------------------------------------
 describe('POST /admin/send-otp', () => {
   it('requires authentication: 401 UNAUTHORIZED with no token', async () => {
-    const res = await request(app).post('/admin/send-otp').send({ purpose: 'admin_action' });
+    const res = await api().post('/admin/send-otp').send({ purpose: 'admin_action' });
     expect(res.status).toBe(401);
   });
 
@@ -77,7 +82,7 @@ describe('POST /admin/send-otp', () => {
   it('an invalid purpose: 400 VALIDATION_ERROR "Invalid purpose"', async () => {
     const admin = await createUserWithRole(1, 'admin');
     const token = await accessTokenFor(admin);
-    const res = await request(app)
+    const res = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(token))
       .send({ purpose: 'forgot_password' });
@@ -88,7 +93,7 @@ describe('POST /admin/send-otp', () => {
   it('an extra field: 400 "Request contains unexpected fields"', async () => {
     const admin = await createUserWithRole(1, 'admin');
     const token = await accessTokenFor(admin);
-    const res = await request(app)
+    const res = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(token))
       .send({ purpose: 'admin_action', extra: 'x' });
@@ -111,7 +116,7 @@ describe('POST /admin/send-otp', () => {
     const { sid } = jwt.decode(accessToken) as { sid: string };
     const elevationToken = signElevationToken({ sub: admin.id, role: 'admin', sid });
 
-    const res = await request(app)
+    const res = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(accessToken))
       .set('Elevated-Token', elevationToken)
@@ -127,7 +132,7 @@ describe('POST /admin/send-otp', () => {
   it('an invalid Elevated-Token does not block sending', async () => {
     const admin = await createUserWithRole(1, 'admin');
     const token = await accessTokenFor(admin);
-    const res = await request(app)
+    const res = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(token))
       .set('Elevated-Token', 'not-a-token')
@@ -149,7 +154,7 @@ describe('POST /admin/send-otp', () => {
 // ---------------------------------------------------------------------------------------------
 describe('POST /admin/verify-otp', () => {
   it('requires authentication: 401 UNAUTHORIZED with no token', async () => {
-    const res = await request(app).post('/admin/verify-otp').send({ otp: '123456', purpose: 'admin_action' });
+    const res = await api().post('/admin/verify-otp').send({ otp: '123456', purpose: 'admin_action' });
     expect(res.status).toBe(401);
   });
 
@@ -247,7 +252,7 @@ describe('POST /admin/verify-otp', () => {
     await verifyOtp(token, wrong);
 
     // Login still succeeds normally afterward: the lockout counter was not touched.
-    const loginRes = await request(app)
+    const loginRes = await api()
       .post('/auth/login')
       .send({ identifier: admin.email, password: admin.password });
     expect(loginRes.status).toBe(200);
@@ -273,7 +278,7 @@ describe('POST /admin/verify-otp', () => {
     const { sid } = jwt.decode(accessToken) as { sid: string };
     const elevationToken = signElevationToken({ sub: admin.id, role: 'admin', sid });
 
-    const res = await request(app)
+    const res = await api()
       .post('/admin/verify-otp')
       .set('Authorization', bearer(accessToken))
       .set('Elevated-Token', elevationToken)
@@ -298,7 +303,7 @@ describe('POST /admin/verify-otp', () => {
 // ---------------------------------------------------------------------------------------------
 describe('POST /admin/resend-otp', () => {
   it('requires authentication: 401 UNAUTHORIZED with no token', async () => {
-    const res = await request(app).post('/admin/resend-otp').send({ purpose: 'admin_action' });
+    const res = await api().post('/admin/resend-otp').send({ purpose: 'admin_action' });
     expect(res.status).toBe(401);
   });
 
@@ -382,12 +387,12 @@ describe('POST /admin/resend-otp', () => {
     const { accessToken } = await loginTokens(admin);
     const { sid } = jwt.decode(accessToken) as { sid: string };
     const elevationToken = signElevationToken({ sub: admin.id, role: 'admin', sid });
-    await request(app)
+    await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(accessToken))
       .send({ purpose: 'admin_action' });
 
-    const res = await request(app)
+    const res = await api()
       .post('/admin/resend-otp')
       .set('Authorization', bearer(accessToken))
       .set('Elevated-Token', elevationToken)
@@ -405,13 +410,13 @@ describe('Elevation on one device vs. another', () => {
     const session1 = await loginTokens(admin);
     const session2 = await loginTokens(admin);
 
-    const send1 = await request(app)
+    const send1 = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(session1.accessToken))
       .send({ purpose: 'admin_action' });
     expect(send1.status).toBe(200);
     const otp = latestOtpFor(admin.email);
-    const verify1 = await request(app)
+    const verify1 = await api()
       .post('/admin/verify-otp')
       .set('Authorization', bearer(session1.accessToken))
       .send({ otp, purpose: 'admin_action' });
@@ -423,7 +428,7 @@ describe('Elevation on one device vs. another', () => {
     // resend would otherwise 429 for an unrelated reason) and confirm the response is neither
     // 409 ALREADY_ELEVATED nor blocked by the elevation check.
     await backdateOtps(admin.id, 2, 'Admin Action');
-    const send2 = await request(app)
+    const send2 = await api()
       .post('/admin/send-otp')
       .set('Authorization', bearer(session2.accessToken))
       .set('Elevated-Token', elevationToken)
