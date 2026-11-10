@@ -13905,3 +13905,81 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Fix F4: unlockUser must not spread the full UserRow
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F4 fix note pasted in chat on 2026-11-10 (quoted below); the documented user response shape is instructions.md Stage 9 / Stage 15c (camelCase) / Stage 18d (`isLocked`, `lockedUntil`, `lockLevel`), as already encoded in `toUserResponse`
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F4: unlockUser must not spread the full UserRow.
+>
+> - Define one shared constant in users.queries.ts listing the safe user columns (every
+>   column toUserResponse needs, plus the lock columns and the is_locked expression from
+>   F3), explicitly excluding password_hash. Use it for RETURNING / SELECT in user-facing
+>   queries instead of `*` where the row ends up in a response.
+> - unlockUser: keep the SELECT ... FOR UPDATE row internal, used only for the
+>   lock-vs-no-op decision and the audit "before" value. Do the clears in an
+>   UPDATE ... RETURNING <safe columns> and pass the returned row to toUserResponse.
+>   No object spread, no hand-assigned reset fields.
+> - Grep src/ for `...` spreads of user rows (`...user`, `...locked`, `...row`) and for
+>   `SELECT *` / `RETURNING *` on users whose result reaches a response or a log. Report
+>   each hit; fix any that carry password_hash outside a function that needs it
+>   (login, password change/reset).
+> - Test: for unlock (both the unlocked and no-op paths) and the other admin endpoints,
+>   assert the response body's keys equal exactly the documented set, and that
+>   JSON.stringify(body) contains neither "password_hash" nor "passwordHash".
+
+**Key responses:**
+Branched `fix/f4-unlock-safe-columns` off `main`.
+
+`users.queries.ts`: added the exported `SAFE_USER_COLUMNS` constant (`id, username, email, created_at, updated_at, status, role, active_view, login_failed_attempts, login_failure_window_start, login_locked_until, login_lock_level, <IS_LOCKED_SQL> AS is_locked`; `password_hash` deliberately absent) and the `SafeUserRow` type (`Omit<UserRow, 'password_hash'> & { is_locked: boolean }`). `findById`, `listUsersPage`'s SELECT, and the `updateUserStatus` / `updateUserRole` / `updateActiveView` RETURNING clauses now use `SAFE_USER_COLUMNS` instead of `*` and return `SafeUserRow`. `resetLoginLock` now ends in `RETURNING ${SAFE_USER_COLUMNS}` and returns the cleared `SafeUserRow | null` (its other callers, login and the two password paths, ignore the return value and are unchanged). `toUserResponse` now takes `SafeUserRow`; `UserRowWithLock` (the FOR UPDATE reads) still satisfies it structurally, so the no-op paths of changeUserStatus/changeUserRole compile unchanged, and the mapper body is untouched.
+
+`unlockUser`: the `lockUserByIdWithNow` row stays internal (lock-vs-no-op via `is_locked`, audit "before" value). The clears go through `resetLoginLock`, whose RETURNING row is passed straight to `toUserResponse`. The `{ ...locked, login_failed_attempts: 0, ... }` spread and its five hand-assigned fields are gone.
+
+Within-decision choice: `findById` was also used by `me.service.ts`'s `initiateEmailChange` and `initiatePasswordChange` for a pre-lock `bcrypt.compare` against `user.password_hash`. Rather than leave `findById` selecting `*` for those two callers (which would have left the admin `GET /users/:id` path fetching the hash), added `findPasswordHashById` (selects only `password_hash`) and switched those two pre-lock reads to it. Their in-transaction re-check against `locked.password_hash` is unchanged.
+
+Grep report (`src/`), spreads of user rows:
+
+- `users.service.ts` unlockUser `...locked`: carried `password_hash` into the mapper's input object. **Fixed** (removed, see above).
+- `users.queries.ts` listUsersPage `({ full_count, ...row }) => row`: now only ever sees `SAFE_USER_COLUMNS`, so it cannot carry the hash. Kept, with a comment.
+- `auditLog.queries.ts:158` same `full_count` pattern on audit-log rows, not user rows. Not a hit.
+  `SELECT *` / `RETURNING *` on `users`:
+- `findById`, `listUsersPage`, `updateUserStatus`, `updateUserRole`, `updateActiveView`: results reach responses via `toUserResponse`. **Fixed** (safe columns).
+- `lockUserById` / `lockUserByIdWithNow` (`SELECT * ... FOR UPDATE`): shared by login, refresh, the password/email change paths and the OTP services, which need `password_hash`; the admin no-op paths pass the row to `toUserResponse`, which copies only its listed fields. Kept; reported.
+- `findByUsername` / `findByEmail`: login needs the hash; the other callers (register duplicate checks, me.service uniqueness checks, forgot-password/reset flows, bootstrap) use `id`/`status` only and never return or log the row. Kept; reported.
+- `createUser` / `createSuperAdmin` (`RETURNING *`): callers use `.id` only; bootstrap's `console.log` prints the configured username, not the row. Kept; reported.
+- `updateUsername` / `updateEmail` (`RETURNING *`): `changeUsername` returns `{ username, email }` picked from it; `updateEmail`'s result is unused. Kept; reported.
+- `findSuperAdmin`: bootstrap existence check only. Kept; reported.
+- `findByIdWithNow` (`SELECT *` + `db_now`): no longer has any caller in `src/` (its Stage 20 caller was replaced in Stage 26c); only `tests/db/queries/users.queries.test.ts` exercises it. Left in place; flagged under Deviations.
+  Logs: no `console.*` call in `src/` prints a user row object.
+
+Tests: `tests/controllers/users.controller.test.ts` gained `USER_RESPONSE_KEYS` + `expectExactUserResponse(body)` (keys sorted-equal to the documented set; `JSON.stringify(body)` contains neither `password_hash` nor `passwordHash`) and a describe "response bodies carry exactly the documented keys (fix F4)" covering POST unlock (locked → cleared, and non-locked no-op), PUT status (changed and no-op), PUT role (changed and no-op), GET /users/:id and every item of GET /users. `tests/db/queries/users.queries.test.ts`: `updatePasswordHash`'s test reads the hash via `findPasswordHashById`; the `listUsersPage` test that asserted rows _include_ `password_hash` now asserts the opposite; added a "safe user columns (fix F4)" block (constant names no `password_hash`; `findById` key set; `resetLoginLock` RETURNING row and null for unknown id).
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. `npm run lint` (eslint): no findings. Vitest: the five directly affected files 324/325 on the first run (the one failure was the pre-existing `listUsersPage ... including password_hash` assertion, then updated as above); first full run 1000/1002 with two failures in `tests/controllers/adminOtp.controller.test.ts` (`a regular user gets 403 FORBIDDEN`, `an invalid Elevated-Token does not block sending`) that passed 29/29 when that file ran alone and passed on the immediate full-suite rerun: 38 files / 1002 tests passed. Treated as a cross-file timing flake, not caused by this change. The `Error: insert failed` / `EMAIL_SEND_FAILED` stderr lines come from pre-existing forced-failure tests.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- Added `findPasswordHashById` so `findById` could drop `password_hash` without leaving the two me.service pre-lock bcrypt checks without a hash. If the team prefers no new query function, the alternative is to leave `findById` on `SELECT *` and only fix the RETURNING paths and the unlock spread.
+- `findByIdWithNow` has no remaining caller in `src/`. Left as is; the team may want to remove it (and its test) separately.
+- `lockUserById` / `lockUserByIdWithNow` still select `*` because login and the password paths need the hash from the same locked row; their rows reach `toUserResponse` only on the admin no-op paths, where the mapper copies named fields. Reported, not changed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

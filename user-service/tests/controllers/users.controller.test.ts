@@ -54,6 +54,14 @@
  *        specific string) for the new elevation-specific test cases added below.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F4 - added the "response bodies carry exactly the documented keys" block: for
+ *        unlock (unlocked and no-op paths), PUT status / PUT role (changed and no-op paths),
+ *        GET /users/:id and each GET /users item, the body's keys equal USER_RESPONSE_KEYS and
+ *        the serialised body contains neither "password_hash" nor "passwordHash".
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -90,6 +98,29 @@ afterEach(truncateAll);
 const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 const UNAUTHORIZED = { message: 'Unauthorized', code: 'UNAUTHORIZED' };
 const FORBIDDEN = { message: 'Forbidden', code: 'FORBIDDEN' };
+
+// The documented user object (toUserResponse): Stage 9 fields + activeView (Stage 11) +
+// isLocked/lockedUntil/lockLevel (Stage 18d). Fix F4 asserts every admin endpoint's body has
+// exactly these keys and no trace of the password hash under either naming.
+const USER_RESPONSE_KEYS = [
+  'activeView',
+  'createdAt',
+  'email',
+  'id',
+  'isLocked',
+  'lockLevel',
+  'lockedUntil',
+  'role',
+  'status',
+  'updatedAt',
+  'username',
+].sort();
+function expectExactUserResponse(body: unknown): void {
+  expect(Object.keys(body as object).sort()).toEqual(USER_RESPONSE_KEYS);
+  const serialised = JSON.stringify(body);
+  expect(serialised).not.toContain('password_hash');
+  expect(serialised).not.toContain('passwordHash');
+}
 
 // Caller fixtures: each logs in after the role is set, so the access token carries that role.
 async function callerToken(role: 'user' | 'admin' | 'super admin', n: number | string = 'caller') {
@@ -388,6 +419,72 @@ describe('POST /users/:id/unlock', () => {
       expect(res.status).toBe(403);
       expect(await getAuditLogRowsForTarget(admin2.id)).toHaveLength(0);
     });
+  });
+});
+
+describe('response bodies carry exactly the documented keys (fix F4)', () => {
+  it('POST /users/:id/unlock on a locked user (lock cleared) and on a non-locked user (no-op)', async () => {
+    const { token } = await callerToken('admin');
+    const lockedTarget = await createActiveUser(1);
+    await setLoginLockState(lockedTarget.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const idleTarget = await createActiveUser(2);
+
+    const unlocked = await request(app)
+      .post(`/users/${lockedTarget.id}/unlock`)
+      .set('Authorization', bearer(token));
+    expect(unlocked.status).toBe(200);
+    expect(unlocked.body).toMatchObject({ id: lockedTarget.id, isLocked: false, lockedUntil: null, lockLevel: 0 });
+    expectExactUserResponse(unlocked.body);
+
+    const noop = await request(app)
+      .post(`/users/${idleTarget.id}/unlock`)
+      .set('Authorization', bearer(token));
+    expect(noop.status).toBe(200);
+    expect(noop.body).toMatchObject({ id: idleTarget.id, isLocked: false });
+    expectExactUserResponse(noop.body);
+  });
+
+  it('PUT /users/:id/status, changed and no-op', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+
+    const changed = await putStatus(token, target, 'suspended');
+    expect(changed.status).toBe(200);
+    expect(changed.body.status).toBe('suspended');
+    expectExactUserResponse(changed.body);
+
+    const noop = await putStatus(token, target, 'suspended');
+    expect(noop.status).toBe(200);
+    expectExactUserResponse(noop.body);
+  });
+
+  it('PUT /users/:id/role, changed and no-op', async () => {
+    const { token } = await callerToken('super admin');
+    const target = await createActiveUser(1);
+
+    const changed = await putRole(token, target, 'admin');
+    expect(changed.status).toBe(200);
+    expect(changed.body.role).toBe('admin');
+    expectExactUserResponse(changed.body);
+
+    const noop = await putRole(token, target, 'admin');
+    expect(noop.status).toBe(200);
+    expectExactUserResponse(noop.body);
+  });
+
+  it('GET /users/:id and every item of GET /users', async () => {
+    const { token } = await callerToken('admin');
+    const target = await createActiveUser(1);
+
+    const one = await get(`/users/${target.id}`, token);
+    expect(one.status).toBe(200);
+    expectExactUserResponse(one.body);
+
+    const list = await get('/users', token);
+    expect(list.status).toBe(200);
+    expect(list.body.users).toHaveLength(2);
+    for (const u of list.body.users) expectExactUserResponse(u);
+    expect(JSON.stringify(list.body)).not.toContain('password');
   });
 });
 
