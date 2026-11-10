@@ -1,5 +1,8 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-10, Codex, model: GPT-6): Resolved README and usage-log merge conflicts while retaining both branches.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added duplicate mode toast fix log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
@@ -396,6 +399,14 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #287 for the
+       supplier-worker Compose fix, and row #288 for the ECS chat deployment docs. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #289 for removing the
+       nav notification bell. No requirements, architecture, schema, or API decisions were made by
+       the AI tool.
 Author review:
 -->
 
@@ -976,3 +987,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 287 | 2026-11-10 | chat-service, frontend | Merge main translation with chat-service updates | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds. |
 | 288 | 2026-11-10 | order-service | Order-service test verification and assertion fixes | Updated stale chat outbox assertions; verified unit and E2E tests. |
 | 289 | 2026-11-10 | frontend | Fix duplicate mode-switch toasts | Batched mode navigation updates and guarded repeated redirect feedback. |
+| 287 | 2026-11-10 | supplier-service                                              | Supplier worker Compose environment fix                                                                          | Passed SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker so it boots under Compose.                                                             |
+| 288 | 2026-11-10 | repository | ECS Fargate: chat deployment and email docs | Recorded chat-service, SMTP and new-setting steps in the ECS plan and run checklist. |
+| 289 | 2026-11-10 | frontend | Frontend: remove the nav notification bell | Removed the inert bell button; notifications arrive through chat. |
+| 291 | 2026-11-10 | repository | Resolve disclosure merge conflicts with main | Preserved both branches’ disclosures and verified merged frontend tests and build. |
