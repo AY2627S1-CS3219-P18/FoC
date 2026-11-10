@@ -8,7 +8,6 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
- * Author review: Congchen
  */
 import request from "supertest";
 import { createApp } from "./app.js";

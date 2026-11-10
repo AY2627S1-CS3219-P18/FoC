@@ -57,7 +57,7 @@
  *        caller now applies the result after that transaction commits, not inside it. Its
  *        OTP_RESEND_LIMIT message/Retry-After also now match the escalation level.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Pass locked.username to requestOtp at initiateEmailChange, resendChangeEmailOtp,
@@ -65,24 +65,18 @@
  *        added in email.service.ts and otp.service.ts. Governing decision: instructions.md
  *        Stage 19.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: changeActiveView passes its own userId as toUserResponse's new requesterId param
  *        (self-view, so the email stays unmasked), per instructions.md Stage 20.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: verifyEmailChangeOtp and confirmPasswordChange now call the shared throwOtpFailure
  *        helper instead of a hardcoded INVALID_OTP throw, per instructions.md Stage 25.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
- *
- * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-09
- * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
- *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
  * Author review:
  *
  * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
@@ -97,9 +91,6 @@
  *        lockout threshold, after the lock's transaction has committed. Governing decision:
  *        instructions.md Stage 31 (changes table row 4). No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
- * Author review:
- * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
 
@@ -187,36 +178,14 @@ export async function changeActiveView(
   return toUserResponse(row, userId);
 }
 
-// AI-generated (edited by <name>).
-export async function changePreferredLang(
-  userId: string,
-  preferredLang: string,
-): Promise<UserResponse> {
-  const row = await userQueries.updatePreferredLang(userId, preferredLang);
-  if (!row) {
-    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
-  }
-  return toUserResponse(row, userId);
-}
-
 export async function getOwnProfile(
   userId: string,
-): Promise<{
-  username: string;
-  email: string;
-  activeView: 'requester' | 'courier';
-  preferredLang: string;
-}> {
+): Promise<{ username: string; email: string; activeView: 'requester' | 'courier' }> {
   const user = await userQueries.findById(userId);
   if (!user) {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
-  return {
-    username: user.username,
-    email: user.email,
-    activeView: user.active_view,
-    preferredLang: user.preferred_lang,
-  };
+  return { username: user.username, email: user.email, activeView: user.active_view };
 }
 
 export async function changeUsername(

@@ -10,13 +10,13 @@
  *        instead of updateUser, since the backend has already revoked every session for this
  *        user by that point.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Replaced every raw password input (change email's re-entry, change password's current
  *        and new fields) with PasswordInput (Stage 21b) for a show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Stage 25b of instructions.md - EmailSection and PasswordSection: on
@@ -25,13 +25,10 @@
  *        clear/refocus but stay enabled, same as INVALID_OTP. A successful resend re-enables
  *        and clears the boxes and the error.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
- * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified preferred-language section.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import Button from '../components/Button'
 import FieldError from '../components/FieldError'
 import FormBanner from '../components/FormBanner'
@@ -49,7 +46,6 @@ import {
   isValidUsername,
 } from '../utils/validation'
 import { useAuth } from '../context/AuthContext'
-import { LANGUAGES } from '../constants/languages'
 
 const inputClass =
   'mt-1.5 h-11 w-full rounded-btn border border-line bg-surface-alt px-3 text-base text-ink'
@@ -76,74 +72,6 @@ function ProfileSection({ user }) {
           <dd className="font-medium text-ink">{user.email}</dd>
         </div>
       </dl>
-    </Section>
-  )
-}
-
-// AI-generated (edited by <name>).
-function LanguageSection() {
-  const [value, setValue] = useState('')
-  const [saved, setSaved] = useState('')
-  const [banner, setBanner] = useState({ type: 'error', message: '' })
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let live = true
-    profileApi.getProfile().then(
-      (profile) => {
-        if (!live) return
-        setValue(profile.preferredLang)
-        setSaved(profile.preferredLang)
-      },
-      (err) => live && setBanner({ type: 'error', message: describeError(err).message }),
-    )
-    return () => {
-      live = false
-    }
-  }, [])
-
-  const onSubmit = async (e) => {
-    e.preventDefault()
-    setBanner({ type: 'error', message: '' })
-    setBusy(true)
-    try {
-      const profile = await profileApi.setPreferredLang(value)
-      setSaved(profile.preferredLang)
-      setBanner({ type: 'success', message: 'Preferred language updated.' })
-    } catch (err) {
-      setBanner({ type: 'error', message: describeError(err).message })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Section title="Preferred language">
-      <p className="mb-3 text-sm text-ink-70">
-        Chat messages you receive are translated into this language when Auto-translate is on.
-      </p>
-      <FormBanner type={banner.type} message={banner.message} />
-      <form className="space-y-3" onSubmit={onSubmit}>
-        <label className="block">
-          <span className="text-sm font-medium text-ink">Language</span>
-          <select
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            disabled={!saved}
-            className={inputClass}
-          >
-            {!saved && <option value="">Loading…</option>}
-            {LANGUAGES.map((language) => (
-              <option key={language.code} value={language.code}>
-                {language.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit" disabled={busy || !saved || value === saved}>
-          {busy ? 'Saving…' : 'Save language'}
-        </Button>
-      </form>
     </Section>
   )
 }
@@ -481,7 +409,6 @@ export default function Account() {
         <ProfileSection user={user} />
         <UsernameSection username={user.username} updateUser={updateUser} />
         <EmailSection email={user.email} updateUser={updateUser} />
-        <LanguageSection />
         <PasswordSection forceReauth={forceReauth} />
       </div>
     </div>

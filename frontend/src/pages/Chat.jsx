@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component Chat.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review: <pending — team member to sign>
  *
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-20
  * Scope: Login prompt waits for the session restore (sessionReady), as Wallet.jsx does, so a
@@ -17,7 +17,7 @@
  *        that opened the deleted LoginModal via requireLogin, per instructions.md Stage 16b.
  *        `currentUser`/`requests` stay on DemoContext (mocked chat data, unrelated to auth).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Per instructions.md Stage 22's "Chat back arrow (mobile)" row: the mobile back arrow
@@ -26,7 +26,7 @@
  *        page (opened directly by URL or in a new tab), using the new
  *        routing/navigationHistory.js tracker.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
@@ -87,14 +87,6 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Pinned system chats and displayed their messages as incoming from FoC.
  * Author review: tng wen xi
- * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified Auto-translate switch, per-message Show original/Translate control and translated message display.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
- * Scope (2026-11-09, Codex, model: GPT-6): Moved translation control above the timestamp.
- * Author review:
- * Scope (2026-11-09, Codex, model: GPT-6): Moved message metadata below chat bubbles.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Hid the chat list on individual chat pages per user instruction.
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested requested active/archived chat list tabs using the existing status filter.
@@ -103,9 +95,6 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Restricted system chat to the Active list per user correction.
  * Author review: tng wen xi
- * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
  */
 
 import {
@@ -122,7 +111,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { ArrowLeft, MessageCircle, Send, Check, Languages } from "lucide-react";
+import { ArrowLeft, MessageCircle, Send, Check } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   findOrderChat,
@@ -131,15 +120,12 @@ import {
   listMessages,
   markMessagesRead,
   sendMessage,
-  setTranslation,
 } from "../api/chat";
-import { getProfile } from "../api/profile";
 import {
   useChatRoom,
   useChatMessages,
   useChatReady,
   useChatReads,
-  useChatTranslations,
 } from "../realtime/chatSocket";
 import { useUserName } from "../api/lookups";
 
@@ -469,15 +455,6 @@ function mergeMessages(previous, incoming) {
   );
 }
 
-// AI-generated (edited by <name>).
-function translationsOf(messages) {
-  return Object.fromEntries(
-    messages
-      .filter((message) => message.translatedContent != null)
-      .map((message) => [message.messageId, message.translatedContent]),
-  );
-}
-
 function Thread({ id, user, onRead, errandReturnTo }) {
   const messageList = useRef(null);
   const messageInput = useRef(null);
@@ -496,32 +473,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [retry, setRetry] = useState(0);
-  // AI-generated (edited by <name>).
-  // translateTo: the saved Auto-translate language (null = off). translations: messageId -> text
-  // ("SAME" = already in the preferred language). viewOverride: messageId -> "original" | "translated".
-  const [translateTo, setTranslateTo] = useState(null);
-  const [preferredLang, setPreferredLang] = useState(null);
-  const [translations, setTranslations] = useState({});
-  const [viewOverride, setViewOverride] = useState({});
-  const [toggling, setToggling] = useState(false);
-  useChatTranslations((translated) => {
-    if (translated.conversationId !== id) return;
-    setTranslations((prev) => ({
-      ...prev,
-      [translated.messageId]: translated.translatedContent,
-    }));
-  });
-  useEffect(() => {
-    let live = true;
-    // The preferred language is read when the chat opens and sent with the toggle call.
-    getProfile().then(
-      (profile) => live && setPreferredLang(profile.preferredLang),
-      () => {},
-    );
-    return () => {
-      live = false;
-    };
-  }, []);
   useChatRoom(id, (message) => {
     if (message) setError(message);
   });
@@ -575,11 +526,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
           }
         }
         setChat(details);
-        setTranslateTo(
-          history.participants?.find((p) => p.userId === user?.id)
-            ?.translateTo ?? null,
-        );
-        setTranslations((prev) => ({ ...prev, ...translationsOf(history.data) }));
         setMessages((prev) => mergeMessages(prev, history.data));
         setReadPositions((previous) => [
           ...new Set([
@@ -687,7 +633,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
     try {
       const history = await listMessages(id, pagination.nextCursor);
       olderScroll.current = anchor;
-      setTranslations((prev) => ({ ...prev, ...translationsOf(history.data) }));
       setMessages((prev) => mergeMessages(prev, history.data));
       setReadPositions((previous) => [
         ...new Set([
@@ -707,24 +652,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
     } finally {
       loadingOlder.current = false;
       setBusy(false);
-    }
-  };
-  // AI-generated (edited by <name>).
-  const toggleTranslate = async () => {
-    const enable = translateTo === null;
-    setToggling(true);
-    setError(null);
-    try {
-      const result = await setTranslation(
-        id,
-        enable ? { enabled: true, language: preferredLang } : { enabled: false },
-      );
-      setTranslateTo(result.translateTo);
-      setViewOverride({});
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setToggling(false);
     }
   };
   const send = async (event) => {
@@ -754,7 +681,7 @@ function Thread({ id, user, onRead, errandReturnTo }) {
   };
   return (
     <section className="min-w-0 flex-1 rounded-card border border-line p-4">
-      <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-line pb-3">
+      <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2 border-b border-line pb-3">
         <Link
           to="/chats"
           state={errandReturnTo ? { errandReturnTo } : null}
@@ -766,35 +693,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
         <h2 className="text-center text-lg font-semibold">
           <ChatTitle chat={chat} role={user?.activeView} />
         </h2>
-        <div className="flex items-center gap-2">
-          <span id="auto-translate-label" className="text-xs text-ink-70">
-            Auto-translate
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={translateTo !== null}
-            aria-labelledby="auto-translate-label"
-            disabled={toggling || !chat || (translateTo === null && !preferredLang)}
-            onClick={toggleTranslate}
-            className="flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-50 md:h-6 md:w-10"
-          >
-            <span
-              className={
-                "relative block h-6 w-10 rounded-full transition-colors duration-150 " +
-                (translateTo !== null ? "bg-blue" : "bg-line")
-              }
-              aria-hidden="true"
-            >
-              <span
-                className={
-                  "absolute top-0.5 h-5 w-5 rounded-full bg-surface transition-all duration-150 " +
-                  (translateTo !== null ? "left-[18px]" : "left-0.5")
-                }
-              />
-            </span>
-          </button>
-        </div>
       </header>
       {error && <p role="alert">{error}</p>}
       {busy && !sending && <p role="status">Loading…</p>}
@@ -811,14 +709,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
           const system = !systemChat && message.type === "SYSTEM";
           const read = index <= readThrough;
           const date = new Date(message.createdAt);
-          // AI-generated (edited by <name>).
-          // Only received messages have translations; "SAME" has no alternative to show.
-          const translation = !own && !system ? translations[message.messageId] : undefined;
-          const hasTranslation = translation !== undefined && translation !== "SAME";
-          const showTranslated =
-            hasTranslation &&
-            (viewOverride[message.messageId] ??
-              (translateTo !== null ? "translated" : "original")) === "translated";
           const startsDay =
             index === 0 ||
             date.toDateString() !==
@@ -842,13 +732,11 @@ function Thread({ id, user, onRead, errandReturnTo }) {
               <div
                 className={`flex ${system ? "justify-center" : own ? "justify-end" : "justify-start"}`}
               >
-                <div className="min-w-0 max-w-[85%]">
-                  {/* AI-generated (edited by <name>). */}
-                  <div
+                <div
                   className={
                     system
-                      ? "rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
-                      : `min-w-0 rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
+                      ? "max-w-[85%] rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
+                      : `min-w-0 max-w-[85%] rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
                   }
                 >
                   {systemChat && (
@@ -857,34 +745,17 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                     </p>
                   )}
                   <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                    {showTranslated ? translation : message.content}
+                    {message.content}
                   </p>
-                  </div>
-                  {hasTranslation && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setViewOverride((prev) => ({
-                          ...prev,
-                          [message.messageId]: showTranslated ? "original" : "translated",
-                        }))
-                      }
-                      className="mt-1 flex min-h-[44px] items-center gap-1 text-xs font-medium text-blue hover:underline md:min-h-0"
-                    >
-                      <Languages size={13} aria-hidden="true" />
-                      {showTranslated ? "Show original" : "Translate"}
-                    </button>
-                  )}
-                  <div className={`mt-1 flex items-center gap-2 ${system ? "justify-center" : own ? "justify-end" : "justify-start"} text-ink-40`}>
                   <div
-                    className="flex items-center gap-1.5 whitespace-nowrap"
+                    className={`mt-1 flex items-center gap-1.5 whitespace-nowrap ${system ? "justify-center" : "justify-end"}`}
                   >
                     <time
                       dateTime={message.createdAt}
                       className={
                         system
                           ? "shrink-0 text-[10px] leading-4 text-ink-40"
-                          : "shrink-0 text-xs leading-5 text-ink-40"
+                          : "shrink-0 text-xs leading-5 opacity-60"
                       }
                     >
                       {date.toLocaleTimeString(undefined, {
@@ -918,8 +789,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
                         )}
                       </span>
                     )}
-                  </div>
-
                   </div>
                 </div>
               </div>

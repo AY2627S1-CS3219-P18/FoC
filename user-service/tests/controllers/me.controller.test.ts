@@ -5,7 +5,7 @@
  *        and the activeView addition to POST /auth/login's response, covering the Stage 11b
  *        Verification bullets in instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
  * Scope: Added HTTP-level coverage for Stage 12's remaining routes (GET /users/me, PUT
@@ -18,7 +18,6 @@
  *        wiring, not exhaustively re-derived — that logic already has dedicated coverage in
  *        otp.service.test.ts and me.service.test.ts.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
  * Author review:
  *
  * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
@@ -26,9 +25,6 @@
  *        `request(app)` supertest servers with the shared loopback server in
  *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
- * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -174,12 +170,7 @@ describe('GET /users/me', () => {
     const token = await accessTokenFor(user);
     const res = await meGet(token);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({
-      username: 'user1',
-      email: user.email,
-      activeView: 'requester',
-      preferredLang: 'en',
-    });
+    expect(res.body).toEqual({ username: 'user1', email: user.email, activeView: 'requester' });
   });
 
   it('rejects a request with no Authorization header: 401 UNAUTHORIZED', async () => {
@@ -676,46 +667,6 @@ describe('POST /users/me/confirm-password-change', () => {
   it('no Authorization header on either route: 401 UNAUTHORIZED', async () => {
     expect((await mePut(undefined, '/password', { currentPassword: 'x', newPassword: NEW_PASSWORD })).status).toBe(401);
     const res = await mePost(undefined, '/confirm-password-change', { otp: '123456', newPassword: NEW_PASSWORD });
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual(UNAUTHORIZED);
-  });
-});
-
-// AI-generated (edited by <name>).
-describe('PUT /users/me/preferred-lang', () => {
-  it('defaults to en, then updates the caller: 200, response and DB both updated', async () => {
-    const user = await createActiveUser(1);
-    const token = await accessTokenFor(user);
-    expect((await getUserByEmail(user.email))!.preferred_lang).toBe('en');
-
-    const res = await mePut(token, '/preferred-lang', { preferredLang: 'ta' });
-    expect(res.status).toBe(200);
-    expect(res.body.preferredLang).toBe('ta');
-    expect(res.body).not.toHaveProperty('password_hash');
-    expect((await meGet(token)).body.preferredLang).toBe('ta');
-    expect((await getUserByEmail(user.email))!.preferred_lang).toBe('ta');
-  });
-
-  it.each(['fr', 'EN', '', 5])('rejects unsupported language %j: 400', async (value) => {
-    const user = await createActiveUser(1);
-    const token = await accessTokenFor(user);
-    const res = await mePut(token, '/preferred-lang', { preferredLang: value });
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('VALIDATION_ERROR');
-    expect((await getUserByEmail(user.email))!.preferred_lang).toBe('en');
-  });
-
-  it('rejects a missing field and extra fields: 400', async () => {
-    const user = await createActiveUser(1);
-    const token = await accessTokenFor(user);
-    expect((await mePut(token, '/preferred-lang', {})).status).toBe(400);
-    const extra = await mePut(token, '/preferred-lang', { preferredLang: 'es', x: 1 });
-    expect(extra.status).toBe(400);
-    expect(extra.body).toEqual(EXTRA_FIELD);
-  });
-
-  it('requires authentication: 401', async () => {
-    const res = await mePut(undefined, '/preferred-lang', { preferredLang: 'es' });
     expect(res.status).toBe(401);
     expect(res.body).toEqual(UNAUTHORIZED);
   });

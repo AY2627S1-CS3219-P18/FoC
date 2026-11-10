@@ -110,8 +110,6 @@ services:
       PORT: 3000
       DATABASE_URL: mysql://root:${CHAT_DB_PASSWORD}@chat-db:3306/chat_service
       CHAT_SERVICE_API_KEY: ${CHAT_SERVICE_API_KEY:?set CHAT_SERVICE_API_KEY in .env}
-      TRANSLATION_LLM_KEY: ${TRANSLATION_LLM_KEY:?set TRANSLATION_LLM_KEY in .env}
-      TRANSLATION_LLM_MODEL: ${TRANSLATION_LLM_MODEL:-gemini-3.1-flash-lite}
     ports:
       - "${CHAT_SERVICE_PORT:-3005}:3000"
     depends_on:
