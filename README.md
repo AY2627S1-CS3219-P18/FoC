@@ -1,5 +1,9 @@
 <!--
 AI Assistance Disclosure:
+Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+Scope: Added Log index row #321 for the user-service README rewrite. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Tool: Codex (model: GPT-6), date: 2026-11-10
 Scope: Added chat-service documentation disclosure and Log index entry.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -17,6 +21,10 @@ Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Resolved usage-log merge conflict and added the required Log index row.
 Author review: tng wen xi
+Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+Scope: Added Log index row #323 for Stage 32 (schedule option on the errand form). No
+       requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 <!--
 AI Assistance Disclosure:
@@ -440,6 +448,10 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #32
        order-service API reference and frontend footer wording. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
 Author review: George Yeo
+Scope (2026-11-10, Claude Code, model: claude-sonnet-5): Added Log index row #322 for the
+       user-service API reference. No requirements, architecture, schema, or API decisions
+       were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -1035,3 +1047,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 318 | 2026-11-10 | frontend | Bug fix: Manage users page scrolls horizontally on mobile | Added `min-w-0` to the main flex item so only the wide table scrolls, not the whole page. |
 | 319 | 2026-11-10 | order-service | order-service: README overview and architecture diagrams | Documented the service's processes, lifecycle, API, events, queues and config; drew two PUML diagrams. |
 | 320 | 2026-11-10 | order-service, frontend | order-service API reference; frontend footer wording | Added order-service/API.md for every route; removed "UI prototype" from the footer. |
+| 321 | 2026-11-10 | user-service | user-service: full service README | Documented the API surface, auth/JWKS, lockout, elevation, outbox worker, schema, tests and deployment. |
+| 322 | 2026-11-10 | user-service | user-service: API reference | Added user-service/API.md for every route, auth types, errors and the credit-outbox relay. |
+| 323 | 2026-11-10 | frontend | Stage 32: schedule option on the errand form | Unified the errand form to also create delayed/recurring errands; removed the separate /series/new page. |

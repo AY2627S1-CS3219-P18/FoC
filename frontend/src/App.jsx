@@ -21,6 +21,12 @@
  *        /requests/:id/edit (RequireAuth, ViewGate requiredView REQUESTER).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - removed /series/new: the normal errand form
+ *        (/requests/new) now also creates recurring/delayed errands, so there is no longer a
+ *        separate series-create route. /series/:id/edit is unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 /*
@@ -238,16 +244,6 @@ export default function App() {
               <RequireAuth>
                 <ViewGate requiredView={VIEWS.REQUESTER}>
                   <CreateRequest />
-                </ViewGate>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/series/new"
-            element={
-              <RequireAuth>
-                <ViewGate requiredView={VIEWS.REQUESTER}>
-                  <CreateRequest seriesMode />
                 </ViewGate>
               </RequireAuth>
             }
