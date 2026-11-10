@@ -17,6 +17,16 @@ Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Resolved usage-log merge conflict and added the required Log index row.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed automatic conversation-list pagination implementation.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed removal of the demo button.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the searchable filter dropdown clipping fix.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed moving errand form actions below Anything else.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed mobile chat title and composer styling updates.
+Author review: tng wen xi
 -->
 <!--
 AI Assistance Disclosure:
@@ -1018,3 +1028,8 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
 | 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
 | 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
+| 316 | 2026-11-10 | frontend | Automatically load more chats on bottom scrolling | Replaced chat pagination button with automatic loading. |
+| 317 | 2026-11-10 | frontend | Remove bottom-left demo button | Removed the global demo controls from the app. |
+| 318 | 2026-11-10 | frontend | Fix clipped searchable errand filters | Allowed filter menus to appear outside the wrapping filter row. |
+| 319 | 2026-11-10 | frontend | Move errand form actions below Anything else | Replaced fixed mobile action bar with inline form actions. |
+| 320 | 2026-11-10 | frontend | Compact mobile chat composer and align title | Left-aligned mobile title and reduced input and Send button sizing. |

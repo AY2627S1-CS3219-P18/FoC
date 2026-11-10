@@ -130,6 +130,9 @@
  * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflict in disclosure header.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Moved the credit notice and submit actions below Anything else on mobile per user instruction.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -416,7 +419,7 @@ function RequestForm({ order, series, seriesMode }) {
   )
 
   return (
-    <div className="page-gutter mx-auto w-full max-w-[640px] py-8 pb-32 md:py-10 md:pb-10">
+    <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
         {seriesMode
           ? isEdit ? 'Edit recurring errand' : 'Create a recurring errand'
@@ -797,9 +800,9 @@ function RequestForm({ order, series, seriesMode }) {
         </section>
       </div>
 
-      {/* Footer bar: sticky to the viewport on mobile. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface p-4 md:static md:mt-10 md:p-0 md:pt-6">
-        <div className="page-gutter mx-auto flex max-w-[640px] flex-col gap-3 md:flex-row md:items-center md:justify-between md:px-0">
+      {/* AI-generated (edited by <name>). Actions scroll with the form below Anything else. */}
+      <div className="mt-8 border-t border-line bg-surface pt-6 md:mt-10">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <p className="max-w-prose text-sm text-ink-70">
               {seriesMode ? (

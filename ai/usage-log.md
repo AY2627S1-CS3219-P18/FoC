@@ -17326,7 +17326,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-10
 Scope: Resolved the append-only usage-log conflict and indexed this task.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: tng wen xi
 -->
 
 **Tool:** Codex (model: GPT-6)
@@ -17349,5 +17349,193 @@ Verification: confirmed that the resolved log preserves the complete HEAD versio
 None.
 
 **What I kept/changed/rejected:**
+I kept all changes.
 
 **Author review:**
+tng wen xi
+
+## 2026-11-10 — Automatically load more chats on bottom scrolling
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the requested conversation pagination implementation and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction quoted below; existing frontend conversation pagination and status filters in frontend/src/pages/Chat.jsx.
+
+**Prompts (exact):**
+> can u change the conversation listing to remove 'Load more chats' and auto load more when i scroll to the bottom of the page
+
+**Key responses:**
+Replaced the Load more chats button with a bottom sentinel observed through IntersectionObserver. Reused existing pagination and status filters, guarded duplicate requests, ignored pagination responses after a list refresh, and preserved error/retry feedback. Updated existing pagination tests to trigger bottom intersection.
+Verification: updated Chat.test.jsx suite passed (42 tests); frontend production build passed with a chunk-size warning; git diff --check passed before disclosure updates. An initial edit command used the wrong working directory and made no changes; the test run immediately after it verified unchanged code. Corrected the working directory, applied changes and reran the tests successfully. No browser verification performed.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Remove bottom-left demo button
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded removal of the demo controls and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction quoted below; existing DemoControls rendering in frontend/src/App.jsx.
+
+**Prompts (exact):**
+> now i need your help to remove the demo button on the bottom left.
+
+**Key responses:**
+Removed the DemoControls import and global render from App.jsx, removing the bottom-left Demo button and its panel. Added the required disclosure headers and README index row, and removed a blank line that split the preceding index row from the table.
+Verification: frontend production build passed with the existing chunk-size warning. No new tests or browser checks run for this UI removal.
+
+**Files:**
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope, Log index row and table formatting)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Fix clipped searchable errand filters
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the searchable filter layout fix and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** User-reported failure quoted below; existing searchable drop-off and sort controls in frontend/src/pages/RequestBoard.jsx and frontend/src/components/SearchableSelect.jsx.
+
+**Prompts (exact):**
+> the searchable dropdown doesnt seem to be working on my end
+
+**Key responses:**
+Identified the horizontal overflow container surrounding absolutely positioned dropdown menus. Removed the clipping overflow and allowed filters to wrap onto additional lines. Kept existing searchable selection and query behavior.
+Verification: SearchableSelect and RequestBoard tests passed (5 tests across 2 files). Frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed.
+
+**Files:**
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+
+## 2026-11-10 — Move errand form actions below Anything else
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-specified mobile errand form layout change.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below specifies placing the entire bottom bar below Anything else; existing CreateRequest.jsx form and actions.
+
+**Prompts (exact):**
+> maybe the whole bottom bar can be moved to right below anything else
+
+The prompt included a screenshot of the form and overlapping mobile action bar/chat bubble.
+
+**Key responses:**
+Moved the existing credit notice, Cancel and submit controls into normal document flow immediately after Anything else. Removed fixed mobile positioning, duplicated horizontal padding and the old bottom clearance reserved for the fixed bar. The action area now scrolls with the form, including its existing recurring/edit variants.
+Verification: CreateRequest and CreateRequestSeries suites passed (7 tests across 2 files); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
+
+**Files:**
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Compact mobile chat composer and align title
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-requested mobile chat styling changes and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below and existing chat header/composer in frontend/src/pages/Chat.jsx.
+
+**Prompts (exact):**
+> on mobile, left-align the title and make the text box and send button less chunky.
+
+The prompt included a screenshot of the mobile chat header and composer.
+
+**Key responses:**
+Left-aligned the title on mobile. Reduced the mobile input and Send button to 40px height, smaller text and padding, and a 16px send icon. Retained the existing desktop styles through responsive classes.
+Verification: Chat tests passed (42 tests); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
+
+**Files:**
+- `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
