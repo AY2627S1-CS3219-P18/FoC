@@ -160,6 +160,14 @@
  *        user request in chat. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-11
+ * Scope: "When do you need it by?" now defaults to 1 hour after the order is sent (1 hour
+ *        from now for Send now, 1 hour after the chosen Send-later time) instead of always
+ *        1 hour from now. The default is recomputed from the Send now/later toggle and the
+ *        Send-later date/time inputs, and left alone once the user hand-edits the deadline
+ *        field itself, per user request in chat. No requirements, architecture, schema, or
+ *        API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -274,6 +282,9 @@ function RequestForm({ order, series }) {
   const [time, setTime] = useState(() =>
     order?.completeBy ? localTime(order.completeBy) : localTime(new Date(Date.now() + 60 * 60_000).toISOString()),
   )
+  // Once the "needed by" date/time has been hand-edited, the send-mode effect below leaves it
+  // alone rather than clobbering the user's choice.
+  const [deadlineTouched, setDeadlineTouched] = useState(false)
   const [offer, setOffer] = useState(series?.credits ?? 4)
   const [extra, setExtra] = useState((series ?? order)?.additionalDetails ?? '')
   const [posting, setPosting] = useState(false)
@@ -294,6 +305,17 @@ function RequestForm({ order, series }) {
   const [ruleState, setRuleState] = useState(() =>
     isEditSeries ? parseRuleText(series.rrule, new Date(series.startAt)) : defaultRuleState(new Date()),
   )
+
+  // "When do you need it by?" defaults to 1 hour after the order is sent: 1 hour from now for
+  // Send now, or 1 hour after the chosen Send-later time (so 2 hours from now by default, since
+  // Send later itself defaults to 1 hour from now). Applied from the event that changes the
+  // send time, and skipped once the user has hand-edited the deadline themselves.
+  const applyDeadlineDefault = (sendAnchor) => {
+    if (deadlineTouched || Number.isNaN(sendAnchor.getTime())) return
+    const deadlineDefault = new Date(sendAnchor.getTime() + 60 * 60_000)
+    setDate(localDate(deadlineDefault.toISOString()))
+    setTime(localTime(deadlineDefault.toISOString()))
+  }
 
   // Stage 28 g: series-only fields for editing an existing series. `startAt` can't be edited
   // once created (editSeries has no such field - order-service), so there is no start-time
@@ -574,7 +596,10 @@ function RequestForm({ order, series }) {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setSendMode(value)}
+                  onClick={() => {
+                    setSendMode(value)
+                    applyDeadlineDefault(value === 'now' ? new Date() : new Date(startDate + 'T' + startTime))
+                  }}
                   aria-pressed={sendMode === value}
                   className={
                     'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
@@ -592,7 +617,10 @@ function RequestForm({ order, series }) {
                   <input
                     type="date"
                     value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={(e) => {
+                      setStartDate(e.target.value)
+                      applyDeadlineDefault(new Date(e.target.value + 'T' + startTime))
+                    }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
                 </label>
@@ -601,7 +629,10 @@ function RequestForm({ order, series }) {
                   <input
                     type="time"
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    onChange={(e) => {
+                      setStartTime(e.target.value)
+                      applyDeadlineDefault(new Date(startDate + 'T' + e.target.value))
+                    }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
                 </label>
@@ -698,7 +729,10 @@ function RequestForm({ order, series }) {
                   <input
                     type="date"
                     value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    onChange={(e) => {
+                      setDeadlineTouched(true)
+                      setDate(e.target.value)
+                    }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
                 </label>
@@ -707,7 +741,10 @@ function RequestForm({ order, series }) {
                   <input
                     type="time"
                     value={time}
-                    onChange={(e) => setTime(e.target.value)}
+                    onChange={(e) => {
+                      setDeadlineTouched(true)
+                      setTime(e.target.value)
+                    }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
                 </label>
