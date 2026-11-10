@@ -12,6 +12,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import { createHttpChatClient } from './chat.client.js';
 const input = {
@@ -51,6 +54,7 @@ it('creates the conversation before sending the exact system text and stable ID'
     orderId: input.orderId,
     messageId: input.messageId,
     message: 'The order has been created',
+    triggeredByUserId: input.requesterId,
   });
 });
 it('reuses the message ID after a notification response is lost and accepts duplicate success', async () => {

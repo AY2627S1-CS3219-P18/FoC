@@ -10,6 +10,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 import { createServer } from "node:http";
@@ -99,7 +102,7 @@ it("joins only the verified user's room and broadcasts once to the union of targ
       senderId: "a",
       type: "TEXT",
       content: "hello",
-      metadata: null,
+      triggeredByUserId: null,
       createdAt: new Date().toISOString(),
     };
     const gotA = new Promise<unknown>((resolve) =>
@@ -205,7 +208,7 @@ it("joins authorized conversations on demand, receives broadcasts, and leaves wi
       senderId: "other",
       type: "TEXT" as const,
       content: "Live message",
-      metadata: null,
+      triggeredByUserId: null,
       createdAt: new Date().toISOString(),
     };
     createMessagePublisher(t.io)(message, []);

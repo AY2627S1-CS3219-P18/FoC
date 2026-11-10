@@ -32,6 +32,9 @@
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import { randomUUID } from 'node:crypto';
@@ -161,12 +164,14 @@ export interface ChatNotificationPayload {
   message: string;
   /** Archive only after this notification has succeeded. */
   archiveAfter?: boolean;
+  triggeredByUserId?: string;
 }
 
 export function buildChatNotificationTask(
   orderId: string,
   message: string,
   archiveAfter = false,
+  triggeredByUserId?: string,
 ): OutboxTask {
   return {
     taskName: CHAT_NOTIFICATION_TASK,
@@ -175,6 +180,7 @@ export function buildChatNotificationTask(
       messageId: randomUUID(),
       message,
       ...(archiveAfter ? { archiveAfter: true } : {}),
+      ...(triggeredByUserId ? { triggeredByUserId } : {}),
     },
   };
 }
@@ -185,6 +191,12 @@ export function isChatNotificationPayload(
   const v = p as Partial<ChatNotificationPayload> | null;
   if (!v || typeof v.messageId !== 'string' || typeof v.message !== 'string')
     return false;
+  if (
+    v.triggeredByUserId !== undefined &&
+    typeof v.triggeredByUserId !== 'string'
+  )
+    return false;
+  if (v.orderId === null && v.triggeredByUserId !== undefined) return false;
   if (v.archiveAfter !== undefined && typeof v.archiveAfter !== 'boolean')
     return false;
   if (v.orderId === null)

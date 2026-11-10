@@ -26,6 +26,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -393,11 +396,16 @@ export function postSystemNotification(
       .object({
         orderId: z.uuid().nullable(),
         recipient: z.uuid().optional(),
+        triggeredByUserId: z.uuid().optional(),
         messageId: z.uuid(),
         message: z.string().refine((value) => value.trim().length > 0),
       })
       .refine(
         (value) => value.orderId !== null || value.recipient !== undefined,
+      )
+      .refine(
+        (value) =>
+          value.triggeredByUserId === undefined || value.orderId !== null,
       )
       .safeParse(req.body);
     if (!body.success) {

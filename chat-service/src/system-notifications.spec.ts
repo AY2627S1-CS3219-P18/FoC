@@ -8,6 +8,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -26,7 +29,11 @@ function setup() {
   });
   const create = vi
     .fn()
-    .mockImplementation(async ({ data }) => ({ ...data, id, metadata: null }));
+    .mockImplementation(async ({ data }) => ({
+      triggeredByUserId: null,
+      ...data,
+      id,
+    }));
   const update = vi.fn().mockResolvedValue({});
   const findSystem = vi.fn().mockResolvedValue(null);
   const createConversation = vi.fn().mockResolvedValue({ conversationId: id });
@@ -94,7 +101,7 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
     senderId: null,
     type: "SYSTEM",
     content: "  Order ready  ",
-    metadata: null,
+    triggeredByUserId: null,
     createdAt: expect.any(String),
   });
   expect(t.create).toHaveBeenCalledWith({
@@ -102,6 +109,7 @@ it("looks up the order, persists SYSTEM and publishes the returned message after
       id,
       chatId: id,
       senderId: null,
+      triggeredByUserId: null,
       type: "SYSTEM",
       content: "  Order ready  ",
       createdAt: expect.any(Date),
@@ -186,7 +194,7 @@ function storedMessage(overrides: object = {}) {
     senderId: null,
     type: "SYSTEM",
     content: "  Order ready  ",
-    metadata: null,
+    triggeredByUserId: null,
     createdAt: new Date("2026-11-08T00:00:00Z"),
     conversation: { orderId: id },
     ...overrides,
@@ -206,6 +214,7 @@ it.each([
   { conversation: { orderId: userId } },
   { type: "TEXT" },
   { senderId: userId },
+  { triggeredByUserId: userId },
 ])("rejects message ID collision %j", async (overrides) => {
   const t = setup();
   t.findMessage.mockResolvedValue(storedMessage(overrides));
@@ -347,4 +356,71 @@ it("routes simultaneous orderless notifications through one winning unique-user 
     id,
     id,
   ]);
+});
+
+// AI-generated (edited by <name>).
+it("persists and broadcasts the order action's actor without removing any recipients", async () => {
+  const t = setup();
+  const response = await t.post({
+    orderId: id,
+    messageId: id,
+    message: "Accepted",
+    triggeredByUserId: userId,
+  });
+  expect(response.status).toBe(201);
+  expect(response.body.triggeredByUserId).toBe(userId);
+  expect(response.body).not.toHaveProperty("metadata");
+  expect(t.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ triggeredByUserId: userId }),
+    }),
+  );
+  expect(t.publish).toHaveBeenCalledWith(response.body, [userId]);
+});
+
+it.each(["invalid", 123])(
+  "rejects an invalid triggeredByUserId (%s)",
+  async (triggeredByUserId) => {
+    const t = setup();
+    expect(
+      (
+        await t.post({
+          orderId: id,
+          messageId: id,
+          message: "Accepted",
+          triggeredByUserId,
+        })
+      ).status,
+    ).toBe(400);
+  },
+);
+
+it("does not accept an actor on a personal system notice", async () => {
+  const t = setup();
+  expect(
+    (
+      await t.post({
+        orderId: null,
+        recipient: userId,
+        messageId: id,
+        message: "Failed",
+        triggeredByUserId: userId,
+      })
+    ).status,
+  ).toBe(400);
+});
+
+// AI-generated (edited by <name>).
+it("preserves the actor on duplicate delivery without rebroadcasting", async () => {
+  const t = setup();
+  t.findMessage.mockResolvedValue(storedMessage({ triggeredByUserId: userId }));
+  const response = await t.post({
+    orderId: id,
+    messageId: id,
+    message: "  Order ready  ",
+    triggeredByUserId: userId,
+  });
+  expect(response.status).toBe(200);
+  expect(response.body.triggeredByUserId).toBe(userId);
+  expect(t.publish).not.toHaveBeenCalled();
 });

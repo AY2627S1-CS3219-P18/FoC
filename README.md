@@ -318,6 +318,39 @@ Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #2
        (shared loopback supertest server). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Added the order message toast log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the local login configuration repair log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the container Prisma refresh log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the chat notification title log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the notification sender names log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the open-chat notification suppression log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the bottom-aware chat scrolling log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the bottom-right arrow styling log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the chat status tab unread badges log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the corner unread tab badge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the outward tab badge adjustment log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -868,3 +901,14 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 271 | 2026-11-10 | user-service                                                  | Stage 31c: Unlock-by-link endpoint                                                                               | Added POST /auth/unlock; shares the admin unlock's clearing code, no audit row, serialized by the row lock.                                     |
 | 272 | 2026-11-10 | frontend                                                      | Stage 31d: Frontend page                                                                                         | Added /unlock-account: reads the token, one button, routes to /login with the matching toast.                                                   |
 | 273 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
+| 274 | 2026-11-10 | order-service, chat-service, frontend                         | Order message toasts excluding the triggering user                                                               | Added message actor propagation and suppressed self-triggered toast notifications.                                                              |
+| 275 | 2026-11-10 | user-service                                                  | Restore local login after required frontend URL configuration                                                    | Restored local authentication connectivity with the documented frontend URL setting.                                                            |
+| 276 | 2026-11-10 | order-service                                                 | Refresh order container Prisma clients                                                                           | Regenerated container clients and verified existing database fields.                                                                            |
+| 277 | 2026-11-10 | frontend                                                      | Chat title above notification messages                                                                           | Displayed the stored chat title above incoming message notifications.                                                                           |
+| 278 | 2026-11-10 | frontend                                                      | Sender names in user message notifications                                                                       | Added sender names to user-message notification headings.                                                                                       |
+| 279 | 2026-11-10 | frontend                                                      | Suppress notifications for the open chat                                                                         | Suppressed open-conversation popups while preserving other chat notifications.                                                                  |
+| 280 | 2026-11-10 | frontend                                                      | Bottom-aware chat scrolling and new-message arrow                                                                | Preserved reading position and added a jump-to-new-messages arrow.                                                                              |
+| 281 | 2026-11-10 | frontend                                                      | Bottom-right new-message arrow styling                                                                           | Moved the arrow right and applied contrasting light button colors.                                                                              |
+| 282 | 2026-11-10 | frontend                                                      | Unread message badges on chat status tabs                                                                        | Added paginated unread totals to Active and Archived tabs.                                                                                      |
+| 283 | 2026-11-10 | frontend                                                      | Corner unread tab badges hidden at zero                                                                          | Matched chat icon badge placement and hid zero counts.                                                                                          |
+| 284 | 2026-11-10 | frontend                                                      | Nudge tab unread badges outward                                                                                  | Moved unread badges slightly further up and right.                                                                                              |

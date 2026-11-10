@@ -14698,3 +14698,386 @@ Accepted all changes.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Order message toasts excluding the triggering user
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate, docs
+**Scope:** Implementation code; Refactor/Docs
+**Governing decision:** User chat instructions quoted below: reuse existing toast, omit self-triggered popups, add optional triggeredByUserId for order notifications, replace message metadata with a top-level field. Existing order-service/src/services/orders.service.ts actor IDs and SYSTEM_ACTOR distinguish user actions from automatic transitions.
+
+**Prompts (exact):**
+
+> is it possible to show the notification (same one that pops up when user changes from requester to courier) when a user gets a new message? but i dont want it to show when the new message was triggered by the user himself (e.g. the order created message should not show notification when he created the order, or courier should not get notification when he accepts the order, but requester should get it)
+
+> what is the current flow and payload for each call?
+
+> add an optional field `triggeredByUserId` to identify which user triggered the action. only for order service notifications. so the actor does not get the notification.
+
+> remove metadata column from the db and add a top-level field
+
+**Key responses:**
+
+- Initially explained the existing message flow and stopped for team decisions on actor propagation and storage. Implemented the subsequently supplied field and schema decisions.
+- Added nullable triggered_by_user_id and a forward SQL migration dropping message metadata. Migration was not applied to a database; existing metadata values will be removed when applied.
+- Order creation identifies the requester; user-driven transitions identify their actor; automatic transitions omit the actor. Personal series notices cannot supply this order-only field.
+- Chat history, send responses and realtime messages expose triggeredByUserId. Duplicate notification delivery checks actor identity, retains it and avoids rebroadcasting. Chat delivery and unread counts remain intact.
+- Reused ToastProvider for incoming messages; own sender/actor messages do not toast or animate. Other incoming messages toast, including on chat pages.
+- Verification: chat Prisma generation, typecheck, and all 203 tests passed (socket tests required execution outside the sandbox). Order Prisma generation and 122 targeted service/task/client tests passed. Frontend TopNav/notification tests: 8 passed. git diff --check passed.
+- Order typecheck and frontend build remain blocked by locally missing rrule. Earlier order typecheck also encountered stale generated Prisma types, resolved by regeneration. Offline dependency installation failed because package metadata was absent from the npm cache; no manifests or lockfiles changed. An accidental root npm test invocation failed because the repository root has no package.json. Initial sandbox chat test attempts could not bind sockets and were stopped; the socket-enabled rerun passed.
+- No live database migration or real inter-service deployment was exercised. Existing Postman failure simulation does not cover this successful notification payload; HTTP client serialization was checked by targeted unit tests. postman status was attempted but this installed CLI reports unknown command 'status'.
+
+**Files:**
+
+- `README.md` (modified)
+- `ai/usage-log.md` (modified)
+- `chat-service/README.md` (modified)
+- `chat-service/SYSTEM-NOTIFICATIONS.md` (modified)
+- `chat-service/prisma/migrations/20261110000000_message_triggered_by_user/migration.sql` (created)
+- `chat-service/prisma/schema.prisma` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/conversation-messages.spec.ts` (modified)
+- `chat-service/src/realtime/socket-server.spec.ts` (modified)
+- `chat-service/src/send-message.spec.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/system-notifications.spec.ts` (modified)
+- `frontend/src/components/ChatBubble.jsx` (modified)
+- `frontend/tests/components/TopNav.test.jsx` (modified)
+- `order-service/src/clients/chat.client.spec.ts` (modified)
+- `order-service/src/clients/chat.client.ts` (modified)
+- `order-service/src/queue/tasks.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `chat-service/src/generated/prisma/` (regenerated, ignored)
+- `order-service/src/generated/prisma/` (regenerated, ignored)
+
+**Deviations / questions raised for the team:**
+Asked the team to specify actor propagation and database/response storage before implementation. User supplied both decisions. Database migration remains unapplied; build/typecheck limitation above remains.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Restore local login after required frontend URL configuration
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** instructions.md Stage 31a specifies FRONTEND_BASE_URL and its dev value http://localhost:5173; user-service/.env.example documents the same setting; compose.yaml loads user-service/.env.
+
+**Prompts (exact):**
+
+> i cant log in
+
+**Key responses:**
+
+- Diagnosed frontend /auth/login and /auth/refresh proxy connection refusals. The user-service container was running but its application had exited because FRONTEND_BASE_URL was required and missing.
+- Added only the documented non-secret frontend URL setting to the ignored local user-service/.env, including an AI disclosure header. No credentials were read out or recorded. Recreated only user-service with docker compose up -d --no-deps user-service.
+- Verified from the frontend container: user-service /health returned 200; an empty POST through the frontend /auth/login proxy returned 400 VALIDATION_ERROR, establishing restored connectivity and request validation without using credentials or changing an account. Actual credential login was not attempted. No implementation code changed; no tests were required for this local configuration repair.
+
+**Files:**
+
+- user-service/.env (modified locally, git-ignored; do not commit)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Refresh order container Prisma clients
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing order-service/prisma/schema.prisma deliveryDetails and seriesId fields, checked-in migrations, and the existing Dockerfile/compose.dev.yaml generate-and-restart workflow. No schema or API changes.
+
+**Prompts (exact excerpts):**
+
+> Unknown argument `deliveryDetails`. Available options are marked with ?.
+
+The user supplied a PrismaClientValidationError stack trace from order creation. The full runtime payload is omitted under AGENTS.md §2.3/§5 privacy rules because it contains a real user identifier and order details; the excerpt above is verbatim.
+
+**Key responses:**
+
+- Confirmed all nine order database migrations were applied and container schema/generated source already contained deliveryDetails and seriesId. The error was consistent with a previously loaded stale Prisma runtime client.
+- Regenerated Prisma clients inside order-service and order-worker and restarted both containers using the existing startup commands. No application source or migration was changed.
+- Verified a read-only Prisma query selecting deliveryDetails and seriesId against the local database passed without printing row data; order-service /health returned 200. Did not create an order or exercise credits/notifications.
+- Initial inspection used unavailable container rg and yielded no evidence; subsequent Node source checks succeeded. Verification attempts using plain Node failed on TypeScript ESM .js resolution, and an attempted Prisma.dmmf inspection was unavailable. The final query used the existing tsx loader and succeeded.
+
+**Files:**
+
+- order-service/src/generated/prisma/ inside both local containers (regenerated, ignored)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** Full runtime prompt omitted for privacy as noted above. Actual order submission was not retried.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Chat title above notification messages
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below specifies the chat title at the top of the notification; existing GET chat details supplies title and ToastProvider accepts React content.
+
+**Prompts (exact):**
+
+> in the notification, add a text at the top specifying the chat title!
+
+**Key responses:**
+
+- Notification content now shows the stored chat title on a bold separate line above the message, fetched through existing getChat using the event conversationId. Reuses the existing toast component without modifying API routes, schemas, or response shapes.
+- Preserved filtering for own messages/actions and duplicate events. If chat details cannot be fetched, the existing generic Chat label is used and the message still appears.
+- Verified the 8 frontend TopNav/notification tests passed, including chat title text/styling and conversation ID lookup. git diff --check passed. No backend changes or database operations.
+
+**Files:**
+
+- frontend/src/components/ChatBubble.jsx (modified)
+- frontend/tests/components/TopNav.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Sender names in user message notifications
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below specifies including the other person's name only for user messages. Existing frontend/src/pages/Chat.jsx ChatTitle uses name · title; frontend/src/api/lookups.js supplies the existing cached useUserName lookup.
+
+**Prompts (exact):**
+
+> add the other person's name to the notif also (if it's a user message). else keep it as the title
+
+**Key responses:**
+
+- User-message notification headings now show sender username · chat title using the existing useUserName hook. System-message headings retain only the chat title. Title remains visible while name lookup is pending or unavailable.
+- Message text and self-notification filtering are preserved. No API, schema, or existing lookup contract changes.
+- Verification: all 8 targeted frontend TopNav/notification tests passed, including user-message sender and title-only system headings; git diff --check passed.
+
+**Files:**
+
+- frontend/src/components/ChatBubble.jsx (modified)
+- frontend/tests/components/TopNav.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Suppress notifications for the open chat
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below; existing App.jsx route /chat/:id identifies the currently displayed conversation.
+
+**Prompts (exact):**
+
+> oh dont show notifications if the user has the chat open!
+
+**Key responses:**
+
+- Suppressed user and system message notifications when the message conversationId matches the open /chat/:id. Other conversations still notify, including while another chat is open. Chat list/unread refresh and message delivery remain intact.
+- Rechecks the current conversation before showing an asynchronously loaded title so opening that chat while details load also suppresses its pending toast.
+- Verification: 9 targeted frontend TopNav/notification tests passed, including open-chat suppression and notifications for other conversations; git diff --check passed. No API or schema changes.
+
+**Files:**
+
+- frontend/src/components/ChatBubble.jsx (modified)
+- frontend/tests/components/TopNav.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Bottom-aware chat scrolling and new-message arrow
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User's refined request below specifies auto-scroll only when already at the bottom, otherwise a bottom-left down-arrow indicator. Existing Chat.jsx layout effects manage initial unread positioning and older-history viewport preservation.
+
+**Prompts (exact):**
+
+> also let it auto-scrolll to the bottom whenever a new message appears
+
+> also let it auto-scrolll to the bottom whenever a new message appears, but only if the user is already at the bottom. else, have an icon that shows an arrow down at the bottom left of the chat window to indicate that there is a new message to be read
+
+**Key responses:**
+
+- Tracks the current reading position and newest saved message ID. Newly appended messages scroll to the bottom only when already there; otherwise preserves the viewport and shows an accessible down-arrow button at the bottom-left of the message window.
+- Clicking the arrow jumps to the newest message and clears it; manually reaching the bottom also clears it. Duplicate message deliveries and older-history prepends do not trigger the indicator or move the viewport.
+- The refined bottom-only rule also applies to messages sent while scrolled up; input focus restoration remains intact. Initial unread positioning, read-receipt API behavior, and older-history loading remain unchanged.
+- Verification: all 42 targeted Chat and TopNav/notification tests passed. Coverage includes incoming bottom-following, scrolled-up preservation, arrow click/manual dismissal, duplicate events, initial positioning, older-history loading and sending. git diff --check passed. No API or schema changes.
+
+**Files:**
+
+- frontend/src/pages/Chat.jsx (modified)
+- frontend/tests/pages/Chat.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None. The second user prompt refines the interrupted initial request.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Bottom-right new-message arrow styling
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below specifies bottom-right placement and a color distinct from the black chat bubble. Existing Button.jsx secondary colors supply the light background, dark icon and border.
+
+**Prompts (exact):**
+
+> make the arrow icon appear at the bottom right instead. adjust the color accordingly so that it wont clash with the black chat bubble
+
+**Key responses:**
+
+- Moved the new-message arrow from left-2 to right-2. Applied the existing secondary button colors (surface background, ink icon, line border with ink hover border), retaining the shadow. Scrolling behavior is unchanged.
+- Verification: git diff --check passed. No tests run for this reversible styling-only change.
+
+**Files:**
+
+- frontend/src/pages/Chat.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Unread message badges on chat status tabs
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below adds unread-message counts to existing Active and Archived tabs. Existing chat API exposes unreadCount and paginated status filters; the prior team-directed UI keeps FoC in Active and hides status tabs when no archived order chats exist.
+
+**Prompts (exact):**
+
+> now under the active and archived tabs, display a badge with number of unread messages also
+
+**Key responses:**
+
+- Added numeric unread badges beside both tab labels using existing styling tokens and accessible descriptions. Existing conditional tab visibility remains intact.
+- Totals aggregate unreadCount across all pages of each status using existing API calls, deduplicating conversation IDs. System conversations returned through Archived are counted only under Active, matching the existing FoC placement.
+- Counts refresh on incoming messages, socket readiness, role/user changes and chat-read-updated events. Existing active/archived list pagination remains separate. No API, schema or service-boundary changes.
+- Verification: 43 targeted Chat and TopNav/notification tests passed, including paginated totals, FoC placement and read-update refresh. An initial run exposed an ambiguous accessible test query because tab and conversation badges had the same label; tab badge labels now include their status. git diff --check passed.
+
+**Files:**
+
+- frontend/src/pages/Chat.jsx (modified)
+- frontend/tests/pages/Chat.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Corner unread tab badges hidden at zero
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below specifies chat-icon-style top-right tab badges and hiding zero counts. Existing ChatBubble.jsx badge classes supply the requested visual styling.
+
+**Prompts (exact):**
+
+> put it as a badge similar to the chat icon, at the top right. if it's 0, then no need
+
+**Key responses:**
+
+- Positioned unread badges at each tab's top-right using the floating chat icon's badge dimensions, orange background and typography.
+- Counts of zero render no badge and no aria-describedby reference. Unread aggregation and refresh behavior are preserved.
+- Verification: all 43 targeted Chat and TopNav/notification tests passed; git diff --check passed.
+
+**Files:**
+
+- frontend/src/pages/Chat.jsx (modified)
+- frontend/tests/pages/Chat.test.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+
+## 2026-11-10 — Nudge tab unread badges outward
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User request below adjusts the existing tab badge position.
+
+**Prompts (exact):**
+
+> move it a bit more to the top right
+
+The same request was repeated after interruption; no changes were made during the interrupted turn.
+
+**Key responses:**
+
+- Changed unread tab badge offsets from -right-0.5/-top-0.5 to -right-1.5/-top-1.5, moving each badge 4px further up and right.
+- Verification: git diff --check passed. Tests not run for this reversible CSS-only adjustment.
+
+**Files:**
+
+- frontend/src/pages/Chat.jsx (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure index/header)
+
+**Deviations / questions raised for the team:** None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

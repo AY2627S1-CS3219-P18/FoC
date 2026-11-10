@@ -23,6 +23,18 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Fixed the chat animation to react directly to incoming messages and move the entire shortcut.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Verified the stored chat title appears above the notification message.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Verified user-message sender headings and title-only system notifications.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Tested open-conversation notification suppression and delivery from other chats.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -33,9 +45,13 @@ import ChatBubble from "../../src/components/ChatBubble";
 import { ToastProvider } from "../../src/components/Toast";
 
 const chat = vi.hoisted(() => ({
+  getChat: vi.fn().mockResolvedValue({ title: "Potato chips" }),
   listChats: vi.fn().mockResolvedValue({ conversations: [], hasMore: false }),
 }));
 vi.mock("../../src/api/chat", () => chat);
+vi.mock("../../src/api/lookups", () => ({
+  useUserName: (id) => (id ? "Courier Alice" : null),
+}));
 const realtime = vi.hoisted(() => ({ message: null }));
 vi.mock("../../src/realtime/chatSocket", () => ({
   useChatMessages: (handler) => {
@@ -206,7 +222,9 @@ it("sums unread counts on the floating shortcut while the top nav has no chat li
   ).not.toBeInTheDocument();
   render(
     <MemoryRouter initialEntries={["/suppliers"]}>
-      <ChatBubble />
+      <ToastProvider>
+        <ChatBubble />
+      </ToastProvider>
     </MemoryRouter>,
   );
   expect(
@@ -227,7 +245,9 @@ it("wiggles the entire shortcut immediately for incoming messages and restarts f
   });
   render(
     <MemoryRouter>
-      <ChatBubble />
+      <ToastProvider>
+        <ChatBubble />
+      </ToastProvider>
     </MemoryRouter>,
   );
   const original = await screen.findByRole("link", {
@@ -248,4 +268,115 @@ it("wiggles the entire shortcut immediately for incoming messages and restarts f
     animated,
   );
   await waitFor(() => expect(chat.listChats).toHaveBeenCalled());
+});
+
+// AI-generated (edited by <name>).
+it("shows incoming message toasts but suppresses own messages and own order actions", async () => {
+  mockUseAuth.mockReturnValue({
+    isLoggedIn: true,
+    user: { id: "me", activeView: "requester" },
+  });
+  chat.listChats.mockResolvedValue({ conversations: [], hasMore: false });
+  render(
+    <MemoryRouter initialEntries={["/chat/current"]}>
+      <ToastProvider>
+        <ChatBubble />
+      </ToastProvider>
+    </MemoryRouter>,
+  );
+  act(() =>
+    realtime.message({
+      messageId: "own-text",
+      senderId: "me",
+      content: "My text",
+    }),
+  );
+  act(() =>
+    realtime.message({
+      messageId: "own-action",
+      senderId: null,
+      triggeredByUserId: "me",
+      content: "Created",
+    }),
+  );
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  const incoming = {
+    conversationId: "order-chat",
+    messageId: "accepted",
+    senderId: null,
+    triggeredByUserId: "courier",
+    content: "Accepted by courier",
+  };
+  act(() => realtime.message(incoming));
+  act(() => realtime.message(incoming));
+  await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(1));
+  expect(screen.getByRole("status")).toHaveTextContent("Accepted by courier");
+  expect(screen.getByRole("status")).toHaveTextContent("Potato chips");
+  expect(screen.getByText("Potato chips")).toHaveClass(
+    "block",
+    "font-semibold",
+  );
+  expect(chat.getChat).toHaveBeenCalledWith("order-chat");
+  expect(screen.getByRole("status")).not.toHaveTextContent("Courier Alice");
+  act(() =>
+    realtime.message({
+      messageId: "text",
+      type: "TEXT",
+      senderId: "courier",
+      content: "Hello",
+    }),
+  );
+  await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
+  expect(screen.getByText("Courier Alice · Potato chips")).toHaveClass(
+    "font-semibold",
+  );
+});
+
+// AI-generated (edited by <name>).
+it("suppresses messages from the open chat but still notifies for other conversations", async () => {
+  mockUseAuth.mockReturnValue({
+    isLoggedIn: true,
+    user: { id: "me", activeView: "requester" },
+  });
+  chat.listChats.mockResolvedValue({ conversations: [], hasMore: false });
+  render(
+    <MemoryRouter initialEntries={["/chat/current"]}>
+      <ToastProvider>
+        <ChatBubble />
+      </ToastProvider>
+    </MemoryRouter>,
+  );
+  act(() =>
+    realtime.message({
+      conversationId: "current",
+      messageId: "open-text",
+      senderId: "other",
+      type: "TEXT",
+      content: "Already reading",
+    }),
+  );
+  act(() =>
+    realtime.message({
+      conversationId: "current",
+      messageId: "open-system",
+      senderId: null,
+      type: "SYSTEM",
+      content: "Already displayed",
+    }),
+  );
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  act(() =>
+    realtime.message({
+      conversationId: "another-chat",
+      messageId: "other-text",
+      senderId: "other",
+      type: "TEXT",
+      content: "Another conversation",
+    }),
+  );
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Another conversation",
+  );
+  expect(screen.queryByText("Already reading")).not.toBeInTheDocument();
+  expect(screen.queryByText("Already displayed")).not.toBeInTheDocument();
 });

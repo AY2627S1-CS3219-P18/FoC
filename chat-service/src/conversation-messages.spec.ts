@@ -9,6 +9,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -110,7 +113,7 @@ it("maps system messages and emits a reusable last-row cursor", async () => {
     senderId: null,
     type: "SYSTEM",
     content: null,
-    metadata: { eventType: "ORDER_ACCEPTED" },
+    triggeredByUserId: null,
     createdAt: new Date(time),
   };
   t.findMany.mockResolvedValue([row, row]);
@@ -124,7 +127,7 @@ it("maps system messages and emits a reusable last-row cursor", async () => {
         senderId: null,
         type: "SYSTEM",
         content: null,
-        metadata: row.metadata,
+        triggeredByUserId: row.triggeredByUserId,
         createdAt: time,
       },
     ],

@@ -95,6 +95,21 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Restricted system chat to the Active list per user correction.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Added bottom-aware new-message scrolling and a jump-to-new-messages arrow.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Moved the new-message arrow to the bottom-right with light secondary button colors.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Added paginated unread-message totals to Active and Archived tab badges.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Positioned unread tab badges at the top-right like the chat icon and hid zero counts.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Nudged tab unread badges further up and right as requested.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import {
@@ -111,7 +126,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { ArrowLeft, MessageCircle, Send, Check } from "lucide-react";
+import { ArrowDown, ArrowLeft, MessageCircle, Send, Check } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   findOrderChat,
@@ -135,7 +150,7 @@ export default function Chat() {
 }
 
 // Order chats retain API ordering; the system conversation is pinned ahead of them.
-// AI-generated (edited by <name>).
+// AI-generated
 function pinSystemChat(conversations) {
   const unique = [
     ...new Map(conversations.map((chat) => [chat.id, chat])).values(),
@@ -191,6 +206,43 @@ async function loadChatPage(role, cursor, status) {
   return { ...page, conversations: pinSystemChat(conversations) };
 }
 
+// AI-generated (edited by <name>).
+async function loadTabUnreadCounts(role) {
+  const loadStatus = async (status) => {
+    const rows = new Map();
+    const visited = new Set();
+    let cursor;
+    do {
+      const page = await listChats(role, cursor, status);
+      page.conversations.forEach((chat) => rows.set(chat.id, chat));
+      if (!page.hasMore || !page.nextCursor) break;
+      const key = JSON.stringify(page.nextCursor);
+      if (visited.has(key)) break;
+      visited.add(key);
+      cursor = page.nextCursor;
+    } while (true);
+    return rows;
+  };
+  const [active, archived] = await Promise.all([
+    loadStatus("active"),
+    loadStatus("archived"),
+  ]);
+  // FoC belongs to Active even when returned by the archived status filter.
+  for (const [id, chat] of archived) {
+    if (chat.orderId === null) {
+      if (!active.has(id)) active.set(id, chat);
+      archived.delete(id);
+    }
+  }
+  const total = (rows) =>
+    [...rows.values()].reduce((sum, chat) => sum + (chat.unreadCount ?? 0), 0);
+  return {
+    active: total(active),
+    archived: total(archived),
+    hasArchived: archived.size > 0,
+  };
+}
+
 function ChatTitle({ chat, role }) {
   const otherRole = role === "requester" ? "COURIER" : "REQUESTER";
   const participant = chat?.participants?.find(
@@ -235,6 +287,7 @@ function ChatView() {
   // AI-generated (edited by <name>).
   const [status, setStatus] = useState("active");
   const [hasArchived, setHasArchived] = useState(false);
+  const [tabUnread, setTabUnread] = useState({ active: 0, archived: 0 });
   const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -242,6 +295,12 @@ function ChatView() {
   useChatMessages(() => setRetry((v) => v + 1));
   useChatReady(() => setRetry((v) => v + 1));
   const role = user?.activeView;
+  useEffect(() => {
+    if (id || orderId) return;
+    const refresh = () => setRetry((value) => value + 1);
+    window.addEventListener("chat-read-updated", refresh);
+    return () => window.removeEventListener("chat-read-updated", refresh);
+  }, [id, orderId]);
   useEffect(() => {
     let live = true;
     setPage(null);
@@ -275,14 +334,13 @@ function ChatView() {
   useEffect(() => {
     if (id || orderId) return;
     let live = true;
-    listChats(role, undefined, "archived")
+    setTabUnread({ active: 0, archived: 0 });
+    loadTabUnreadCounts(role)
       .then((result) => {
         if (!live) return;
-        const exists = result.conversations.some(
-          (chat) => chat.orderId !== null,
-        );
-        setHasArchived(exists);
-        if (!exists) setStatus("active");
+        setTabUnread({ active: result.active, archived: result.archived });
+        setHasArchived(result.hasArchived);
+        if (!result.hasArchived) setStatus("active");
       })
       .catch((err) => {
         if (live) setError(err.message);
@@ -290,7 +348,7 @@ function ChatView() {
     return () => {
       live = false;
     };
-  }, [role, retry, id, orderId]);
+  }, [role, user?.id, retry, id, orderId]);
 
   const more = async () => {
     setLoading(true);
@@ -353,15 +411,28 @@ function ChatView() {
                     role="tab"
                     disabled={loading}
                     aria-selected={status === value}
+                    aria-label={value === "active" ? "Active" : "Archived"}
+                    aria-describedby={
+                      tabUnread[value] > 0 ? `chat-${value}-unread` : undefined
+                    }
                     onClick={() => setStatus(value)}
                     className={
-                      "rounded-btn px-4 py-2 text-sm font-semibold " +
+                      "relative rounded-btn px-4 py-2 text-sm font-semibold " +
                       (status === value
                         ? "bg-ink text-white"
                         : "bg-surface-alt text-ink-70")
                     }
                   >
                     {value === "active" ? "Active" : "Archived"}
+                    {tabUnread[value] > 0 && (
+                      <span
+                        id={`chat-${value}-unread`}
+                        aria-label={`${value === "active" ? "Active" : "Archived"}: ${tabUnread[value]} unread messages`}
+                        className="tnum absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-pill bg-orange px-1.5 text-[11px] font-semibold text-white"
+                      >
+                        {tabUnread[value]}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -461,7 +532,9 @@ function Thread({ id, user, onRead, errandReturnTo }) {
   const initiallyScrolled = useRef(false);
   const firstUnreadId = useRef(null);
   const refocusAfterSend = useRef(false);
-  const scrollAfterSend = useRef(false);
+  const atBottom = useRef(true);
+  const previousLatestId = useRef(null);
+  const [hasNewMessages, setHasNewMessages] = useState(false);
   const loadingOlder = useRef(false);
   const olderScroll = useRef(null);
   const [chat, setChat] = useState(null);
@@ -580,8 +653,10 @@ function Thread({ id, user, onRead, errandReturnTo }) {
       live = false;
     };
   }, [id, latestMessageId, retry, onRead]);
+  // AI-generated (edited by <name>).
   useLayoutEffect(() => {
     if (!pagination || busy) return;
+    const wasInitiallyScrolled = initiallyScrolled.current;
     if (!initiallyScrolled.current && messageList.current) {
       const list = messageList.current;
       const target = [...list.children].find(
@@ -598,6 +673,8 @@ function Thread({ id, user, onRead, errandReturnTo }) {
           ? targetTop
           : list.scrollHeight;
       initiallyScrolled.current = true;
+      atBottom.current =
+        list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
     }
     if (olderScroll.current && messageList.current) {
       const list = messageList.current;
@@ -607,16 +684,26 @@ function Thread({ id, user, onRead, errandReturnTo }) {
         olderScroll.current.height;
       olderScroll.current = null;
     }
-    if (scrollAfterSend.current && messageList.current) {
-      messageList.current.scrollTop = messageList.current.scrollHeight;
-      scrollAfterSend.current = false;
+    // Only changes at the newest edge count: prepending history must preserve the viewport.
+    if (
+      wasInitiallyScrolled &&
+      latestMessageId !== previousLatestId.current &&
+      messageList.current
+    ) {
+      if (atBottom.current) {
+        messageList.current.scrollTop = messageList.current.scrollHeight;
+        setHasNewMessages(false);
+      } else {
+        setHasNewMessages(true);
+      }
     }
+    previousLatestId.current = latestMessageId;
     // Wait for React to re-enable the input before returning focus to it.
     if (refocusAfterSend.current) {
       messageInput.current?.focus();
       refocusAfterSend.current = false;
     }
-  }, [busy, pagination]);
+  }, [busy, pagination, latestMessageId]);
   const older = async () => {
     if (
       busy ||
@@ -669,7 +756,6 @@ function Thread({ id, user, onRead, errandReturnTo }) {
     setError(null);
     try {
       const message = await sendMessage(id, text);
-      scrollAfterSend.current = true;
       setMessages((prev) => mergeMessages(prev, [message]));
       setText("");
     } catch (err) {
@@ -696,106 +782,129 @@ function Thread({ id, user, onRead, errandReturnTo }) {
       </header>
       {error && <p role="alert">{error}</p>}
       {busy && !sending && <p role="status">Loading…</p>}
-      <ol
-        ref={messageList}
-        onScroll={(event) => {
-          if (event.currentTarget.scrollTop <= 0) void older();
-        }}
-        className="my-4 max-h-[60vh] space-y-3 overflow-y-auto px-1 [overflow-anchor:none]"
-      >
-        {messages.map((message, index) => {
-          const systemChat = chat?.orderId === null;
-          const own = !systemChat && message.senderId === user?.id;
-          const system = !systemChat && message.type === "SYSTEM";
-          const read = index <= readThrough;
-          const date = new Date(message.createdAt);
-          const startsDay =
-            index === 0 ||
-            date.toDateString() !==
-              new Date(messages[index - 1].createdAt).toDateString();
-          return (
-            <li key={message.messageId} data-message-id={message.messageId}>
-              {startsDay && (
-                <div className="my-4 flex justify-center">
-                  <time
-                    dateTime={message.createdAt}
-                    className="rounded-full bg-surface-alt px-3 py-1 text-xs font-medium text-ink-70"
-                  >
-                    {date.toLocaleDateString(undefined, {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </time>
-                </div>
-              )}
-              <div
-                className={`flex ${system ? "justify-center" : own ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={
-                    system
-                      ? "max-w-[85%] rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
-                      : `min-w-0 max-w-[85%] rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
-                  }
-                >
-                  {systemChat && (
-                    <p className="mb-1 text-xs font-semibold text-ink-70">
-                      FoC
-                    </p>
-                  )}
-                  <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                    {message.content}
-                  </p>
-                  <div
-                    className={`mt-1 flex items-center gap-1.5 whitespace-nowrap ${system ? "justify-center" : "justify-end"}`}
-                  >
+      <div className="relative">
+        <ol
+          ref={messageList}
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            atBottom.current =
+              list.scrollHeight - list.clientHeight - list.scrollTop <= 1;
+            if (atBottom.current) setHasNewMessages(false);
+            if (list.scrollTop <= 0) void older();
+          }}
+          className="my-4 max-h-[60vh] space-y-3 overflow-y-auto px-1 [overflow-anchor:none]"
+        >
+          {messages.map((message, index) => {
+            const systemChat = chat?.orderId === null;
+            const own = !systemChat && message.senderId === user?.id;
+            const system = !systemChat && message.type === "SYSTEM";
+            const read = index <= readThrough;
+            const date = new Date(message.createdAt);
+            const startsDay =
+              index === 0 ||
+              date.toDateString() !==
+                new Date(messages[index - 1].createdAt).toDateString();
+            return (
+              <li key={message.messageId} data-message-id={message.messageId}>
+                {startsDay && (
+                  <div className="my-4 flex justify-center">
                     <time
                       dateTime={message.createdAt}
-                      className={
-                        system
-                          ? "shrink-0 text-[10px] leading-4 text-ink-40"
-                          : "shrink-0 text-xs leading-5 opacity-60"
-                      }
+                      className="rounded-full bg-surface-alt px-3 py-1 text-xs font-medium text-ink-70"
                     >
-                      {date.toLocaleTimeString(undefined, {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
+                      {date.toLocaleDateString(undefined, {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
                       })}
                     </time>
-                    {own && !system && (
-                      <span
-                        className="relative inline-flex h-5 w-6 shrink-0 items-center justify-center"
-                        role="img"
-                        aria-label={read ? "Read" : "Sent"}
-                        title={read ? "Read" : "Sent"}
-                      >
-                        {read ? (
-                          <>
-                            <Check
-                              size={18}
-                              className="absolute left-0 top-px"
-                              aria-hidden="true"
-                            />
-                            <Check
-                              size={18}
-                              className="absolute left-1 top-px"
-                              aria-hidden="true"
-                            />
-                          </>
-                        ) : (
-                          <Check size={18} aria-hidden="true" />
-                        )}
-                      </span>
+                  </div>
+                )}
+                <div
+                  className={`flex ${system ? "justify-center" : own ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={
+                      system
+                        ? "max-w-[85%] rounded-2xl border border-line bg-surface-alt px-4 py-2 text-center text-sm text-ink-70"
+                        : `min-w-0 max-w-[85%] rounded-2xl px-4 py-3 ${own ? "rounded-br-sm bg-ink text-white" : "rounded-bl-sm bg-surface-alt text-ink"}`
+                    }
+                  >
+                    {systemChat && (
+                      <p className="mb-1 text-xs font-semibold text-ink-70">
+                        FoC
+                      </p>
                     )}
+                    <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                      {message.content}
+                    </p>
+                    <div
+                      className={`mt-1 flex items-center gap-1.5 whitespace-nowrap ${system ? "justify-center" : "justify-end"}`}
+                    >
+                      <time
+                        dateTime={message.createdAt}
+                        className={
+                          system
+                            ? "shrink-0 text-[10px] leading-4 text-ink-40"
+                            : "shrink-0 text-xs leading-5 opacity-60"
+                        }
+                      >
+                        {date.toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: false,
+                        })}
+                      </time>
+                      {own && !system && (
+                        <span
+                          className="relative inline-flex h-5 w-6 shrink-0 items-center justify-center"
+                          role="img"
+                          aria-label={read ? "Read" : "Sent"}
+                          title={read ? "Read" : "Sent"}
+                        >
+                          {read ? (
+                            <>
+                              <Check
+                                size={18}
+                                className="absolute left-0 top-px"
+                                aria-hidden="true"
+                              />
+                              <Check
+                                size={18}
+                                className="absolute left-1 top-px"
+                                aria-hidden="true"
+                              />
+                            </>
+                          ) : (
+                            <Check size={18} aria-hidden="true" />
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+              </li>
+            );
+          })}
+        </ol>
+        {hasNewMessages && (
+          <button
+            type="button"
+            aria-label="Scroll to new messages"
+            title="New messages"
+            className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-modal hover:border-ink"
+            onClick={() => {
+              if (messageList.current)
+                messageList.current.scrollTop =
+                  messageList.current.scrollHeight;
+              atBottom.current = true;
+              setHasNewMessages(false);
+            }}
+          >
+            <ArrowDown size={20} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       <form onSubmit={send} className="flex gap-2">
         <input
           ref={messageInput}

@@ -12,6 +12,9 @@ Scope (2026-11-09, Codex, model: GPT-6): Documented the implemented orderless no
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added an orderless JSON example directly under Request body.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 -->
 
 # Sending system notifications from another microservice
@@ -99,7 +102,7 @@ Without an associated order, supply `orderId: null` and the recipient's user UUI
 | `message`   | Yes                    | Non-empty string containing the complete text to display. Whitespace-only strings are rejected; accepted text is stored unchanged. |
 
 An order-linked notification must already have an ACTIVE order conversation.
-The caller does not supply `senderId`, `type`, `metadata` or `conversationId`.
+The caller does not supply `senderId`, `type` or `conversationId`; optional `triggeredByUserId` is accepted for order-scoped notifications only.
 
 ## Orderless notifications
 
@@ -232,7 +235,7 @@ Both successful statuses return the message object directly, with no
   "senderId": null,
   "type": "SYSTEM",
   "content": "The order has been created",
-  "metadata": null,
+  "triggeredByUserId": null,
   "createdAt": "2026-11-08T12:00:00.000Z"
 }
 ```
@@ -310,3 +313,5 @@ or change the successful response. Identical retries do not rebroadcast.
 - [Persistence and duplicate handling](src/services/conversations.service.ts)
 - [Realtime room delivery](src/realtime/messages.ts)
 - [Endpoint regression tests](src/system-notifications.spec.ts)
+
+Order-service notifications may supply optional UUID `triggeredByUserId`. It is persisted and returned as a nullable top-level message field in history, HTTP responses and `message:sent` events. It does not remove recipients or chat messages; the frontend suppresses the triggering user’s toast. The migration `20261110000000_message_triggered_by_user` drops the old message metadata column and adds this field.

@@ -6,6 +6,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -25,7 +28,7 @@ function setup() {
   const create = vi.fn().mockImplementation(async ({ data }) => ({
     ...data,
     id: otherId,
-    metadata: null,
+    triggeredByUserId: null,
   }));
   const update = vi.fn().mockResolvedValue({});
   let committed = false;
@@ -83,7 +86,7 @@ it("persists authenticated identity and timestamp atomically, then broadcasts an
     senderId: userId,
     type: "TEXT",
     content: " hello ",
-    metadata: null,
+    triggeredByUserId: null,
     createdAt: expect.any(String),
   });
   const time = t.create.mock.calls[0]![0].data.createdAt;
