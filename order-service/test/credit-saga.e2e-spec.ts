@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-10, Codex, model: GPT-6): Aligned saga assertions with existing chat outbox tasks.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
@@ -294,7 +297,11 @@ describe('credit reservation saga (e2e)', () => {
     ).resolves.toMatchObject({ ok: true });
     const jobs = await h.drain();
 
-    expect(jobs.map((j) => j.taskName)).toEqual(['credit_release']);
+    // AI-generated (edited by <name>).
+    expect(jobs.map((j) => j.taskName)).toEqual([
+      'credit_release',
+      'chat_notification',
+    ]);
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: result.order.id },
     });
@@ -461,7 +468,18 @@ describe('credit transfer on completion (e2e)', () => {
     });
     await relayOnce();
 
-    expect(enqueued).toEqual([
+    // AI-generated (edited by <name>).
+    expect(enqueued.map(({ job }) => job.taskName)).toEqual([
+      'chat_participant',
+      'chat_notification',
+      'chat_notification',
+      'chat_notification',
+      'credit_transfer',
+      'chat_notification',
+    ]);
+    expect(
+      enqueued.filter(({ job }) => job.taskName === 'credit_transfer'),
+    ).toEqual([
       {
         key: 'queue:credit:transfer',
         job: {
@@ -507,7 +525,21 @@ describe('accept (e2e)', () => {
     expect(order.status).toBe('accepted');
     expect(couriers).toContain(order.courierId);
     expect(order.acceptedAt).toBeInstanceOf(Date);
-    expect(await prisma.outbox.count()).toBe(0); // accepting queues no credit task
+    // AI-generated (edited by <name>).
+    const tasks = await prisma.outbox.findMany({ orderBy: { id: 'asc' } });
+    expect(tasks.map((task) => task.taskName)).toEqual([
+      'chat_participant',
+      'chat_notification',
+    ]);
+    expect(tasks[0]?.payload).toEqual({
+      orderId: order.id,
+      userId: order.courierId,
+      role: 'COURIER',
+    });
+    expect(tasks[1]?.payload).toMatchObject({
+      orderId: order.id,
+      triggeredByUserId: order.courierId,
+    });
   });
 });
 

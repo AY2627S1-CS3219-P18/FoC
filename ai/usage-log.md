@@ -16029,3 +16029,47 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — Order-service test verification and assertion fixes
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded test verification and assertion fixes.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** Existing order-service implementation and order-service/README.md sections on status notifications, courier participation, and chat archiving; existing chat-service/README.md triggeredByUserId contract.
+
+**Prompts (exact):**
+
+> check if the order service tests are passing and fix them pls
+
+**Key responses:**
+
+- Initial unit run: 638 tests passed; seven suites could not import the already-declared rrule dependency. Offline npm ci failed because a dependency was uncached; npm ci --prefer-offline --no-audit --no-fund succeeded and regenerated the ignored Prisma client without changing manifests or lockfiles.
+- Sandbox runs could not open local HTTP listeners or access PostgreSQL. Reran with local access enabled. A transient ECONNRESET and 401 in the first unrestricted unit run did not recur in the focused or final full run.
+- Updated four acceptance notification assertions to include the existing triggeredByUserId field. Updated three E2E expectations to include existing chat notification and participant tasks, retaining credit-transfer payload/queue checks and checking the winning courier's tasks.
+- Final unit verification: 25 files, 819 tests passed. Final E2E verification: four files, 32 tests passed against an isolated temporary PostgreSQL 17 database with all nine committed migrations applied. Removed the temporary container afterward; development database unchanged by the successful E2E run.
+- Build, typecheck and lint passed. An intermediate E2E rerun caught an edit applied to the wrong similar assertion; corrected it before final verification. No production implementation, API or schema changes.
+
+**Files:**
+
+- `order-service/src/controllers/orders.controller.spec.ts` (modified)
+- `order-service/test/credit-saga.e2e-spec.ts` (modified)
+- `ai/usage-log.md` (appended)
+- `README.md` (modified disclosure header and Log index)
+- `order-service/src/generated/prisma/` (regenerated, git-ignored)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated acceptance notification assertions for the existing actor field.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
@@ -1147,6 +1150,7 @@ describe('acceptance notification username', () => {
               payload: {
                 orderId: id,
                 messageId: expect.any(String),
+                triggeredByUserId: courier,
                 message:
                   scenario === 'success'
                     ? 'The order has been accepted by courier_name'

@@ -1,5 +1,8 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-10, Codex, model: GPT-6): Added order-service test verification log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-08, Codex, model: GPT-6): Resolved merge conflicts in the AI log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -966,5 +969,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 285 | 2026-11-10 | credit-service | Credit Service: service README and completed API reference | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md |
 | 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |
 | 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
-| 285 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |
+| 285 | 2026-11-10 | chat-service | ECS Fargate: chat-service database TLS, keep-alive and CD | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD. |
 | 287 | 2026-11-10 | chat-service, frontend | Merge main translation with chat-service updates | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds. |
+| 288 | 2026-11-10 | order-service | Order-service test verification and assertion fixes | Updated stale chat outbox assertions; verified unit and E2E tests. |
