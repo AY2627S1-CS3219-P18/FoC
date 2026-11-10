@@ -115,7 +115,7 @@ it("returns 500 on persistence failure", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it.each([
   ["REQUESTER", "REQUESTER", null, 409],
   ["REQUESTER", "REQUESTER", new Date(), 409],

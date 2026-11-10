@@ -15081,3 +15081,36 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — Align system notification test with actor field
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** chat-service/README.md documents the nullable top-level triggeredByUserId field and removal of metadata; user confirmed the received response is correct.
+
+**Prompts (exact):**
+
+> check the chat service tests make sure they pass.
+
+> the received is correct!
+
+**Key responses:**
+
+- Initial sandbox run could not bind localhost ports (listen EPERM). With localhost permissions, 196 tests passed and one failed due to stale metadata expectations.
+- Updated the response and persistence assertions to expect triggeredByUserId: null; removed obsolete metadata from the create mock. No implementation changes.
+- The first rerun exposed the stale persistence assertion; after correcting it, npm --prefix chat-service test -- --run passed all 197 tests across 13 files.
+
+**Files:**
+
+- chat-service/src/system-notifications.spec.ts (modified)
+- ai/usage-log.md (appended)
+- README.md (modified disclosure header and log index)
+
+**Deviations / questions raised for the team:** User confirmed the received response is correct.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

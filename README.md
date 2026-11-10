@@ -351,6 +351,9 @@ Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added the outward tab badge adjustment log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the chat notification test correction log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -912,3 +915,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 282 | 2026-11-10 | frontend                                                      | Unread message badges on chat status tabs                                                                        | Added paginated unread totals to Active and Archived tabs.                                                                                      |
 | 283 | 2026-11-10 | frontend                                                      | Corner unread tab badges hidden at zero                                                                          | Matched chat icon badge placement and hid zero counts.                                                                                          |
 | 284 | 2026-11-10 | frontend                                                      | Nudge tab unread badges outward                                                                                  | Moved unread badges slightly further up and right.                                                                                              |
+| 285 | 2026-11-10 | chat-service                                                  | Align system notification test with actor field                                                                  | Updated stale assertions and verified all 197 tests pass.                                                                                       |
