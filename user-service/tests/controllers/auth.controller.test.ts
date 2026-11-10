@@ -45,6 +45,21 @@
 //        Stage 31c's own Verification bullets.
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+// Scope: Bug fix - updated the 'POST /auth/verify-otp' > 'registration' and
+//        'POST /auth/resend-otp' > 'registration' describe blocks: every existing test that
+//        reaches the OTP logic (i.e. not rejected earlier for an unknown/already-active email)
+//        now attaches that test's own pendingToken cookie (via registerPending's returned
+//        TestUser and the new pendingCookie fixture helper), since those endpoints now require
+//        it. Added new tests for the fix itself: account A's cookie + account B's email/OTP is
+//        rejected with 403 EMAIL_MISMATCH without touching B's status/OTP state on both
+//        endpoints, a fresh request with no cookie at all is also EMAIL_MISMATCH, and the normal
+//        same-account flow still succeeds. The 'forgot_password' describe blocks on both
+//        endpoints are untouched. Governing decision: bug report + team decisions recorded in
+//        this task's conversation (pending-token cookie mechanism, EMAIL_MISMATCH 403 with no
+//        OTP-counter interaction, TTL = config.otp.ttlMinutes). No requirements, architecture,
+//        schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -85,6 +100,7 @@ import {
   createUserWithRole,
   loginTokens,
   loginUser,
+  pendingCookie,
   refreshCookie,
   registerPending,
   userInput,
@@ -149,10 +165,11 @@ describe('POST /auth/register', () => {
       expect(JSON.stringify(res.body)).not.toMatch(/password|\$2[aby]\$/i);
     });
 
-    it('does not create a session (no cookie, no token)', async () => {
+    it('does not create a login session (no refreshToken cookie, no accessToken), but does set a pendingToken cookie', async () => {
       const res = await post('/auth/register').send(userInput(1));
-      expect(res.headers['set-cookie']).toBeUndefined();
+      expect(cookieValue(res, 'refreshToken')).toBeUndefined();
       expect(res.body.accessToken).toBeUndefined();
+      expect(cookieValue(res, 'pendingToken')).toBeDefined();
     });
   });
 
@@ -344,11 +361,13 @@ describe('POST /auth/register', () => {
     });
 
     it('does not release the reservation of an expired pending user whose OTP was replaced by a live one', async () => {
-      await post('/auth/register').send(userInput(1));
+      const first = await post('/auth/register').send(userInput(1));
       const u = (await getUserByEmail('user1@example.com'))!;
       await expireOtps(u.id);
       await backdateOtps(u.id, 2);
-      await post('/auth/resend-otp').send({ email: 'user1@example.com', purpose: 'registration' });
+      await post('/auth/resend-otp')
+        .set('Cookie', pendingCookie(cookieValue(first, 'pendingToken')!))
+        .send({ email: 'user1@example.com', purpose: 'registration' });
 
       const res = await post('/auth/register').send(userInput(1));
       expect(res.status).toBe(409);
@@ -866,20 +885,38 @@ describe('POST /auth/verify-otp', () => {
   describe('registration', () => {
     it('correct OTP: 200 REGISTER_SUCCESS, user active, OTP consumed, no tokens issued', async () => {
       const user = await registerPending(1);
-      const res = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: latestOtpFor(user.email),
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: latestOtpFor(user.email),
+          purpose: 'registration',
+        });
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         message: 'Registration complete. You can now log in.',
         code: 'REGISTER_SUCCESS',
       });
-      expect(res.headers['set-cookie']).toBeUndefined();
       expect((await getUserByEmail(user.email))!.status).toBe('active');
       expect((await getOtps(user.id))[0]!.consumed_at).not.toBeNull();
+    });
+
+    it('clears the pendingToken cookie on success', async () => {
+      const user = await registerPending(1);
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: latestOtpFor(user.email),
+          purpose: 'registration',
+        });
+      expect(res.status).toBe(200);
+      const raw = res.headers['set-cookie'] as unknown as string[] | string;
+      const list = Array.isArray(raw) ? raw : [raw];
+      const cleared = list.find((c) => c.startsWith('pendingToken='));
+      expect(cleared).toBeDefined();
+      expect(cleared).toMatch(/pendingToken=;/);
     });
 
     it('login works once the account is active', async () => {
@@ -889,19 +926,23 @@ describe('POST /auth/verify-otp', () => {
 
     it('matches the email trimmed and case-insensitively', async () => {
       const user = await registerPending(1);
-      const res = await post('/auth/verify-otp').send({
-        email: '  USER1@Example.com ',
-        otp: latestOtpFor(user.email),
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: '  USER1@Example.com ',
+          otp: latestOtpFor(user.email),
+          purpose: 'registration',
+        });
       expect(res.status).toBe(200);
     });
 
     it('re-submitting the same (used) OTP: 400 INVALID_OTP', async () => {
       const user = await registerPending(1);
       const body = { email: user.email, otp: latestOtpFor(user.email), purpose: 'registration' };
-      await post('/auth/verify-otp').send(body);
-      const res = await post('/auth/verify-otp').send(body);
+      await post('/auth/verify-otp').set('Cookie', pendingCookie(user.pendingToken)).send(body);
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send(body);
       expect(res.status).toBe(400);
       expect(res.body).toEqual({ message: 'Invalid or expired OTP', code: 'INVALID_OTP' });
     });
@@ -909,11 +950,13 @@ describe('POST /auth/verify-otp', () => {
     it('wrong OTP: 400 INVALID_OTP, and attempts_count is incremented and persisted', async () => {
       const user = await registerPending(1);
       const bad = wrongOtp(latestOtpFor(user.email));
-      const res = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: bad,
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: bad,
+          purpose: 'registration',
+        });
 
       expect(res.status).toBe(400);
       expect(res.body).toEqual({ message: 'Invalid or expired OTP', code: 'INVALID_OTP' });
@@ -926,27 +969,33 @@ describe('POST /auth/verify-otp', () => {
       const good = latestOtpFor(user.email);
       const bad = wrongOtp(good);
       for (let i = 0; i < 4; i++) {
-        const r = await post('/auth/verify-otp').send({
+        const r = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(user.pendingToken))
+          .send({
+            email: user.email,
+            otp: bad,
+            purpose: 'registration',
+          });
+        expect(r.status).toBe(400);
+      }
+      const fifth = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
           email: user.email,
           otp: bad,
           purpose: 'registration',
         });
-        expect(r.status).toBe(400);
-      }
-      const fifth = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: bad,
-        purpose: 'registration',
-      });
       expect(fifth.status).toBe(429);
       expect(fifth.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
       expect(fifth.headers['retry-after']).toBeDefined();
 
-      const res = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: good,
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: good,
+          purpose: 'registration',
+        });
 
       expect(res.status).toBe(429);
       expect(res.body.code).toBe('OTP_ATTEMPTS_EXCEEDED');
@@ -957,11 +1006,13 @@ describe('POST /auth/verify-otp', () => {
     it('expired OTP with the correct code: 400 OTP_EXPIRED', async () => {
       const user = await registerPending(1);
       await expireOtps(user.id);
-      const res = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: latestOtpFor(user.email),
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: latestOtpFor(user.email),
+          purpose: 'registration',
+        });
       expect(res.status).toBe(400);
       expect(res.body).toEqual({
         message: 'OTP has expired. Please request a new one.',
@@ -974,27 +1025,33 @@ describe('POST /auth/verify-otp', () => {
       const user = await registerPending(1);
       const oldOtp = latestOtpFor(user.email);
       await backdateOtps(user.id, 2);
-      const resend = await post('/auth/resend-otp').send({
-        email: user.email,
-        purpose: 'registration',
-      });
+      const resend = await post('/auth/resend-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          purpose: 'registration',
+        });
       expect(resend.status).toBe(200);
       const newOtp = latestOtpFor(user.email);
       expect(newOtp).not.toBe(oldOtp);
 
-      const old = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: oldOtp,
-        purpose: 'registration',
-      });
+      const old = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: oldOtp,
+          purpose: 'registration',
+        });
       expect(old.status).toBe(400);
       expect(old.body.code).toBe('INVALID_OTP');
 
-      const fresh = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: newOtp,
-        purpose: 'registration',
-      });
+      const fresh = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: newOtp,
+          purpose: 'registration',
+        });
       expect(fresh.status).toBe(200);
     });
 
@@ -1002,11 +1059,13 @@ describe('POST /auth/verify-otp', () => {
       'OTP %j: 400 VALIDATION_ERROR "OTP must be a 6-digit code"',
       async (otp) => {
         const user = await registerPending(1);
-        const res = await post('/auth/verify-otp').send({
-          email: user.email,
-          otp,
-          purpose: 'registration',
-        });
+        const res = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(user.pendingToken))
+          .send({
+            email: user.email,
+            otp,
+            purpose: 'registration',
+          });
         expect(res.status).toBe(400);
         expect(res.body).toEqual({
           message: 'OTP must be a 6-digit code',
@@ -1028,13 +1087,88 @@ describe('POST /auth/verify-otp', () => {
 
     it('already-active email: 400 INVALID_OTP', async () => {
       const user = await createActiveUser(1);
-      const res = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: '123456',
-        purpose: 'registration',
-      });
+      const res = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: '123456',
+          purpose: 'registration',
+        });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('INVALID_OTP');
+    });
+
+    // Bug fix coverage: the pendingToken cookie must belong to the account named by `email`.
+    describe('EMAIL_MISMATCH (bug fix)', () => {
+      it("account A's pendingToken + account B's email: 403 EMAIL_MISMATCH, B stays pending", async () => {
+        const a = await registerPending(1);
+        const b = await registerPending(2);
+        const res = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(a.pendingToken))
+          .send({
+            email: b.email,
+            otp: latestOtpFor(b.email),
+            purpose: 'registration',
+          });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('EMAIL_MISMATCH');
+        expect((await getUserById(b.id))!.status).toBe('pending');
+      });
+
+      it("account A's pendingToken + account B's email and B's real OTP: still 403 EMAIL_MISMATCH, B not activated", async () => {
+        const a = await registerPending(1);
+        const b = await registerPending(2);
+        const res = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(a.pendingToken))
+          .send({
+            email: b.email,
+            otp: latestOtpFor(b.email),
+            purpose: 'registration',
+          });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('EMAIL_MISMATCH');
+        expect((await getUserById(b.id))!.status).toBe('pending');
+      });
+
+      it("account A's own pendingToken + A's own email + A's real OTP: succeeds normally", async () => {
+        const a = await registerPending(1);
+        const res = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie(a.pendingToken))
+          .send({
+            email: a.email,
+            otp: latestOtpFor(a.email),
+            purpose: 'registration',
+          });
+        expect(res.status).toBe(200);
+        expect(res.body.code).toBe('REGISTER_SUCCESS');
+        expect((await getUserById(a.id))!.status).toBe('active');
+      });
+
+      it('no pendingToken cookie at all, for a real pending account: 403 EMAIL_MISMATCH', async () => {
+        const a = await registerPending(1);
+        const res = await post('/auth/verify-otp').send({
+          email: a.email,
+          otp: latestOtpFor(a.email),
+          purpose: 'registration',
+        });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('EMAIL_MISMATCH');
+        expect((await getUserById(a.id))!.status).toBe('pending');
+      });
+
+      it('a malformed pendingToken cookie: 403 EMAIL_MISMATCH', async () => {
+        const a = await registerPending(1);
+        const res = await post('/auth/verify-otp')
+          .set('Cookie', pendingCookie('garbage'))
+          .send({
+            email: a.email,
+            otp: latestOtpFor(a.email),
+            purpose: 'registration',
+          });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('EMAIL_MISMATCH');
+        expect((await getUserById(a.id))!.status).toBe('pending');
+      });
     });
   });
 
@@ -1192,6 +1326,13 @@ describe('POST /auth/verify-otp', () => {
 describe('POST /auth/resend-otp', () => {
   const resend = (email: string, purpose = 'registration') =>
     post('/auth/resend-otp').send({ email, purpose });
+  // Registration resends now require the pendingToken cookie; this mirrors `resend` above but
+  // attaches it, for the 'registration' describe block below.
+  const resendPending = (email: string, pendingToken: string) =>
+    post('/auth/resend-otp').set('Cookie', pendingCookie(pendingToken)).send({
+      email,
+      purpose: 'registration',
+    });
   const RESENDS_OK = {
     message: 'A new verification code has been sent to your email',
     code: 'OTP_SENT',
@@ -1200,7 +1341,7 @@ describe('POST /auth/resend-otp', () => {
   describe('registration', () => {
     it('immediately after registering: 429 OTP_RESEND_COOLDOWN with a Retry-After header', async () => {
       const user = await registerPending(1);
-      const res = await resend(user.email);
+      const res = await resendPending(user.email, user.pendingToken);
       expect(res.status).toBe(429);
       expect(res.body).toEqual({
         message: 'Please wait before requesting another OTP',
@@ -1217,7 +1358,7 @@ describe('POST /auth/resend-otp', () => {
       await backdateOtps(user.id, 2);
       sendOtpEmailMock.mockClear();
 
-      const res = await resend(user.email);
+      const res = await resendPending(user.email, user.pendingToken);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(RESENDS_OK);
@@ -1232,11 +1373,11 @@ describe('POST /auth/resend-otp', () => {
       const user = await registerPending(1);
       for (let i = 0; i < 5; i++) {
         await backdateOtps(user.id, 2);
-        expect((await resend(user.email)).status).toBe(200);
+        expect((await resendPending(user.email, user.pendingToken)).status).toBe(200);
       }
       await backdateOtps(user.id, 2);
 
-      const res = await resend(user.email);
+      const res = await resendPending(user.email, user.pendingToken);
 
       expect(res.status).toBe(429);
       expect(res.body).toEqual({
@@ -1251,9 +1392,9 @@ describe('POST /auth/resend-otp', () => {
       const user = await registerPending(1);
       for (let i = 0; i < 5; i++) {
         await backdateOtps(user.id, 2);
-        await resend(user.email);
+        await resendPending(user.email, user.pendingToken);
       }
-      const res = await resend(user.email); // no backdate: cooldown would also apply
+      const res = await resendPending(user.email, user.pendingToken); // no backdate: cooldown would also apply
       expect(res.body.code).toBe('OTP_RESEND_LIMIT');
     });
 
@@ -1261,10 +1402,10 @@ describe('POST /auth/resend-otp', () => {
       const user = await registerPending(1);
       for (let i = 0; i < 5; i++) {
         await backdateOtps(user.id, 2);
-        await resend(user.email);
+        await resendPending(user.email, user.pendingToken);
       }
       await backdateOtps(user.id, 60 * 5);
-      const res = await resend(user.email);
+      const res = await resendPending(user.email, user.pendingToken);
       expect(res.status).toBe(429);
       expect(res.body.code).toBe('OTP_RESEND_LIMIT');
     });
@@ -1292,7 +1433,7 @@ describe('POST /auth/resend-otp', () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       failNextEmail();
 
-      const res = await resend(user.email);
+      const res = await resendPending(user.email, user.pendingToken);
 
       expect(res.status).toBe(503);
       expect(res.body.code).toBe('EMAIL_SEND_FAILED');
@@ -1300,12 +1441,31 @@ describe('POST /auth/resend-otp', () => {
       expect(otps).toHaveLength(1);
       expect(otps[0]!.consumed_at).toBeNull();
 
-      const verify = await post('/auth/verify-otp').send({
-        email: user.email,
-        otp: original,
-        purpose: 'registration',
-      });
+      const verify = await post('/auth/verify-otp')
+        .set('Cookie', pendingCookie(user.pendingToken))
+        .send({
+          email: user.email,
+          otp: original,
+          purpose: 'registration',
+        });
       expect(verify.status).toBe(200);
+    });
+
+    // Bug fix coverage: a resend also requires the pendingToken cookie to match the account
+    // named by `email`, and a mismatch must not touch B's resend cooldown/count at all.
+    describe('EMAIL_MISMATCH (bug fix)', () => {
+      it("account A's pendingToken + account B's email: 403 EMAIL_MISMATCH, no OTP issued for B, B's resend state untouched", async () => {
+        const a = await registerPending(1);
+        const b = await registerPending(2);
+        await backdateOtps(b.id, 2); // clear of B's own cooldown, to isolate the mismatch check
+        const otpsBefore = await getOtps(b.id);
+
+        const res = await resendPending(b.email, a.pendingToken);
+
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('EMAIL_MISMATCH');
+        expect(await getOtps(b.id)).toEqual(otpsBefore);
+      });
     });
   });
 

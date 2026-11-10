@@ -1018,3 +1018,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
 | 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
 | 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
+| 316 | 2026-11-10 | frontend | Fix: ResendButton countdown not shown on first successful resend | Started the cooldown on resend success, not only on the server's cooldown error. |
+| 317 | 2026-11-10 | user-service | Fix: pending-account OTP verification could be redirected to a different account | Tied verify/resend-OTP to a login/register-issued pending-token cookie, not the submitted email. |

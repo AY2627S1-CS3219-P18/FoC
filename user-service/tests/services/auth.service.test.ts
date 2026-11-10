@@ -33,6 +33,18 @@
 //   decision: instructions.md Stage 31b/31c's own Verification bullets.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - verifyRegistrationOtp/resendRegistrationOtp now require a pendingToken
+//   param (the new cross-check against the account named by `email`); updated every existing
+//   call in the verifyRegistrationOtp and resendRegistrationOtp describe blocks to pass the
+//   calling test's own registerPending/createActiveUser pendingToken, so these service-level
+//   tests keep exercising the OTP logic itself rather than tripping the new EMAIL_MISMATCH
+//   pre-check (already covered at the HTTP level in auth.controller.test.ts). No test behaviour
+//   or assertions otherwise changed. Tool: Claude Code (model: claude-sonnet-5). Governing
+//   decision: bug report + team decisions recorded in this task's conversation (pending-token
+//   cookie mechanism, EMAIL_MISMATCH 403 with no OTP-counter interaction, TTL =
+//   config.otp.ttlMinutes). No requirements, architecture, schema, or API decisions were made by
+//   the AI tool.
+// Author review:
 import { readFileSync } from 'node:fs';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -144,8 +156,10 @@ describe('register', () => {
     expect(await getOtps(user.id, 'Registration')).toHaveLength(1);
   });
 
-  it('resolves to undefined (nothing sensitive is returned)', async () => {
-    expect(await authService.register(userInput(1))).toBeUndefined();
+  it('resolves to only a pendingToken (nothing else sensitive is returned)', async () => {
+    const result = await authService.register(userInput(1));
+    expect(Object.keys(result)).toEqual(['pendingToken']);
+    expect(typeof result.pendingToken).toBe('string');
   });
 
   it('rolls back the pending user when the OTP email fails', async () => {
@@ -745,14 +759,24 @@ describe('refresh', () => {
 describe('verifyRegistrationOtp', () => {
   it('activates the user and consumes the OTP', async () => {
     const u = await registerPending(1);
-    await authService.verifyRegistrationOtp({ email: u.email, otp: latestOtpFor(u.email) });
+    await authService.verifyRegistrationOtp({
+      email: u.email,
+      otp: latestOtpFor(u.email),
+      pendingToken: u.pendingToken,
+    });
     expect((await getUserByEmail(u.email))!.status).toBe('active');
   });
 
   it('validates the OTP format before touching the database', async () => {
     const u = await registerPending(1);
     expect(
-      await appError(authService.verifyRegistrationOtp({ email: u.email, otp: '12345' })),
+      await appError(
+        authService.verifyRegistrationOtp({
+          email: u.email,
+          otp: '12345',
+          pendingToken: u.pendingToken,
+        }),
+      ),
     ).toMatchObject({
       status: 400,
       code: 'VALIDATION_ERROR',
@@ -767,9 +791,9 @@ describe('verifyRegistrationOtp', () => {
     const wrong = wrongOtp(latestOtpFor(pending.email));
 
     for (const args of [
-      { email: 'ghost@example.com', otp: '123456' },
-      { email: active.email, otp: '123456' },
-      { email: pending.email, otp: wrong },
+      { email: 'ghost@example.com', otp: '123456', pendingToken: pending.pendingToken },
+      { email: active.email, otp: '123456', pendingToken: pending.pendingToken },
+      { email: pending.email, otp: wrong, pendingToken: pending.pendingToken },
     ]) {
       expect(await appError(authService.verifyRegistrationOtp(args))).toMatchObject({
         status: 400,
@@ -782,7 +806,11 @@ describe('verifyRegistrationOtp', () => {
   it('persists the attempt increment even though it throws afterwards', async () => {
     const u = await registerPending(1);
     await appError(
-      authService.verifyRegistrationOtp({ email: u.email, otp: wrongOtp(latestOtpFor(u.email)) }),
+      authService.verifyRegistrationOtp({
+        email: u.email,
+        otp: wrongOtp(latestOtpFor(u.email)),
+        pendingToken: u.pendingToken,
+      }),
     );
     expect((await getOtps(u.id))[0]!.attempts_count).toBe(1);
   });
@@ -790,7 +818,11 @@ describe('verifyRegistrationOtp', () => {
   // Stage 14d: activation inserts a credit_allocation_outbox row in the same transaction.
   it('inserts exactly one pending credit_allocation_outbox row for the user on activation', async () => {
     const u = await registerPending(1);
-    await authService.verifyRegistrationOtp({ email: u.email, otp: latestOtpFor(u.email) });
+    await authService.verifyRegistrationOtp({
+      email: u.email,
+      otp: latestOtpFor(u.email),
+      pendingToken: u.pendingToken,
+    });
     const rows = await getCreditAllocationOutboxRows(u.id);
     expect(rows).toEqual([{ status: 'pending' }]);
   });
@@ -798,7 +830,11 @@ describe('verifyRegistrationOtp', () => {
   it('a failing verify (wrong OTP) creates no outbox row', async () => {
     const u = await registerPending(1);
     await appError(
-      authService.verifyRegistrationOtp({ email: u.email, otp: wrongOtp(latestOtpFor(u.email)) }),
+      authService.verifyRegistrationOtp({
+        email: u.email,
+        otp: wrongOtp(latestOtpFor(u.email)),
+        pendingToken: u.pendingToken,
+      }),
     );
     expect(await getCreditAllocationOutboxRows(u.id)).toEqual([]);
   });
@@ -807,7 +843,9 @@ describe('verifyRegistrationOtp', () => {
     const u = await registerPending(1);
     const otp = latestOtpFor(u.email);
     await expireOtps(u.id);
-    await appError(authService.verifyRegistrationOtp({ email: u.email, otp }));
+    await appError(
+      authService.verifyRegistrationOtp({ email: u.email, otp, pendingToken: u.pendingToken }),
+    );
     expect(await getCreditAllocationOutboxRows(u.id)).toEqual([]);
   });
 });
@@ -816,14 +854,16 @@ describe('resendRegistrationOtp', () => {
   it('sends a new OTP after the cooldown', async () => {
     const u = await registerPending(1);
     await backdateOtps(u.id, 2);
-    await authService.resendRegistrationOtp({ email: u.email });
+    await authService.resendRegistrationOtp({ email: u.email, pendingToken: u.pendingToken });
     expect(await getOtps(u.id)).toHaveLength(2);
     expect(emailCallsFor(u.email)).toHaveLength(2);
   });
 
   it('throws OTP_RESEND_COOLDOWN with retryAfterSeconds inside the cooldown', async () => {
     const u = await registerPending(1);
-    const err = await appError(authService.resendRegistrationOtp({ email: u.email }));
+    const err = await appError(
+      authService.resendRegistrationOtp({ email: u.email, pendingToken: u.pendingToken }),
+    );
     expect(err).toMatchObject({ status: 429, code: 'OTP_RESEND_COOLDOWN' });
     expect(err.retryAfterSeconds).toBeGreaterThan(0);
     expect(err.retryAfterSeconds).toBeLessThanOrEqual(60);
@@ -833,9 +873,11 @@ describe('resendRegistrationOtp', () => {
     const u = await registerPending(1);
     for (let i = 0; i < 5; i++) {
       await backdateOtps(u.id, 2);
-      await authService.resendRegistrationOtp({ email: u.email });
+      await authService.resendRegistrationOtp({ email: u.email, pendingToken: u.pendingToken });
     }
-    const err = await appError(authService.resendRegistrationOtp({ email: u.email }));
+    const err = await appError(
+      authService.resendRegistrationOtp({ email: u.email, pendingToken: u.pendingToken }),
+    );
     expect(err).toMatchObject({
       status: 429,
       code: 'OTP_RESEND_LIMIT',
@@ -847,7 +889,11 @@ describe('resendRegistrationOtp', () => {
   it('throws NO_PENDING_REGISTRATION for unknown and non-pending users', async () => {
     const active = await createActiveUser(1);
     for (const email of ['ghost@example.com', active.email]) {
-      expect(await appError(authService.resendRegistrationOtp({ email }))).toMatchObject({
+      expect(
+        await appError(
+          authService.resendRegistrationOtp({ email, pendingToken: active.pendingToken }),
+        ),
+      ).toMatchObject({
         status: 400,
         code: 'NO_PENDING_REGISTRATION',
       });
