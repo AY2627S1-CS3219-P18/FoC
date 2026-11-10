@@ -2,16 +2,16 @@
 AI Assistance Disclosure:
 Scope (2026-11-08, Codex, model: GPT-6): Resolved merge conflicts in the AI log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added dropdown fixes log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added searchable dropdown log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the previous location input visibility log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review: Congchen
+Author review: Congchen Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the saved location icon swap log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
@@ -23,10 +23,10 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for completing precise delivery location implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-08, Codex, model: GPT-6): Added the log index row for partial user-service implementation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Resolved the README log-index merge conflict and added sequential index numbers.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -300,6 +300,29 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-09, Codex, model: GPT-6): Added the chat message metadata log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Codex, model: GPT-6): Added translation placement log index row.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #246 for the
+       order-service default complete-by. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #247 for
+       synchronous order creation and the pending-order 409. No requirements, architecture,
+       schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-09, Claude Code, model: claude-opus-5-5): Added Log index row #248 for the
+       view-switch redirect. No requirements, architecture, schema, or API decisions were
+       made by the AI tool.
+Author review:
+Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and added the merge log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
 Scope (2026-11-10, Codex, model: GPT-6): Added rrule runtime import fix log index row.
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added the order chat archiving log index row.
@@ -317,6 +340,9 @@ Author review: tng wen xi
 Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #260 for fix F2
        (shared loopback supertest server). No requirements, architecture, schema, or API
        decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and updated the log index.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review:
 -->
 
@@ -824,47 +850,68 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 227 | 2026-11-08 | frontend                                                      | Floating chat unread badge                                                                                       | Moved live unread totals to the floating shortcut.                                                                                              |
 | 228 | 2026-11-08 | frontend                                                      | New message icon animation                                                                                       | Animated the floating chat icon when unread totals increase.                                                                                    |
 | 229 | 2026-11-08 | frontend                                                      | Incoming message wiggle fix                                                                                      | Triggered whole-button animation directly on incoming messages.                                                                                 |
-| 230 | 2026-11-08 | frontend                                                      | Searchable dropdowns                                                                                             | Added searchable single and multi-select dropdowns.                                                                                             |
-| 231 | 2026-11-08 | frontend                                                      | Searchable dropdown display fixes                                                                                | Fixed chevron alignment and selection display.                                                                                                  |
-| 232 | 2026-11-08 | repository                                                    | Merge main disclosure conflicts                                                                                  | Reconciled usage log and index.                                                                                                                 |
-| 233 | 2026-11-09 | user-service                                                  | Stage 27a: Admin OTP routes and elevation token                                                                  | Added admin elevation OTP routes and a per-device elevation token (access token now carries sid/typ).                                           |
-| 234 | 2026-11-09 | user-service                                                  | Stage 27b: Enforcing elevation on status and role changes                                                        | Suspend/unsuspend and promote/demote now require a valid Elevated-Token, checked last.                                                          |
-| 235 | 2026-11-09 | frontend                                                      | Stage 27c: Frontend (Elevate button/timer, OTP modal, retry flow)                                                | Added the admin elevation UI: Elevate button/timer, OTP modal, kept-reason retry flow.                                                          |
-| 236 | 2026-11-09 | chat-service/frontend                                         | System conversations                                                                                             | Implemented lazy system chats, notification routing, read-only UI and tests.                                                                    |
-| 237 | 2026-11-09 | frontend                                                      | System chat frontend linkage                                                                                     | Pinned FoC chats and displayed incoming notifications with disabled sending.                                                                    |
-| 238 | 2026-11-09 | user-service                                                  | Local authentication startup fix                                                                                 | Set the recorded elevation TTL and restored the frontend auth proxy.                                                                            |
-| 239 | 2026-11-09 | chat-service                                                  | Orderless notification caller instructions                                                                       | Documented orderless payloads, routing, migration and retry examples.                                                                           |
-| 240 | 2026-11-09 | chat-service                                                  | Orderless request body example                                                                                   | Added null-order recipient JSON beside the order-linked request example.                                                                        |
-| 241 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28a: Schema and migration                                                                | Added OrderSeries table, SeriesStatus/RetryType enums, and seriesId/failureReason on requests.                                                  |
-| 242 | 2026-11-09 | user-service                                                  | Scheduled Errands Stage 28b: User-service worker endpoint                                                        | Added GET /users/worker/:id behind a new service-key check, returning status/lockedUntil.                                                       |
-| 243 | 2026-11-09 | chat-service                                                  | Chat service health endpoint                                                                                     | Added order-service-compatible database health endpoint and tests.                                                                              |
-| 244 | 2026-11-09 | supplier-service                                              | Scheduled Errands Stage 28 c1: supplier-service service-key access (PR, not merged)                              | Added a service-key alternative to a JWT on 2 supplier read routes, for order-service's worker.                                                 |
-| 245 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 c2: order-service supplier client                                                     | Added a service-key path to the supplier client for the worker's closed/next-opening checks.                                                    |
-| 246 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 d: order-service user client                                                          | Added a user-service client for the worker's fire-time status/lock check.                                                                       |
-| 247 | 2026-11-09 | order-service                                                 | order-service: Default complete-by of one hour                                                                   | One-hour default complete-by; edit null keeps it; ASAP relabelled.                                                                              |
-| 248 | 2026-11-09 | order-service                                                 | order-service: Synchronous order creation and pending-order 409                                                  | Create reserves credits in the request; 409 while a pending order exists.                                                                       |
-| 249 | 2026-11-09 | frontend                                                      | frontend: Redirect to the new view's main page on view switch                                                    | Toggling view on a view-only page opens the new view's main page.                                                                               |
-| 250 | 2026-11-09 | frontend                                                      | frontend: Redirect to the new view's main page on view switch                                                    | Toggling view on a view-only page opens the new view's main page.                                                                               |
-| 251 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 e: Series API and failed rows                                                         | Added series create/get/list/edit/delete endpoints and failed-row/notice handling.                                                              |
-| 252 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 f: Worker                                                                             | Added the 1-second scheduler that fires series occurrences, retries, and failures.                                                              |
-| 253 | 2026-11-09 | frontend                                                      | Scheduled Errands Stage 28 g: Frontend                                                                           | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip.                                                       |
-| 254 | 2026-11-09 | frontend                                                      | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one                                       | Resend-limit text now comes from the server's err.message, not a hardcoded string.                                                              |
-| 255 | 2026-11-10 | frontend                                                      | Stage 29: Auto-redirect instead of the blocked-page message                                                      | Opening another view's page now redirects to the current view's main page with a toast.                                                         |
-| 256 | 2026-11-10 | frontend                                                      | Stage 30: Email unmask on the admin user page                                                                    | Admin user page's profile email gets the shared eye-icon unmask from /admin/users.                                                              |
-| 257 | 2026-11-10 | user-service                                                  | Fix F3: isLocked uses the DB clock (convention 5)                                                                | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression.                                                          |
-| 258 | 2026-11-10 | user-service                                                  | Fix F4: unlockUser must not spread the full UserRow                                                              | User-facing queries select a shared safe-column list; unlock responds from RETURNING.                                                           |
-| 259 | 2026-11-10 | supplier-service                                              | Merge main into PR 173 branch                                                                                    | Resolved disclosure log and index conflicts.                                                                                                    |
-| 260 | 2026-11-10 | order-service                                                 | RRule native ESM import fix                                                                                      | Fixed CommonJS import and regenerated stale Prisma client.                                                                                      |
-| 261 | 2026-11-10 | order-service, chat-service                                   | Order chat archiving on completion and cancellation                                                              | Added authenticated archiving after final notifications with existing retries.                                                                  |
-| 262 | 2026-11-10 | order-service                                                 | Order worker Compose environment fix                                                                             | Passed required worker keys and service URLs through Compose.                                                                                   |
-| 263 | 2026-11-10 | frontend                                                      | Hide chat list on individual chat pages                                                                          | Removed the conversation sidebar from individual chat pages.                                                                                    |
-| 264 | 2026-11-10 | frontend                                                      | Active and archived chat list tabs                                                                               | Added conditional status tabs with filtered chat pagination.                                                                                    |
-| 265 | 2026-11-10 | frontend                                                      | Preserve system chat across status tabs                                                                          | Restored pinned system chat independently of status filters.                                                                                    |
-| 266 | 2026-11-10 | frontend                                                      | Show system chat only in Active                                                                                  | Kept system chat pinned only in the Active tab.                                                                                                 |
-| 267 | 2026-11-10 | supplier-service                                              | Merge main into PR 173 branch                                                                                    | Resolved disclosure log and index conflicts.                                                                                                    |
-| 268 | 2026-11-10 | user-service                                                  | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite                                       | Tests share one loopback supertest server instead of a wildcard server per request.                                                             |
-| 269 | 2026-11-10 | user-service                                                  | Stage 31a: Config and unlock-token utilities                                                                     | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair.                                                                   |
-| 270 | 2026-11-10 | user-service                                                  | Stage 31b: The email and sending it on every login lock                                                          | Every login lock now emails an unlock link in the background, reusing the Stage 19 retry mechanism.                                             |
-| 271 | 2026-11-10 | user-service                                                  | Stage 31c: Unlock-by-link endpoint                                                                               | Added POST /auth/unlock; shares the admin unlock's clearing code, no audit row, serialized by the row lock.                                     |
-| 272 | 2026-11-10 | frontend                                                      | Stage 31d: Frontend page                                                                                         | Added /unlock-account: reads the token, one button, routes to /login with the matching toast.                                                   |
-| 273 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
+
+| 230 | 2026-11-08 | frontend | Searchable dropdowns | Added searchable single and multi-select dropdowns. |
+| 231 | 2026-11-08 | frontend | Searchable dropdown display fixes | Fixed chevron alignment and selection display. |
+| 232 | 2026-11-08 | repository | Merge main disclosure conflicts | Reconciled usage log and index. |
+| 233 | 2026-11-09 | user-service | Stage 27a: Admin OTP routes and elevation token | Added admin elevation OTP routes and a per-device elevation token (access token now carries sid/typ). |
+| 234 | 2026-11-09 | user-service | Stage 27b: Enforcing elevation on status and role changes | Suspend/unsuspend and promote/demote now require a valid Elevated-Token, checked last. |
+| 235 | 2026-11-09 | frontend | Stage 27c: Frontend (Elevate button/timer, OTP modal, retry flow) | Added the admin elevation UI: Elevate button/timer, OTP modal, kept-reason retry flow. |
+| 236 | 2026-11-09 | chat-service/frontend | System conversations | Implemented lazy system chats, notification routing, read-only UI and tests. |
+| 237 | 2026-11-09 | frontend | System chat frontend linkage | Pinned FoC chats and displayed incoming notifications with disabled sending. |
+| 238 | 2026-11-09 | user-service | Local authentication startup fix | Set the recorded elevation TTL and restored the frontend auth proxy. |
+| 239 | 2026-11-09 | chat-service | Orderless notification caller instructions | Documented orderless payloads, routing, migration and retry examples. |
+| 240 | 2026-11-09 | chat-service | Orderless request body example | Added null-order recipient JSON beside the order-linked request example. |
+
+| 241 | 2026-11-09 | order-service | Scheduled Errands Stage 28a: Schema and migration | Added OrderSeries table, SeriesStatus/RetryType enums, and seriesId/failureReason on requests. |
+
+| 242 | 2026-11-09 | user-service | Scheduled Errands Stage 28b: User-service worker endpoint | Added GET /users/worker/:id behind a new service-key check, returning status/lockedUntil. |
+| 243 | 2026-11-09 | chat-service | Chat service health endpoint | Added order-service-compatible database health endpoint and tests. |
+| 244 | 2026-11-09 | supplier-service | Scheduled Errands Stage 28 c1: supplier-service service-key access (PR, not merged) | Added a service-key alternative to a JWT on 2 supplier read routes, for order-service's worker. |
+
+| 245 | 2026-11-09 | order-service | Scheduled Errands Stage 28 c2: order-service supplier client | Added a service-key path to the supplier client for the worker's closed/next-opening checks. |
+| 246 | 2026-11-09 | order-service | Scheduled Errands Stage 28 d: order-service user client | Added a user-service client for the worker's fire-time status/lock check. |
+| 247 | 2026-11-09 | order-service | order-service: Default complete-by of one hour | One-hour default complete-by; edit null keeps it; ASAP relabelled. |
+
+| 248 | 2026-11-09 | order-service | order-service: Synchronous order creation and pending-order 409 | Create reserves credits in the request; 409 while a pending order exists. |
+
+| 249 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+| 250 | 2026-11-09 | frontend | frontend: Redirect to the new view's main page on view switch | Toggling view on a view-only page opens the new view's main page. |
+
+| 25` | 2026-11-09 | order-service | Scheduled Errands Stage 28 e: Series API and failed rows | Added series create/get/list/edit/delete endpoints and failed-row/notice handling. |
+| 252 | 2026-11-09 | order-service | Scheduled Errands Stage 28 f: Worker | Added the 1-second scheduler that fires series occurrences, retries, and failures. |
+
+| 253 | 2026-11-09 | chat-service, user-service | chat-service/user-service: Message auto-translation | Added per-user auto-translate toggle, BullMQ Gemini translation job and preferred language setting. |
+| 254 | 2026-11-09 | frontend, chat-service | frontend/chat-service: Translation UI and participant translateTo | Added Auto-translate switch, Show original/Translate controls and preferred-language setting. |
+| 255 | 2026-11-09 | user-service | user-service: Prisma migrations for the user database | Added Prisma migrate with baseline and preferred_lang migrations. |
+| 256 | 2026-11-09 | frontend | frontend: Delivery details input length | Aligned delivery details input maxLength with the 250 limit. |
+| 257 | 2026-11-09 | frontend | Chat message metadata layout | Moved timestamps and translation controls below message bubbles. |
+| 258 | 2026-11-09 | frontend | Translation control placement | Moved translation control above the timestamp. |
+| 259 | 2026-11-09 | frontend | Merge main into message translation branch | Resolved conflicts and verified frontend. |
+| 260 | 2026-11-09 | frontend | Scheduled Errands Stage 28 g: Frontend | Added the recurrence picker, series create/edit form, Scheduled section, and failed chip. |
+
+| 261 | 2026-11-09 | frontend | Merge latest main into message translation branch | Resolved merge conflicts and checked frontend. |
+
+| 262 | 2026-11-09 | frontend | F1: show the server's own OTP_RESEND_LIMIT wait instead of a hardcoded one | Resend-limit text now comes from the server's err.message, not a hardcoded string. |
+| 263 | 2026-11-10 | frontend | Stage 29: Auto-redirect instead of the blocked-page message | Opening another view's page now redirects to the current view's main page with a toast. |
+| 264 | 2026-11-10 | frontend | Stage 30: Email unmask on the admin user page | Admin user page's profile email gets the shared eye-icon unmask from /admin/users. |
+| 265 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
+| 266 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+
+| 267 | 2026-11-10 | user-service | Merge main into PR 174 branch | Resolved merge conflicts and retained lock status for language updates. |
+| 268 | 2026-11-09 | order-service                                                 | Scheduled Errands Stage 28 e: Series API and failed rows                                                         | Added series create/get/list/edit/delete endpoints and failed-row/notice handling.                                                              |
+| 269 | 2026-11-10 | user-service                                                  | Fix F4: unlockUser must not spread the full UserRow                                                              | User-facing queries select a shared safe-column list; unlock responds from RETURNING.                                                           |
+| 270 | 2026-11-10 | order-service                                                 | RRule native ESM import fix                                                                                      | Fixed CommonJS import and regenerated stale Prisma client.                                                                                      |
+| 271 | 2026-11-10 | order-service, chat-service                                   | Order chat archiving on completion and cancellation                                                              | Added authenticated archiving after final notifications with existing retries.                                                                  |
+| 272 | 2026-11-10 | order-service                                                 | Order worker Compose environment fix                                                                             | Passed required worker keys and service URLs through Compose.                                                                                   |
+| 273 | 2026-11-10 | frontend                                                      | Hide chat list on individual chat pages                                                                          | Removed the conversation sidebar from individual chat pages.                                                                                    |
+| 274 | 2026-11-10 | frontend                                                      | Active and archived chat list tabs                                                                               | Added conditional status tabs with filtered chat pagination.                                                                                    |
+| 275 | 2026-11-10 | frontend                                                      | Preserve system chat across status tabs                                                                          | Restored pinned system chat independently of status filters.                                                                                    |
+| 276 | 2026-11-10 | frontend                                                      | Show system chat only in Active                                                                                  | Kept system chat pinned only in the Active tab.                                                                                                 |
+| 277 | 2026-11-10 | user-service                                                  | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite                                       | Tests share one loopback supertest server instead of a wildcard server per request.                                                             |
+| 278 | 2026-11-10 | user-service                                                  | Stage 31a: Config and unlock-token utilities                                                                     | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair.                                                                   |
+| 279 | 2026-11-10 | user-service                                                  | Stage 31b: The email and sending it on every login lock                                                          | Every login lock now emails an unlock link in the background, reusing the Stage 19 retry mechanism.                                             |
+| 280 | 2026-11-10 | user-service                                                  | Stage 31c: Unlock-by-link endpoint                                                                               | Added POST /auth/unlock; shares the admin unlock's clearing code, no audit row, serialized by the row lock.                                     |
+| 281 | 2026-11-10 | frontend                                                      | Stage 31d: Frontend page                                                                                         | Added /unlock-account: reads the token, one button, routes to /login with the matching toast.                                                   |
+| 282 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
+| 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
