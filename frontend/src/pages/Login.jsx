@@ -22,6 +22,14 @@
  * Scope: Replaced the raw password input with PasswordInput (Stage 21b) for a show/hide toggle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Bug fix: ignore location.state.from as a post-login redirect target when it points at
+ *        /login or /register, so logging in while sitting on the register page (e.g. via the
+ *        nav's "Log in" button, which captures the current page as `from`) no longer bounces
+ *        the user back to the register/create-account page after a successful login.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useState } from 'react'
@@ -55,7 +63,10 @@ export default function Login() {
     setBusy(true)
     try {
       await login(identifier, password)
-      navigate(location.state?.from ?? '/', { replace: true })
+      const from = location.state?.from
+      const fromPath = typeof from === 'string' ? from : from?.pathname
+      const isAuthPage = fromPath === '/login' || fromPath === '/register'
+      navigate(isAuthPage ? '/' : from ?? '/', { replace: true })
     } catch (err) {
       if (err.code === 'ACCOUNT_NOT_VERIFIED') {
         navigate('/register', {

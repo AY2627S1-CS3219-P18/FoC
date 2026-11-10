@@ -15,6 +15,8 @@ Author review: tng wen xi
 
 Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Resolved usage-log merge conflict and added the required Log index row.
+Author review: tng wen xi
 -->
 <!--
 AI Assistance Disclosure:
@@ -1014,3 +1016,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 311 | 2026-11-10 | chat-service                                                  | Integrate implemented chat behavior into documentation                                                           | Removed discussion history and integrated current behavior into endpoint descriptions.                                                          |
 | 312 | 2026-11-10 | chat-service                                                  | Remove chat image and video message types                                                                        | Removed media enum values and updated tests and documentation.                                                                                  |
 | 313 | 2026-11-10 | chat-service | Remove conversation-ID participant endpoint | Removed unused endpoint and updated participant code, tests and documentation. |
+| 314 | 2026-11-10 | frontend | Fix login redirect to register page after visiting Register then Log in | Excluded auth pages from the post-login "return to" redirect target. |
+| 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |

@@ -17288,3 +17288,66 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+## 2026-11-10 — Fix login redirect to register page after visiting Register then Log in
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** debug, generate
+**Scope:** Debugging, Implementation code
+**Governing decision:** Bug fix to existing login/redirect behavior; no new requirements, schema, or API decisions. Implements the existing intent of `frontend/src/pages/Login.jsx`'s post-login redirect (go back to where the user came from) by excluding auth pages from being a valid "from" target.
+
+**Prompts (exact):**
+> bug! before logging in, when i click "register" then "login", then i login, i login successfully, but it goes to the "create your account" page.i can go to suppliers and errands normally
+>
+> help me find out what could have caused it
+>
+> go for it
+
+**Key responses:**
+Traced the bug: the nav's "Log in" button calls `AuthContext.requireAuth`/`goToLogin`, which captures the *current* page via `useLocation()` as `location.state.from`. If the user is on `/register` when they click "Log in," `/register` gets stored as `from`, and `Login.jsx`'s post-login `navigate(location.state?.from ?? '/', { replace: true })` then sends them back to `/register` instead of home. Fixed by checking whether `from`'s pathname is `/login` or `/register` and falling back to `/` in that case, in `frontend/src/pages/Login.jsx`. Verified: full frontend suite (305 tests, 40 files) passed after the change.
+
+**Files:**
+- `frontend/src/pages/Login.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+
+## 2026-11-10 — Resolve usage-log merge conflict
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Resolved the append-only usage-log conflict and indexed this task.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | docs
+**Scope:** Refactor/Docs
+**Governing decision:** AGENTS.md §5 append-only disclosure policy; both existing branch versions of ai/usage-log.md.
+
+**Prompts (exact):**
+> bro help me solve the merge conflicts.
+
+**Key responses:**
+Resolved the sole unmerged file, ai/usage-log.md, by preserving both branches' complete entries and removing conflict markers. Retained the already-merged README index rows and staged frontend login change without modifying implementation. Added this disclosure and its README index row.
+Verification: confirmed that the resolved log preserves the complete HEAD version followed by the incoming branch's appended entry; checked for remaining conflict markers and whitespace errors. No runtime tests run because the resolution only changes disclosure Markdown.
+
+**Files:**
+- `ai/usage-log.md` (resolved conflict and appended this entry)
+- `README.md` (appended disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
