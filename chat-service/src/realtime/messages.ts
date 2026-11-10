@@ -6,9 +6,6 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified read receipt endpoint.
  * Author review: tng wen xi
- * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Implemented the team-specified message translation (toggle, queue, translated content, completion event).
- * No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
  */
 import type { Server } from "socket.io";
 import type { sendMessage } from "../services/conversations.service.js";
@@ -41,20 +38,5 @@ export function createReadPublisher(io: Server): ReadPublisher {
     io.to(`chat:${receipt.conversationId}`)
       .except(`user:${receipt.userId}`)
       .emit("messsage:read", receipt);
-  };
-}
-
-// AI-generated (edited by <name>).
-export type TranslatedMessage = {
-  messageId: string;
-  conversationId: string;
-  userId: string;
-  translatedContent: string;
-};
-export type TranslatedPublisher = (translated: TranslatedMessage) => void;
-export function createTranslatedPublisher(io: Server): TranslatedPublisher {
-  return ({ userId, ...payload }) => {
-    // Only the user the translation was prepared for receives it.
-    io.to(`user:${userId}`).emit("message:translated", payload);
   };
 }

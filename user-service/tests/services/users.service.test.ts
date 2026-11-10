@@ -4,24 +4,24 @@
  * Scope: Generated Vitest integration tests (real test DB) for users.service.ts, covering the
  *        Stage 9 Verification bullets in instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added tests for changeUserRole, covering the Stage 10 Verification bullets.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Updated the expected keys for the new active_view column (Stage 11); no new test cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Updated the expected UserResponse keys for isLocked/lockedUntil/lockLevel, and added
  *        coverage for listUsers' `locked` filter and unlockUser's permission rules and effect
  *        (clears the login lock and the OTP send blocks), per instructions.md Stage 18d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: listUsers/getUserById/changeUserStatus/unlockUser calls pass the new requesterId
@@ -29,14 +29,14 @@
  *        getUserById masking test, and a getFullEmail/logUnmaskValidationFailure suite
  *        covering instructions.md Stage 20's 20a Verification bullets (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: changeUserStatus/changeUserRole/unlockUser calls pass the new reason/userAgent
  *        params (fixture values; existing assertions are unchanged). Per instructions.md
  *        Stage 26b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Replaced the "getFullEmail / logUnmaskValidationFailure" console-log suite with
@@ -44,14 +44,14 @@
  *        EMAIL]` console lines, since getFullEmail now takes a `reason` and writes a row
  *        instead of logging. Per instructions.md Stage 26c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment):
  *        unlockUser and getFullEmail no longer take a `reason` param; dropped it from every
  *        call site and the one assertion that checked the stored value (now "N/A").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review: Congchen
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: changeUserStatus/changeUserRole calls now pass a fixture `sid` and a valid
@@ -126,7 +126,6 @@ describe('listUsers', () => {
           'isLocked',
           'lockLevel',
           'lockedUntil',
-          'preferredLang',
           'role',
           'status',
           'updatedAt',
