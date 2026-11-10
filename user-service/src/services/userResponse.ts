@@ -23,9 +23,15 @@
  *        UserRowWithLock so a query that omits is_locked fails to compile.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F4 - the mapper's input type is now SafeUserRow (no password_hash); the body is
+ *        unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import type { UserRowWithLock } from '../db/queries/users.queries.js';
+import type { SafeUserRow } from '../db/queries/users.queries.js';
 import { maskEmail } from '../utils/maskEmail.js';
 
 export interface UserResponse {
@@ -47,7 +53,9 @@ export interface UserResponse {
 // requesterId masks email (Stage 20) unless the row is the requester's own.
 // isLocked is decided in SQL (IS_LOCKED_SQL, fix F3): the row type requires is_locked, so a
 // query that forgets to select it is a compile error rather than a silently false field.
-export function toUserResponse(row: UserRowWithLock, requesterId: string): UserResponse {
+// The input type has no password_hash (SafeUserRow, fix F4); a FOR UPDATE row that does carry it
+// still type-checks structurally, but only the fields listed below are ever copied out.
+export function toUserResponse(row: SafeUserRow, requesterId: string): UserResponse {
   return {
     id: row.id,
     username: row.username,

@@ -7,9 +7,14 @@
 //        rows from earlier tests (whose users are gone) can never match.
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
-import request from 'supertest';
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import * as auditLogQueries from '../../src/db/queries/auditLog.queries.js';
 import pool from '../../src/db/pool.js';
 import { withTransaction } from '../../src/db/transaction.js';
@@ -23,7 +28,7 @@ const UNAUTHORIZED = { message: 'Unauthorized', code: 'UNAUTHORIZED' };
 const FORBIDDEN = { message: 'Forbidden', code: 'FORBIDDEN' };
 
 const get = (path: string, token?: string) => {
-  const r = request(app).get(path);
+  const r = api().get(path);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
 

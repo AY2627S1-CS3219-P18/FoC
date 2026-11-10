@@ -29,11 +29,16 @@
 //   refresh of the same login. Governing decision: instructions.md Stage 27.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { sha256 } from '../../src/utils/hash.js';
 import { NEW_PASSWORD, PASSWORD } from '../helpers/constants.js';
 import {
@@ -78,7 +83,7 @@ resetEmailMock();
 beforeEach(truncateAll);
 afterEach(truncateAll);
 
-const post = (path: string) => request(app).post(path);
+const post = (path: string) => api().post(path);
 
 function omit<T extends Record<string, unknown>>(obj: T, key: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
@@ -695,7 +700,7 @@ describe('POST /auth/logout', () => {
     const user = await createActiveUser(1);
     const { accessToken, refreshToken } = await loginTokens(user);
     await post('/auth/logout').set('Cookie', refreshCookie(refreshToken));
-    const res = await request(app)
+    const res = await api()
       .get('/users/me')
       .set('Authorization', `Bearer ${accessToken}`);
     expect(res.status).toBe(200);
@@ -815,14 +820,14 @@ describe('POST /auth/refresh', () => {
 // ---------------------------------------------------------------------------------------------
 describe('GET /auth/.well-known/jwks.json', () => {
   it('requires no Authorization header: 200 { keys: [...] }', async () => {
-    const res = await request(app).get('/auth/.well-known/jwks.json');
+    const res = await api().get('/auth/.well-known/jwks.json');
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.keys)).toBe(true);
     expect(res.body.keys).toHaveLength(1);
   });
 
   it('publishes the current key in JWK format, matching the kid on a freshly issued token', async () => {
-    const res = await request(app).get('/auth/.well-known/jwks.json');
+    const res = await api().get('/auth/.well-known/jwks.json');
     const [key] = res.body.keys;
     expect(key).toMatchObject({ kty: 'RSA', use: 'sig', alg: 'RS256' });
     expect(typeof key.n).toBe('string');
@@ -837,7 +842,7 @@ describe('GET /auth/.well-known/jwks.json', () => {
 // ---------------------------------------------------------------------------------------------
 describe('GET /auth/verify', () => {
   it('no longer exists: 404', async () => {
-    const res = await request(app)
+    const res = await api()
       .get('/auth/verify')
       .set('Authorization', `Bearer ${signToken()}`);
     expect(res.status).toBe(404);
@@ -1613,7 +1618,7 @@ describe('POST /auth/reset-password', () => {
       const { user, otp } = await withForgotOtp();
       const { accessToken } = await loginTokens(user);
       await reset(user.email, otp);
-      const res = await request(app)
+      const res = await api()
         .get('/users/me')
         .set('Authorization', `Bearer ${accessToken}`);
       expect(res.status).toBe(200);
