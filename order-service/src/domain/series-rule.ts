@@ -9,9 +9,15 @@
  *        UTC. No requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Fixed rrule CommonJS interoperability under native ESM.
+ * Author review: tng wen xi
  */
 
-import { RRule } from 'rrule';
+// AI-generated
+import rrule, { type RRule as RRuleInstance } from 'rrule';
+
+// The runtime package is CommonJS; native ESM exposes its exports via default.
+const { RRule } = rrule;
 
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -27,7 +33,10 @@ export function fromSgWallClock(wall: Date): Date {
  * Builds an RRule from the series' stored RRULE text (no DTSTART in it; see
  * instructions.md's Model table) and its DTSTART, or null when the text does not parse.
  */
-export function buildRule(ruleText: string, dtstartUtc: Date): RRule | null {
+export function buildRule(
+  ruleText: string,
+  dtstartUtc: Date,
+): RRuleInstance | null {
   let options;
   try {
     options = RRule.parseString(ruleText);
@@ -39,13 +48,20 @@ export function buildRule(ruleText: string, dtstartUtc: Date): RRule | null {
 }
 
 /** The first occurrence at/after `afterUtc` (inclusive), or null when the rule has none. */
-export function nextOccurrenceAtOrAfter(rule: RRule, afterUtc: Date): Date | null {
+export function nextOccurrenceAtOrAfter(
+  rule: RRuleInstance,
+  afterUtc: Date,
+): Date | null {
   const wall = rule.after(toSgWallClock(afterUtc), true);
   return wall ? fromSgWallClock(wall) : null;
 }
 
 /** Up to `n` occurrences strictly after `afterUtc`, in order. */
-export function upcomingOccurrences(rule: RRule, afterUtc: Date, n: number): Date[] {
+export function upcomingOccurrences(
+  rule: RRuleInstance,
+  afterUtc: Date,
+  n: number,
+): Date[] {
   const out: Date[] = [];
   let cursor = toSgWallClock(afterUtc);
   for (let i = 0; i < n; i++) {

@@ -11,9 +11,9 @@
  *        made by the AI tool.
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added the requested /chats list with titles, previews and conversation navigation.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 g (instructions.md) - added /series/new and /series/:id/edit (proposed to
  *        and confirmed with the user before adding, per the stage's instruction), reusing
@@ -96,7 +96,13 @@
  */
 
 import { useEffect, useRef } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+} from "react-router-dom";
 import SessionExpiryBanner from "./components/SessionExpiryBanner";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
@@ -148,7 +154,8 @@ function NavigationHistoryTracker() {
       first.current = false;
       return;
     }
-    if (navigationType === "PUSH" || navigationType === "POP") recordNavigation();
+    if (navigationType === "PUSH" || navigationType === "POP")
+      recordNavigation();
   }, [pathname, navigationType]);
   return null;
 }
@@ -268,8 +275,22 @@ export default function App() {
               </RequireAuth>
             }
           />
-          <Route path="/chats" element={<RequireAuth><Chat /></RequireAuth>} />
-          <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+          <Route
+            path="/chats"
+            element={
+              <RequireAuth>
+                <Chat />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <RequireAuth>
+                <Chat />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/chat/:id"
             element={

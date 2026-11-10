@@ -300,6 +300,20 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added rrule runtime import fix log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the order chat archiving log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Added the worker Compose environment fix log index row.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the individual chat page list visibility change.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the active/archived chat tabs implementation.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the system-chat status-tab fix.
+Author review: tng wen xi
+Scope (2026-11-10, Codex, model: GPT-6): Indexed the Active-only system chat correction.
+Author review: tng wen xi
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -848,3 +862,17 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 257 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
 
 | 258 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+
+| 259 | 2026-11-10 | order-service | RRule native ESM import fix | Fixed CommonJS import and regenerated stale Prisma client. |
+
+| 260 | 2026-11-10 | order-service, chat-service | Order chat archiving on completion and cancellation | Added authenticated archiving after final notifications with existing retries. |
+
+| 261 | 2026-11-10 | order-service | Order worker Compose environment fix | Passed required worker keys and service URLs through Compose. |
+
+| 262 | 2026-11-10 | frontend | Hide chat list on individual chat pages | Removed the conversation sidebar from individual chat pages. |
+
+| 263 | 2026-11-10 | frontend | Active and archived chat list tabs | Added conditional status tabs with filtered chat pagination. |
+
+| 264 | 2026-11-10 | frontend | Preserve system chat across status tabs | Restored pinned system chat independently of status filters. |
+
+| 265 | 2026-11-10 | frontend | Show system chat only in Active | Kept system chat pinned only in the Active tab. |

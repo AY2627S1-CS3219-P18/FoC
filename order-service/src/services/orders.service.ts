@@ -77,11 +77,11 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): createOrder with no completeBy (absent or null) stores now + 1 hour
  *        instead of NULL; editOrder with completeBy: null keeps the stored value (George,
@@ -103,6 +103,8 @@
  *        seriesId attached. createOrder itself is behaviourally unchanged. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
  */
 
 import type { PrismaClient } from '../db/prisma.js';
@@ -127,7 +129,10 @@ import {
 } from '../domain/order-status.js';
 import { canViewOrder, type Viewer } from '../domain/order-access.js';
 import type { SuppliersClient } from '../clients/suppliers.client.js';
-import type { CreditsClient, CreditCallResult } from '../clients/credits.client.js';
+import type {
+  CreditsClient,
+  CreditCallResult,
+} from '../clients/credits.client.js';
 import type { CreateOrderPayload, EditOrderPayload } from '../types/orders.js';
 import {
   eventsForEdit,
@@ -395,7 +400,9 @@ export async function createPendingOrderAndSettle(
   });
 
   if (reserved.ok) {
-    const order = await settleReservation(prisma, created.id, 'open', { events });
+    const order = await settleReservation(prisma, created.id, 'open', {
+      events,
+    });
     return { order, reserved };
   }
 
@@ -435,7 +442,9 @@ async function settleReservation(
   );
   // Only this request moves its own pending order, so a refusal here is a bug.
   if (!result.ok) {
-    throw new Error(`Order ${orderId} could not move to ${to}: ${result.error}`);
+    throw new Error(
+      `Order ${orderId} could not move to ${to}: ${result.error}`,
+    );
   }
   return result.order;
 }
@@ -709,7 +718,14 @@ export const transitionOrder = async (
   }
   if (to === 'accepted')
     tasks.push(buildChatParticipantTask(order.id, actorId));
-  if (message) tasks.push(buildChatNotificationTask(order.id, message));
+  if (message)
+    tasks.push(
+      buildChatNotificationTask(
+        order.id,
+        message,
+        to === 'completed' || to === 'cancelled',
+      ),
+    );
 
   // use versioning to prevent data race by updating only on row with same version as found order;
   // any credit task commits in the same transaction, so a lost race writes nothing.

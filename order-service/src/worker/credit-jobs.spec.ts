@@ -18,13 +18,13 @@
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
- * Author review:
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Added tests for order-based participant delivery.
- * Author review:
+ * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): credit_reserve is no longer a worker job (createOrder reserves
  *        synchronously, George 2026-11-09); its cases are replaced by one asserting a
@@ -36,9 +36,12 @@
  *        (orderId null + recipient, for series notices) via isChatNotificationPayload.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Tested archive failure propagation through the notification worker.
+ * Author review: tng wen xi
  */
 
 import { UnrecoverableError } from 'bullmq';
+import { createHttpChatClient } from '../clients/chat.client.js';
 import type {
   CreditCallResult,
   CreditsClient,
@@ -213,7 +216,7 @@ describe('unknown tasks and final failures', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe('chat_create', () => {
   const data = {
     orderId: ORDER_ID,
@@ -289,14 +292,21 @@ describe('chat_notification', () => {
       credits: { reserve: t.reserve, release: t.release },
       chat: { create: vi.fn(), notify, addParticipant: vi.fn() },
     });
-    const seriesData = { orderId: null, recipient: REQUESTER, messageId: 'm-1', message: 'hi' };
-    await expect(process(job('chat_notification', seriesData))).resolves.toBeUndefined();
+    const seriesData = {
+      orderId: null,
+      recipient: REQUESTER,
+      messageId: 'm-1',
+      message: 'hi',
+    };
+    await expect(
+      process(job('chat_notification', seriesData)),
+    ).resolves.toBeUndefined();
     expect(notify).toHaveBeenCalledWith(seriesData);
 
     const invalid = { orderId: null, messageId: 'm-1', message: 'hi' };
-    await expect(process(job('chat_notification', invalid))).rejects.toBeInstanceOf(
-      UnrecoverableError,
-    );
+    await expect(
+      process(job('chat_notification', invalid)),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });
 
@@ -339,4 +349,35 @@ describe('chat_participant', () => {
       expect(t.outbox.createMany).not.toHaveBeenCalled();
     },
   );
+});
+
+// AI-generated (edited by <name>).
+it('retries the terminal notification job when archive fails, without changing the order', async () => {
+  const t = setup('completed');
+  const fetchImpl = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response('{}', { status: 201 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+  const process = createCreditJobProcessor({
+    prisma: t.prisma as unknown as PrismaClient,
+    credits: { reserve: t.reserve, release: t.release },
+    chat: createHttpChatClient('http://chat-service:3000', 'test', fetchImpl),
+  });
+  const data = {
+    orderId: ORDER_ID,
+    messageId: REQUESTER,
+    message: 'The order has been marked as completed',
+    archiveAfter: true,
+  };
+  await expect(process(job('chat_notification', data))).rejects.toThrow(
+    'transient',
+  );
+  await expect(
+    process(job('chat_notification', data, { attemptsMade: 1 })),
+  ).resolves.toBeUndefined();
+  expect(t.row()?.status).toBe('completed');
+  expect(t.outbox.createMany).not.toHaveBeenCalled();
+  expect(fetchImpl).toHaveBeenCalledTimes(4);
 });

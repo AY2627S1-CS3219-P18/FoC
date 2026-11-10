@@ -2,7 +2,7 @@
 -- Tool: Codex (model: GPT-6), date: 2026-11-08
 -- Scope: Generated migration from the team-supplied message schema.
 -- No requirements, architecture, schema, or API decisions were made by the AI tool.
--- Author review:
+-- Author review: tng wen xi
 -- CreateTable
 CREATE TABLE `messages` (
     `id` CHAR(36) NOT NULL,

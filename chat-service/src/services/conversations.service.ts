@@ -29,6 +29,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
  */
 import type { PrismaClient } from "../db/prisma.js";
 export interface CreationInput {
@@ -598,4 +600,27 @@ async function getSystemConversation(prisma: PrismaClient, userId: string) {
     }
     throw error;
   }
+}
+
+// AI-generated (edited by <name>).
+export async function archiveOrderConversation(
+  prisma: PrismaClient,
+  orderId: string,
+  userId?: string,
+) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { orderId },
+    select: {
+      conversationId: true,
+      participants: { where: { userId }, select: { userId: true } },
+    },
+  });
+  if (!conversation) return { status: 404 as const };
+  if (userId !== undefined && conversation.participants.length === 0)
+    return { status: 403 as const };
+  await prisma.conversation.update({
+    where: { conversationId: conversation.conversationId },
+    data: { status: "ARCHIVED" },
+  });
+  return { status: 200 as const };
 }
