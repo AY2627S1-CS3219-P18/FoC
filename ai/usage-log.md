@@ -16073,3 +16073,49 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — Fix duplicate mode-switch toasts
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded duplicate mode toast debugging and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** instructions.md Stage 29, especially Feedback on redirect and Toggle failure; existing ActiveViewToggle and ViewGate behavior.
+
+**Prompts (exact):**
+
+> howcome when i change from courier to requester mode the toast comes twice
+
+> can help solve this?
+
+**Key responses:**
+
+- Traced duplicate feedback to toggle success and ViewGate redirect effects. Kept the optimistic view update and navigation in the same React transition. Added a per-redirect ref check so StrictMode effect replay does not notify twice.
+- Added regression tests using actual React state, guarded routes, and StrictMode for both switch directions, plus direct gated-page StrictMode coverage.
+- Confirmed all three new regressions fail with the original implementation (two toast calls each) and pass with the fix. Final focused suites: 22 tests passed. Existing failure return and shared-page tests pass.
+- Frontend production build passed with a chunk-size warning. Lint exited successfully with warnings in other existing files. First test command mistakenly ran from the repository root and failed because it has no package.json; reran from frontend successfully. Full frontend suite and browser verification were not run.
+
+**Files:**
+
+- `frontend/src/components/ActiveViewToggle.jsx` (modified)
+- `frontend/src/components/RouteGuards.jsx` (modified)
+- `frontend/tests/components/ActiveViewToggle.test.jsx` (modified)
+- `frontend/tests/components/RouteGuards.test.jsx` (modified)
+- `README.md` (modified disclosure and Log index)
+- `ai/usage-log.md` (appended)
+
+**Deviations / questions raised for the team:**
+None
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi

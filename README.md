@@ -1,5 +1,8 @@
 <!--
 AI Assistance Disclosure:
+Scope (2026-11-10, Codex, model: GPT-6): Added duplicate mode toast fix log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Added order-service test verification log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: tng wen xi
@@ -972,3 +975,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 285 | 2026-11-10 | chat-service | ECS Fargate: chat-service database TLS, keep-alive and CD | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD. |
 | 287 | 2026-11-10 | chat-service, frontend | Merge main translation with chat-service updates | Preserved translation, chat behavior and both branches’ disclosures; verified tests and builds. |
 | 288 | 2026-11-10 | order-service | Order-service test verification and assertion fixes | Updated stale chat outbox assertions; verified unit and E2E tests. |
+| 289 | 2026-11-10 | frontend | Fix duplicate mode-switch toasts | Batched mode navigation updates and guarded repeated redirect feedback. |
