@@ -848,3 +848,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 257 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
 
 | 258 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+| 259 | 2026-11-10 | chat-service | Chat Service: AWS hardening parity (RDS TLS, ALB keep-alive) and CI coverage | DB_SSL, RDS CA bundle, keep-alive timeouts and a CI test + docker-build job |

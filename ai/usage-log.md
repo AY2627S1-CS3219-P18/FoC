@@ -14003,3 +14003,121 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+---
+
+## 2026-11-10 — Chat Service: AWS hardening parity (RDS TLS, ALB keep-alive) and CI coverage
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `docs/ecs-fargate-session-prompt.md` (George's ECS Fargate plan) Phase 1 items 1, 3, 4, 8 and 10. Every value — the region CA bundle URL and path, `ADD` over a vendored copy, the 65000/66000 timeouts, `DB_SSL` defaulting off — is read from that plan and from the four backends that already implement it, not chosen here. The chat-service target name `production` is read from its Dockerfile.
+
+**Prompts (exact):**
+
+> PR 1 — bring chat-service up to the AWS hardening standard the other four backends already have. I've branched from main already.
+>
+> ## Read first, in full — do not grep
+>
+>   - docs/ecs_fargate.md, specifically Phase 1 items 1–4 and item 10. Read the whole file. Two reports in a row have missed things by grepping a document named for exactly the topic.
+>   - How user-service, credit-service, supplier-service and order-service each implement this. They are the pattern; follow it rather than inventing a variant.
+>   - supplier-service's MySQL TLS setup in particular, since it is the closest analogue.
+>
+> ## The three changes
+>
+> **1. TLS for RDS — this is the blocking one.**
+> Our RDS MySQL parameter group sets require_secure_transport=1, so it rejects plaintext. chat-service's db/prisma.ts constructs PrismaMariaDb with host, port, user, password, database and timezone and no TLS option at all, so it cannot connect as written.
+>
+>   - Add DB_SSL to chat-service's config schema, **defaulting to false**, so compose and CI are unchanged.
+>   - Pass the TLS option to the mariadb adapter when it is true.
+>   - Add AWS's RDS CA bundle to chat-service's Dockerfile, the same way the other four do it.
+>
+> **Investigate and report, don't guess:** supplier needed `verifyIdentity: true` because mysql2 does not verify the certificate hostname. Read @prisma/adapter-mariadb's actual API and tell me whether it has an equivalent, and what you set. If the adapter's options are unclear, say so rather than picking something plausible.
+>
+> **2. Timeouts.** keepAliveTimeout = 65000 and headersTimeout = 66000 in chat-service/src/server.ts. Node's 5s default against the ALB's 60s idle timeout causes sporadic 502s — already diagnosed once on this project, which is why all four other backends set this.
+>
+> **3. chat-service/.env.example** — add the new variables, per Phase 1 item 10.
+>
+> ## CI
+>
+> Add chat-service to .github/workflows/ci.yml:
+>
+>   - a test job: npm ci + npm test. The specs use `import type` for every Prisma import, so they need no database and no prisma generate — confirm that holds rather than assuming it.
+>   - a docker-build leg with **target: production**, not `prod`. Chat follows order-service's naming. Copying the wrong line is a known trap.
+>
+> ## Scope
+>
+> Nothing else in chat-service. No refactoring, no tidying, no unrelated fixes. Nothing that requires AWS to exist — no deploy.yml, no ECR, no task definitions. Those are PR 2.
+>
+> ## Verify
+>
+>   - `docker build --target production` succeeds with the CA bundle in place
+>   - chat-service's tests still pass
+>   - the service still starts under compose with DB_SSL unset or false
+>   - config parses with DB_SSL both true and false
+>
+> If there is a cheap way to actually prove the TLS path connects — a local MySQL with TLS enabled, say — do it. If not, say plainly that the TLS path is unverified against a real server, because I cannot test it until the RDS instance exists.
+>
+> ## Then
+>
+> AGENTS.md compliance as usual — attribution headers, the ai/usage-log.md entry, the README log index row. Note that the log index currently has two tables again; append to the live one, do not try to fix the duplication in this PR.
+>
+> PR header and body. Wen Xi reviews this one, so write it for her: what changed in her service, why each piece is needed, and what the hostname-verification finding was.
+>
+> Show me the full diff before applying anything.
+
+> Approved — apply all six and run the verification.
+>
+> Three things to confirm first:
+>
+>   - How do user/credit/supplier/order get the RDS CA bundle? If they vendor and COPY it rather than ADD from a URL, match them. An unpinned build-time download is a difference I'd want to be deliberate about, not incidental.
+>   - Do they use the region bundle or global-bundle.pem? Match whichever.
+>   - Confirm compose doesn't need DB_SSL added anywhere for local to stay unchanged.
+>
+> Good call on not faking the TLS test with a self-signed cert.
+>
+> In the PR body, call out for George that the task definition must set NODE_EXTRA_CA_CERTS to the bundle path. The image carries the file but nothing trusts it without that, and the failure mode is an unknown-CA error that won't look like a missing variable.
+
+**Key responses:**
+
+_The hostname-verification finding, which was the question asked._ `@prisma/adapter-mariadb@7.10.1` wraps **`mariadb@3.5.4`** (MariaDB Connector/Node.js), not `mysql2`, and **has no `verifyIdentity` equivalent because it does not need one**. Its config typing (`node_modules/mariadb/types/share.d.ts:766`) is `ssl?: boolean | (SecureContextOptions & { rejectUnauthorized?: boolean })`. In `node_modules/mariadb/lib/cmd/handshake/authentication.js:123-135`, for any certificate that is not self-signed, the driver unconditionally calls `tls.checkServerIdentity(opts.ssl.servername ?? opts.host, info.tlsCert)` and fails the handshake with `ER_TLS_IDENTITY_ERROR` on a mismatch. Hostname checking is therefore always on and cannot be opted into or out of, only substituted via a custom `checkServerIdentity` or renamed via `servername` — the opposite of `mysql2`, where it is off unless requested. Separately, `connection-options.js:150` sets `rejectUnauthorized = opts.ssl.rejectUnauthorized !== false`, so an `ssl` object already defaults to strict. **Set: `ssl: { rejectUnauthorized: true }` and nothing else** — strictly redundant, but it keeps all five services reading alike, and the code comment records why supplier's fifth option is absent rather than forgotten.
+
+_The three confirmations asked for before applying._ (1) All four backends **`ADD` the bundle from the URL**; no `.pem` or `.crt` is committed anywhere in the repo, so matching them means `ADD`. Flagged to the user that this is an unpinned build-time download with no checksum — a repo-wide property, deliberately matched rather than diverged from in this PR. (2) All four use the **region** bundle, `ap-southeast-1/ap-southeast-1-bundle.pem` → `/etc/ssl/rds-ap-southeast-1-bundle.pem`, not `global-bundle.pem`. (3) **Compose needs nothing**: neither compose file sets `DB_SSL`, `REDIS_TLS` or `NODE_EXTRA_CA_CERTS` for any service, and the root `.env.example` has no `DB_SSL`, so the schema default `"false"` leaves local behaviour unchanged by omission. Confirmed against the resolved config: `docker compose config` shows no `DB_SSL` in chat-service's environment.
+
+_Shape of the change._ `createPrismaClient` gained a second parameter (`ssl = false`) rather than a new config layer, because chat-service's `loadEnv()` returns the flat parsed env and only `server.ts` calls the factory at run time. Default `false` means every existing call site and both compose files behave exactly as before.
+
+**Verification actually run:**
+
+1. **`docker build --target production`** — exit 0. The bundle is in the image at `/etc/ssl/rds-ap-southeast-1-bundle.pem`, mode `644`, root-owned, 3 certificates, and readable by the runtime user (`uid=1000(node)`), with `/etc/ssl` at `755` so it can be traversed.
+2. **Tests** — `npm test`: **12 files, 190 tests, all passing**, unchanged from the pre-change baseline.
+3. **Compose start with `DB_SSL` unset** — brought up `chat-db`, `order-redis` and `chat-service` from the base compose file. Migrations applied ("All migrations have been successfully applied."), `chat-service listening on :3000`, container `running` with 0 restarts, and `GET http://localhost:3005/health` returned `200 {"status":"ok","database":"up"}`. Stopped afterwards with volumes intact.
+4. **Config parses both ways** — `DB_SSL` omitted → `"false"`; `"false"` → `"false"`; `"true"` → `"true"`; `"yes"` → rejected at startup rather than silently treated as off. `createPrismaClient` constructs successfully with `ssl` both `false` and `true`, proving the adapter accepts the option shape (construction opens no connection).
+5. **The CI claim was confirmed, not assumed** — the suite was run with `src/generated` absent and no `prisma generate`: 190/190 green. Only `src/db/prisma.ts` and `src/server.ts` import the generated client at run time and no spec imports either, so the CI job needs no `db:generate` step. `npm run typecheck` and `npm run build` would need one, so they are deliberately not in the job.
+6. **`actionlint`** on the modified workflow — the same two pre-existing `SC2034` warnings on the wait-for-Postgres loops, and no new findings.
+7. **`NODE_EXTRA_CA_CERTS` proved necessary** — in the built image, `tls.getCACertificates('extra')` returns **0** without the variable and **3** with it (default store 118 → 121). The file is inert until the task definition points at it. (A first attempt used `tls.rootCertificates`, which is the static bundled list and never reflects the variable; that was the wrong probe, not a wrong setup.)
+
+**TLS path against a real server: unverified.** The code path that matters is the CA-issued branch above; a locally generated self-signed certificate takes the *other* branch entirely (`ER_SELF_SIGNED`), so a local TLS MySQL would have exercised the wrong code and given false confidence. It cannot be verified until the RDS instance exists.
+
+**Files:**
+
+- `chat-service/src/config/env.ts` (modified: `DB_SSL`)
+- `chat-service/src/db/prisma.ts` (modified: `ssl` parameter, adapter TLS option)
+- `chat-service/src/server.ts` (modified: pass `DB_SSL` through, keep-alive timeouts)
+- `chat-service/Dockerfile` (modified: RDS CA bundle in the production stage)
+- `chat-service/.env.example` (modified: `DB_SSL`)
+- `.github/workflows/ci.yml` (modified: chat-service test job and docker-build leg)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **`NODE_EXTRA_CA_CERTS` must be set in chat-service's ECS task definition** to `/etc/ssl/rds-ap-southeast-1-bundle.pem`, as it already is on the other four backends. Measured above: without it Node loads 0 extra roots, so TLS to RDS fails with an unknown-CA error that does not look like a missing variable. George's step, in PR 2.
+2. **The unpinned CA download** is matched from the existing four, not chosen. No checksum and no pinned version, so a build can fail or silently take new contents if AWS changes the file. Vendoring the bundle would make builds reproducible; that is a repo-wide decision for the team, not this PR.
+3. **The `DB_SSL=true` path is unverified against a real server**, as above.
+4. **The README Log index still has two tables** (headers at lines 426 and 556, 300+ numbered rows). This entry's row was appended to the live table only; the duplication was deliberately left alone at the user's instruction. The earlier de-duplication landed in PR #147's branch but was lost when that PR's README conflict was resolved.
+5. **Not done here, by scope:** `deploy.yml`, ECR, task definitions, ALB rules and the run-checklist update. Those need AWS to exist and are PR 2. The missing ALB rules for `/chat`, `/chat/*`, `/chat-socket.io`, `/chat-socket.io/*` remain the single most likely thing to be forgotten there.
+6. **Noticed, not changed:** `compose.yaml` now requires `SUPPLIER_ORDER_SERVICE_API_KEY`, which the root `.env.example` does carry — the template is complete. Mentioned only because a local tree without a root `.env` cannot run any compose command until it is created from the template.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

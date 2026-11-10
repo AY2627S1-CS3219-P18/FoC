@@ -11,6 +11,10 @@
 #     read from the existing Dockerfiles, not chosen here.
 #     No requirements, architecture, schema, or API decisions were made by the AI tool.
 #   Author review:
+#   2026-11-10: Added the chat-service test job and docker-build leg. Its target name and the
+#     no-database test setup are read from the service, not chosen here.
+#     No requirements, architecture, schema, or API decisions were made by the AI tool.
+#   Author review:
 
 name: CI
 
@@ -198,6 +202,31 @@ jobs:
       - run: npm test
 
   # ---------------------------------------------------------------------------------
+  # chat-service
+  #
+  # No service containers. Every spec injects a Prisma double and imports PrismaClient with
+  # `import type`, so nothing reaches the generated client at run time — only src/db/prisma.ts
+  # and src/server.ts do, and no spec imports either. Verified by running the suite with
+  # src/generated absent and no `prisma generate`: 12 files, 190 tests, green. `npm run typecheck`
+  # and `npm run build` would need `db:generate` first, so they are deliberately not run here.
+  # ---------------------------------------------------------------------------------
+  chat-service:
+    name: chat-service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chat-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: chat-service/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  # ---------------------------------------------------------------------------------
   # frontend
   #
   # No test tooling exists (no vitest/jest/testing-library/playwright in devDependencies),
@@ -271,6 +300,9 @@ jobs:
           # renaming another service's stage would also mean editing compose.yaml and
           # compose.dev.yaml, which is not this change's business. See the PR note.
           - service: order-service
+            target: production
+          # `production`, not `prod`: chat-service follows order-service's stage naming.
+          - service: chat-service
             target: production
     steps:
       - uses: actions/checkout@v4
