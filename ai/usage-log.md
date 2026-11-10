@@ -15384,3 +15384,117 @@ _Questions answered from the code, not changed._ The history is server-side keys
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — Supplier worker Compose environment fix
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** debug
+**Scope:** Debugging; Boilerplate
+**Governing decision:** `instructions.md` Stage 28 c1 (`SUPPLIER_ORDER_SERVICE_API_KEY`, required by `supplier-service/src/config.ts`, which `supplier-service/src/worker/main.ts` also imports). The interpolation line was copied unchanged from the existing `supplier-service` block in `compose.yaml`.
+
+**Prompts (exact):**
+
+The prompt was written by another Claude Code session (George's ECS deployment session) and handed to this session. Quoted verbatim, except for the local notes-folder path at the end, which is left out:
+
+> Background (from the session that started this one):
+> George is deploying the FoC campus errand app to AWS ECS Fargate (plan in `docs/ecs-fargate-session-prompt.md`). While checking which settings `main` added since the 2026-11-07 deploy, I found that `SUPPLIER_ORDER_SERVICE_API_KEY` (added 2026-11-09 for Stage 28 c1, order-worker's access to supplier lookups) became required in supplier-service's config. Compose sets it on supplier-service but not on supplier-worker, which loads the same config. This is local Compose only; AWS task definitions are being updated by hand separately. The CS3219 AI policy in `AGENTS.md` applies: implement only, no design decisions, and log everything.
+>
+> Task:
+> In the FoC repo (team repo `AY2627S1-CS3219-P18/FoC`, branch from current `main`), the `supplier-worker` service in `compose.yaml` is missing `SUPPLIER_ORDER_SERVICE_API_KEY`. `supplier-service/src/config.ts` requires it (`z.string().min(1)`, no default; `safeParse(process.env)` at import time, then `process.exit(1)` on failure), and `supplier-service/src/worker/main.ts` imports that config. So the worker should exit at startup under `docker compose up`. The `supplier-service` block in the same file already sets it as `SUPPLIER_ORDER_SERVICE_API_KEY: ${SUPPLIER_ORDER_SERVICE_API_KEY:?set SUPPLIER_ORDER_SERVICE_API_KEY in .env}`.
+>
+> Task:
+> 1. Confirm the failure: run `docker compose up --build supplier-worker` with a root `.env` from `.env.example`, or reason from the code if Docker is unavailable, and record what you saw.
+> 2. Add the same line to the `supplier-worker` environment block, mirroring `supplier-service`. Change nothing else.
+> 3. Verify supplier-worker starts and connects to supplier-redis.
+> 4. Follow `AGENTS.md`: header/inline disclosure on the edited compose block, an `ai/usage-log.md` entry, and a README Log index row (take the next free row number on current `main`).
+> 5. Commit on a new branch. Don't push or open a PR unless George asks.
+>
+> Done = supplier-worker boots under Compose with the key set, verified by running it, with the disclosure entries in place.
+
+**Key responses:**
+
+- Reproduced before the fix with Docker 29.8.0. Used a scratch copy of root `.env.example` (placeholder values only) and a scratch override file that renamed the `supplier-db`, `supplier-redis` and `supplier-worker` containers under a separate project name (`focwt`), so George's stopped `foc` containers were not touched. `docker compose config supplier-worker` showed no `SUPPLIER_ORDER_SERVICE_API_KEY` in the worker's environment. `docker compose up --build -d supplier-worker` then logged `Invalid environment configuration:` / `- SUPPLIER_ORDER_SERVICE_API_KEY: Required`, followed by nodemon's `app crashed - waiting for file changes before starting...`. The container itself stayed `running` with restart count 0, because the dev target runs the worker under nodemon, which waits after a crash instead of exiting. So under Compose the worker is effectively dead, but `docker ps` does not show it as exited.
+- Fix: added the supplier-service line to the `supplier-worker` environment block unchanged, placed after `USER_SERVICE_URL` as it is in supplier-service. Added a dated `Scope`/`Author review` pair to the `compose.yaml` file header. Nothing else in the file changed.
+- Verified after the fix with the same scratch setup: the worker logged `supplier-service worker started`, with no error or crash lines. The container was `running` with 0 restarts. `redis-cli client list` on `supplier-redis` showed 7 client connections from the worker container's IP (172.19.0.4).
+- Cleanup: removed the scratch stack and its volumes (`docker compose -p focwt ... down -v`). Deleted a temporary `user-service/.env` (copied from `user-service/.env.example`, which is git-ignored) that Compose needed to load the file. No real secrets were used or recorded.
+- Not covered: the AWS ECS task definitions (handled separately, by hand) and `compose.dev.yaml` (not part of the task). Did not run the full stack.
+
+**Files:**
+
+- `compose.yaml` (modified: one environment line on `supplier-worker`, plus a header Scope entry)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #287)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-10 — ECS Fargate: chat deployment and email docs
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** explain | docs
+**Scope:** Refactor/Docs
+**Governing decision:** George's chat decisions in this session: "i will make a new database, and it will use foc_admin" (chat-service RDS instance); "enable database TLS for the mysql, like we did for supplier service"; "yes switch to use the SMTP, set secure in prod, and startup check in prod too" (Email decision change). Recorded in `docs/ecs-fargate-session-prompt.md`.
+
+**Prompts (exact):**
+> any new PRs to be made?
+
+> ok update docs and PR everything in 1 PR
+
+**Key responses:**
+- Walked George through the AWS console steps for deploying chat-service (explain only, no repo files changed by those turns). The steps: ECR repo, checking the RDS instance, a one-off task creating `chat_service`, SSM parameters, log group, task definition JSON, new revisions for `order-worker`, `user-service`, `supplier-service` and `supplier-worker`, the `foc-chat` target group, load balancer rule 6, the ECS service, start order, and a smoke test. Found along the way and recorded in the docs:
+  - Settings that `main` made required after the 2026-11-07 deploy. Found by diffing each service's config schema since that date.
+  - A `user-service` schema gap (`preferred_lang`, two `users_otps` columns, `last_request`) that broke login. Fixed with a one-off task running the statements copied from `init.sql`.
+  - A mistyped RDS endpoint (DNS NXDOMAIN) in the database-creation task.
+  - Advised revoking the SMTP key that George pasted into chat. It is not recorded here.
+- `docs/ecs-fargate-run-checklist.md`:
+  - added the 5th database, the 9th service, rule 6, the start order with `chat-service` before the workers, and translation jobs to the queue-drain step;
+  - added a "Before starting after merges" section (new required settings; schema changes per service);
+  - updated the teardown counts and the cost note;
+  - added troubleshooting rows.
+- `docs/ecs-fargate-session-prompt.md`: recorded George's decisions in the Decisions table (9 services, 5 databases, TLS on all five, the Email change) and added "Found while carrying this out" bullets (chat-service resources, settings added after 2026-11-07, new SSM parameters, the user database schema fix, status). Struck through the Email known limitation.
+- Included the Compose fix from the side session (`Pass SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker in Compose`), cherry-picked onto current `main`. Its log entry and index row were renumbered from #274 to #287, because `main` had moved on.
+- Verification: docs only, so nothing was run beyond reading. The SQL and resource names in the docs match what George reported creating and what the repo contains. The README index already had duplicate row numbers (#284, #285) from earlier merges. Those were left as they are.
+
+**Files:**
+- `docs/ecs-fargate-run-checklist.md` (modified)
+- `docs/ecs-fargate-session-prompt.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #288 and header scope line)
+
+**Deviations / questions raised for the team:**
+- `user-service` has Prisma migrations, but its production image doesn't run them, and the AWS database predates their baseline. How the team wants future user-service schema changes applied on AWS is for the team to decide. The checklist documents the one-off approach used on 2026-11-10.
+- The README Log index has duplicate row numbers (#284, #285) from earlier merges. Not renumbered.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-10 — Frontend: remove the nav notification bell
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Implementation code
+**Governing decision:** George's chat instruction in this session (quoted below): notifications are delivered through the chat system, so the bell is removed.
+
+**Prompts (exact):**
+> hold on, also remove the notification bell on the frontend, since our notifs are delivered through the chat system, do it in the same PR
+
+**Key responses:**
+- The bell was a `<button aria-label="Notifications">` in `TopNav.jsx`'s logged-in desktop nav, with a static orange dot, no click handler and no data source. The mobile drawer had no bell. Removed the button and the now-unused `Bell` import. Nothing else referenced it, in code or tests.
+- Verification: `npx vitest run` in `frontend/`: 40 files, 298/298 passed. `npm run build` succeeded. `oxlint` on `TopNav.jsx` reports only an existing `set-state-in-effect` warning in an effect this change didn't touch. Not checked visually in a browser.
+
+**Files:**
+- `frontend/src/components/TopNav.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #289 and header scope line)
+
+**Deviations / questions raised for the team:**
+- `MockupBlueprint.md` (team-authored) still lists "a bell icon" in the logged-in nav (line 262). Left for the team to update.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

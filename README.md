@@ -352,6 +352,14 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #28
        database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
        were made by the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #287 for the
+       supplier-worker Compose fix, and row #288 for the ECS chat deployment docs. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #289 for removing the
+       nav notification bell. No requirements, architecture, schema, or API decisions were made by
+       the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -928,3 +936,6 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |
 | 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
 | 285 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |
+| 287 | 2026-11-10 | supplier-service                                              | Supplier worker Compose environment fix                                                                          | Passed SUPPLIER_ORDER_SERVICE_API_KEY to supplier-worker so it boots under Compose.                                                             |
+| 288 | 2026-11-10 | repository | ECS Fargate: chat deployment and email docs | Recorded chat-service, SMTP and new-setting steps in the ECS plan and run checklist. |
+| 289 | 2026-11-10 | frontend | Frontend: remove the nav notification bell | Removed the inert bell button; notifications arrive through chat. |
