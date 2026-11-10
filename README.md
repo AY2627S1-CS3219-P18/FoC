@@ -344,6 +344,14 @@ Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts and updated the log index.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+Author review: Congchen
+Scope (2026-11-10, Codex, model: GPT-6): Added user-service test verification log index row.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #285 for chat-service
+       database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
+       were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -918,3 +926,5 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 284 | 2026-11-10 | repo-wide | Repo-wide: filled Koh Wee Jean's author-review attributions | Signed 221 blank attribution fields across 101 files she has commits on |
 | 285 | 2026-11-10 | credit-service | Credit Service: service README and completed API reference | Service README plus curl examples, per-endpoint auth and the async queue contract in API.md |
 | 286 | 2026-11-10 | frontend | Frontend: show the amount on reservation and release rows in the Wallet | Reservation and release rows now read "4 held" / "4 returned" instead of the bare word |
+| 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
+| 285 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |

@@ -51,7 +51,7 @@ Scope (2026-11-09, Codex, model: GPT-6): Documented the approved health endpoint
 Author review: tng wen xi
 Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Documented the team-specified message translation.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-10, Codex, model: GPT-6): Documented the team-specified order chat archive contract.
 Author review: tng wen xi
 -->

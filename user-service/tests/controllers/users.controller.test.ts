@@ -69,6 +69,9 @@
  *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated response shape assertions for the existing preferred language field.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,7 +108,7 @@ const UNKNOWN_ID = '00000000-0000-4000-8000-000000000000';
 const UNAUTHORIZED = { message: 'Unauthorized', code: 'UNAUTHORIZED' };
 const FORBIDDEN = { message: 'Forbidden', code: 'FORBIDDEN' };
 
-// The documented user object (toUserResponse): Stage 9 fields + activeView (Stage 11) +
+// The documented user object (toUserResponse): Stage 9 fields + activeView and preferredLang +
 // isLocked/lockedUntil/lockLevel (Stage 18d). Fix F4 asserts every admin endpoint's body has
 // exactly these keys and no trace of the password hash under either naming.
 const USER_RESPONSE_KEYS = [
@@ -115,6 +118,7 @@ const USER_RESPONSE_KEYS = [
   'id',
   'isLocked',
   'lockLevel',
+  'preferredLang',
   'lockedUntil',
   'role',
   'status',
