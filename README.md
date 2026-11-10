@@ -347,6 +347,10 @@ Author review: Congchen
 Scope (2026-11-10, Codex, model: GPT-6): Added user-service test verification log index row.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
 Author review: Congchen
+Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #285 for chat-service
+       database TLS, keep-alive and CD. No requirements, architecture, schema, or API decisions
+       were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -919,3 +923,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 282 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
 | 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
 | 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
+| 285 | 2026-11-10 | chat-service                                                  | ECS Fargate: chat-service database TLS, keep-alive and CD                                                        | Added DB_SSL with verified MySQL TLS, the RDS CA file, keep-alive timeouts, and chat in CD.                                                     |

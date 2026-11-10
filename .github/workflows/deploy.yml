@@ -4,6 +4,11 @@
 #        decision to deploy on every merge to main from the team repo. No requirements, architecture,
 #        schema, or API decisions were made by the AI tool.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
+# Scope: Added chat-service to the build and deploy-web lists, like the other web services, per
+#        George's chat instruction. No requirements, architecture, schema, or API decisions were made
+#        by the AI tool.
+# Author review:
 
 name: Deploy
 
@@ -63,6 +68,10 @@ jobs:
           - service: order-service
             target: production
             repository: foc/order-service
+          # `production`, the stage name in chat-service/Dockerfile.
+          - service: chat-service
+            target: production
+            repository: foc/chat-service
           - service: frontend
             target: prod
             repository: foc/frontend
@@ -135,6 +144,7 @@ jobs:
           - { service: credit-service, repository: foc/credit-service }
           - { service: supplier-service, repository: foc/supplier-service }
           - { service: order-service, repository: foc/order-service }
+          - { service: chat-service, repository: foc/chat-service }
           - { service: frontend, repository: foc/frontend }
     steps:
       - uses: actions/checkout@v7
