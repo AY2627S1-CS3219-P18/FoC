@@ -5544,7 +5544,7 @@ Asked George which status a non-UUID `:id` returns and where the check lives; im
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-10-22 — Credit Service: BullMQ credit-transfer queue consumer
 
@@ -9362,7 +9362,7 @@ Facts found while testing:
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add to docs
 
@@ -9396,7 +9396,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: record team repo and CD trigger decisions
 
@@ -9440,7 +9440,7 @@ Raised with George for Phase 3: how CD behaves on merges before the ECS services
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate Phase 3: CD workflow
 
@@ -9477,7 +9477,7 @@ The work started when George sent a screenshot of the IAM role's trust policy wi
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate plan: add audit log route
 
@@ -9507,7 +9507,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-06 — ECS Fargate: supplier S3 access through a task role
 
@@ -9564,7 +9564,7 @@ The plan's IAM user can't exist in this account, so the plan changed. Other AWS 
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate plan: record Phase 2 steps 10-14 facts
 
@@ -9594,7 +9594,7 @@ The `foc_admin` login and the extra log group were the AI tool's small naming ch
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: ship the order supplier check
 
@@ -9645,7 +9645,7 @@ Creating or editing an order now returns `503` when supplier-service can't answe
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-07 — ECS Fargate: start and stop checklist
 
@@ -9678,7 +9678,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-08 — Precise delivery location: design spec and implementation plan
 
@@ -13365,7 +13365,7 @@ Asked how edit should treat `completeBy: null` (answered: keep current value). A
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — order-service: Synchronous order creation and pending-order 409
 
@@ -13426,7 +13426,7 @@ Asked the success status, failed-row handling, failure status codes, 409 scope a
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — frontend: Redirect to the new view's main page on view switch
 
@@ -13461,7 +13461,7 @@ Verification: new `tests/components/ActiveViewToggle.test.jsx` (13 tests: both d
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-09 — Scheduled Errands Stage 28 e: Series API and failed rows
 
@@ -16962,7 +16962,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — ECS Fargate: chat deployment and email docs
 
@@ -17007,7 +17007,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Frontend: remove the nav notification bell
 
@@ -17037,7 +17037,7 @@ None.
 
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Resolve disclosure merge conflicts with main
 
@@ -17393,9 +17393,40 @@ Verification: confirmed that the resolved log preserves the complete HEAD versio
 **Deviations / questions raised for the team:**
 None.
 
+## 2026-11-10 — order-service: README overview and architecture diagrams
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs
+**Governing decision:** The existing order-service code on `main` (`584174e`), `order-service/prisma/schema.prisma`, `.github/workflows/deploy.yml`, `docs/ecs-fargate-session-prompt.md` and `docs/ecs-fargate-run-checklist.md`. The docs describe these as they are; nothing new was decided.
+
+**Prompts (exact):**
+> 1. look through all the work ive done, see if theres any author review unfilled that i need to sign off, then produce the cmd for me to use to automatically fill it in with "George Yeo"
+> 2. once done, focus only on order service, produce a clean architecture diagram using PUML and output the file here in the session not in the repo
+> 3. then create a README detailing order service
+> 4. then focus on the CD AWS deployment next, create another architecture diagram using PUML to represent all the AWS instances working together, a high level view
+> 5. for the PUMLs make sure they use basic syntax and can be rendered online
+
+**Key responses:**
+
+- Author review sign-off (prompt 1): wrote a Python script, kept outside the repo in the session scratchpad. It lists blank `Author review` fields that `git blame` attributes to `george-yeo`/`George`, counting a field only when both the blank line and most of its Scope block (or log entry) trace to those authors. It writes nothing without `--apply`, and the user runs it. The dry run on `584174e` found 143 such fields and 11 mixed-author ones, which it leaves alone. The agent did not sign any field.
+- Diagrams (prompts 2, 4, 5): two PlantUML files in the session scratchpad, not in the repo. One shows order-service's API and worker processes, `order-db`, `order-redis` and the services it calls. The other shows the AWS stack (CloudFront, ALB, 8 ECS Fargate services, 4 RDS instances, 2 ElastiCache clusters, S3, ECR, SSM, CloudWatch, IAM/OIDC) and the GitHub Actions deploy flow. Both use basic syntax with no `!include`. They were not rendered here because no PlantUML renderer is installed.
+- README (prompt 3): added sections to `order-service/README.md` on what the service does, its two processes, the order lifecycle (from `src/domain/order-status.ts`), API routes (from `src/routes/`), Socket.IO events, outbox tasks and queues, data tables, the services it calls and environment variables (from `src/config/env.ts`). Also updated the Layout tree. The existing sections, written by teammates, are unchanged.
+- Verification: checked each route, status transition, event name, queue key, retry count and env default against the source files. Did not run tests, because no code changed.
+
+**Files:**
+
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #319)
+
+**Deviations / questions raised for the team:**
+
+None.
+
 **What I kept/changed/rejected:**
 
-**Author review:**
+**Author review:** George Yeo
 
 ## 2026-11-10 — Fix: ResendButton countdown not shown on first successful resend
 
@@ -17542,3 +17573,45 @@ None.
 
 
 **Author review:**
+
+## 2026-11-10 — order-service API reference; frontend footer wording
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs; Implementation code
+**Governing decision:** The API reference documents the routes, validation and error codes already implemented in `order-service/src` (routes, controllers, services, `constants/errors.ts`, `realtime/socket-server.ts`). The footer change is George's chat instruction quoted below.
+
+**Prompts (exact):**
+> ok the diagrams are very messy, lets pivot and find another way of working this together
+>
+> commit the readme and make a PR first, we will also add other changes
+>
+> 1. remove the  "UI Prototype" text at the bottom of each page in the frontend
+
+> also add an API document for order service, that gives the endpoints of every exposed API and its description and necessary parameters
+
+**Key responses:**
+
+- Committed the order-service README work and George's Author review signatures, and opened the team-repo PR. The branch was rebuilt on the latest `main`: 122 of the 143 signatures applied, and 21 fields that Koh Wee Jean had already signed on `main` were left with her signature.
+- Footer: removed "— UI prototype" from `frontend/src/components/Footer.jsx`, the footer shown on every page. "CS3219 AY2627S1 Group 18." stays.
+- Added `order-service/API.md`: authentication, the error envelope and status codes, the order object, and every route (health, orders, status changes, admin history, series) with its path/query/body parameters, rules and responses, plus the Socket.IO handshake and events. All of it was read from the code; nothing was changed in the service.
+- The doc records two behaviours as they are: status-change routes return `{ ok: false, error }` instead of the `{ message }` envelope, and `PATCH /orders/:id/edit` requires `deliveryDetails` on every edit.
+- Corrected the README lifecycle table: an accepted or picked-up order can be cancelled only after its complete-by (`src/domain/order-status.ts`). Linked API.md from the README.
+- Verification: frontend `oxlint` on Footer.jsx clean, `vitest run` 305/305 passed, `vite build` succeeded. The API doc was checked against the source, not against a running service.
+
+**Files:**
+
+- `frontend/src/components/Footer.jsx` (modified)
+- `order-service/API.md` (created)
+- `order-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #320)
+
+**Deviations / questions raised for the team:**
+
+- `src/types/series.ts` says an omitted `durationMinutes` defaults to 1440, but `series.service.ts` uses 60. The API doc follows the code (60).
+- `POST /orders/series` returns the stored row (including `nextFireAt` and retry fields), while GET and PATCH return the public series shape. Documented as is.
+
+**What I kept/changed/rejected:**
+
+**Author review:** George Yeo

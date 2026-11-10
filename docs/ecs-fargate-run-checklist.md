@@ -4,13 +4,13 @@ Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Wrote the start, stop and teardown checklist asked for in docs/ecs-fargate-session-prompt.md
        ("Starting and ending a test run"), using the resources George created. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
 Scope: Added the chat-service resources George created on 2026-11-10 (its RDS instance, ECS service,
        target group and load balancer rule), the schema-change and new-setting steps, and matching
        troubleshooting rows. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # ECS Fargate: starting and stopping a test run

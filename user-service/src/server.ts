@@ -11,7 +11,7 @@
 // 2026-11-06: Tool: Claude Code (model: claude-opus-5-5). ECS Fargate migration - longer HTTP
 //   keep-alive, per George's ECS Fargate plan, Phase 1 item 8. No requirements, architecture,
 //   schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: George Yeo
 import { config } from './config.js';
 import app from './app.js';
 import { bootstrapSuperAdmin, bootstrapTestUser } from './services/bootstrap.service.js';

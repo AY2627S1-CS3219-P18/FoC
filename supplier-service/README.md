@@ -45,7 +45,7 @@ Author review:
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Documented that the photo store keys are optional
        on ECS, per George's task role decision of 2026-11-06. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # Supplier Service

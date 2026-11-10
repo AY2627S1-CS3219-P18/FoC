@@ -74,7 +74,7 @@
  * Scope: Removed the notification bell button from the desktop nav, per George's chat instruction
  *        (notifications are delivered through the chat system). No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { useEffect, useState } from "react";

@@ -3,7 +3,7 @@
 //  2026-11-06: ECS Fargate migration - checks the TLS flag reaches ioredis, per George's ECS
 //    Fargate plan, Phase 1 item 5.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: George Yeo
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

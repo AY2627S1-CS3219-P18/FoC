@@ -9,7 +9,7 @@
  *        stays put, and a failed switch returns to the original page. useAuth is mocked with a
  *        mutable object whose setActiveView flips the view like AuthContext's optimistic update.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 29 - added a success-toast assertion ("You are now in <view> mode") for the

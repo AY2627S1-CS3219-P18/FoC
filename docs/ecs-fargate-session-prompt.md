@@ -4,39 +4,39 @@ Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Copied this plan into docs/ verbatim from George's local file, below this header. The AI tool
        changed none of the plan's text in this copy and made no requirements, architecture, schema,
        or API decisions in doing so. This note covers the copy only, not who wrote the plan.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Reworded the plan to record George's chat decisions (coursework deployment, CD on the team repo,
        deploy on every merge to main, budget alert skipped), and listed facts found during Phase 1 and
        Phase 2. The decisions are George's; no requirements, architecture, schema, or API decisions
        were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Recorded George's decision to use an ECS task role for S3 after NUS's organisation policy blocked
        creating the IAM user, and the bucket's account regional name. The decisions are George's; no
        requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Recorded facts from Phase 2 steps 10-14: MySQL version, database logins, the user database name,
        SSM parameter names and the one-off log group. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Recorded facts from Phase 2 and Phase 4: ALB rule limit, the superadmin smoke test finding and
        the task definition order for shipping 1fad383. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Linked the run checklist and recorded the deployment status. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
 Scope: Recorded George's 2026-11-10 chat decisions (deploy chat-service with its own MySQL database
        and the foc_admin login, verified database TLS as for supplier, real SMTP with
        NODE_ENV=production for user-service) and the facts found while carrying them out. The
        decisions are George's; no requirements, architecture, schema, or API decisions were made by
        the AI tool.
-Author review:
+Author review: George Yeo
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment

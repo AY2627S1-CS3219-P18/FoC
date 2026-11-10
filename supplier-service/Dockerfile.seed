@@ -2,7 +2,7 @@
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 # Scope: ECS Fargate migration - one-off image for `npm run seed`, per George's ECS Fargate plan, Phase 1
 #        item 9. No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: George Yeo
 #
 # Build from the repository root, because the seed reads images from frontend/ and foc-mockup/:
 #   docker build -f supplier-service/Dockerfile.seed -t foc-supplier-seed .

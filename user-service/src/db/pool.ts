@@ -12,7 +12,7 @@
 //    Tool: Claude Code (model: claude-opus-5-5). Implements the decision in George's ECS
 //    Fargate plan, Phase 1 item 1. No requirements, architecture, schema, or API decisions
 //    were made by the AI tool.
-//    Author review:
+//    Author review: George Yeo
 
 import pg from 'pg';
 import { config } from '../config.js';

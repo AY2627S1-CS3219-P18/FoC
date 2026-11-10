@@ -7,12 +7,12 @@
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - configurable region,
  *        per George's ECS Fargate plan, Phase 1 item 6. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - made the access key
  *        and secret optional so the SDK can use the ECS task role, per George's decision of 2026-11-06
  *        (ECS Fargate plan, "Found while carrying this out"). No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { randomUUID } from 'node:crypto';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';

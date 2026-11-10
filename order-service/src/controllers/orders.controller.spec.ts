@@ -64,22 +64,22 @@
  * Scope (2026-10-22): 404 coverage for a missing order and for a non-UUID :id on the
  *        transition and edit routes; the unsupported-field edit test uses a UUID :id.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-10-22): GET /orders/:id coverage (requester / courier / admin / other user
  *        by status, 404s, literal /mine and /active not captured); the auth stub takes an
  *        optional x-role header (default 'user') for the admin cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-10-22): authz fix - GET /orders?status=<non-open> is scoped to the caller's
  *        own orders; the default listing is not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): appWith injects a supplier-service client (stub: everything exists);
  *        HTTP coverage for 422 SUPPLIER_NOT_FOUND / DELIVERY_LOCATION_NOT_FOUND and 503
  *        SUPPLIER_SERVICE_UNAVAILABLE on create and edit, and the caller's token forwarded.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification HTTP calls and username fallback.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Included courier participant task in acceptance assertions.
@@ -95,7 +95,7 @@
  *        (George, 2026-11-09). appWith takes a credits client and keeps the created order
  *        in memory for the settle.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md) - updated the GET /orders/mine where-clause assertion
  *        for the listMyOrders change (failed rows with a failureReason are now included).

@@ -19,11 +19,11 @@
  * Scope (2026-10-22): router.param('id') guard - a non-UUID :id answers 404
  *        ORDER_NOT_FOUND before reaching Prisma's @db.Uuid column (George).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-10-22): GET /orders/:id (George's spec), registered after the literal
  *        /active and /mine paths so they are not captured as ids.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Codex (model: GPT-6), date: 2026-11-05
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -31,18 +31,18 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): the router takes the supplier-service client for create / edit.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
  * Scope (2026-11-07): applied the 2026-10-23 change onto main, keeping both suppliers and userServiceUrl.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): POST /orders gets the credits client and event sink for the synchronous
  *        reserve (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 e (instructions.md) - mounted seriesRouter at /series, before GET /:id, per
  *        the stage's API table ("registered BEFORE /:id"). No requirements, architecture,

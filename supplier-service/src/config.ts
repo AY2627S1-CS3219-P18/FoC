@@ -17,15 +17,15 @@
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added DB_SSL (default
  *        off) for verified TLS to RDS, per George's ECS Fargate plan, Phase 1 item 3. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added REDIS_TLS
  *        (default off), per George's ECS Fargate plan, Phase 1 item 5. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - added
  *        PHOTO_STORE_REGION (default us-east-1, which MinIO ignores), per George's ECS Fargate plan,
  *        Phase 1 item 6. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09, Claude Code, model: claude-sonnet-5): added SUPPLIER_ORDER_SERVICE_API_KEY,
  *        per instructions.md Stage 28 c1 (order-service worker access to the supplier lookups).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
