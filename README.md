@@ -456,6 +456,10 @@ Scope (2026-11-11, Claude Code, model: claude-sonnet-5): Added Log index row #32
        Stage 32 follow-up (default "by a specific time" to 1 hour from now). No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-11, Claude Code, model: claude-sonnet-5): Added Log index row #325 for the
+       Stage 32 follow-up (default "send later" to 1 hour from now). No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -1055,3 +1059,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 322 | 2026-11-10 | user-service | user-service: API reference | Added user-service/API.md for every route, auth types, errors and the credit-outbox relay. |
 | 323 | 2026-11-10 | frontend | Stage 32: schedule option on the errand form | Unified the errand form to also create delayed/recurring errands; removed the separate /series/new page. |
 | 324 | 2026-11-11 | frontend | Stage 32 follow-up: default "by a specific time" to 1 hour from now | Replaced the hardcoded 15:30 default with 1 hour from the current time. |
+| 325 | 2026-11-11 | frontend | Stage 32 follow-up: default "send later" to 1 hour from now | Replaced the hardcoded 09:00 default with 1 hour from the current time. |

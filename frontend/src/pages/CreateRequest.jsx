@@ -154,6 +154,12 @@
  *        instead of a hardcoded 15:30, per user request in chat. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-11
+ * Scope: "Send later" start date/time fields now default to 1 hour from the current time
+ *        instead of today at 09:00, matching the "By a specific time" default above, per
+ *        user request in chat. No requirements, architecture, schema, or API decisions were
+ *        made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -282,8 +288,9 @@ function RequestForm({ order, series }) {
   // one-time scheduled series (rrule ending in COUNT=1), or a recurring one.
   const [sendMode, setSendMode] = useState('now')
   const [repeat, setRepeat] = useState(false)
-  const [startDate, setStartDate] = useState(today)
-  const [startTime, setStartTime] = useState('09:00')
+  // "Send later" defaults to 1 hour from now, same as "By a specific time" above.
+  const [startDate, setStartDate] = useState(() => localDate(new Date(Date.now() + 60 * 60_000).toISOString()))
+  const [startTime, setStartTime] = useState(() => localTime(new Date(Date.now() + 60 * 60_000).toISOString()))
   const [ruleState, setRuleState] = useState(() =>
     isEditSeries ? parseRuleText(series.rrule, new Date(series.startAt)) : defaultRuleState(new Date()),
   )
