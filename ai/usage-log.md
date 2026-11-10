@@ -14225,3 +14225,48 @@ Stage 31 has no remaining `[DECIDE]` placeholders, so 31a was implemented as wri
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31b: The email and sending it on every login lock
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("When the email is sent" table, changes table rows 3-4, "Stage 31b: The email and sending it on every login lock")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+
+**Key responses:**
+
+- `src/services/email.service.ts`: extracted `sendOtpEmail`'s attempt loop into a private `sendMailWithRetry(mailOptions, { username, to, purpose })` (identical attempts/backoff/per-attempt cap/overall deadline/`[OTP EMAIL]` log line; `sendOtpEmail`'s own signature, template lookup, dev fallback and log lines are byte-for-byte unchanged, so its contract holds). Added `sendUnlockEmail({ to, username, unlockUrl })`, which builds the unlock email and calls the same `sendMailWithRetry` with `purpose: 'account_unlock'`, so its log lines read `[OTP EMAIL] outcome=... purpose=account_unlock attempt=n/4` per the Stage 31 logging rule ("same log line format ... writes account_unlock"). Its own dev-fallback line is `[DEV EMAIL] to=... purpose=account_unlock url=...` (no otp field, since there is none) — the exact field name is an implementation detail, not specified by the stage; flagged here for review. Email content: subject `Your FoC account has been locked`; body states the account was locked after too many failed attempts and holds the link; never states the lock length, an OTP or anything about the password. Exact wording:
+  > Your FoC account was locked after too many failed attempts. Use the link below to unlock it.
+  >
+  > {unlockUrl}
+- `src/services/auth.service.ts`: `RecordLoginFailureResult`'s locked variant now also carries `lockedUntil: Date` and `user: { id, email, username }` (available on the already-locked `UserRowWithNow` row). Added exported `triggerUnlockEmail(user, lockedUntil)`: signs the unlock token (`signUnlockToken`, Stage 31a), builds `${config.frontend.baseUrl}/unlock-account?token=...`, and fires `sendUnlockEmail(...).catch(() => {})` without awaiting — the caller's response is never delayed and the rejection can never become unhandled. `login()` calls it (with the lock's `user`/`lockedUntil`) immediately after its transaction commits, before throwing `ACCOUNT_LOCKED`.
+- `src/services/me.service.ts`: `initiateEmailChange` and `initiatePasswordChange` call the same exported `triggerUnlockEmail` at their own `authOutcome.kind === 'locked'` sites, after their phase-1 transaction commits. No other change to either function.
+- "Pending and suspended: no email" is satisfied structurally, not by an extra check: `recordLoginFailure` (the only path that can produce a `locked` result) is called by all three sites only when `status !== 'pending' && status !== 'suspended'` already (Stage 18b's `countsTowardLock`), so a `locked` result's user is always `active`.
+- `tests/setup/setupFiles.ts`: added `sendUnlockEmail: vi.fn(async () => {})` to the global `email.service.js` mock (per the changes table row 10's mocking requirement) — without it, every existing Stage 18 lockout test that reaches the lock threshold would throw on the unmocked import.
+- Verification: a throwaway scratch test (not committed) against the real app and Postgres confirmed: 5 wrong logins → `429 ACCOUNT_LOCKED` plus exactly one `sendUnlockEmail` call whose token verifies and whose `lck` matches the row's `login_locked_until`; a wrong current password on `PUT /users/me/password` that locks sends one email; an OTP send-block (forgot-password cap) sends none; attempts during an active lock send nothing and do not change `login_locked_until`; N concurrent failures at the threshold produce exactly one email; every send attempt rejecting leaves the lock standing with zero `unhandledRejection` events. A second throwaway scratch test on `sendUnlockEmail` directly confirmed the exact subject, no OTP-shaped text, no mention of "password" or any duration wording, the retry/backoff/deadline reuse, the `account_unlock` log lines, and the dev-fallback line. Neither scratch file was committed.
+- `npx tsc --noEmit` (src and tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms the Stage 18 lockout tests still pass with the email transport mocked, and the OTP email flows are unchanged).
+
+**Files:**
+
+- `user-service/src/services/email.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/setup/setupFiles.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #262)
+
+**Deviations / questions raised for the team:**
+
+- The unlock email's dev-fallback console line format (`[DEV EMAIL] to=... purpose=account_unlock url=...`) was chosen to parallel the OTP dev-fallback line; the stage does not specify its exact fields. Flagging for review; easy to change.
+- Please review the email wording above (subject and body) before it ships.
+- No `[DECIDE]` placeholders remained in rows 3-4; no other ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

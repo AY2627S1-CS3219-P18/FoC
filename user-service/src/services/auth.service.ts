@@ -69,6 +69,15 @@
 //   new elevation token uses. Governing decision: instructions.md Stage 27.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Stage 31b - recordLoginFailure's locked result now carries lockedUntil and the
+//   {id, email, username} that triggered it; login() uses the new triggerUnlockEmail to fire
+//   the Stage 31b unlock email in the background (caught, never awaited) after the lock's
+//   transaction commits. me.service.ts's initiateEmailChange/initiatePasswordChange, which
+//   share recordLoginFailure, call the same exported triggerUnlockEmail. Tool: Claude Code
+//   (model: claude-fable-5-1). Governing decision: instructions.md Stage 31 ("When the email is
+//   sent" table, changes table row 4). No requirements, architecture, schema, or API decisions
+//   were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -80,11 +89,12 @@ import type { UserRowWithNow } from '../db/queries/users.queries.js';
 import { withTransaction, type Queryable } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
-import { signAccessToken } from '../utils/jwt.js';
+import { signAccessToken, signUnlockToken } from '../utils/jwt.js';
 import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { durationHoursForLevel, effectiveEscalationLevel, escalationWording } from './lockEscalation.js';
 import { checkOtp, issueOtp, requestOtp, throwOtpFailure } from './otp.service.js';
+import { sendUnlockEmail } from './email.service.js';
 
 function accountLockedMessage(lockLevel: number): string {
   return `Too many failed login attempts. Please try again in ${escalationWording(lockLevel)}.`;
@@ -107,17 +117,26 @@ export function throwIfLoginLocked(row: UserRowWithNow): void {
 
 export type RecordLoginFailureResult =
   | { locked: false }
-  | { locked: true; lockLevel: number; retryAfterSeconds: number };
+  | {
+      locked: true;
+      lockLevel: number;
+      retryAfterSeconds: number;
+      lockedUntil: Date;
+      user: { id: string; email: string; username: string };
+    };
 
 // Call inside a transaction, against a row already locked with lockUserByIdWithNow, when a
 // password attempt on that row's account failed. Not called for pending/suspended accounts
-// (Stage 18b: "what does not count").
+// (Stage 18b: "what does not count"), which is also why a locked result's user is always an
+// active account, matching Stage 31b's "no email for pending/suspended" rule without a
+// separate check here.
 //
 // Returns rather than throws when the threshold is hit on this very call: the lock write must
 // commit, so the caller throws accountLockedAppError(result) itself only after its
 // withTransaction call resolves (the same "thrown only after commit" pattern used elsewhere in
 // this file for OTP attempt counts) — the 5th failure in the window is itself rejected with
-// ACCOUNT_LOCKED, per the Stage 18b Verification bullet.
+// ACCOUNT_LOCKED, per the Stage 18b Verification bullet. lockedUntil and user are carried on the
+// result (Stage 31b) so the caller can trigger the unlock email after that commit.
 export async function recordLoginFailure(
   row: UserRowWithNow,
   db: Queryable,
@@ -137,7 +156,13 @@ export async function recordLoginFailure(
     const durationHours = durationHoursForLevel(newLevel);
     const lockedUntil = new Date(row.db_now.getTime() + durationHours * 3_600_000);
     await userQueries.lockLoginAccount(row.id, { lockedUntil, lockLevel: newLevel }, db);
-    return { locked: true, lockLevel: newLevel, retryAfterSeconds: durationHours * 3600 };
+    return {
+      locked: true,
+      lockLevel: newLevel,
+      retryAfterSeconds: durationHours * 3600,
+      lockedUntil,
+      user: { id: row.id, email: row.email, username: row.username },
+    };
   }
 
   await userQueries.recordLoginFailure(
@@ -150,6 +175,24 @@ export async function recordLoginFailure(
 
 export function accountLockedAppError(result: { lockLevel: number; retryAfterSeconds: number }): AppError {
   return new AppError(429, accountLockedMessage(result.lockLevel), 'ACCOUNT_LOCKED', result.retryAfterSeconds);
+}
+
+// Stage 31b: fires the lockout unlock email in the background, after the caller's lock
+// transaction has committed. Never awaited by the caller - the 429 response must not wait for
+// the send - and the send's rejection is caught here so a failed send (logged by
+// sendMailWithRetry's own attempt lines) can never become an unhandled rejection. Shared by
+// login() below and by me.service.ts's initiateEmailChange/initiatePasswordChange, which hit
+// the same counter on a wrong current password.
+export function triggerUnlockEmail(
+  user: { id: string; email: string; username: string },
+  lockedUntil: Date,
+): void {
+  const token = signUnlockToken({ userId: user.id, lockedUntil });
+  const unlockUrl = `${config.frontend.baseUrl}/unlock-account?token=${token}`;
+  void sendUnlockEmail({ to: user.email, username: user.username, unlockUrl }).catch(() => {
+    // Every attempt, including the final failure, is already logged by sendMailWithRetry; the
+    // lock stands regardless of whether the email ever goes out.
+  });
 }
 
 export { PASSWORD_MESSAGE, PASSWORD_REGEX };
@@ -317,6 +360,7 @@ export async function login(
   });
 
   if (outcome.kind === 'locked') {
+    triggerUnlockEmail(outcome.result.user, outcome.result.lockedUntil);
     throw accountLockedAppError(outcome.result);
   }
   if (outcome.kind === 'invalid') {
