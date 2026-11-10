@@ -14121,3 +14121,120 @@ _Shape of the change._ `createPrismaClient` gained a second parameter (`ssl = fa
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+---
+
+## 2026-11-10 — Chat Service: CD wiring and the AWS console handoff
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate | Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md` (George's ECS Fargate plan), Phase 2 steps 10–19 and Phase 3, plus `docs/ecs-fargate-run-checklist.md` and the existing `deploy.yml` matrices. Every name, size, parameter path and Service Connect setting is derived from those files and `compose.yaml`; none was chosen here. The two open team decisions — chat's database and chat's Redis — are left open.
+
+**Prompts (exact):**
+
+> ## Read first, in full
+>
+>   - .github/workflows/deploy.yml and .github/scripts/ecs-deploy.sh
+>   - docs/ecs-fargate-run-checklist.md
+>   - docs/ecs_fargate.md
+>   - An existing task definition for a service with a database and Redis — credit-service or order-service — so the handoff below uses this project's real conventions and names, not invented ones.
+>
+> ## 1. deploy.yml
+>
+> Add chat-service to the `build` matrix with **target: production** (not `prod` — it follows order-service), and to the `deploy-web` matrix.
+>
+> chat goes in deploy-web, not deploy-workers: it applies migrations on boot like order-service, and order-worker calls its API, so it has to be running first.
+>
+> Note in a comment that `ecs-deploy.sh` skips gracefully when a service doesn't exist, so this is safe to merge before George creates the ECS service — but the ECR repo must exist or the build job fails on push.
+>
+> ## 2. The run checklist
+>
+> Update docs/ecs-fargate-run-checklist.md for nine services: the extra database, the new ALB rule, and anything in the start/stop cycle that would otherwise silently omit chat.
+>
+> ## 3. A handoff section for George — the important part
+>
+> Write it into the checklist, or a doc beside it if that fits better. It has to be precise enough to action without coming back to me.
+>
+> Derive the exact names, ARecord formats, parameter paths and conventions from the existing services rather than inventing them. Cover:
+>
+>   - ECR repo name and lifecycle rule
+>   - Database: MySQL 8, subnet group, security group with foc-tasks ingress, and the parameter group setting require_secure_transport
+>   - SSM parameter paths for DATABASE_URL and CHAT_SERVICE_API_KEY, matching the existing naming
+>   - Task definition: every environment variable and secret, the log group, CPU/memory consistent with comparable services, and Service Connect registering `chat-service:3000`
+>   - Target group name and health check path (/health)
+>   - ALB rule at priority 6 — all four paths fit in one rule
+>   - order-worker: add CHAT_SERVICE_URL and CHAT_SERVICE_API_KEY, make it a Service Connect client, and **force-redeploy it after chat-service is running** — a client only learns endpoints that existed when its task started
+>
+> **Give these three their own prominent block — each one silently breaks chat with an error that doesn't point at the cause:**
+>
+>   DB_SSL=true              — config defaults to false, so without this chat tries plaintext against an RDS that requires TLS
+>   NODE_EXTRA_CA_CERTS      — /etc/ssl/rds-ap-southeast-1-bundle.pem. The image carries the bundle but nothing trusts it without this; verified as 0 certs without, 3 with
+>   REDIS_TLS=true           — ElastiCache is in-transit Required and the variable defaults to false
+>
+> And note that CHAT_SERVICE_API_KEY must be the identical value in both chat-service and order-worker. Both are .optional() in order-service's schema, so a mismatch fails silently — system notifications just never arrive.
+>
+> ## Flag, don't resolve
+>
+> Two team decisions are still open and the handoff depends on both: new RDS instance for chat versus sharing supplier's, and sharing foc-order-redis versus a third cluster. Write the handoff so the decision point is explicit rather than assumed either way.
+>
+> ## Then
+>
+> Verify actionlint is clean against the existing baseline. AGENTS.md entries as usual — attribution headers, usage log, README row, appending to the live log table rather than fixing the duplication.
+>
+> PR header and body. Show me the diff before applying.
+
+> Apply the three files as shown, with two amendments:
+>
+>   - Drop the SSM parameter total. Say "chat adds 2" and leave the count out — a wrong number in a checklist is worse than none, and you can't see AWS to confirm it.
+>   - Keep every derived resource name clearly marked as derived. I'm getting a real task definition from George to reconcile against before this merges.
+>
+> ## 2. One thing to check
+>
+> Does deploy.yml's build matrix set fail-fast: false?
+>
+> If it doesn't, chat's build failing — which it will until the ECR repo exists — could cancel the other four services' builds and break the whole deployment. Report what you find; don't change it without telling me first, since that affects every service.
+>
+> ## 3. AGENTS.md
+>
+> Attribution headers, usage-log entry, README log index row — appending to the live table, not fixing the duplication.
+
+**Key responses:**
+
+_No task definition could be read._ The brief asked for an existing task definition to derive conventions from. **None is committed to this repo** — `git grep` for `containerDefinitions`, `requiresCompatibilities` and `executionRoleArn` returns nothing, and no task-definition JSON exists anywhere. They live only in AWS, which was not queried. Every name in the handoff is therefore derived from the plan's recorded facts, the run checklist and `compose.yaml`, and the handoff opens with a **"Derived names — reconcile these against a real task definition before merging"** table listing all nine derived values beside the pattern each follows, with checkboxes. George is supplying a real task definition to reconcile against before this merges.
+
+_The `fail-fast` check turned up a worse failure mode than the one asked about._ All three matrix jobs already set `fail-fast: false` (lines 50, 131, 160), so chat's leg cannot cancel its siblings and **no change was made**. But `fail-fast` does not cover the actual risk: the chain is `build` → `deploy-web` → `deploy-workers`, and `deploy-web` has `needs: build`. A failed leg still makes the `build` job conclude as failed, so `deploy-web` is **skipped entirely** — meaning a missing `foc/chat-service` ECR repository would stop **every** service deploying on every merge to `main`, not just chat. Reported to the user rather than silently fixed, and the ECR repository is now documented as a hard pre-merge prerequisite in both the workflow comment and the handoff's step 1, replacing the weaker "the job goes red" wording the brief suggested.
+
+_Handoff placed in its own file._ `docs/chat-service-aws-handoff.md` rather than inside the checklist: the handoff is a long one-time console walkthrough, while the checklist is a short recurring operational document. The checklist links to it and carries only the per-cycle changes.
+
+_The two open decisions._ Written as explicit option tables with the consequences of each, and the dependent steps marked *(see handoff)* in the checklist rather than assuming a road. Step 2 documents the own-instance option and step 2b the shared-instance option; step 3 documents sharing `foc-order-redis` and notes what a third cluster would add.
+
+_Amendments applied._ The SSM parameter total was dropped from the teardown list in favour of "list them in the console rather than working to a count; chat adds 2", because the plan's recorded list of 8 predates `SUPPLIER_ORDER_SERVICE_API_KEY` and the real total could not be confirmed.
+
+**Verification actually run:**
+
+- **`actionlint`** on `deploy.yml`: **baseline on `upstream/main` exits 0, and the modified file also exits 0** — a clean file stayed clean, and unlike `ci.yml` there are no pre-existing warnings to net out.
+- **Matrices parsed back out of the file** to confirm the edit landed where intended: the `build` matrix is 6 entries with `chat-service -> production @ foc/chat-service`, and `chat-service` appears in `deploy-web` while `deploy-workers` still has only the three workers.
+- Confirmed no numeric SSM count survives anywhere in `docs/*.md`.
+- `fail-fast: false` confirmed present on all three jobs, and the `needs:` graph confirmed as `build` → `deploy-web` → `deploy-workers`.
+
+**Files:**
+
+- `.github/workflows/deploy.yml` (modified: chat-service in the `build` and `deploy-web` matrices)
+- `docs/ecs-fargate-run-checklist.md` (modified: nine services, ALB rule 6, chat in the Redis-address list and scale-up order, troubleshooting rows, handoff link)
+- `docs/chat-service-aws-handoff.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **The `foc/chat-service` ECR repository must exist before this PR merges.** Not after — see Key responses. Until it does, every merge to `main` builds four images, fails chat's leg, and deploys nothing for any of the nine services.
+2. **Every resource name in the handoff is derived, not read.** No task definition is committed, so the nine derived values are listed in a reconciliation table for George to check against a real one. This is the single thing most likely to be wrong in the handoff.
+3. **Two team decisions remain open** and the handoff depends on both: chat's own RDS MySQL instance versus sharing `foc-supplier-db`, and sharing `foc-order-redis` versus a third ElastiCache cluster. Both are written as option tables, not assumed.
+4. **The SSM parameter total is deliberately absent** from the teardown list, at the user's instruction, because the recorded list of 8 predates `SUPPLIER_ORDER_SERVICE_API_KEY` and the real figure could not be confirmed without AWS access.
+5. **`/admin/send-otp`, `/admin/verify-otp` and `/admin/resend-otp` still have no ALB rule**, while the frontend calls all three (`frontend/src/api/admin.js`). The plan deliberately routed only `/admin/audit-logs` to user-service because every other `/admin/*` path was an SPA route at the time; Stage 30 then added three real API paths under that prefix. Unrelated to chat and not touched here, but it is the same class of defect ALB rule 6 prevents, and it should be verified in the console.
+6. **Still nothing verifying the `DB_SSL=true` path against a real server**, carried over from the previous entry and recorded in the handoff's "Known gaps".
+
+**What I kept/changed/rejected:**
+
+**Author review:**

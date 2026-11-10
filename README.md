@@ -849,3 +849,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 
 | 258 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
 | 259 | 2026-11-10 | chat-service | Chat Service: AWS hardening parity (RDS TLS, ALB keep-alive) and CI coverage | DB_SSL, RDS CA bundle, keep-alive timeouts and a CI test + docker-build job |
+| 260 | 2026-11-10 | chat-service | Chat Service: CD wiring and the AWS console handoff | chat-service added to the deploy matrices; run checklist and a console handoff for George |
