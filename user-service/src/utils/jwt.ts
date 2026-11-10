@@ -23,6 +23,14 @@
 //   Governing decision: instructions.md Stage 31 ("The unlock link and token" table). No
 //   requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - added signPendingVerificationToken/verifyPendingVerificationToken for
+//   the new `pendingToken` cookie (header `typ: pv+JWT`, claim sub only, lifetime
+//   config.otp.ttlMinutes minutes, same RS256 key/kid handling as the other token pairs). Tool:
+//   Claude Code (model: claude-sonnet-5). Governing decision: bug report + team decisions
+//   recorded in this task's conversation (pending-token cookie mechanism, EMAIL_MISMATCH 403, no
+//   OTP-counter interaction, TTL = config.otp.ttlMinutes). No requirements, architecture, schema,
+//   or API decisions were made by the AI tool.
+// Author review:
 
 import { createPublicKey, type JsonWebKey } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -160,6 +168,23 @@ export function verifyUnlockToken(token: string): { user_id: string; lck: number
     throw new Error('Malformed unlock token claims');
   }
   return { user_id: payload.sub, lck: payload.lck };
+}
+
+export function signPendingVerificationToken({ userId }: { userId: string }): string {
+  return jwt.sign({}, currentKey.privateKey, {
+    algorithm: 'RS256',
+    subject: userId,
+    expiresIn: `${config.otp.ttlMinutes}m`,
+    keyid: currentKey.kid,
+    header: { alg: 'RS256', typ: 'pv+JWT' },
+  });
+}
+
+export function verifyPendingVerificationToken(token: string): { user_id: string } {
+  assertTokenType(token, 'pv+JWT');
+  const key = findKeyForToken(token);
+  const payload = jwt.verify(token, key.publicKey, { algorithms: ['RS256'] }) as jwt.JwtPayload;
+  return { user_id: payload.sub as string };
 }
 
 export function getJwks(): { keys: JsonWebKey[] } {

@@ -18,6 +18,13 @@
 // 2026-11-09: Stage 27a - mount the admin OTP router at /admin.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - the AppError branch now sets err.cookie (if present) on the response,
+//   right after the existing retryAfterSeconds handling, so a service-layer AppError can attach
+//   a cookie (the new pendingToken on the 403 ACCOUNT_NOT_VERIFIED case) before any response
+//   object was reachable. Tool: Claude Code (model: claude-sonnet-5). Governing decision: bug
+//   report + team decisions recorded in this task's conversation (pending-token cookie
+//   mechanism). No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
@@ -50,6 +57,9 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof AppError) {
     if (err.retryAfterSeconds !== undefined) {
       res.set('Retry-After', String(err.retryAfterSeconds));
+    }
+    if (err.cookie) {
+      res.cookie(err.cookie.name, err.cookie.value, err.cookie.options);
     }
     res.status(err.status).json({ message: err.message, code: err.code });
     return;

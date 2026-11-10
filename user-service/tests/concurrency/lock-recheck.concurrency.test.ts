@@ -19,6 +19,14 @@
 //   values, not a new assertion: these tests are about the re-check race).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - verifyRegistrationOtp/resendRegistrationOtp calls in the "registration
+//   OTP flows re-check the locked row" describe block now pass the calling test's own
+//   registerPending pendingToken, since those service functions now require it (the new
+//   cross-check against the account named by `email`). No assertions or race setup changed.
+//   Tool: Claude Code (model: claude-sonnet-5). Governing decision: bug report + team decisions
+//   recorded in this task's conversation (pending-token cookie mechanism). No requirements,
+//   architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as authService from '../../src/services/auth.service.js';
 import * as usersService from '../../src/services/users.service.js';
@@ -203,7 +211,7 @@ describe('registration OTP flows re-check the locked row', () => {
     const otp = latestOtpFor(u.email);
     const { error } = await raceAgainstChange(
       u.id,
-      () => authService.verifyRegistrationOtp({ email: u.email, otp }),
+      () => authService.verifyRegistrationOtp({ email: u.email, otp, pendingToken: u.pendingToken }),
       async (c) => {
         await c.query(`UPDATE users SET status = 'active' WHERE id = $1`, [u.id]);
       },
@@ -217,7 +225,7 @@ describe('registration OTP flows re-check the locked row', () => {
     const otp = latestOtpFor(u.email);
     const { error } = await raceAgainstChange(
       u.id,
-      () => authService.verifyRegistrationOtp({ email: u.email, otp }),
+      () => authService.verifyRegistrationOtp({ email: u.email, otp, pendingToken: u.pendingToken }),
       async (c) => {
         await c.query('DELETE FROM users WHERE id = $1', [u.id]);
       },
@@ -229,7 +237,7 @@ describe('registration OTP flows re-check the locked row', () => {
     const u = await registerPending(1);
     const { error } = await raceAgainstChange(
       u.id,
-      () => authService.resendRegistrationOtp({ email: u.email }),
+      () => authService.resendRegistrationOtp({ email: u.email, pendingToken: u.pendingToken }),
       async (c) => {
         await c.query(`UPDATE users SET status = 'active' WHERE id = $1`, [u.id]);
       },

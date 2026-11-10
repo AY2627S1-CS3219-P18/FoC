@@ -10,6 +10,14 @@
 //        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+// Scope: Bug fix - registerPending now captures the `pendingToken` Set-Cookie from the register
+//        response and carries it on the returned TestUser; createActiveUser attaches it (via
+//        the new pendingCookie helper, mirroring refreshCookie) to its internal verify-otp call,
+//        since that call now requires the cookie. Governing decision: bug report + team
+//        decisions recorded in this task's conversation (pending-token cookie mechanism). No
+//        requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import type request from 'supertest';
 import { api } from './server.js';
 import { getUserByEmail, setUserRole } from './db.js';
@@ -21,6 +29,7 @@ export interface TestUser {
   username: string;
   email: string;
   password: string;
+  pendingToken: string;
 }
 
 export function userInput(n: number | string = 1, password = PASSWORD) {
@@ -37,7 +46,8 @@ export async function registerPending(
   if (res.status !== 201)
     throw new Error(`register failed: ${res.status} ${JSON.stringify(res.body)}`);
   const row = (await getUserByEmail(input.email))!;
-  return { id: row.id, ...input };
+  const pendingToken = cookieValue(res, 'pendingToken')!;
+  return { id: row.id, pendingToken, ...input };
 }
 
 // Registers and verifies the OTP, so the account is active.
@@ -48,6 +58,7 @@ export async function createActiveUser(
   const user = await registerPending(n, password);
   const res = await api()
     .post('/auth/verify-otp')
+    .set('Cookie', pendingCookie(user.pendingToken))
     .send({ email: user.email, otp: latestOtpFor(user.email), purpose: 'registration' });
   if (res.status !== 200)
     throw new Error(`verify failed: ${res.status} ${JSON.stringify(res.body)}`);
@@ -77,6 +88,10 @@ export function cookieValue(res: request.Response, name: string): string | undef
 
 export function refreshCookie(token: string): string {
   return `refreshToken=${token}`;
+}
+
+export function pendingCookie(token: string): string {
+  return `pendingToken=${token}`;
 }
 
 // An active account with the given role, set directly in the DB (there is no API for it yet).

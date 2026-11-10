@@ -86,6 +86,20 @@
 //   Governing decision: instructions.md Stage 31 ("The unlock link and token" table). No
 //   requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - fixed verify-otp/resend-otp (registration purpose) being resolvable
+//   purely from the request body's `email`, letting one pending account's OTP flow be driven
+//   against a different pending account. register() now also returns a pendingToken (signed for
+//   the new user's id); login()'s pending-account throw now attaches the same kind of token as
+//   an AppError cookie; verifyRegistrationOtp/resendRegistrationOtp take an added pendingToken
+//   param and, via the new assertPendingTokenMatches helper, reject with 403 EMAIL_MISMATCH
+//   before any OTP attempt-count/resend-cooldown/resend-count logic runs if the cookie is
+//   missing, invalid/expired, or belongs to a different account than the one found by `email`.
+//   forgotPassword/resendForgotPasswordOtp/verifyForgotPasswordOtp/resetPassword are untouched.
+//   Tool: Claude Code (model: claude-sonnet-5). Governing decision: bug report + team decisions
+//   recorded in this task's conversation (pending-token cookie mechanism, EMAIL_MISMATCH 403
+//   with no OTP-counter interaction, TTL = config.otp.ttlMinutes). No requirements, architecture,
+//   schema, or API decisions were made by the AI tool.
+// Author review:
 
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -97,7 +111,14 @@ import type { UserRowWithNow } from '../db/queries/users.queries.js';
 import { withTransaction, type Queryable } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
-import { signAccessToken, signUnlockToken, verifyUnlockToken } from '../utils/jwt.js';
+import {
+  signAccessToken,
+  signPendingVerificationToken,
+  signUnlockToken,
+  verifyPendingVerificationToken,
+  verifyUnlockToken,
+} from '../utils/jwt.js';
+import { REFRESH_COOKIE_OPTIONS } from '../utils/cookies.js';
 import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { durationHoursForLevel, effectiveEscalationLevel, escalationWording } from './lockEscalation.js';
@@ -273,7 +294,7 @@ export async function register({
   username: string;
   email: string;
   password: string;
-}): Promise<void> {
+}): Promise<{ pendingToken: string }> {
   if (!USERNAME_REGEX.test(username)) {
     throw new AppError(400, USERNAME_MESSAGE, 'VALIDATION_ERROR');
   }
@@ -286,7 +307,7 @@ export async function register({
     throw new AppError(400, PASSWORD_MESSAGE, 'VALIDATION_ERROR');
   }
 
-  await withTransaction(async (client) => {
+  const userId = await withTransaction(async (client) => {
     await userQueries.deleteStalePendingUsers({ username, email }, client);
 
     // A live pending user (unexpired OTP) still counts as taken: this is the reservation.
@@ -323,7 +344,10 @@ export async function register({
     }
 
     await issueOtp({ userId, email, purpose: 'Registration', username }, client);
+    return userId;
   });
+
+  return { pendingToken: signPendingVerificationToken({ userId }) };
 }
 
 export async function login(
@@ -380,7 +404,11 @@ export async function login(
     }
 
     if (locked.status === 'pending') {
-      throw new AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED');
+      throw new AppError(403, 'Account not verified', 'ACCOUNT_NOT_VERIFIED', undefined, {
+        name: 'pendingToken',
+        value: signPendingVerificationToken({ userId: locked.id }),
+        options: { ...REFRESH_COOKIE_OPTIONS, maxAge: config.otp.ttlMinutes * 60 * 1000 },
+      });
     }
     if (locked.status === 'suspended') {
       throw new AppError(403, 'Account suspended', 'ACCOUNT_SUSPENDED');
@@ -494,12 +522,34 @@ export async function refresh(
   return { accessToken, sessionTimeLeftSeconds };
 }
 
+// Pre-check for verifyRegistrationOtp/resendRegistrationOtp: the `pendingToken` cookie must be
+// present, valid and issued for the same account the `email` body field resolved to. Throws
+// 403 EMAIL_MISMATCH (same response for a missing cookie, a malformed/expired token, or a
+// token for a different account - the three cases are never distinguished) before any
+// OTP-related logic (attempt count, resend cooldown/count) runs.
+function assertPendingTokenMatches(pendingToken: string | undefined, userId: string): void {
+  if (!pendingToken) {
+    throw new AppError(403, "This link doesn't match the account you're verifying", 'EMAIL_MISMATCH');
+  }
+  let decoded: { user_id: string };
+  try {
+    decoded = verifyPendingVerificationToken(pendingToken);
+  } catch {
+    throw new AppError(403, "This link doesn't match the account you're verifying", 'EMAIL_MISMATCH');
+  }
+  if (decoded.user_id !== userId) {
+    throw new AppError(403, "This link doesn't match the account you're verifying", 'EMAIL_MISMATCH');
+  }
+}
+
 export async function verifyRegistrationOtp({
   email,
   otp,
+  pendingToken,
 }: {
   email: string;
   otp: string;
+  pendingToken: string | undefined;
 }): Promise<void> {
   if (!OTP_REGEX.test(otp)) {
     throw new AppError(400, 'OTP must be a 6-digit code', 'VALIDATION_ERROR');
@@ -510,6 +560,7 @@ export async function verifyRegistrationOtp({
     if (!user || user.status !== 'pending') {
       throw new AppError(400, 'Invalid or expired OTP', 'INVALID_OTP');
     }
+    assertPendingTokenMatches(pendingToken, user.id);
 
     const locked = await userQueries.lockUserById(user.id, client);
 
@@ -534,12 +585,19 @@ export async function verifyRegistrationOtp({
   }
 }
 
-export async function resendRegistrationOtp({ email }: { email: string }): Promise<void> {
+export async function resendRegistrationOtp({
+  email,
+  pendingToken,
+}: {
+  email: string;
+  pendingToken: string | undefined;
+}): Promise<void> {
   await withTransaction(async (client) => {
     const user = await userQueries.findByEmail(email, client);
     if (!user || user.status !== 'pending') {
       throw new AppError(400, 'No pending registration found', 'NO_PENDING_REGISTRATION');
     }
+    assertPendingTokenMatches(pendingToken, user.id);
 
     const locked = await userQueries.lockUserById(user.id, client);
 
