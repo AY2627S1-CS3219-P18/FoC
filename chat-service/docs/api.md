@@ -12,6 +12,9 @@ Scope (2026-11-10, Codex, model: GPT-6): Integrated implemented behavior into en
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
 Author review: tng wen xi
+
+Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+Author review: tng wen xi
 -->
 
 # Chat service API reference
@@ -36,7 +39,6 @@ Implementation sources: [router mounts](../src/app.ts), [routes](../src/routes/c
 | POST | `/chat/conversations/:conversationID/messages` | Bearer or service key | 201 |
 | POST | `/chat/conversations/:conversationID/read` | Bearer | 200 |
 | POST | `/chat/conversations/:conversationID/translation` | Bearer | 200 |
-| POST | `/chat/conversations/:conversationID/participants` | Service key | 200 |
 | POST | `/chat/orders/:orderId/participants` | Service key | 200 |
 | POST | `/chat/send-system-notification` | Service key | 201 / 200 |
 | POST | `/chat/orders/:orderId/archive` | Bearer or service key | 200 |
@@ -362,15 +364,15 @@ Gemini receives and returns JSON keyed by message ID. Literal `SAME` is stored w
 - 409 revoked membership.
 - 500 unexpected failure. Enqueue failures are logged without failing the response.
 
-## POST /chat/conversations/:conversationID/participants
+## POST /chat/orders/:orderId/participants
 
 ### Current usage
 
-Adds membership when the caller already knows the conversation ID. No production caller was found in the inspected frontend or Order Service chat client; the implemented Order Service integration uses the order-ID variant below.
+The [Order Service chat client](../../order-service/src/clients/chat.client.ts) uses this in its participant-delivery job to add the courier by order ID. It does not need to retrieve the conversation ID first. Order acceptance queues courier addition alongside the status change. The worker retries network/5xx failures; 409 is permanent and is dead-lettered.
 
 ### Request and response
 
-Service key required; UUID path. Required body:
+Service key required; UUID path is the order ID. It resolves the associated conversation inside the membership transaction. Required body:
 
 ```json
 {
@@ -400,23 +402,9 @@ The transaction locks the ACTIVE conversation before checking membership and ins
 - 400 invalid path/body.
 - 401 auth.
 - 403 Bearer-only caller.
-- 404 conversation missing.
+- 404 no conversation for that order.
 - 409 archived, same user already present (even revoked), another requester already present, or another active courier present.
 - 500 unexpected failure. Repeated additions conflict rather than return idempotent success.
-
-## POST /chat/orders/:orderId/participants
-
-### Current usage
-
-The [Order Service chat client](../../order-service/src/clients/chat.client.ts) uses this in its participant-delivery job to add the courier by order ID. It does not need to retrieve the conversation ID first.
-
-### Request and response
-
-Same authentication, body, validation, response and errors as the preceding endpoint, but UUID path is **order ID**. It resolves the associated conversation before adding membership. 404 means no conversation for that order. Response contains the resolved conversation ID, not order ID.
-
-Conversation lookup occurs inside the membership transaction. Order acceptance queues courier addition alongside the status change. The worker retries network/5xx failures; 409 is permanent and is dead-lettered. The operation emits no participant event and does not replace existing membership.
-
-
 
 ## POST /chat/send-system-notification
 

@@ -17248,3 +17248,43 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — Remove conversation-ID participant endpoint
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-specified endpoint removal and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** refactor | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** User instruction quoted below; existing order-ID participant contract in `chat-service/README.md` and `chat-service/docs/api.md`.
+
+**Prompts (exact):**
+> oh ok help me remoe the conversation id participant endpoint
+
+**Key responses:**
+Removed POST /chat/conversations/:conversationID/participants. Simplified the participant controller and service to resolve conversations by order ID only, removing the byOrderId switch. Preserved the order-ID endpoint's authentication, roles, membership checks and response. Moved existing participant test coverage onto the order-ID route and added a regression test asserting the removed route returns 404 without database access. Consolidated participant documentation under the order-ID endpoint.
+Verification: typecheck and build passed; all 14 test files / 213 tests passed with local socket access outside the sandbox. git diff --check passed. No live database verification was performed.
+
+**Files:**
+- `chat-service/src/routes/conversations.routes.ts` (modified)
+- `chat-service/src/controllers/conversations.controller.ts` (modified)
+- `chat-service/src/services/conversations.service.ts` (modified)
+- `chat-service/src/participants.spec.ts` (modified)
+- `chat-service/src/order-participants.spec.ts` (modified)
+- `chat-service/docs/api.md` (modified)
+- `chat-service/README.md` (modified)
+- `README.md` (disclosure scope and required Log index row)
+- `ai/usage-log.md` (appended this entry)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

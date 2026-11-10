@@ -38,6 +38,8 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import type { RequestHandler } from "express";
 import { z } from "zod";
@@ -379,14 +381,9 @@ export function postRead(
 }
 
 // AI-generated
-export function postParticipant(
-  prisma: PrismaClient,
-  byOrderId = false,
-): RequestHandler {
+export function postParticipant(prisma: PrismaClient): RequestHandler {
   return async (req, res) => {
-    const id = z
-      .uuid()
-      .safeParse(byOrderId ? req.params.orderId : req.params.conversationID);
+    const id = z.uuid().safeParse(req.params.orderId);
     const body = z
       .object({
         userId: z.uuid(),
@@ -402,7 +399,6 @@ export function postParticipant(
         prisma,
         id.data,
         body.data,
-        byOrderId,
       );
       if (result.status !== 200) {
         res.sendStatus(result.status);

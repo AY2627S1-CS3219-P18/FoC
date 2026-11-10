@@ -3,6 +3,9 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Author review: tng wen xi
 Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
 Author review: tng wen xi
+
+Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+Author review: tng wen xi
 -->
 <!--
 AI Assistance Disclosure:
@@ -301,13 +304,13 @@ Team decisions supplied in the 2026-11-08 implementation conversation:
 
 Verification: all 109 tests passed, including 13 read endpoint cases and a real local WebSocket receipt-delivery check. Typecheck and build passed. HTTP tests use Prisma doubles; live MySQL concurrency and Redis cross-replica delivery were not exercised.
 
-## POST /chat/conversations/:conversationId/participants
+## POST /chat/orders/:orderId/participants
 
 Team decisions supplied in the 2026-11-08 implementation conversation:
 
 - Require `X-Service-Key` matching CHAT_SERVICE_API_KEY; no `X-Service-Name` is required. Reuse message authentication: a supplied key takes precedence; invalid/missing credentials return 401, and a valid Bearer-only user returns 403.
-- Body: `{ "userId": "<User Service UUID>", "role": "COURIER" }`. Both COURIER and REQUESTER are allowed. Invalid conversation/user UUIDs or roles return 400. The caller supplies the user ID; this endpoint does not call User Service.
-- Missing conversation returns 404. Archived conversation or any existing membership for that user, including revoked membership, returns 409. Existing memberships are not changed.
+- Body: `{ "userId": "<User Service UUID>", "role": "COURIER" }`. Both COURIER and REQUESTER are allowed. Invalid order/user UUIDs or roles return 400. The caller supplies the user ID; this endpoint does not call User Service.
+- The order ID resolves to a conversation inside the membership transaction. An order without a conversation returns 404. Archived conversation or any existing membership for that user, including revoked membership, returns 409. Existing memberships are not changed.
 - Return 200 with the object below directly. Insert the participant using existing schema defaults. The transaction locks the active conversation before checking membership and inserting; no schema changes or realtime event were added.
 
 ```json
@@ -352,18 +355,6 @@ order ID or text returns 409; IDs belonging to non-system messages also conflict
 New messages return 201. The primary key also handles concurrent duplicate inserts;
 the losing transaction rolls back and reads the committed message. Missing or
 malformed `messageId` returns 400. No schema migration is needed.
-
-## POST /chat/orders/:orderId/participants
-
-Team decision supplied on 2026-11-08: behave exactly like
-`POST /chat/conversations/:conversationId/participants`, resolving the conversation
-by orderId. The same service authentication, UUID/body validation, transaction,
-participant limits, response shape and status codes apply. The response still
-contains the resolved conversationId. An order without a conversation returns 404.
-No schema changes.
-
-Verification: 169 tests passed, including order-based participant endpoint cases;
-typecheck and build passed. Endpoint tests use injected Prisma doubles.
 
 ### Frontend realtime integration
 
