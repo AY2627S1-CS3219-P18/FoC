@@ -3,7 +3,7 @@
 #   2026-11-04: Shared proxy headers for the frontend nginx config, so the six proxied
 #     locations cannot drift apart.
 #     No requirements, architecture, schema, or API decisions were made by the AI tool.
-#   Author review:
+#   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 # Host must be forwarded: user-service issues the refresh cookie and order-service's
 # Socket.IO handshake both care about the origin the browser actually used.

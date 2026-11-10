@@ -5,7 +5,7 @@
 //    Author review: Wee Jean
 //  2026-10-16: Week 7/8 catch-up - register the globalSetup that builds the test database.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { defineConfig } from 'vitest/config';
 

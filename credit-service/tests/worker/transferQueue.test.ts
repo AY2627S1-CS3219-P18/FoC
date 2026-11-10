@@ -4,7 +4,7 @@
 //    (commit cb7ed49) and the backoff delays. These values are not ours to change: a
 //    mismatch makes the worker subscribe successfully and receive nothing.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { describe, expect, it } from 'vitest';
 import {

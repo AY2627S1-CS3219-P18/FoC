@@ -7,7 +7,7 @@
 //  2026-10-19: Week 9 - unblocked by JWKS. The verifier is now async, and this composes
 //    the two middlewares rather than reimplementing bearer parsing.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import type { RequestHandler } from 'express';
 import { requireAuth, requireSelfOrElevated } from './auth.js';

@@ -5,7 +5,7 @@
 //    job name, payload shape and the backoff delays. BullMQ 6.3.13 is a team-approved
 //    dependency (credit-service-context.md §4).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 /**
  * The one place the wire contract with order-service is written down.

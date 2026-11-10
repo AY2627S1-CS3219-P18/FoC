@@ -11028,7 +11028,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-08
 Scope: Appended this task's disclosure record.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 -->
 
 **Tool:** Codex (model: GPT-6)
@@ -15183,6 +15183,203 @@ Windows-specific config runner and private-key permission assertion failures rem
 
 **Deviations / questions raised for the team:**
 - None. AWS console steps (ECR repo, RDS instance, SSM parameters, task definitions including `order-worker`'s chat settings, target group, ALB rule, ECS service) remain for George.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-10 — Repo-wide: filled Koh Wee Jean's author-review attributions
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The attestation itself is Koh Wee Jean's; the agent inventoried the blank fields and applied the wording she supplied, and made no judgement about which code had been reviewed.
+
+**Prompts (exact):**
+
+> I'm Koh Wee Jean (CS3219, ProjectGroup18). Every AI-influenced file in this repo has a header attribution block with an "Author review:" field. Many of mine are blank, and I need to fill them before the D4 deadline.
+>
+> Step 1 — Inventory only, no edits yet:
+> - Find every file containing an "Author review:" field that is empty or a placeholder.
+> - Narrow it to files I've touched: use `git log --author` (check all the name/email variants I've committed under) plus anything under credit-service/, user-service/, frontend/, chat-service/ and .github/workflows/ that I edited.
+> - Show me a table: file path | tool/model/date/scope from its header | my commits on that file. List separately any blank fields in files I have NOT touched, so I can tell the owners.
+> - Stop and wait for me to confirm the list.
+>
+> Step 2 — After I confirm:
+> - Fill each field with exactly:
+>   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+>   (If I give a different wording for specific files, use mine for those.)
+> - Change nothing else: no other header fields, no code, no formatting.
+> - Add an entry to /ai/usage-log.md for this task, following the existing format.
+> - Commit as "docs: fill author review attributions (Koh Wee Jean)". Don't push.
+> - Show me `git diff --stat` so I can see only header lines changed.
+
+> for the servicechataws wait till it merges to change
+> for the files you have scanned, yes sign them
+
+> yes sign it, for foc mockup ignore it
+
+**Key responses:**
+
+_Inventory._ Repo-wide there are **505 files carrying 1178 blank or placeholder `Author review:` fields.** Matching on both of the author's committer identities — `WeeJean <e1354206@u.nus.edu>` (48 commits) and `<E1354206@u.nus.edu>` (11) — narrowed that to **102 files with 222 blank fields** reachable from `main`. Of those, 60 files have no other committer and 42 are shared. All 39 placeholder occurrences were the single string `<pending — team member to sign>`.
+
+_AGENTS.md §4.1 was raised before acting._ Lines 124–125 state that the agent "**never** writes the author's name or signs 'Author review'. Only a human does, after reading and testing the code." This was put to the author with the alternative of running the fill herself, and she directed the agent to apply it. **Recorded here so the disclosure is accurate: the 221 fields were written by script at Koh Wee Jean's direction, and the review they attest to is hers, not the agent's.** The agent made no assessment of whether any file had been reviewed.
+
+_Misattribution risk was raised and is the author's call._ 42 of the files have other committers, several with far more of their work than hers — `user-service/src/services/users.service.ts` (14 fields, 1 of her commits against 14 others'), `README.md` (39 fields, 14 against 218), `compose.yaml` (8 fields, 6 against 30). AGENTS.md §3 warns that misleading disclosure may be treated as an academic integrity violation, so the alternative of matching each dated field to the commit that produced it was offered. The author chose to sign the scanned set.
+
+_Two exclusions._ `order-service/Dockerfile` was dropped: she has **zero** commits on it in `main` and it had surfaced only through a branch match. The four files whose blanks exist solely on `servicechataws` — `.github/workflows/deploy.yml`, `docs/ecs-fargate-run-checklist.md`, `chat-service/.env.example`, `chat-service/src/server.ts` — are deferred until that branch merges, at her instruction. Net: **221 fields across 101 files.**
+
+_foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc-mockup/` standalone with its own `foc-mockup/AI-NOTES.md`, so a separate entry there was offered and declined; this single entry covers them.
+
+**Verification actually run:**
+
+- `git diff --numstat`: **221 added, 221 deleted, 101 files** — exactly balanced, so every change is a replacement rather than an insertion.
+- **Every removed line** matched a blank or `<pending — team member to sign>` `Author review:` field, and **every added line** ended with the supplied signature: both non-conforming counts were 0. No other header field, no code and no formatting was touched.
+- Each line keeps its own comment prefix — ` * `, `// `, `# `, `-- `, bare and indented variants all verified in the diff.
+- Existing line endings were preserved per file; the CRLF warnings git printed concern its own future normalisation of 14 pre-existing CRLF files, not changes made here.
+- An earlier count of "221 added / 218 removed" was a miscount in the checking command, not a defect: three SQL `--    Author review:` removals render as `---` in the diff and were mis-bucketed as file headers. `git diff --numstat` settles it at 221/221.
+
+**Files:**
+
+- 101 files across `credit-service/`, `foc-mockup/`, `frontend/`, `user-service/`, `order-service/`, `.github/workflows/`, and the root `README.md`, `compose.yaml`, `compose.dev.yaml`, `.env.example`, `MockupBlueprint.md`, `ai/usage-log.md` (header `Author review:` fields only)
+- `ai/usage-log.md` (modified: this entry)
+- `README.md` (modified: Log index row, plus its own attribution fields)
+
+**Deviations / questions raised for the team:**
+
+1. **The agent applied fields that AGENTS.md §4.1 reserves to a human**, at the author's explicit direction after the rule was quoted to her. Flagged here rather than left implicit, because the whole purpose of the field is a human attestation.
+2. **403 files with 956 blank fields remain, in work the author has not touched** — `supplier-service/` (110 files / 225 fields, Congchen), `frontend/` (114 / 205, Gabriel and Congchen), `user-service/` (102 / 321, Gabriel and Congchen), `order-service/` (53 / 112, Wen Xi and George), `docs/` (8 / 72), plus `AGENTS.md` and `instructions.md` at the root. Their owners need to sign them before submission.
+3. **Two `credit-service/` files are George's, not hers** — `tests/db/poolSsl.test.ts` and `tests/queue/redisConnection.test.ts`, both from the ECS work — so they were left for him despite being in her service.
+4. **`.github/scripts/ecs-deploy.sh` and `.github/workflows/deploy.yml` are George's** and still unsigned.
+5. **Reverting `foc-mockup/` is cheap** if its inclusion was misread: `git checkout -- foc-mockup/` before this is pushed.
+
+**What I kept/changed/rejected:**
+
+**Author review:** Reviewed and verified by Koh Wee Jean, 2026-11-10.
+
+---
+
+## 2026-11-10 — Credit Service: service README and completed API reference
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. Everything documented was read off the route table, middleware, controllers, service, worker, SQL and Dockerfile as they stand; no contract or schema was decided here. The `## Design decisions` heading in both files is left empty for the author, as instructed.
+
+**Prompts (exact):**
+
+> Stay on branch docs/author-review-attributions.
+>
+> I own the Credit Service (credit-service/: Node + TypeScript + Express, raw `pg` on PostgreSQL, vitest, BullMQ consumer, deployed on ECS Fargate). Create a service-level credit-service/README.md and complete credit-service/API.md. If API.md already exists, update it rather than rewriting from scratch.
+>
+> Read first: every route definition, the JWT/auth middleware, request validation, the BullMQ worker and its backoff/dead-letter handling, the SQL migrations/schema, env var usage, package.json scripts, and the Dockerfile.
+>
+> API.md: one section per HTTP endpoint, verified against the route code:
+> - method + path; auth required (JWT; which roles; admin vs own-scope)
+> - path and query params, including the admin filters on /credits/transactions/all and the keyset pagination cursor; request body schema; response body with an example
+> - every status code the code can actually return (400/401/403/404/409/503 etc.) and what triggers each one
+> - a curl example for each endpoint
+> - an "Async interface" section covering the queue name, job payload shape, retry/backoff schedule, idempotency on duplicate jobs, and dead_letter_jobs behaviour
+> List for me any endpoint that's in the old API.md but missing from the code, or the other way round.
+>
+> README.md: purpose (F19 closed credit economy, F20 transaction logging), tech stack, folder structure, env vars (table: name | required | purpose), local setup, running migrations, the credit_app DB role and its grants, running tests, Docker build, deployment pointer, and a link to API.md.
+>
+> Rules (course AI policy, important):
+> - Describe what the code does and how to run it. Don't write any design rationale or "why we chose X" text. Add a "## Design decisions" heading that contains only <!-- Written by the author --> and leave it for me.
+> - Don't modify source code. If the docs and the code disagree, report it to me rather than changing the code.
+> - Add the standard AI attribution header to both files (tool, model, today's date, scope: documentation), with "Author review:" left BLANK. I'll sign it after I've read the files.
+> - Add an entry to ai/usage-log.md and its README Log index row, matching the existing format.
+> - Commit as "docs(credit): service README and API reference". Don't push.
+
+> mark those nfr as completed
+
+**Key responses:**
+
+_Endpoint reconciliation — no drift._ The route table (`src/routes/credits.routes.ts`) and API.md match one for one, in both directions: `POST /credits/allocate`, `/reserve`, `/transfer`, `/release`; `GET /credits/balance/:userId`, `/credits/transactions`, `/credits/transactions/all`; and `GET /health` from `app.ts`. Nothing is documented that the code does not serve, and nothing is served that was undocumented. The admin `?userId=` / `?requestId=` filters are present in both.
+
+_API.md, updated rather than rewritten._ The existing 369-line contract was kept intact. Added: an explicit **Auth** line on every endpoint naming the middleware and the roles; **13 curl examples**; and an **Async interface** section covering the queue key `queue:credit:transfer` (prefix `queue:credit`, name `transfer`), the `credit_transfer` task name, the `{ requestId, courierId }` payload and its UUID guard, the backoff schedule computed from `backoffStrategy` (5s, 25s, 125s, 625s across 5 attempts, so roughly 13 minutes to abandonment), the full `classifyTransferError` disposition table, idempotency via `transaction_log_one_transfer_per_request` turning a replay into `ALREADY_TRANSFERRED` → success, and the `dead_letter_jobs` columns, grants and dead-letter-write-failure path.
+
+_README.md, rewritten to the requested structure._ Purpose stated as F19 and F20, tech stack, annotated folder tree, an env-var table of all 12 variables with required/default, local setup for both compose and host, the schema-bootstrap section including the empty-volume constraint, the `credit_app` role with its grants quoted from `grants.sql`, the test-database bootstrap and its two refusals, Docker targets, and an ECS Fargate deployment pointer.
+
+**Verification actually run:**
+
+- Every status code and error code in API.md was checked against the `new AppError(...)` call sites: `409 ALREADY_ALLOCATED`, `404 BALANCE_NOT_FOUND`, `422 INSUFFICIENT_UNRESERVED_CREDITS`, `409 RESERVATION_ALREADY_EXISTS`, `404 RESERVATION_NOT_FOUND`, `409 ALREADY_TRANSFERRED`, `409 ALREADY_RELEASED`, `404 COURIER_NOT_FOUND`, `400 INVALID_CURSOR`, plus `400 INVALID_REQUEST_BODY` from `parseBody`, `401 UNAUTHORIZED` / `503 IDENTITY_PROVIDER_UNAVAILABLE` from `createJwksVerifier`, `403 FORBIDDEN` from `requireElevated` and `requireSelfOrElevated`, `404 NOT_FOUND` from `notFoundHandler`, and `500 BALANCE_INVARIANT_VIOLATION` / `500 INTERNAL_ERROR` from `errorHandler`.
+- Backoff figures were computed from the code rather than copied: `5000 × 5^(n−1)`.
+- Page size 20 read from `TRANSACTION_PAGE_SIZE`; cursor format read from `encodeCursor`/`decodeCursor`.
+- Env-var table checked field by field against the `envSchema` in `src/config.ts`, and the test variables against `.env.test` and `tests/setup/globalSetup.ts`.
+- `## Design decisions` present in both files containing only `<!-- Written by the author -->`; exactly one blank `Author review:` in each, for the author to sign.
+- **No source file was modified** — the commit touches only the two docs plus the log and its index row.
+
+**Files:**
+
+- `credit-service/README.md` (modified: rewritten to the requested structure)
+- `credit-service/API.md` (modified: auth lines, curl examples, Async interface, Order Service status corrected)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **The old README's "Authentication is blocked" section was false and was removed.** It stated that "No endpoint authenticates its caller" and that `requireBalanceAccess` was "written but not mounted". Both are now wrong: `credits.routes.ts` builds a `createJwksVerifier` once per process and mounts `requireBalanceAccess` on `GET /balance/:userId`, `requireAuth` on `GET /transactions`, and `requireAuth` + `requireElevated` on `GET /transactions/all`. The source was not touched; only the documentation was corrected.
+2. **The old README's status table was stale in three further rows, and has been restored with current values.** F19.5.1 was marked "Implemented, **unauthenticated**"; F19.5.2, F20.2 and F20.2.1 were marked "Blocked on authentication"; NFR8.2.1 and NFR8.2.2 were marked "Not started". It was first dropped, because the requested structure had no status section, then reinstated on the author's follow-up instruction ("mark those nfr as completed") with every row set to Complete and a **Where** column naming the code each row points at. **NFR8.2.1 and NFR8.2.2 are marked complete on the author's instruction, not on the agent's assessment** - see Deviations 7.
+3. **"The two tables" section was wrong: there are three.** `init.sql` also creates `dead_letter_jobs`. The README now documents all three and points at API.md for the columns.
+4. **API.md's "Known mismatch with Order Service" was stale and has been corrected.** It claimed `order-service/src/clients/credits.client.ts` declared `reserve({ requesterId, amount }) → { reservationId }` against a stub. That file now calls `reserve({ userId, requestId, amount })` and `release({ requestId })`, matching this contract, and deliberately has no `transfer` method because transfer is driven over the queue. The section was retitled and rewritten to record the current state rather than deleted, so the history stays visible.
+5. **The README previously documented none of the asynchronous side** — no worker, no Redis variables, no `npm run worker`, no `DB_SSL`. All are now covered.
+6. **No design rationale was written**, per the brief. Statements that read as justification in the earlier README (for example why no key was substituted while auth was blocked, and why the test role is not `credit_app`) were either dropped or reduced to what the code does. The `## Design decisions` section in both files is empty and belongs to the author.
+
+7. **NFR8.2.1 and NFR8.2.2 are the author's claim, and the repo contains no measurement for the first.** NFR8.2.1 is "shall not delay transactions by more than 500ms when logging each operation"; there is no latency test, timing assertion or benchmark anywhere in credit-service, so the status table states what the implementation is (one `INSERT` in the same transaction as the balance write) rather than a measured figure. NFR8.2.2 is "shall retain each transaction record for at least 2 years"; there is no retention or purge code, and the supporting fact is that `credit_app` holds no `DELETE` or `TRUNCATE` on `transaction_log`, so the service cannot remove a record. Both were marked complete on the author's instruction; the agent assessed neither.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-10 — Frontend: show the amount on reservation and release rows in the Wallet
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. The presentation rule it follows is the one already in `Delta`: a reservation and a release carry no signed delta. No new API, field or requirement.
+
+**Prompts (exact):**
+
+> for the frontend for the credit activity segment, help me add the value held, returned ... etc similar to the allocation +20 there.
+>
+> and to confirm this page has pagination right? for how many errand per page may i confirm? and is there lazy loading?
+
+> ok rebuild it
+
+> ok now commit the changes
+
+**Key responses:**
+
+_The change._ `Delta` in `frontend/src/pages/Wallet.jsx` rendered the bare word `held` or `returned` for `reservation` and `release`, while an allocation rendered `+20` and a transfer `+4` / `−4`. The amount was already a prop, so the branch now renders it before the label: `4 held`, `20 returned`, with the figure as `tnum font-medium text-ink-70` and the label left at `text-ink-40`.
+
+_No sign on those two types._ A reservation moves credits from unreserved to reserved and a release moves them back; neither changes `total_balance`, which is why `describe()` in `frontend/src/api/credits.js` returns `delta: 0` for both. A `+` or `−` would read as a balance movement that does not reconcile against the total, so the figure is unsigned. `describe()` was not changed.
+
+_Questions answered from the code, not changed._ The history is server-side keyset pagination at **20 transactions per page** (`TRANSACTION_PAGE_SIZE` in credit-service, ordered `created_at DESC, transaction_id DESC`, opaque base64url cursor, `nextCursor` null on the last page). That is 20 transactions rather than 20 errands: one errand normally produces a `reservation` plus either a `transfer` or a `release`. Loading is **infinite scroll**, not numbered pages — an `IntersectionObserver` on a sentinel below the list calls `loadPage(cursor)`, appends, and stops when `nextCursor` is null, with an `inFlight` ref guarding against a double fire.
+
+**Verification actually run:**
+
+- `npm run lint`: exit 0. The only warnings are the pre-existing ones in `src/pages/AdminUsers.jsx`; none in `Wallet.jsx`.
+- `npm run build`: exit 0, `dist/assets/index-B7TR23Od.js`, 504.80 kB / 147.04 kB gzipped.
+- `npm test`: **40 files, 298 tests, all passing.** There is no test covering `Delta`, so the suite proves no regression rather than proving this behaviour.
+- `docker compose up -d --build frontend`: rebuilt, healthy in about 3 s, serving on 5173. Confirmed the container serves the new bundle — same hash as the local build — and that the minified output contains the new branch: `className:"w-20 shrink-0 text-right text-sm text-ink-40", children:[span{className:"tnum font-medium text-ink-70", children:n}, " ", e==="hold"?"held":"returned"]`.
+
+**Files:**
+
+- `frontend/src/pages/Wallet.jsx` (modified: `Delta`, plus the dated disclosure entry)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **There is a second, near-duplicate `Delta` in the built bundle that was not changed.** It appears minified as `className:"tnum text-sm text-ink-40"` with no `w-20 shrink-0` and no amount, so it still renders the word alone. Only `frontend/src/pages/Wallet.jsx` was edited; the other copy is most likely `foc-mockup`'s version of the page or another component rendering credit rows. Flagged rather than hunted down, because it was outside what was asked for. `grep -rn "'held'" frontend/src foc-mockup/src` locates it.
+2. **The transaction-type filter is client-side only** and was left alone. `const shown = rows.filter((t) => filter === 'All' || t.type === filter)` filters the rows already loaded and does not request more matching rows, so selecting "Transfer" on a long history shows only the transfers among the pages scrolled so far, presented as if complete. Making it server-side would need a `?type=` parameter on `GET /credits/transactions`, which does not exist — a new API surface, and the team's decision rather than the agent's.
+3. **No test was added.** There is no existing test for `Delta` or for the Wallet list rendering, and the brief did not ask for one. A render test asserting `4 held` and the absence of a sign would be cheap if wanted.
+4. **Committed on `docs/author-review-attributions`**, which is a documentation branch, because the author asked to stay on it. This is the only source change on that branch.
 
 **What I kept/changed/rejected:**
 

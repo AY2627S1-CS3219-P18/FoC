@@ -13,7 +13,7 @@
   *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Repaired session restore. GET /auth/verify was removed from user-service on 2026-10-17, so every reload threw and the user appeared logged out; the id and role now come from the access token's own claims. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: restoreSession now also reads activeView from GET /users/me (via the new
@@ -21,19 +21,19 @@
  *        helper moved to http.js as decodeAccessTokenClaims, so http.js can reuse it for
  *        proactive refresh scheduling without a circular import.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
  * Scope: Added register, verifyOtp and resendOtp, the calls Register.jsx needs, per
  *        instructions.md Stage 16c (POST /auth/register, /auth/verify-otp, /auth/resend-otp).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-23
  * Scope: Added forgotPassword and resetPassword, the calls ForgotPassword.jsx needs, per
  *        instructions.md Stage 16d (POST /auth/forgot-password, /auth/reset-password).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-05
  * Scope: Stage 23c of instructions.md - login() now reads sessionTimeLeftSeconds (added to
@@ -41,13 +41,13 @@
  *        AuthContext learns the session deadline on login the same way it learns it from any
  *        refresh.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 31d of instructions.md - added unlockAccount, the call UnlockAccount.jsx needs
  *        (POST /auth/unlock).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import { decodeAccessTokenClaims, recordSessionTimeLeft, refreshAccessToken, request, setAccessToken } from './http'

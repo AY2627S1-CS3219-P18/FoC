@@ -5,7 +5,7 @@
 //    unset, so a placeholder is supplied here; the same dummy-URL approach the Dockerfile's
 //    build stage already uses.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';

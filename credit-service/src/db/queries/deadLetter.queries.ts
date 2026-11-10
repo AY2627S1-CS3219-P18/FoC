@@ -3,7 +3,7 @@
 //  2026-10-22: Credit transfer consumer - dead_letter_jobs writes and reads, following
 //    the same query-module shape as credits.queries.ts.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import type { Queryable } from '../transaction.js';
 

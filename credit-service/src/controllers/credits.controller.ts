@@ -8,15 +8,15 @@
 //    Author review: Wee Jean
 //  2026-10-19: Week 9 - transaction history handlers (F19.5.2, F20.2).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-11-04: Admin filters - optional ?userId= and ?requestId= on the all-transactions
 //    handler. No new route and no new response fields.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-10-16: Week 7/8 catch-up - transfer, release and balance-read handlers.
 //    Bodies and status codes for the new endpoints follow the team's decisions of
 //    2026-10-16; anything not covered by them is flagged in credit-service/API.md.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import type { Request, Response } from 'express';
 import { z } from 'zod';

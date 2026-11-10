@@ -13,7 +13,7 @@
 #        be deployed. Static output is served by nginx, which also proxies the API paths
 #        frontend/vite.config.js proxies in development.
 #        No requirements, architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-slim AS deps
 WORKDIR /app

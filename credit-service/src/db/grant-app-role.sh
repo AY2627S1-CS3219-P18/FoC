@@ -5,7 +5,7 @@
 #    applies grants.sql, implementing NFR8.2.3 (credit-service-context.md §5).
 #    Runs inside the postgres image's docker-entrypoint-initdb.d, after 01-init.sql.
 #    No requirements, architecture, schema, or API decisions were made by the AI tool.
-#    Author review:
+#    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 set -euo pipefail
 
 # Supplied by compose. The password never appears in a committed file.

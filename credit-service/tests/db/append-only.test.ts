@@ -4,12 +4,12 @@
 //    least-privilege role, so these assert the real production privileges.
 //    Requires a running credit-db; see credit-service/README.md.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-10-22: Credit transfer consumer - the UPDATE case now asserts the whole row is
 //    unchanged, and a new block checks dead_letter_jobs' privileges are scoped to that
 //    table so transaction_log did not pick up UPDATE alongside it.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { afterAll, describe, expect, it } from 'vitest';
 import pool from '../../src/db/pool.js';

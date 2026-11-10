@@ -4,7 +4,7 @@
 //    case against the contract agreed with order-service on 2026-10-20. Pure, so no
 //    database or broker is needed.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { describe, expect, it } from 'vitest';
 import { classifyTransferError } from '../../src/worker/classifyTransferError.js';

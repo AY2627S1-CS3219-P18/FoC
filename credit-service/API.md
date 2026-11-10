@@ -4,16 +4,23 @@
    2026-10-16: Week 7/8 catch-up - published API contract for Order Service to build
      against. Methods and paths are the team's (credit-service-context.md §8); items
      marked INVENTED were not covered by any requirement or team decision.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-10-19: Week 9 - JWKS authentication, the two transaction-history endpoints,
      and the pagination contract.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-11-04: Optional ?userId= and ?requestId= filters on the administrator
      transaction view. No new route, no new fields, no requirement behind it.
-     Author review:
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
    2026-10-22 (Claude Code, model: claude-sonnet-5): Updated a doc path reference after
      user-service's docs/local-dev-setup.md was renamed to docs/user-service-instructions.md.
      No requirements, architecture, schema, or API decisions were made by the AI tool.
+     Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
+   2026-11-10: Documentation only - added a curl example to every endpoint, the
+     "Async interface" section (queue and task names, payload, backoff schedule,
+     idempotency, dead_letter_jobs), and the authentication column on each endpoint.
+     All of it read off the route, middleware, worker and SQL code as it stands; no
+     source code was changed, and no requirements, architecture, schema, or API
+     decisions were made by the AI tool.
      Author review:
 -->
 
@@ -111,6 +118,14 @@ Grants a new user their starting 20 credits. The amount is fixed by F19.1.1.
 |---|---|---|
 | 409 | `ALREADY_ALLOCATED` | This user already has a balance. No credits granted, no log row written |
 
+**Auth:** none. Service-to-service only — see the banner above.
+
+```bash
+curl -X POST http://localhost:3003/credits/allocate \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":"3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}'
+```
+
 ---
 
 ## `POST /credits/reserve` — F19.2.1, F19.2.3
@@ -131,6 +146,16 @@ Holds the offered credits against a request. Total is unchanged; reserved rises.
 | 404 | `BALANCE_NOT_FOUND` | The user has no balance row |
 | 409 | `RESERVATION_ALREADY_EXISTS` | This `requestId` is already reserved. Idempotent: no second hold is taken |
 | 422 | `INSUFFICIENT_UNRESERVED_CREDITS` | F19.2.3 — the offer exceeds `totalBalance − reservedBalance` |
+
+**Auth:** none. Service-to-service only.
+
+```bash
+curl -X POST http://localhost:3003/credits/reserve \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":"3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+       "requestId":"8df55417-cff4-4764-9abe-823993a9c980",
+       "amount":4}'
+```
 
 ---
 
@@ -162,8 +187,17 @@ Credit Service does not look couriers up and stores no courier reference of its 
 | 409 | `ALREADY_RELEASED` | **INVENTED** — the credits were already returned to the requester, so there is nothing to transfer. No requirement covers this ordering |
 
 **Retry safety.** A failure before commit leaves no trace, so the same call can simply be
-sent again. This is what makes transfer drivable from the async workflow the team has
-yet to design.
+sent again.
+
+**Auth:** none. Service-to-service only. This endpoint is also driven asynchronously —
+see [Async interface](#async-interface).
+
+```bash
+curl -X POST http://localhost:3003/credits/transfer \
+  -H 'Content-Type: application/json' \
+  -d '{"requestId":"8df55417-cff4-4764-9abe-823993a9c980",
+       "courierId":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"}'
+```
 
 ---
 
@@ -190,6 +224,14 @@ the caller decides why the credits are coming back, and both reasons arrive iden
 | 409 | `ALREADY_RELEASED` | Already released. Idempotent, safe to retry |
 | 409 | `ALREADY_TRANSFERRED` | **INVENTED** — the credits are the courier's now and are not the requester's to reclaim. No requirement covers this ordering |
 
+**Auth:** none. Service-to-service only.
+
+```bash
+curl -X POST http://localhost:3003/credits/release \
+  -H 'Content-Type: application/json' \
+  -d '{"requestId":"8df55417-cff4-4764-9abe-823993a9c980"}'
+```
+
 ---
 
 ## `GET /credits/balance/:userId` — F19.5.1
@@ -206,15 +248,28 @@ never stored.
 |---|---|---|
 | 404 | `BALANCE_NOT_FOUND` | No balance row for this user |
 
-**Requires a token.** A user may read only their own balance unless they hold a role
+**Auth: token required.** A user may read only their own balance unless they hold a role
 ranked at or above `admin`. Adds `401`, `403` and `503` from the Authentication table.
+Enforced by `requireBalanceAccess` = `requireAuth` + `requireSelfOrElevated`.
+
+```bash
+curl http://localhost:3003/credits/balance/3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ---
 
 ## `GET /health`
 
-`200 { "status": "ok" }`. Used by the compose healthcheck. **INVENTED** — not in §8, but
-required by the healthcheck pattern the sibling services use.
+`200 { "status": "ok" }`. Used by the compose healthcheck and the ECS target group.
+**INVENTED** — not in §8, but required by the healthcheck pattern the sibling services
+use.
+
+**Auth:** none. Static response; it does not touch the database.
+
+```bash
+curl http://localhost:3003/health
+```
 
 ---
 
@@ -251,6 +306,17 @@ GET /credits/transactions?cursor=<opaque>
 | Status | Code | When |
 |---|---|---|
 | 400 | `INVALID_CURSOR` | The cursor is malformed |
+
+**Auth: token required**, any role. The rows returned are scoped to `sub`; adds `401`
+and `503` from the Authentication table.
+
+```bash
+curl http://localhost:3003/credits/transactions \
+  -H "Authorization: Bearer $TOKEN"
+
+curl 'http://localhost:3003/credits/transactions?cursor=MjAyNi0xMS0wNFQxNTowNjoxOC4zMjZafDhl' \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ## `GET /credits/transactions/all` — F20.2, F20.2.1
 
@@ -307,6 +373,23 @@ cannot be reused across queries.
 > order is neither. It exists to serve user-service's F5.3.2. See
 > `credit-service-context.md` §10 item 10.
 
+**Auth: token required, rank >= `admin`.** Enforced by `requireAuth` then
+`requireElevated`, so a `user` token is `403 FORBIDDEN` with or without a filter.
+
+```bash
+# every user's rows
+curl http://localhost:3003/credits/transactions/all \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# one user, one order, and both together
+curl 'http://localhost:3003/credits/transactions/all?userId=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d' \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+curl 'http://localhost:3003/credits/transactions/all?requestId=8df55417-cff4-4764-9abe-823993a9c980' \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+curl 'http://localhost:3003/credits/transactions/all?userId=3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d&requestId=8df55417-cff4-4764-9abe-823993a9c980&cursor=<opaque>' \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
 ## Pagination
 
 **20 records per page, `created_at DESC`**, tie-broken by `transaction_id`.
@@ -329,6 +412,111 @@ infinite-scroll history, and both would require a `COUNT(*)` over the whole log.
 Rows carry `originating_user_id` and `destination_user_id` as UUIDs only. Credit Service
 stores no user display data and does not call User Service. Resolve names client-side
 (team decision 2026-10-19).
+
+---
+
+## Async interface
+
+Besides the HTTP surface, Credit Service consumes a BullMQ queue. Order Service publishes
+a job when an order completes; the worker calls the same `transferCredits` the HTTP
+endpoint calls. `src/queue/transferQueue.ts` holds the whole wire contract.
+
+### Queue and task names
+
+| | Value |
+|---|---|
+| Redis key | `queue:credit:transfer` |
+| BullMQ prefix | `queue:credit` |
+| BullMQ queue name | `transfer` |
+| Job (task) name | `credit_transfer` |
+| Broker | `order-redis` — `REDIS_HOST` / `REDIS_PORT`, TLS when `REDIS_TLS=true` |
+| Worker concurrency | 1 |
+
+The prefix and name are separate because BullMQ composes the Redis key as
+`<prefix>:<name>`. A producer using the default prefix (`bull`) would write to
+`bull:transfer` and the worker would never see the job.
+
+### Job payload
+
+```jsonc
+{
+  "requestId": "8df55417-cff4-4764-9abe-823993a9c980",
+  "courierId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+}
+```
+
+Both fields must be present and must match a UUID pattern (`isTransferPayload`). The
+amount and the requester are **not** sent — they are read from the reservation row for
+that `requestId`, as on the HTTP endpoint.
+
+### Retry and backoff
+
+`attempts` is 5 (`MAX_ATTEMPTS`). The delays come from the **consumer**: the producer
+sets `backoff: { type: 'custom' }` and the worker supplies
+`settings.backoffStrategy`, which is
+
+```
+delay(attemptsMade) = 5000ms × 5^(attemptsMade − 1)
+```
+
+| Attempt | Delay before it |
+|---|---|
+| 1 | — |
+| 2 | 5s |
+| 3 | 25s |
+| 4 | 125s (2m 5s) |
+| 5 | 625s (10m 25s) |
+
+So a job that never succeeds is abandoned about 13 minutes after it was first picked up.
+
+### Classification
+
+Each failure is sorted by `classifyTransferError`:
+
+| Error code | Disposition | Effect |
+|---|---|---|
+| `ALREADY_TRANSFERRED` | **success** | The transfer already happened; the job completes |
+| `RESERVATION_NOT_FOUND` | permanent | Dead-lettered immediately, no retry |
+| `COURIER_NOT_FOUND` | permanent | ditto |
+| `BALANCE_NOT_FOUND` | permanent | ditto |
+| `ALREADY_RELEASED` | permanent | ditto |
+| `INVALID_REQUEST_BODY` | permanent | ditto |
+| any other `AppError` with status 4xx | permanent | ditto |
+| anything else (5xx, non-`AppError`) | retry | Retried on the schedule above |
+
+A wrong job name, or a payload that fails the UUID guard, is also permanent.
+
+### Idempotency
+
+Replaying a job is safe. A duplicate lands on
+`transaction_log_one_transfer_per_request`, the partial unique index that allows one
+`transfer` row per `request_id`; the service turns that into `ALREADY_TRANSFERRED`, which
+the worker classifies as **success**. The job completes and no second transfer occurs.
+Order Service uses the job id `outbox-<id>`, so a redelivery of the same outbox row is
+the same BullMQ job.
+
+### `dead_letter_jobs`
+
+A job is written to this table when it is classified permanent, or when its last retry
+fails:
+
+| Column | |
+|---|---|
+| `id` | `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `job_id` | BullMQ job id, or `unknown` |
+| `task_name` | the job name as received |
+| `payload` | `JSONB`, the job data verbatim |
+| `error_trace` | `[CODE] ` plus the stack, for an `AppError` |
+| `failed_at` | `TIMESTAMPTZ` |
+| `status` | `TEXT NOT NULL DEFAULT 'UNRESOLVED'`, indexed |
+
+`credit_app` holds `SELECT, INSERT, UPDATE` and no `DELETE` or `TRUNCATE`, so rows can be
+marked resolved but never removed by the service.
+
+**If the dead-letter write itself fails**, the worker logs `DEAD-LETTER WRITE FAILED`
+with the payload, the original error and the write error, and the job stays in BullMQ's
+failed set for manual replay. `removeOnComplete` is true and `removeOnFail` is unset, so
+failed jobs are retained in Redis.
 
 ---
 
@@ -361,9 +549,20 @@ requirement or a recorded team decision. Listed so it can be ratified or replace
    balance. The team said to mirror user-service's rank comparison; the threshold itself
    was not stated.
 
-### Known mismatch with Order Service
+### Order Service integration (was a mismatch, now aligned)
 
-`order-service/src/clients/credits.client.ts` currently declares a different contract:
+`order-service/src/clients/credits.client.ts` previously declared a different contract —
 `reserve({ requesterId, amount }) → { reservationId }` and `release(reservationId)`, with
-no `requestId` and no `transfer` method, wired to `createStubCreditsClient()`. It must be
-rewritten against this document before the two services can talk.
+no `requestId`, wired to `createStubCreditsClient()`. As of 2026-11-10 it matches this
+document:
+
+- `reserve({ userId, requestId, amount })` → `POST /credits/reserve`
+- `release({ requestId })` → `POST /credits/release`
+- it treats `409 RESERVATION_ALREADY_EXISTS` on reserve, and `404 RESERVATION_NOT_FOUND`
+  or `409 ALREADY_RELEASED` on release, as success
+- it has **no** `transfer` method: transfer is driven over the queue instead — see
+  [Async interface](#async-interface)
+
+## Design decisions
+
+<!-- Written by the author -->

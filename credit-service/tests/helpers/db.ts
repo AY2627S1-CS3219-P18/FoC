@@ -7,7 +7,7 @@
 //    least-privilege role, which has no DELETE anywhere (NFR8.2.3). Isolation comes
 //    from a database rebuilt per run plus a fresh UUID per case.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { randomUUID } from 'node:crypto';
 import pool from '../../src/db/pool.js';

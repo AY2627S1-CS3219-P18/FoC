@@ -4,7 +4,7 @@
 //    user-service/tests/setup/globalSetup.ts. Also creates the least-privilege role so
 //    the suite runs under the same privileges as production (NFR8.2.3).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
