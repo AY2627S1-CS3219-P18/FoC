@@ -428,6 +428,10 @@ Scope (2026-11-10, Claude Code, model: claude-opus-5-5): Added Log index row #28
        nav notification bell. No requirements, architecture, schema, or API decisions were made by
        the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-sonnet-5): Added Log index row #318 for the
+       Manage users mobile horizontal-scroll fix. No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -1020,3 +1024,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 315 | 2026-11-10 | repository | Resolve usage-log merge conflict | Preserved both branches’ disclosure entries. |
 | 316 | 2026-11-10 | frontend | Fix: ResendButton countdown not shown on first successful resend | Started the cooldown on resend success, not only on the server's cooldown error. |
 | 317 | 2026-11-10 | user-service | Fix: pending-account OTP verification could be redirected to a different account | Tied verify/resend-OTP to a login/register-issued pending-token cookie, not the submitted email. |
+| 318 | 2026-11-10 | frontend | Bug fix: Manage users page scrolls horizontally on mobile | Added `min-w-0` to the main flex item so only the wide table scrolls, not the whole page. |
