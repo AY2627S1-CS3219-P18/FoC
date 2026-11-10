@@ -223,7 +223,7 @@ it("returns the committed message if broadcasting throws", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("forbids participant sends to an orderless system conversation", async () => {
   const t = setup();
   t.findUnique.mockResolvedValue({ ...t.row, orderId: null });

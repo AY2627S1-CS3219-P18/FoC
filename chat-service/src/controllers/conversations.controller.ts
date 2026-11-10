@@ -103,7 +103,7 @@ export function postConversation(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const cursorSchema = z
   .object({ updatedAt: z.iso.datetime(), id: z.uuid() })
   .strict();
@@ -171,7 +171,7 @@ export function getConversations(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generate
 export function getConversation(prisma: PrismaClient): RequestHandler {
   return async (req, res) => {
     const parsed = z.uuid().safeParse(req.params.conversationID);
@@ -201,7 +201,7 @@ export function getConversation(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const messageCursorSchema = z
   .object({ createdAt: z.iso.datetime(), id: z.uuid() })
   .strict();
@@ -268,7 +268,7 @@ export function getMessages(prisma: PrismaClient): RequestHandler {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 const sendMessageSchema = z.object({
   type: z.literal("TEXT"),
   content: z.string().refine((value) => value.trim().length > 0),
@@ -312,7 +312,7 @@ export function postMessage(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function postRead(
   prisma: PrismaClient,
   publishRead?: import("../realtime/messages.js").ReadPublisher,
@@ -348,7 +348,7 @@ export function postRead(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function postParticipant(
   prisma: PrismaClient,
   byOrderId = false,

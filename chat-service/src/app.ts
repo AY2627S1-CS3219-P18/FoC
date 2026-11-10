@@ -54,7 +54,7 @@ export function createApp({
       publishRead,
     ),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   app.use(
     "/chat",
     systemNotificationsRouter(

@@ -187,7 +187,7 @@ The worker requires `CHAT_SERVICE_API_KEY` matching Chat Service's key.
 `CHAT_SERVICE_URL` defaults to `http://localhost:3005` for host execution; Compose
 sets `http://chat-service:3000`. Set these in the deployed worker environment too.
 
-<!-- AI-generated (edited by <name>). -->
+<!-- AI-generated -->
 
 ## Status change notifications
 

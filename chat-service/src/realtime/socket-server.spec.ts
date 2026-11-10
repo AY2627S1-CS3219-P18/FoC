@@ -140,7 +140,7 @@ it("disconnects authenticated sockets at token expiry", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("delivers read receipts only to other sockets in the conversation room", async () => {
   const t = await setup();
   try {
@@ -172,7 +172,7 @@ it("delivers read receipts only to other sockets in the conversation room", asyn
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("joins authorized conversations on demand, receives broadcasts, and leaves with acknowledgements", async () => {
   const id = "0192f0c4-0000-7000-8000-000000000001";
   const findUnique = vi

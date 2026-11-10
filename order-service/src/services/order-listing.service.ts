@@ -386,7 +386,7 @@ export function listMyOrders(
   });
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export const ADMIN_USER_ORDERS_PAGE_SIZE = 10;
 
 /** Admin history includes every status and both participation roles. */

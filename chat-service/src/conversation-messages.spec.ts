@@ -182,7 +182,7 @@ it("handles database errors", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("allows only the owner to read system conversation history", async () => {
   const t = setup();
   t.findUnique.mockResolvedValue({

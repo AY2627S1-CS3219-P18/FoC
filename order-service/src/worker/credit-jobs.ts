@@ -109,7 +109,7 @@ export function createCreditJobProcessor({
 
   return async function processCreditJob(job: CreditJob): Promise<void> {
     switch (job.name) {
-      // AI-generated (edited by <name>).
+      // AI-generated
       case CHAT_PARTICIPANT_TASK: {
         const input = job.data as Partial<ChatParticipantPayload> | null;
         if (

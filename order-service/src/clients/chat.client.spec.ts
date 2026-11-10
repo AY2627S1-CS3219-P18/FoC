@@ -96,7 +96,7 @@ it.each([
   expect(fetchImpl).toHaveBeenCalledTimes(1);
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it('sends a status notification directly with the supplied UUID', async () => {
   const fetchImpl = vi
     .fn<typeof fetch>()
@@ -119,7 +119,7 @@ it('sends a status notification directly with the supplied UUID', async () => {
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it.each([
   [200, true, undefined],
   [503, false, 'transient'],
@@ -154,7 +154,7 @@ it.each([
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it('sends the final notification before archiving and safely retries archive failure', async () => {
   const fetchImpl = vi
     .fn<typeof fetch>()

@@ -667,7 +667,7 @@ function creditTasksFor(
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
-  // AI-generated (edited by <name>).
+  // AI-generated
   if (order.status === 'pending' && to === 'open')
     return [buildChatCreateTask(order)];
   // Completion pays the courier: credit-service moves the reserved credits.
@@ -701,7 +701,7 @@ export const transitionOrder = async (
   if (!check.ok) return check;
 
   const tasks = creditTasksFor(order, to, options);
-  // AI-generated (edited by <name>).
+  // AI-generated
   const messages: Partial<Record<RequestStatus, string>> = {
     cancelled: 'The order has been cancelled',
     expired: 'The order has expired',

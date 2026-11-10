@@ -26,7 +26,7 @@ import {
   createReadPublisher,
   createMessagePublisher,
 } from "./realtime/messages.js";
-// AI-generated (edited by <name>).
+// AI-generated
 const env = loadEnv();
 const prisma = createPrismaClient(env.DATABASE_URL);
 const verifyToken = createTokenVerifier(env.USER_SERVICE_URL);

@@ -23,7 +23,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env) {
   return schema.parse(source);
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function redisConnectionOptions(env: ReturnType<typeof loadEnv>) {
   return {
     host: env.REDIS_HOST,

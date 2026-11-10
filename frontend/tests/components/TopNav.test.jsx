@@ -270,7 +270,7 @@ it("wiggles the entire shortcut immediately for incoming messages and restarts f
   await waitFor(() => expect(chat.listChats).toHaveBeenCalled());
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("shows incoming message toasts but suppresses own messages and own order actions", async () => {
   mockUseAuth.mockReturnValue({
     isLoggedIn: true,
@@ -332,7 +332,7 @@ it("shows incoming message toasts but suppresses own messages and own order acti
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("suppresses messages from the open chat but still notifies for other conversations", async () => {
   mockUseAuth.mockReturnValue({
     isLoggedIn: true,

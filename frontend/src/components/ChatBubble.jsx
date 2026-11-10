@@ -70,7 +70,7 @@ export default function ChatBubble() {
   const [chatRefresh, setChatRefresh] = useState(0);
   const [animation, setAnimation] = useState(0);
   const lastAnimatedMessage = useRef(null);
-  // AI-generated (edited by <name>).
+  // AI-generated
   useChatMessages((message) => {
     setChatRefresh((value) => value + 1);
     if (

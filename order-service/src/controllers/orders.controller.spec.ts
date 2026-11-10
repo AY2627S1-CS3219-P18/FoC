@@ -1092,7 +1092,7 @@ describe('supplier-service existence check over HTTP', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe('acceptance notification username', () => {
   it.each(['success', 'http failure', 'network failure', 'invalid json'])(
     'forwards bearer and handles %s',

@@ -205,7 +205,7 @@ export async function listConversations(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function getConversationDetails(
   prisma: PrismaClient,
   conversationId: string,
@@ -242,7 +242,7 @@ export async function getConversationDetails(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function listMessages(
   prisma: PrismaClient,
   conversationId: string,
@@ -320,7 +320,7 @@ export async function listMessages(
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function sendMessage(
   prisma: PrismaClient,
   conversationId: string,
@@ -386,7 +386,7 @@ export async function sendMessage(
   });
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function markConversationRead(
   prisma: PrismaClient,
   conversationId: string,
@@ -577,7 +577,7 @@ export async function sendSystemNotification(
   }
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 async function getSystemConversation(prisma: PrismaClient, userId: string) {
   const find = () => prisma.systemChat.findUnique({ where: { userId } });
   const existing = await find();
@@ -610,7 +610,7 @@ async function getSystemConversation(prisma: PrismaClient, userId: string) {
   }
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export async function archiveOrderConversation(
   prisma: PrismaClient,
   orderId: string,

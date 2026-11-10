@@ -1731,7 +1731,7 @@ describe('transitionOrder', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 function notificationRow(
   orderId: string,
   version: number,

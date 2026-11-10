@@ -284,7 +284,7 @@ export const transitionOrder =
       new Date(),
       {
         events,
-        // AI-generated (edited by <name>).
+        // AI-generated
         acceptanceUsername: async () => {
           const authorization = req.get('authorization');
           if (!authorization) return undefined;
@@ -330,7 +330,7 @@ function statusFor(errors: ErrorCode[]): number {
   return 400;
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export const getAdminUserOrders =
   (prisma: PrismaClient, userServiceUrl: string): RequestHandler =>
   async (req, res) => {

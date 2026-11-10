@@ -131,7 +131,7 @@ export function isReleasePayload(p: unknown): p is CreditReleasePayload {
   );
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export interface ChatCreatePayload {
   orderId: string;
   requesterId: string;
@@ -154,7 +154,7 @@ export function buildChatCreateTask(order: {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export interface ChatNotificationPayload {
   /** null for a series notice (no order chat exists for it); recipient is then required. */
   orderId: string | null;

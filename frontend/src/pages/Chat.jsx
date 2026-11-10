@@ -173,7 +173,7 @@ async function loadChatPage(role, cursor, status) {
     !cursor &&
     !rows.some((chat) => chat.orderId === null)
   ) {
-    // AI-generated (edited by <name>).
+    // AI-generated
     // System chat stays pinned in Active, even when absent from its filtered page.
     // Search unfiltered pages without changing the selected tab's order cursor.
     let searchPage = await listChats(role);
@@ -206,7 +206,7 @@ async function loadChatPage(role, cursor, status) {
   return { ...page, conversations: pinSystemChat(conversations) };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 async function loadTabUnreadCounts(role) {
   const loadStatus = async (status) => {
     const rows = new Map();
@@ -284,7 +284,7 @@ function ChatView() {
   const orderId = params.get("orderId");
   const { user } = useAuth();
   const navigate = useNavigate();
-  // AI-generated (edited by <name>).
+  // AI-generated
   const [status, setStatus] = useState("active");
   const [hasArchived, setHasArchived] = useState(false);
   const [tabUnread, setTabUnread] = useState({ active: 0, archived: 0 });
@@ -330,7 +330,7 @@ function ChatView() {
     };
   }, [role, orderId, navigate, retry, errandReturnTo, status]);
 
-  // AI-generated (edited by <name>).
+  // AI-generated
   useEffect(() => {
     if (id || orderId) return;
     let live = true;
@@ -393,11 +393,11 @@ function ChatView() {
         </button>
       )}
       <div className="flex gap-6">
-        {/* AI-generated (edited by <name>). */}
+        {/* AI-generated */}
         {!id && (
           <aside className="w-full shrink-0 rounded-card border border-line bg-surface p-4">
             <h1 className="mb-4 text-lg font-semibold">Chats</h1>
-            {/* AI-generated (edited by <name>). */}
+            {/* AI-generated */}
             {hasArchived && (
               <div
                 role="tablist"
@@ -653,7 +653,7 @@ function Thread({ id, user, onRead, errandReturnTo }) {
       live = false;
     };
   }, [id, latestMessageId, retry, onRead]);
-  // AI-generated (edited by <name>).
+  // AI-generated
   useLayoutEffect(() => {
     if (!pagination || busy) return;
     const wasInitiallyScrolled = initiallyScrolled.current;

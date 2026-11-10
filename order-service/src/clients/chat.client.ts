@@ -63,7 +63,7 @@ export function createHttpChatClient(
   return {
     addParticipant: ({ orderId, ...body }) =>
       post(`/chat/orders/${encodeURIComponent(orderId)}/participants`, body),
-    // AI-generated (edited by <name>).
+    // AI-generated
     async notify({ archiveAfter, ...input }) {
       const notified = await post('/chat/send-system-notification', input);
       if (!notified.ok || !archiveAfter) return notified;

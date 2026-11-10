@@ -842,7 +842,7 @@ it("loads older history once at the top, preserving the viewport as content grow
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("disables the composer for FoC system conversations", async () => {
   chatApi.getChat.mockResolvedValue({
     title: "FoC",
@@ -856,7 +856,7 @@ it("disables the composer for FoC system conversations", async () => {
   expect(chatApi.sendMessage).not.toHaveBeenCalled();
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("pins an older FoC conversation found beyond the first page without duplicating it", async () => {
   const order = {
     id: "order-chat",
@@ -922,7 +922,7 @@ it("shows system-chat notifications as incoming FoC messages and prevents sendin
   expect(chatApi.sendMessage).not.toHaveBeenCalled();
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 describe("Active and archived chat tabs", () => {
   it("shows only the active list when there are no archived chats", async () => {
     renderChat(["/chats"]);
@@ -982,7 +982,7 @@ describe("Active and archived chat tabs", () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("keeps system chat pinned in Active and excludes it from Archived", async () => {
   const row = (id, orderId) => ({
     id,
@@ -1027,7 +1027,7 @@ it("keeps system chat pinned in Active and excludes it from Archived", async () 
   await screen.findByRole("link", { name: /FoC/ });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("follows incoming messages at the bottom and shows a jump arrow when reading earlier messages", async () => {
   let scrollHeight = 1000;
   const height = vi
@@ -1101,7 +1101,7 @@ it("follows incoming messages at the bottom and shows a jump arrow when reading 
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it("totals unread messages across both tab pages, counts FoC only in Active and refreshes read counts", async () => {
   let read = false;
   const cursor = { id: "older", updatedAt: "2026-11-09T00:00:00Z" };
