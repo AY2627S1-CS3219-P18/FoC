@@ -17744,3 +17744,33 @@ Accepted all changes.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-11 — Stage 32 follow-up: default "by a specific time" to 1 hour from now
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default value for the "By a specific time" date/time fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> for scheduled errands, can you make "by a specific time" default to 1 hour from the current time?
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the `date`/`time` state for the "By a specific time" option previously defaulted to today's date and a hardcoded `'15:30'` when not editing an existing order with a `completeBy`. Changed both to lazy `useState` initializers computing `localDate`/`localTime` from `Date.now() + 60 * 60_000` (1 hour from now), matching the existing pattern already used for the series "deliver by" defaults elsewhere in the same file. Editing an existing order/deadline is unchanged (still seeds from `order.completeBy`).
+- Verification: `vitest run` (frontend) 309/309 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

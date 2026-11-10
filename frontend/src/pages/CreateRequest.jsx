@@ -149,6 +149,11 @@
  *        series, per the stage's test list.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-11
+ * Scope: "By a specific time" date/time fields now default to 1 hour from the current time
+ *        instead of a hardcoded 15:30, per user request in chat. No requirements,
+ *        architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -256,8 +261,13 @@ function RequestForm({ order, series }) {
   const { data: last, loading: lastLoading } = useApi(() => isEdit ? Promise.resolve(null) : getLastRequest().catch(() => null), [])
   const [locationId, setLocationId] = useState(isEdit ? String((series ?? order).deliveryLocationId) : '')
   const [timing, setTiming] = useState(order?.completeBy ? 'later' : 'asap')
-  const [date, setDate] = useState(order?.completeBy ? localDate(order.completeBy) : today)
-  const [time, setTime] = useState(order?.completeBy ? localTime(order.completeBy) : '15:30')
+  // "By a specific time" defaults to 1 hour from now when not editing an existing deadline.
+  const [date, setDate] = useState(() =>
+    order?.completeBy ? localDate(order.completeBy) : localDate(new Date(Date.now() + 60 * 60_000).toISOString()),
+  )
+  const [time, setTime] = useState(() =>
+    order?.completeBy ? localTime(order.completeBy) : localTime(new Date(Date.now() + 60 * 60_000).toISOString()),
+  )
   const [offer, setOffer] = useState(series?.credits ?? 4)
   const [extra, setExtra] = useState((series ?? order)?.additionalDetails ?? '')
   const [posting, setPosting] = useState(false)
