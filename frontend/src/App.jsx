@@ -93,6 +93,13 @@
  *        requiredView={...}> wrapper below picks up the new behaviour automatically.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Added /unlock-account, per instructions.md Stage 31d. Not wrapped in RequireAuth or
+ *        ViewGate, like /login, /register and /forgot-password, so it is reachable logged out
+ *        and logged in and is not subject to the Stage 29 redirect.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useEffect, useRef } from "react";
@@ -115,6 +122,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
+import UnlockAccount from "./pages/UnlockAccount";
 import Account from "./pages/Account";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
@@ -177,6 +185,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/unlock-account" element={<UnlockAccount />} />
           <Route
             path="/account"
             element={

@@ -35,6 +35,16 @@
 //        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
 //        No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+// Scope: Stage 31e - added the POST /auth/unlock describe block, covering every HTTP-level
+//        Stage 31c Verification bullet not already exercised at the service layer
+//        (auth.service.test.ts): the 200 UNLOCKED/ALREADY_UNLOCKED response shapes, the 401
+//        INVALID_UNLOCK_TOKEN shape, Zod .strict() validation (missing/empty token, unknown
+//        key), that it ignores a present Authorization header, and that the admin
+//        POST /users/:id/unlock endpoint is untouched. Governing decision: instructions.md
+//        Stage 31c's own Verification bullets.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +56,7 @@ import {
   countUsers,
   expireOtps,
   expireRefreshToken,
+  getAuditLogRowsForTarget,
   getOtps,
   getRefreshTokenByPlain,
   getRefreshTokens,
@@ -71,13 +82,14 @@ import {
 import {
   cookieValue,
   createActiveUser,
+  createUserWithRole,
   loginTokens,
   loginUser,
   refreshCookie,
   registerPending,
   userInput,
 } from '../helpers/fixtures.js';
-import { signExpiredToken, signToken } from '../helpers/keys.js';
+import { signExpiredToken, signToken, signUnlockToken as signTestUnlockToken, tamperSignature } from '../helpers/keys.js';
 
 resetEmailMock();
 beforeEach(truncateAll);
@@ -1776,6 +1788,116 @@ describe('POST /auth/reset-password', () => {
       const res = await post('/auth/reset-password').send(body);
       expect(res.status).toBe(400);
       expect(res.body).toEqual({ message, code: 'VALIDATION_ERROR' });
+    });
+  });
+});
+
+describe('POST /auth/unlock (Stage 31c)', () => {
+  async function lockedUser(n = 1) {
+    const user = await createActiveUser(n);
+    await setLoginLockState(user.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(user.id))!;
+    const token = signTestUnlockToken({ sub: user.id, lck: Math.floor(row.login_locked_until!.getTime() / 1000) });
+    return { user, token };
+  }
+
+  it('a valid token: 200 UNLOCKED, and the user can then log in', async () => {
+    const { user, token } = await lockedUser(1);
+    const res = await post('/auth/unlock').send({ token });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'Your account has been unlocked', code: 'UNLOCKED' });
+    expect((await loginUser(user, PASSWORD)).status).toBe(200);
+  });
+
+  it('the same token used again: 200 ALREADY_UNLOCKED', async () => {
+    const { token } = await lockedUser(1);
+    await post('/auth/unlock').send({ token });
+    const res = await post('/auth/unlock').send({ token });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'Your account is no longer locked', code: 'ALREADY_UNLOCKED' });
+  });
+
+  it('a malformed, tampered, or expired token: 401 INVALID_UNLOCK_TOKEN', async () => {
+    const malformed = await post('/auth/unlock').send({ token: 'not-a-jwt' });
+    expect(malformed.status).toBe(401);
+    expect(malformed.body).toEqual({ message: 'This link is invalid or has expired', code: 'INVALID_UNLOCK_TOKEN' });
+
+    const { token } = await lockedUser(2);
+    const tampered = await post('/auth/unlock').send({ token: tamperSignature(token) });
+    expect(tampered.status).toBe(401);
+    expect(tampered.body.code).toBe('INVALID_UNLOCK_TOKEN');
+
+    // Wrong typ (an access token).
+    const atToken = signToken();
+    const wrongType = await post('/auth/unlock').send({ token: atToken });
+    expect(wrongType.status).toBe(401);
+    expect(wrongType.body.code).toBe('INVALID_UNLOCK_TOKEN');
+  });
+
+  it('works without an Authorization header, and ignores one that is present', async () => {
+    const { token } = await lockedUser(1);
+    const withAuth = await post('/auth/unlock')
+      .set('Authorization', 'Bearer not-a-real-token')
+      .send({ token });
+    expect(withAuth.status).toBe(200);
+    expect(withAuth.body.code).toBe('UNLOCKED');
+  });
+
+  it('a locked super admin can unlock via the link', async () => {
+    const sa = await createUserWithRole(1, 'super admin');
+    await setLoginLockState(sa.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
+    const row = (await getUserById(sa.id))!;
+    const token = signTestUnlockToken({ sub: sa.id, lck: Math.floor(row.login_locked_until!.getTime() / 1000) });
+    const res = await post('/auth/unlock').send({ token });
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe('UNLOCKED');
+  });
+
+  it('writes no audit row', async () => {
+    const { user, token } = await lockedUser(1);
+    await post('/auth/unlock').send({ token });
+    expect(await getAuditLogRowsForTarget(user.id)).toHaveLength(0);
+  });
+
+  it('admin POST /users/:id/unlock still requires auth and still audits (unchanged by this stage)', async () => {
+    const admin = await createUserWithRole(2, 'admin');
+    const { accessToken } = await loginTokens(admin);
+    const { user } = await lockedUser(3);
+
+    const noAuth = await api().post(`/users/${user.id}/unlock`);
+    expect(noAuth.status).toBe(401);
+
+    const res = await api()
+      .post(`/users/${user.id}/unlock`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(200);
+    expect(await getAuditLogRowsForTarget(user.id)).toHaveLength(1);
+  });
+
+  describe('validation', () => {
+    it('missing token: 400 "Token is required"', async () => {
+      const res = await post('/auth/unlock').send({});
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Token is required', code: 'VALIDATION_ERROR' });
+    });
+
+    it('empty token: 400 "Token is required"', async () => {
+      const res = await post('/auth/unlock').send({ token: '' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Token is required', code: 'VALIDATION_ERROR' });
+    });
+
+    it('non-string token: 400 "Token must be a string"', async () => {
+      const res = await post('/auth/unlock').send({ token: 12345 });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Token must be a string', code: 'VALIDATION_ERROR' });
+    });
+
+    it('an unknown body key: 400 "Request contains unexpected fields"', async () => {
+      const { token } = await lockedUser(1);
+      const res = await post('/auth/unlock').send({ token, extra: 'x' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ message: 'Request contains unexpected fields', code: 'VALIDATION_ERROR' });
     });
   });
 });

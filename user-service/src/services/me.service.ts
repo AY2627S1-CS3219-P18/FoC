@@ -84,6 +84,14 @@
  *        the hash via findPasswordHashById, since findById no longer selects password_hash.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Stage 31b - initiateEmailChange and initiatePasswordChange now call the shared
+ *        triggerUnlockEmail (auth.service.ts) when a wrong current password hits the login
+ *        lockout threshold, after the lock's transaction has committed. Governing decision:
+ *        instructions.md Stage 31 (changes table row 4). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import bcrypt from 'bcrypt';
@@ -100,6 +108,7 @@ import {
   PASSWORD_REGEX,
   recordLoginFailure,
   throwIfLoginLocked,
+  triggerUnlockEmail,
   USERNAME_MESSAGE,
   USERNAME_REGEX,
 } from './auth.service.js';
@@ -267,6 +276,7 @@ export async function initiateEmailChange(
   });
 
   if (authOutcome.kind === 'locked') {
+    triggerUnlockEmail(authOutcome.result.user, authOutcome.result.lockedUntil);
     throw accountLockedAppError(authOutcome.result);
   }
   if (authOutcome.kind === 'invalid') {
@@ -439,6 +449,7 @@ export async function initiatePasswordChange(
   });
 
   if (authOutcome.kind === 'locked') {
+    triggerUnlockEmail(authOutcome.result.user, authOutcome.result.lockedUntil);
     throw accountLockedAppError(authOutcome.result);
   }
   if (authOutcome.kind === 'invalid') {
