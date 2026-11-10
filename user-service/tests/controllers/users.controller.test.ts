@@ -5,38 +5,38 @@
  *        and PUT /users/:id/status, covering the Stage 9 Verification bullets in
  *        instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added HTTP tests for PUT /users/:id/role, covering the Stage 10 Verification bullets.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Updated the expected keys for the new active_view column (Stage 11); no new test cases.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: Updated the expected GET /users keys for isLocked/lockedUntil/lockLevel, and added
  *        HTTP tests for the `locked` filter and POST /users/:id/unlock, covering the Stage 18d
  *        Verification bullets in instructions.md.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-04
  * Scope: GET /users/:id now asserts the email is masked for a different caller and unmasked
  *        for the caller's own row; added GET /users/:id/full-email HTTP tests covering
  *        instructions.md Stage 20a's Verification bullets (NFR3.1.1).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: PUT /users/:id/status, PUT /users/:id/role and POST /users/:id/unlock now require a
  *        reason; updated every existing request body and added Stage 26b's reason-validation
  *        and audit-row Verification bullets, plus unlock's new no-op-when-not-locked case.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Per author direction in chat (instructions.md Stage 26 "Reasons" amendment): unlock
@@ -44,7 +44,7 @@
  *        tests with an unexpected-field-is-rejected test each, and updated the stored-audit-row
  *        assertions to expect reason "N/A".
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: PUT /users/:id/status and PUT /users/:id/role now require elevation (Stage 27b). The
@@ -252,6 +252,7 @@ describe('GET /users', () => {
           'isLocked',
           'lockLevel',
           'lockedUntil',
+          'preferredLang',
           'role',
           'status',
           'updatedAt',

@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active_view active_view_enum NOT NULL DEFAULT 'requester';
 
+-- 2026-11-09: added users.preferred_lang (ISO 639-1, default 'en') as specified by the team.
+-- Tool: Claude Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API
+-- decisions were made by the AI tool. Author review:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_lang VARCHAR(2) NOT NULL DEFAULT 'en';
+
 -- Stage 18a: login lockout state (NFR1.1). login_lock_level is the escalation level that
 -- produced login_locked_until (0 = never locked); the time it was last hit is derived from
 -- login_locked_until minus that level's lock length, not stored separately.

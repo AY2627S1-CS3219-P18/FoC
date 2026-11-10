@@ -4,33 +4,38 @@
  * Scope: Generated the me controller (updateActiveView) as specified in
  *        instructions.md Stage 11.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added getProfile as specified in instructions.md Stage 12a.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added changeUsername as specified in instructions.md Stage 12b.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added changeEmail as specified in instructions.md Stage 12c.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added verifyOtp and resendOtp as specified in instructions.md Stage 12d.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-09-27
  * Scope: Added changePassword and confirmPasswordChange as specified in
  *        instructions.md Stage 12e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Congchen
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-09
+ * Scope: Added the team-specified preferred_lang setting (ISO 639-1 subset: en, zh, hi, ta, ms, es, ar; default en), following the active-view flow.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { z } from 'zod';
@@ -56,6 +61,29 @@ export const updateActiveView = asyncHandler(async (req, res) => {
   const { activeView } = updateActiveViewSchema.parse(req.body);
   // authenticate has run, so req.user is set. The id never comes from the body.
   const user = await meService.changeActiveView(req.user!.user_id, activeView);
+  res.status(200).json(user);
+});
+
+// AI-generated (edited by <name>).
+export const PREFERRED_LANGS = ['en', 'zh', 'hi', 'ta', 'ms', 'es', 'ar'] as const;
+
+const preferredLangErrorMap: z.ZodErrorMap = (issue) => {
+  if (issue.code === 'invalid_enum_value') {
+    return { message: `Preferred language must be one of: ${PREFERRED_LANGS.join(', ')}` };
+  }
+  if (issue.code === 'invalid_type' && issue.received === 'undefined') {
+    return { message: 'Preferred language is required' };
+  }
+  return { message: 'Preferred language must be a string' };
+};
+
+const updatePreferredLangSchema = z
+  .object({ preferredLang: z.enum(PREFERRED_LANGS, { errorMap: preferredLangErrorMap }) })
+  .strict();
+
+export const updatePreferredLang = asyncHandler(async (req, res) => {
+  const { preferredLang } = updatePreferredLangSchema.parse(req.body);
+  const user = await meService.changePreferredLang(req.user!.user_id, preferredLang);
   res.status(200).json(user);
 });
 

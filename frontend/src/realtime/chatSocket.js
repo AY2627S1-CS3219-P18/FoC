@@ -7,6 +7,9 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Updated or tested chat bubbles, navigation and live read indicators.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified message:translated listener.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: Congchen
  */
 
 import { useEffect, useRef } from "react";
@@ -18,6 +21,7 @@ const roomErrors = new Map();
 const eventListeners = new Set();
 const readyListeners = new Set();
 const readListeners = new Set();
+const translatedListeners = new Set();
 let socket = null;
 let authRetried = false;
 let retryTimer = null;
@@ -56,6 +60,9 @@ export function connectChatSocket() {
 
   socket.on("messsage:read", (receipt) =>
     readListeners.forEach((listener) => listener(receipt)),
+  );
+  socket.on("message:translated", (translated) =>
+    translatedListeners.forEach((listener) => listener(translated)),
   );
   socket.on("message:sent", (message) =>
     eventListeners.forEach((listener) => listener(message)),
@@ -155,5 +162,16 @@ export function useChatReads(handler) {
     const listener = (receipt) => latest.current(receipt);
     readListeners.add(listener);
     return () => readListeners.delete(listener);
+  }, []);
+}
+
+// AI-generated (edited by <name>).
+export function useChatTranslations(handler) {
+  const latest = useRef(handler);
+  latest.current = handler;
+  useEffect(() => {
+    const listener = (translated) => latest.current(translated);
+    translatedListeners.add(listener);
+    return () => translatedListeners.delete(listener);
   }, []);
 }

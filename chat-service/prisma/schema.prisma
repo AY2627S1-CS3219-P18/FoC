@@ -10,6 +10,8 @@
 // Author review: tng wen xi
 // Scope (2026-11-09, Codex, model: GPT-6): Implemented the team-specified system conversations.
 // Author review: tng wen xi
+// Scope (2026-11-09, Claude Code, model: claude-sonnet-5-5): Added the team-specified translate_to column and translated_messages table.
+// Author review: Congchen
 
 generator client {
   provider = "prisma-client"
@@ -49,6 +51,7 @@ model ChatParticipant {
   lastReadMessageId String? @map("last_read_message_id") @db.Char(36)
   joinedAt DateTime @default(now()) @map("joined_at") @db.DateTime(3)
   revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  translateTo String? @map("translate_to") @db.VarChar(2)
   conversation Conversation @relation(fields: [chatId], references: [conversationId], onDelete: Restrict, onUpdate: Restrict, map: "chat_participants_chat_id_fkey")
   @@map("conversation_participants")
 }
@@ -68,7 +71,18 @@ model Message {
   metadata Json?
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
   conversation Conversation @relation(fields: [chatId], references: [conversationId], onDelete: Restrict, onUpdate: Restrict)
+  translations TranslatedMessage[]
   @@map("messages")
+}
+model TranslatedMessage {
+  id String @id @default(uuid()) @db.Char(36)
+  messageId String @map("message_id") @db.Char(36)
+  userId String @map("user_id") @db.Char(36)
+  content String @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([messageId, userId], map: "translated_messages_message_id_user_id_key")
+  @@map("translated_messages")
 }
 
 model SystemChat {
