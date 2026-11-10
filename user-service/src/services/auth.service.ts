@@ -74,9 +74,17 @@
 //   the Stage 31b unlock email in the background (caught, never awaited) after the lock's
 //   transaction commits. me.service.ts's initiateEmailChange/initiatePasswordChange, which
 //   share recordLoginFailure, call the same exported triggerUnlockEmail. Tool: Claude Code
-//   (model: claude-fable-5-1). Governing decision: instructions.md Stage 31 ("When the email is
+//   (model: claude-sonnet-5). Governing decision: instructions.md Stage 31 ("When the email is
 //   sent" table, changes table row 4). No requirements, architecture, schema, or API decisions
 //   were made by the AI tool.
+// Author review:
+// 2026-11-10: Stage 31c - added unlockByToken for POST /auth/unlock: verifies the unlock token,
+//   locks the target row FOR UPDATE, and only clears it (via users.service.ts's shared
+//   clearLoginLock) when the token's `lck` equals the row's current login_locked_until (to the
+//   second) and that lock has not yet passed by the DB clock; otherwise ALREADY_UNLOCKED, with
+//   no write. No audit row (Stage 31's own rule). Tool: Claude Code (model: claude-sonnet-5).
+//   Governing decision: instructions.md Stage 31 ("The unlock link and token" table). No
+//   requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
 
 import { randomBytes } from 'node:crypto';
@@ -89,12 +97,13 @@ import type { UserRowWithNow } from '../db/queries/users.queries.js';
 import { withTransaction, type Queryable } from '../db/transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { sha256 } from '../utils/hash.js';
-import { signAccessToken, signUnlockToken } from '../utils/jwt.js';
+import { signAccessToken, signUnlockToken, verifyUnlockToken } from '../utils/jwt.js';
 import { PASSWORD_MESSAGE, PASSWORD_REGEX } from '../utils/passwordPolicy.js';
 import * as otpQueries from '../db/queries/otp.queries.js';
 import { durationHoursForLevel, effectiveEscalationLevel, escalationWording } from './lockEscalation.js';
 import { checkOtp, issueOtp, requestOtp, throwOtpFailure } from './otp.service.js';
 import { sendUnlockEmail } from './email.service.js';
+import { clearLoginLock } from './users.service.js';
 
 function accountLockedMessage(lockLevel: number): string {
   return `Too many failed login attempts. Please try again in ${escalationWording(lockLevel)}.`;
@@ -192,6 +201,46 @@ export function triggerUnlockEmail(
   void sendUnlockEmail({ to: user.email, username: user.username, unlockUrl }).catch(() => {
     // Every attempt, including the final failure, is already logged by sendMailWithRetry; the
     // lock stands regardless of whether the email ever goes out.
+  });
+}
+
+// POST /auth/unlock (Stage 31c). Public; the token alone decides everything. A structurally
+// invalid, wrong-typ, bad-signature or expired token is INVALID_UNLOCK_TOKEN. Otherwise the
+// token is valid and "already unlocked" covers every other case that reveals nothing about
+// account state: no such user, pending/suspended, the lock has passed by the DB clock, or the
+// token's `lck` no longer matches the row's current login_locked_until (cleared, replaced by a
+// newer lock, or already consumed by a previous click of this same link).
+export async function unlockByToken(token: string): Promise<'UNLOCKED' | 'ALREADY_UNLOCKED'> {
+  let decoded: { user_id: string; lck: number };
+  try {
+    decoded = verifyUnlockToken(token);
+  } catch {
+    throw new AppError(401, 'This link is invalid or has expired', 'INVALID_UNLOCK_TOKEN');
+  }
+
+  return withTransaction(async (client) => {
+    const locked = await userQueries.lockUserByIdWithNow(decoded.user_id, client);
+    if (!locked || locked.status === 'pending' || locked.status === 'suspended') {
+      return 'ALREADY_UNLOCKED';
+    }
+    if (!locked.login_locked_until || locked.login_locked_until.getTime() <= locked.db_now.getTime()) {
+      return 'ALREADY_UNLOCKED';
+    }
+    // Compared to the second, like the token's claim (Stage 31a: `lck` is epoch seconds),
+    // since the column itself carries sub-second precision.
+    const currentLck = Math.floor(locked.login_locked_until.getTime() / 1000);
+    if (currentLck !== decoded.lck) {
+      return 'ALREADY_UNLOCKED';
+    }
+
+    // The row is locked FOR UPDATE above, so a concurrent click with the same token either
+    // waits behind this one (and then sees the cleared lock and falls into one of the checks
+    // above) or runs first and clears it itself - either way, only one click ever reaches here.
+    const cleared = await clearLoginLock(locked.id, client);
+    if (!cleared) {
+      return 'ALREADY_UNLOCKED';
+    }
+    return 'UNLOCKED';
   });
 }
 

@@ -14270,3 +14270,41 @@ Accepted all changes.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31c: Unlock-by-link endpoint
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, changes table rows 5-6, "Stage 31c: Unlock-by-link endpoint")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+
+**Key responses:**
+
+- `src/services/users.service.ts`: extracted `unlockUser`'s clearing step into exported `clearLoginLock(userId, client)` (`resetLoginLock` + `otpQueries.clearSendBlocksForUser`, called inside the caller's own transaction against a row already locked FOR UPDATE), per the stage's "share the clearing code with the admin unlock; do not duplicate it." `unlockUser`'s own permission rules, audit row and response are unchanged; it now just calls `clearLoginLock` instead of inlining the same two calls.
+- `src/services/auth.service.ts`: added `unlockByToken(token)`. Verifies the token with `verifyUnlockToken` (Stage 31a); any throw (malformed, bad signature, wrong `typ`, expired) becomes `401 INVALID_UNLOCK_TOKEN`. Otherwise locks the target row FOR UPDATE (`lockUserByIdWithNow`) and returns `'ALREADY_UNLOCKED'` without writing anything when: the user no longer exists; the status is `pending` or `suspended`; `login_locked_until` is null or has passed the DB clock; or the token's `lck` (epoch seconds) does not equal `Math.floor(login_locked_until.getTime() / 1000)` — the truncation flagged in the Stage 31a log entry, applied here. Otherwise it calls the shared `clearLoginLock` and returns `'UNLOCKED'`. No audit row, per the stage's own rule. Concurrency falls out of the existing FOR UPDATE lock: whichever click reaches the row first clears it; every other one (whether it was already queued or arrives after) sees the cleared/mismatched state and gets `ALREADY_UNLOCKED`.
+- `src/controllers/auth.controller.ts` / `src/routes/auth.routes.ts`: added the `unlock` controller (Zod `.strict()`, `token` a non-empty string, `asyncHandler`) and `POST /auth/unlock`, mounted on the existing public `authRouter` with no `authenticate` — matching every other `/auth/*` route, so an `Authorization` header is simply never read.
+- Verification: `npx tsc --noEmit` (src, tests) and `npx eslint src tests` clean. Full suite: `npx vitest run`, 38 files, 1002/1002 passed (confirms `unlockUser`'s existing behaviour and audit row are unchanged). A throwaway scratch E2E test (not committed, against the real app and Postgres) covered every 31c Verification bullet: a valid token on a locked active account unlocks it (lock, escalation and OTP send blocks for all three purposes cleared) and the user can then log in; the same token reused is `ALREADY_UNLOCKED`; a token for an earlier lock after a newer lock was set is `ALREADY_UNLOCKED` with the newer lock standing; a token after an admin unlock, and after a direct lock-clear (standing in for a successful login/correct-password reset, which use the identical `resetLoginLock` write), are both `ALREADY_UNLOCKED`; an expired-by-time lock is `ALREADY_UNLOCKED`; a now-suspended account's token is `ALREADY_UNLOCKED` with nothing changed; a malformed token and a tampered-signature token are `401 INVALID_UNLOCK_TOKEN` with the exact message; a missing, empty, or extra-key body is `400 VALIDATION_ERROR`; a locked super admin can unlock; no audit row is written for any outcome; N concurrent clicks with the same token produce exactly one `UNLOCKED` and the rest `ALREADY_UNLOCKED`; the admin endpoint still requires auth and still audits; and the endpoint works with no `Authorization` header and ignores one that is present. Not committed.
+
+**Files:**
+
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/auth.service.ts` (modified)
+- `user-service/src/controllers/auth.controller.ts` (modified)
+- `user-service/src/routes/auth.routes.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #263)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in rows 5-6; no ambiguity found.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
