@@ -300,6 +300,10 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #260 for fix F2
+       (shared loopback supertest server). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -849,3 +853,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 258 | 2026-11-10 | user-service | Fix F4: unlockUser must not spread the full UserRow | User-facing queries select a shared safe-column list; unlock responds from RETURNING. |
 
 | 259 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+| 260 | 2026-11-10 | user-service | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite | Tests share one loopback supertest server instead of a wildcard server per request. |

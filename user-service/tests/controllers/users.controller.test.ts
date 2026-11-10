@@ -62,11 +62,17 @@
  *        the serialised body contains neither "password_hash" nor "passwordHash".
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import jwt from 'jsonwebtoken';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { signElevationToken } from '../../src/utils/jwt.js';
 import {
   dbNow,
@@ -129,7 +135,7 @@ async function callerToken(role: 'user' | 'admin' | 'super admin', n: number | s
 }
 
 const get = (path: string, token?: string) => {
-  const r = request(app).get(path);
+  const r = api().get(path);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
 // Stage 27b: a matching Elevated-Token for an access token, decoded for its sub/sid. Role is
@@ -147,7 +153,7 @@ const put = (
   body: unknown,
   { elevatedToken }: { elevatedToken?: string | null } = {},
 ) => {
-  const r = request(app).put(path);
+  const r = api().put(path);
   let req = token ? r.set('Authorization', bearer(token)) : r;
   const headerValue = elevatedToken === null ? undefined : elevatedToken ?? (token ? elevationForAccessToken(token) : undefined);
   if (headerValue !== undefined) {
@@ -291,7 +297,7 @@ describe('POST /users/:id/unlock', () => {
     target: { id: string },
     body: Record<string, unknown> = {},
   ) => {
-    const r = request(app).post(`/users/${target.id}/unlock`);
+    const r = api().post(`/users/${target.id}/unlock`);
     return (token ? r.set('Authorization', bearer(token)) : r).send(body);
   };
 
@@ -429,14 +435,14 @@ describe('response bodies carry exactly the documented keys (fix F4)', () => {
     await setLoginLockState(lockedTarget.id, { lockLevel: 1, lockedUntilMinutesFromNow: 60 });
     const idleTarget = await createActiveUser(2);
 
-    const unlocked = await request(app)
+    const unlocked = await api()
       .post(`/users/${lockedTarget.id}/unlock`)
       .set('Authorization', bearer(token));
     expect(unlocked.status).toBe(200);
     expect(unlocked.body).toMatchObject({ id: lockedTarget.id, isLocked: false, lockedUntil: null, lockLevel: 0 });
     expectExactUserResponse(unlocked.body);
 
-    const noop = await request(app)
+    const noop = await api()
       .post(`/users/${idleTarget.id}/unlock`)
       .set('Authorization', bearer(token));
     expect(noop.status).toBe(200);
@@ -563,7 +569,7 @@ describe('POST /users/:id/full-email (Stage 26c, NFR3.1.1)', () => {
     body: Record<string, unknown> = {},
     ua?: string,
   ) => {
-    const r = request(app).post(path);
+    const r = api().post(path);
     const withToken = token ? r.set('Authorization', bearer(token)) : r;
     return (ua === undefined ? withToken : withToken.set('User-Agent', ua)).send(body);
   };
@@ -876,7 +882,7 @@ describe('PUT /users/:id/status', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putStatus(token, target, 'suspended');
-      const res = await request(app)
+      const res = await api()
         .post('/auth/refresh')
         .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);
@@ -1563,7 +1569,7 @@ describe('PUT /users/:id/role', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putRole(token, target, 'admin');
-      const res = await request(app)
+      const res = await api()
         .post('/auth/refresh')
         .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);
@@ -1586,7 +1592,7 @@ describe('PUT /users/:id/role', () => {
       const { refreshToken } = await loginTokens(target);
 
       await putRole(token, target, 'user');
-      const res = await request(app)
+      const res = await api()
         .post('/auth/refresh')
         .set('Cookie', refreshCookie(refreshToken));
       expect(res.status).toBe(401);

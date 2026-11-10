@@ -14065,12 +14065,14 @@ Accepted all changes.
 **Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
 
 **Prompts (exact):**
+
 > switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
 
 **Key responses:**
 Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `ai/usage-log.md` (conflict resolved and entry appended)
 - `README.md` (conflict resolved and index updated)
 
@@ -14080,3 +14082,102 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-10 — Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor/Docs (test code only, under `user-service/tests/`)
+**Governing decision:** Team-authored fix note F2 pasted in chat (quoted below); Stage 7 ground rule 3 in `instructions.md` (no `src/` changes to make tests pass); `vitest.config.ts` (`fileParallelism: false`, unchanged).
+
+**Prompts (exact):**
+
+> don't forget the git workflow
+>
+> Fix finding F2 (Medium): reproducible ECONNRESET / "socket hang up" plus an unhandled rejection in the concurrency tests.
+>
+> Scope: test code only, under user-service/tests/. Do NOT modify anything in src/ (Stage 7 ground rule 3). If you find that a src/ change is needed, stop and report it as a separate finding instead.
+>
+> Context:
+>
+> - user-service/tests/concurrency/races.concurrency.test.ts uses `const post = (path) => request(app).post(path)` (line ~46), called in a tight 3-worker loop (lines ~251-257) with no error handling.
+> - supertest starts and closes a new ephemeral server on every `request(app)` call. I suspect that under rapid concurrent calls this resets sockets (ECONNRESET / "socket hang up").
+> - ai/usage-log.md reports the same failure signature in users.controller.test.ts and tests/concurrency/me.concurrency.test.ts under full-suite load, so treat this as systemic.
+>
+> Steps:
+>
+> 1. Read all three files, ai/usage-log.md and vitest.config.ts first. Reproduce the failure in races.concurrency.test.ts in isolation and show me the output before changing anything.
+> 2. Confirm the root cause. Check whether the per-call ephemeral server is the cause. Also check whether the unhandled rejection comes from a worker promise that is never awaited or caught. Tell me what you find. Don't assume my hypothesis is right.
+> 3. Fix it with the smallest change that addresses the confirmed cause. My expected approach:
+>    - Create one `http.createServer(app)` listening on port 0 in `beforeAll`, close it in `afterAll`, and call `request(server)` so all requests share one listener.
+>    - Collect worker results with `Promise.allSettled` and assert on them, so a transport error fails the test with a clear message and never becomes an unhandled rejection.
+>    - If the same pattern appears in the other two files, put a shared helper in tests/concurrency/ (or tests/helpers/) and use it in all three. Don't duplicate the fix.
+> 4. Do NOT add retry-on-ECONNRESET logic. It would mask real connection failures.
+> 5. Do NOT weaken or remove any assertion, and do not change the number of workers or iterations.
+> 6. Verify: run races.concurrency.test.ts in isolation at least 10 times in a row, then the full suite at least 3 times. Report pass/fail counts.
+> 7. Don't touch vitest.config.ts unless the root cause requires it. If you think it does (for example fileParallelism is not false), explain why and ask first.
+>
+> AI-usage policy (CS3219 Appendix 2):
+>
+> - Add this header comment to every file you change or create:
+>   // AI Assistance Disclosure:
+>   // Tool: Claude Code (model: <your model>), date: 2026-11-09
+>   // Scope: Debugged ECONNRESET flake in concurrency tests; replaced per-call supertest servers with a shared server and allSettled result handling.
+>   // Author review: Reviewed, edited and tested by Gabriel.
+> - Append an entry to ai/usage-log.md with a timestamp, this prompt, and a summary of the key response and changes.
+>
+> When done, give me a short summary: root cause confirmed or not, files changed, and the before/after run results.
+
+**Key responses:**
+
+Reproduction before any change (branch `fix/f2-concurrency-econnreset` off `main` after PR #186): `races.concurrency.test.ts` alone, 10 runs: 9 passed, 1 failed. The failure was _not_ a transport error: "refresh racing logout" got a 401 whose body had no `code` (`expected undefined to be 'INVALID_REFRESH_TOKEN'`). One full-suite run: 1001/1002, the failure being `socket hang up` (`ECONNRESET`, `Socket.socketOnEnd`) in a plain sequential test in `auth.controller.test.ts`, i.e. not in a concurrency file at all.
+
+Root cause investigation, and the user's hypothesis was not confirmed as stated:
+
+- Hammering the per-call `request(app)` pattern with 3 workers × 400 refresh requests (a throwaway test, deleted) produced 0 anomalies, and so did a shared server. Rapid per-call server creation on its own does not reset sockets.
+- supertest 7.3.0 creates `http.createServer(app)` per `request(app)` call and runs `listen(0)` on the wildcard address (`::`), closing it after the one request; superagent uses `agent: false`, so no keep-alive reuse is involved.
+- Every 401 the app can emit carries a `code`, so a 401 without one did not come from the app. The "socket hang up" is a clean server-side FIN with no response, which a supertest server never does to its own single connection.
+- Confirmed mechanism (macOS, Node 22.15.0): a wildcard `listen(0)` can be handed a port that another process already holds on `127.0.0.1`, because libuv sets `SO_REUSEADDR` and the kernel then skips the conflict when the bind addresses differ. The loopback client's connection then goes to the _other_ process. A throwaway script (`portcollide.mjs`, not committed) did 40,000 wildcard `listen(0)` calls: 6 of them returned a port held by one of three VS Code helper processes listening on `127.0.0.1` in the ephemeral range, and probing those ports got back that process's own `401 Unauthorized` text body, a `401` JSON body and a `404` HTML page, exactly the "401 with no code" seen in the isolated repro; a process that drops the connection instead yields the `socket hang up`. With 3 such ports in a 16,384-port range the odds are about 1 in 5,500 per request, which matches the observed 0–2 failures per full suite (several thousand requests) and roughly 1 in 10 isolated runs of a ~500-request file. The same script binding explicitly to `127.0.0.1`: 40,000 listens, 0 collisions, because the kernel then sees the exact conflict and skips the port.
+- The per-call ephemeral server is therefore the _amplifier_ (one dice roll per request), not the direct cause; the root cause is the wildcard bind.
+- Unhandled rejection: confirmed by code reading and a standalone demo. In the two `while (running)` worker loops the worker promises were created and only awaited ~250 ms later with `Promise.all(workers)`; a worker that throws in that window is reported by Node as an unhandled rejection (then "handled asynchronously"). Attaching `Promise.allSettled` at creation time yields 0 unhandled-rejection events and still surfaces both failures.
+
+Fix (test code only, no `src/`, `vitest.config.ts` untouched since `fileParallelism` is already `false`):
+
+- New `tests/helpers/server.ts`: starts one `http.createServer(app)` on `127.0.0.1:0` in a `beforeAll` registered at import time, closes it in `afterAll`, and exports `api()` as a drop-in for `request(app)` (returns `request(server)`).
+- Replaced every `request(app)` call site with `api()` and dropped the now-unused `supertest`/`app` imports. This was widened beyond the three files named in the prompt: `tests/helpers/fixtures.ts` had to move too (the concurrency tests do most of their HTTP through `loginUser`/`createActiveUser`), and the remaining ten test files were migrated because the baseline full-suite failure was in `auth.controller.test.ts`, and every remaining per-request wildcard listen keeps the same per-request odds. No test logic, assertions, worker counts or iteration counts changed. No retry logic added.
+- `races.concurrency.test.ts`: the two worker groups are now `Promise.allSettled(...)` collected at start, and a small `expectAllFulfilled()` fails the test with the worker's error message if any worker rejected.
+- Header note: the prompt asked for `date: 2026-11-09` and `Author review: Reviewed, edited and tested by Gabriel.` Headers use the actual date (2026-11-10) and leave `Author review` blank, per AGENTS.md §4.1 (the agent never signs the review); the author fills it in.
+
+Verification: `npx tsc -p tests/tsconfig.json --noEmit` clean; `npx eslint tests` clean. After the fix: `races.concurrency.test.ts` alone, 10 consecutive runs, 10 passed / 0 failed; full suite 3 consecutive runs, 3 passed / 0 failed (38 files, 1002 tests each). Before the fix, the same measurements were 9/10 and 1 failure in the single full run. The two stderr stack traces in the full-suite output come from pre-existing forced-failure tests and appeared identically in the baseline run.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/tests/helpers/server.ts` (created)
+- `user-service/tests/helpers/fixtures.ts` (modified)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/me.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/adminOtp.controller.test.ts` (modified)
+- `user-service/tests/controllers/auditLog.controller.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/bookmarks.controller.test.ts` (modified)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.public.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #260)
+
+**Deviations / questions raised for the team:**
+
+- Scope widened from the three named files to all 14 test files that called `request(app)` (see Key responses for why). Reverting any file to the old pattern is a one-line change per call site if the team prefers the narrower scope.
+- The README "Log index" table has a blank line between rows #258 and #259 (left over from a merge), which splits the table when rendered. Not changed here; flagged.
+- No `src/` change was found to be needed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

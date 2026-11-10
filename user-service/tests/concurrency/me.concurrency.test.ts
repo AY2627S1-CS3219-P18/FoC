@@ -13,10 +13,16 @@
  *        correct OTP (Stage 12e). No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { CONCURRENT_REQUESTS as N, LOOP_ITERATIONS, NEW_PASSWORD } from '../helpers/constants.js';
 import { getRefreshTokens, getUserByEmail, truncateAll } from '../helpers/db.js';
 import { latestOtpFor, resetEmailMock } from '../helpers/email.js';
@@ -35,7 +41,7 @@ describe('concurrent PUT /users/me/active-view', () => {
       const values = Array.from({ length: N }, (_, k) => (k % 2 === 0 ? 'courier' : 'requester'));
       const rs = await Promise.all(
         values.map((activeView) =>
-          request(app)
+          api()
             .put('/users/me/active-view')
             .set('Authorization', bearer(token))
             .send({ activeView }),
@@ -65,7 +71,7 @@ describe('concurrent PUT /users/me/username', () => {
 
       const rs = await Promise.all(
         [tokenA, tokenB].map((token) =>
-          request(app)
+          api()
             .put('/users/me/username')
             .set('Authorization', bearer(token))
             .send({ newUsername: target }),
@@ -83,7 +89,7 @@ describe('concurrent POST /users/me/confirm-password-change', () => {
   it(`${N} requests with the correct OTP sent at once: exactly one 200, the rest 400 INVALID_OTP, password changed once`, async () => {
     const user = await createActiveUser('confirmrace');
     const token = await accessTokenFor(user);
-    await request(app)
+    await api()
       .put('/users/me/password')
       .set('Authorization', bearer(token))
       .send({ currentPassword: user.password, newPassword: NEW_PASSWORD });
@@ -97,7 +103,7 @@ describe('concurrent POST /users/me/confirm-password-change', () => {
 
     const rs = await Promise.all(
       passwords.map((newPassword) =>
-        request(app)
+        api()
           .post('/users/me/confirm-password-change')
           .set('Authorization', bearer(token))
           .send({ otp, newPassword }),
