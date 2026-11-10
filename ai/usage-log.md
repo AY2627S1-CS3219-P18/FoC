@@ -15120,3 +15120,78 @@ _foc-mockup._ Its 22 files were signed with the rest. AGENTS.md §5.1 makes `foc
 **What I kept/changed/rejected:**
 
 **Author review:** Reviewed and verified by Koh Wee Jean, 2026-11-10.
+
+---
+
+## 2026-11-10 — Credit Service: service README and completed API reference
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The author's instruction of 2026-11-10, quoted below. Everything documented was read off the route table, middleware, controllers, service, worker, SQL and Dockerfile as they stand; no contract or schema was decided here. The `## Design decisions` heading in both files is left empty for the author, as instructed.
+
+**Prompts (exact):**
+
+> Stay on branch docs/author-review-attributions.
+>
+> I own the Credit Service (credit-service/: Node + TypeScript + Express, raw `pg` on PostgreSQL, vitest, BullMQ consumer, deployed on ECS Fargate). Create a service-level credit-service/README.md and complete credit-service/API.md. If API.md already exists, update it rather than rewriting from scratch.
+>
+> Read first: every route definition, the JWT/auth middleware, request validation, the BullMQ worker and its backoff/dead-letter handling, the SQL migrations/schema, env var usage, package.json scripts, and the Dockerfile.
+>
+> API.md: one section per HTTP endpoint, verified against the route code:
+> - method + path; auth required (JWT; which roles; admin vs own-scope)
+> - path and query params, including the admin filters on /credits/transactions/all and the keyset pagination cursor; request body schema; response body with an example
+> - every status code the code can actually return (400/401/403/404/409/503 etc.) and what triggers each one
+> - a curl example for each endpoint
+> - an "Async interface" section covering the queue name, job payload shape, retry/backoff schedule, idempotency on duplicate jobs, and dead_letter_jobs behaviour
+> List for me any endpoint that's in the old API.md but missing from the code, or the other way round.
+>
+> README.md: purpose (F19 closed credit economy, F20 transaction logging), tech stack, folder structure, env vars (table: name | required | purpose), local setup, running migrations, the credit_app DB role and its grants, running tests, Docker build, deployment pointer, and a link to API.md.
+>
+> Rules (course AI policy, important):
+> - Describe what the code does and how to run it. Don't write any design rationale or "why we chose X" text. Add a "## Design decisions" heading that contains only <!-- Written by the author --> and leave it for me.
+> - Don't modify source code. If the docs and the code disagree, report it to me rather than changing the code.
+> - Add the standard AI attribution header to both files (tool, model, today's date, scope: documentation), with "Author review:" left BLANK. I'll sign it after I've read the files.
+> - Add an entry to ai/usage-log.md and its README Log index row, matching the existing format.
+> - Commit as "docs(credit): service README and API reference". Don't push.
+
+> mark those nfr as completed
+
+**Key responses:**
+
+_Endpoint reconciliation — no drift._ The route table (`src/routes/credits.routes.ts`) and API.md match one for one, in both directions: `POST /credits/allocate`, `/reserve`, `/transfer`, `/release`; `GET /credits/balance/:userId`, `/credits/transactions`, `/credits/transactions/all`; and `GET /health` from `app.ts`. Nothing is documented that the code does not serve, and nothing is served that was undocumented. The admin `?userId=` / `?requestId=` filters are present in both.
+
+_API.md, updated rather than rewritten._ The existing 369-line contract was kept intact. Added: an explicit **Auth** line on every endpoint naming the middleware and the roles; **13 curl examples**; and an **Async interface** section covering the queue key `queue:credit:transfer` (prefix `queue:credit`, name `transfer`), the `credit_transfer` task name, the `{ requestId, courierId }` payload and its UUID guard, the backoff schedule computed from `backoffStrategy` (5s, 25s, 125s, 625s across 5 attempts, so roughly 13 minutes to abandonment), the full `classifyTransferError` disposition table, idempotency via `transaction_log_one_transfer_per_request` turning a replay into `ALREADY_TRANSFERRED` → success, and the `dead_letter_jobs` columns, grants and dead-letter-write-failure path.
+
+_README.md, rewritten to the requested structure._ Purpose stated as F19 and F20, tech stack, annotated folder tree, an env-var table of all 12 variables with required/default, local setup for both compose and host, the schema-bootstrap section including the empty-volume constraint, the `credit_app` role with its grants quoted from `grants.sql`, the test-database bootstrap and its two refusals, Docker targets, and an ECS Fargate deployment pointer.
+
+**Verification actually run:**
+
+- Every status code and error code in API.md was checked against the `new AppError(...)` call sites: `409 ALREADY_ALLOCATED`, `404 BALANCE_NOT_FOUND`, `422 INSUFFICIENT_UNRESERVED_CREDITS`, `409 RESERVATION_ALREADY_EXISTS`, `404 RESERVATION_NOT_FOUND`, `409 ALREADY_TRANSFERRED`, `409 ALREADY_RELEASED`, `404 COURIER_NOT_FOUND`, `400 INVALID_CURSOR`, plus `400 INVALID_REQUEST_BODY` from `parseBody`, `401 UNAUTHORIZED` / `503 IDENTITY_PROVIDER_UNAVAILABLE` from `createJwksVerifier`, `403 FORBIDDEN` from `requireElevated` and `requireSelfOrElevated`, `404 NOT_FOUND` from `notFoundHandler`, and `500 BALANCE_INVARIANT_VIOLATION` / `500 INTERNAL_ERROR` from `errorHandler`.
+- Backoff figures were computed from the code rather than copied: `5000 × 5^(n−1)`.
+- Page size 20 read from `TRANSACTION_PAGE_SIZE`; cursor format read from `encodeCursor`/`decodeCursor`.
+- Env-var table checked field by field against the `envSchema` in `src/config.ts`, and the test variables against `.env.test` and `tests/setup/globalSetup.ts`.
+- `## Design decisions` present in both files containing only `<!-- Written by the author -->`; exactly one blank `Author review:` in each, for the author to sign.
+- **No source file was modified** — the commit touches only the two docs plus the log and its index row.
+
+**Files:**
+
+- `credit-service/README.md` (modified: rewritten to the requested structure)
+- `credit-service/API.md` (modified: auth lines, curl examples, Async interface, Order Service status corrected)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **The old README's "Authentication is blocked" section was false and was removed.** It stated that "No endpoint authenticates its caller" and that `requireBalanceAccess` was "written but not mounted". Both are now wrong: `credits.routes.ts` builds a `createJwksVerifier` once per process and mounts `requireBalanceAccess` on `GET /balance/:userId`, `requireAuth` on `GET /transactions`, and `requireAuth` + `requireElevated` on `GET /transactions/all`. The source was not touched; only the documentation was corrected.
+2. **The old README's status table was stale in three further rows, and has been restored with current values.** F19.5.1 was marked "Implemented, **unauthenticated**"; F19.5.2, F20.2 and F20.2.1 were marked "Blocked on authentication"; NFR8.2.1 and NFR8.2.2 were marked "Not started". It was first dropped, because the requested structure had no status section, then reinstated on the author's follow-up instruction ("mark those nfr as completed") with every row set to Complete and a **Where** column naming the code each row points at. **NFR8.2.1 and NFR8.2.2 are marked complete on the author's instruction, not on the agent's assessment** - see Deviations 7.
+3. **"The two tables" section was wrong: there are three.** `init.sql` also creates `dead_letter_jobs`. The README now documents all three and points at API.md for the columns.
+4. **API.md's "Known mismatch with Order Service" was stale and has been corrected.** It claimed `order-service/src/clients/credits.client.ts` declared `reserve({ requesterId, amount }) → { reservationId }` against a stub. That file now calls `reserve({ userId, requestId, amount })` and `release({ requestId })`, matching this contract, and deliberately has no `transfer` method because transfer is driven over the queue. The section was retitled and rewritten to record the current state rather than deleted, so the history stays visible.
+5. **The README previously documented none of the asynchronous side** — no worker, no Redis variables, no `npm run worker`, no `DB_SSL`. All are now covered.
+6. **No design rationale was written**, per the brief. Statements that read as justification in the earlier README (for example why no key was substituted while auth was blocked, and why the test role is not `credit_app`) were either dropped or reduced to what the code does. The `## Design decisions` section in both files is empty and belongs to the author.
+
+7. **NFR8.2.1 and NFR8.2.2 are the author's claim, and the repo contains no measurement for the first.** NFR8.2.1 is "shall not delay transactions by more than 500ms when logging each operation"; there is no latency test, timing assertion or benchmark anywhere in credit-service, so the status table states what the implementation is (one `INSERT` in the same transaction as the balance write) rather than a measured figure. NFR8.2.2 is "shall retain each transaction record for at least 2 years"; there is no retention or purge code, and the supporting fact is that `credit_app` holds no `DELETE` or `TRUNCATE` on `transaction_log`, so the service cannot remove a record. Both were marked complete on the author's instruction; the agent assessed neither.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
