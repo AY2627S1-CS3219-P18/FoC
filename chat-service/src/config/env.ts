@@ -8,6 +8,10 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented the team-specified message sending and realtime delivery.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Claude Code, model: claude-opus-5): ECS Fargate migration - added DB_SSL
+ *        (default off) for verified TLS to RDS, per George's ECS Fargate plan, Phase 1 item 1.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { z } from "zod";
 const schema = z.object({
@@ -16,6 +20,8 @@ const schema = z.object({
   REDIS_TLS: z.enum(["true", "false"]).default("false"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.url({ protocol: /^mysql$/ }),
+  // "true" requires TLS with a verified server certificate. Off for Compose and CI.
+  DB_SSL: z.enum(["true", "false"]).default("false"),
   USER_SERVICE_URL: z.url().default("http://user-service:3001"),
   CHAT_SERVICE_API_KEY: z.string().min(1),
 });

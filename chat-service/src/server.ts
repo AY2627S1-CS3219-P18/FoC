@@ -12,6 +12,11 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
  * Author review:
+ * Scope (2026-11-10, Claude Code, model: claude-opus-5): ECS Fargate migration - pass DB_SSL through
+ *        to the adapter and outlast the ALB idle timeout, per George's ECS Fargate plan, Phase 1
+ *        items 1 and 8. No requirements, architecture, schema, or API decisions were made by the
+ *        AI tool.
+ * Author review:
  */
 import "dotenv/config";
 import { createServer } from "node:http";
@@ -28,11 +33,14 @@ import {
 } from "./realtime/messages.js";
 // AI-generated (edited by <name>).
 const env = loadEnv();
-const prisma = createPrismaClient(env.DATABASE_URL);
+const prisma = createPrismaClient(env.DATABASE_URL, env.DB_SSL === "true");
 const verifyToken = createTokenVerifier(env.USER_SERVICE_URL);
 const adapterPub = new Redis(redisConnectionOptions(env));
 const adapterSub = adapterPub.duplicate();
 const server = createServer();
+// Outlast the ALB's 60s idle timeout, so the ALB never reuses a socket Node just closed (a 502).
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
 const io = createSocketServer(server, { verifyToken, prisma });
 io.adapter(createAdapter(adapterPub, adapterSub, { key: "chat-socket.io" }));
 server.on(

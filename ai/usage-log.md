@@ -14083,6 +14083,240 @@ None.
 
 **Author review:**
 
+---
+
+## 2026-11-10 — Chat Service: AWS hardening parity (RDS TLS, ALB keep-alive) and CI coverage
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | debug
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** `docs/ecs-fargate-session-prompt.md` (George's ECS Fargate plan) Phase 1 items 1, 3, 4, 8 and 10. Every value — the region CA bundle URL and path, `ADD` over a vendored copy, the 65000/66000 timeouts, `DB_SSL` defaulting off — is read from that plan and from the four backends that already implement it, not chosen here. The chat-service target name `production` is read from its Dockerfile.
+
+**Prompts (exact):**
+
+> PR 1 — bring chat-service up to the AWS hardening standard the other four backends already have. I've branched from main already.
+>
+> ## Read first, in full — do not grep
+>
+>   - docs/ecs_fargate.md, specifically Phase 1 items 1–4 and item 10. Read the whole file. Two reports in a row have missed things by grepping a document named for exactly the topic.
+>   - How user-service, credit-service, supplier-service and order-service each implement this. They are the pattern; follow it rather than inventing a variant.
+>   - supplier-service's MySQL TLS setup in particular, since it is the closest analogue.
+>
+> ## The three changes
+>
+> **1. TLS for RDS — this is the blocking one.**
+> Our RDS MySQL parameter group sets require_secure_transport=1, so it rejects plaintext. chat-service's db/prisma.ts constructs PrismaMariaDb with host, port, user, password, database and timezone and no TLS option at all, so it cannot connect as written.
+>
+>   - Add DB_SSL to chat-service's config schema, **defaulting to false**, so compose and CI are unchanged.
+>   - Pass the TLS option to the mariadb adapter when it is true.
+>   - Add AWS's RDS CA bundle to chat-service's Dockerfile, the same way the other four do it.
+>
+> **Investigate and report, don't guess:** supplier needed `verifyIdentity: true` because mysql2 does not verify the certificate hostname. Read @prisma/adapter-mariadb's actual API and tell me whether it has an equivalent, and what you set. If the adapter's options are unclear, say so rather than picking something plausible.
+>
+> **2. Timeouts.** keepAliveTimeout = 65000 and headersTimeout = 66000 in chat-service/src/server.ts. Node's 5s default against the ALB's 60s idle timeout causes sporadic 502s — already diagnosed once on this project, which is why all four other backends set this.
+>
+> **3. chat-service/.env.example** — add the new variables, per Phase 1 item 10.
+>
+> ## CI
+>
+> Add chat-service to .github/workflows/ci.yml:
+>
+>   - a test job: npm ci + npm test. The specs use `import type` for every Prisma import, so they need no database and no prisma generate — confirm that holds rather than assuming it.
+>   - a docker-build leg with **target: production**, not `prod`. Chat follows order-service's naming. Copying the wrong line is a known trap.
+>
+> ## Scope
+>
+> Nothing else in chat-service. No refactoring, no tidying, no unrelated fixes. Nothing that requires AWS to exist — no deploy.yml, no ECR, no task definitions. Those are PR 2.
+>
+> ## Verify
+>
+>   - `docker build --target production` succeeds with the CA bundle in place
+>   - chat-service's tests still pass
+>   - the service still starts under compose with DB_SSL unset or false
+>   - config parses with DB_SSL both true and false
+>
+> If there is a cheap way to actually prove the TLS path connects — a local MySQL with TLS enabled, say — do it. If not, say plainly that the TLS path is unverified against a real server, because I cannot test it until the RDS instance exists.
+>
+> ## Then
+>
+> AGENTS.md compliance as usual — attribution headers, the ai/usage-log.md entry, the README log index row. Note that the log index currently has two tables again; append to the live one, do not try to fix the duplication in this PR.
+>
+> PR header and body. Wen Xi reviews this one, so write it for her: what changed in her service, why each piece is needed, and what the hostname-verification finding was.
+>
+> Show me the full diff before applying anything.
+
+> Approved — apply all six and run the verification.
+>
+> Three things to confirm first:
+>
+>   - How do user/credit/supplier/order get the RDS CA bundle? If they vendor and COPY it rather than ADD from a URL, match them. An unpinned build-time download is a difference I'd want to be deliberate about, not incidental.
+>   - Do they use the region bundle or global-bundle.pem? Match whichever.
+>   - Confirm compose doesn't need DB_SSL added anywhere for local to stay unchanged.
+>
+> Good call on not faking the TLS test with a self-signed cert.
+>
+> In the PR body, call out for George that the task definition must set NODE_EXTRA_CA_CERTS to the bundle path. The image carries the file but nothing trusts it without that, and the failure mode is an unknown-CA error that won't look like a missing variable.
+
+**Key responses:**
+
+_The hostname-verification finding, which was the question asked._ `@prisma/adapter-mariadb@7.10.1` wraps **`mariadb@3.5.4`** (MariaDB Connector/Node.js), not `mysql2`, and **has no `verifyIdentity` equivalent because it does not need one**. Its config typing (`node_modules/mariadb/types/share.d.ts:766`) is `ssl?: boolean | (SecureContextOptions & { rejectUnauthorized?: boolean })`. In `node_modules/mariadb/lib/cmd/handshake/authentication.js:123-135`, for any certificate that is not self-signed, the driver unconditionally calls `tls.checkServerIdentity(opts.ssl.servername ?? opts.host, info.tlsCert)` and fails the handshake with `ER_TLS_IDENTITY_ERROR` on a mismatch. Hostname checking is therefore always on and cannot be opted into or out of, only substituted via a custom `checkServerIdentity` or renamed via `servername` — the opposite of `mysql2`, where it is off unless requested. Separately, `connection-options.js:150` sets `rejectUnauthorized = opts.ssl.rejectUnauthorized !== false`, so an `ssl` object already defaults to strict. **Set: `ssl: { rejectUnauthorized: true }` and nothing else** — strictly redundant, but it keeps all five services reading alike, and the code comment records why supplier's fifth option is absent rather than forgotten.
+
+_The three confirmations asked for before applying._ (1) All four backends **`ADD` the bundle from the URL**; no `.pem` or `.crt` is committed anywhere in the repo, so matching them means `ADD`. Flagged to the user that this is an unpinned build-time download with no checksum — a repo-wide property, deliberately matched rather than diverged from in this PR. (2) All four use the **region** bundle, `ap-southeast-1/ap-southeast-1-bundle.pem` → `/etc/ssl/rds-ap-southeast-1-bundle.pem`, not `global-bundle.pem`. (3) **Compose needs nothing**: neither compose file sets `DB_SSL`, `REDIS_TLS` or `NODE_EXTRA_CA_CERTS` for any service, and the root `.env.example` has no `DB_SSL`, so the schema default `"false"` leaves local behaviour unchanged by omission. Confirmed against the resolved config: `docker compose config` shows no `DB_SSL` in chat-service's environment.
+
+_Shape of the change._ `createPrismaClient` gained a second parameter (`ssl = false`) rather than a new config layer, because chat-service's `loadEnv()` returns the flat parsed env and only `server.ts` calls the factory at run time. Default `false` means every existing call site and both compose files behave exactly as before.
+
+**Verification actually run:**
+
+1. **`docker build --target production`** — exit 0. The bundle is in the image at `/etc/ssl/rds-ap-southeast-1-bundle.pem`, mode `644`, root-owned, 3 certificates, and readable by the runtime user (`uid=1000(node)`), with `/etc/ssl` at `755` so it can be traversed.
+2. **Tests** — `npm test`: **12 files, 190 tests, all passing**, unchanged from the pre-change baseline.
+3. **Compose start with `DB_SSL` unset** — brought up `chat-db`, `order-redis` and `chat-service` from the base compose file. Migrations applied ("All migrations have been successfully applied."), `chat-service listening on :3000`, container `running` with 0 restarts, and `GET http://localhost:3005/health` returned `200 {"status":"ok","database":"up"}`. Stopped afterwards with volumes intact.
+4. **Config parses both ways** — `DB_SSL` omitted → `"false"`; `"false"` → `"false"`; `"true"` → `"true"`; `"yes"` → rejected at startup rather than silently treated as off. `createPrismaClient` constructs successfully with `ssl` both `false` and `true`, proving the adapter accepts the option shape (construction opens no connection).
+5. **The CI claim was confirmed, not assumed** — the suite was run with `src/generated` absent and no `prisma generate`: 190/190 green. Only `src/db/prisma.ts` and `src/server.ts` import the generated client at run time and no spec imports either, so the CI job needs no `db:generate` step. `npm run typecheck` and `npm run build` would need one, so they are deliberately not in the job.
+6. **`actionlint`** on the modified workflow — the same two pre-existing `SC2034` warnings on the wait-for-Postgres loops, and no new findings.
+7. **`NODE_EXTRA_CA_CERTS` proved necessary** — in the built image, `tls.getCACertificates('extra')` returns **0** without the variable and **3** with it (default store 118 → 121). The file is inert until the task definition points at it. (A first attempt used `tls.rootCertificates`, which is the static bundled list and never reflects the variable; that was the wrong probe, not a wrong setup.)
+
+**TLS path against a real server: unverified.** The code path that matters is the CA-issued branch above; a locally generated self-signed certificate takes the *other* branch entirely (`ER_SELF_SIGNED`), so a local TLS MySQL would have exercised the wrong code and given false confidence. It cannot be verified until the RDS instance exists.
+
+**Files:**
+
+- `chat-service/src/config/env.ts` (modified: `DB_SSL`)
+- `chat-service/src/db/prisma.ts` (modified: `ssl` parameter, adapter TLS option)
+- `chat-service/src/server.ts` (modified: pass `DB_SSL` through, keep-alive timeouts)
+- `chat-service/Dockerfile` (modified: RDS CA bundle in the production stage)
+- `chat-service/.env.example` (modified: `DB_SSL`)
+- `.github/workflows/ci.yml` (modified: chat-service test job and docker-build leg)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **`NODE_EXTRA_CA_CERTS` must be set in chat-service's ECS task definition** to `/etc/ssl/rds-ap-southeast-1-bundle.pem`, as it already is on the other four backends. Measured above: without it Node loads 0 extra roots, so TLS to RDS fails with an unknown-CA error that does not look like a missing variable. George's step, in PR 2.
+2. **The unpinned CA download** is matched from the existing four, not chosen. No checksum and no pinned version, so a build can fail or silently take new contents if AWS changes the file. Vendoring the bundle would make builds reproducible; that is a repo-wide decision for the team, not this PR.
+3. **The `DB_SSL=true` path is unverified against a real server**, as above.
+4. **The README Log index still has two tables** (headers at lines 426 and 556, 300+ numbered rows). This entry's row was appended to the live table only; the duplication was deliberately left alone at the user's instruction. The earlier de-duplication landed in PR #147's branch but was lost when that PR's README conflict was resolved.
+5. **Not done here, by scope:** `deploy.yml`, ECR, task definitions, ALB rules and the run-checklist update. Those need AWS to exist and are PR 2. The missing ALB rules for `/chat`, `/chat/*`, `/chat-socket.io`, `/chat-socket.io/*` remain the single most likely thing to be forgotten there.
+6. **Noticed, not changed:** `compose.yaml` now requires `SUPPLIER_ORDER_SERVICE_API_KEY`, which the root `.env.example` does carry — the template is complete. Mentioned only because a local tree without a root `.env` cannot run any compose command until it is created from the template.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+---
+
+## 2026-11-10 — Chat Service: CD wiring and the AWS console handoff
+
+**Tool:** Claude Code (model: claude-opus-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Boilerplate | Refactor/Docs
+**Governing decision:** `docs/ecs-fargate-session-prompt.md` (George's ECS Fargate plan), Phase 2 steps 10–19 and Phase 3, plus `docs/ecs-fargate-run-checklist.md` and the existing `deploy.yml` matrices. Every name, size, parameter path and Service Connect setting is derived from those files and `compose.yaml`; none was chosen here. The two open team decisions — chat's database and chat's Redis — are left open.
+
+**Prompts (exact):**
+
+> ## Read first, in full
+>
+>   - .github/workflows/deploy.yml and .github/scripts/ecs-deploy.sh
+>   - docs/ecs-fargate-run-checklist.md
+>   - docs/ecs_fargate.md
+>   - An existing task definition for a service with a database and Redis — credit-service or order-service — so the handoff below uses this project's real conventions and names, not invented ones.
+>
+> ## 1. deploy.yml
+>
+> Add chat-service to the `build` matrix with **target: production** (not `prod` — it follows order-service), and to the `deploy-web` matrix.
+>
+> chat goes in deploy-web, not deploy-workers: it applies migrations on boot like order-service, and order-worker calls its API, so it has to be running first.
+>
+> Note in a comment that `ecs-deploy.sh` skips gracefully when a service doesn't exist, so this is safe to merge before George creates the ECS service — but the ECR repo must exist or the build job fails on push.
+>
+> ## 2. The run checklist
+>
+> Update docs/ecs-fargate-run-checklist.md for nine services: the extra database, the new ALB rule, and anything in the start/stop cycle that would otherwise silently omit chat.
+>
+> ## 3. A handoff section for George — the important part
+>
+> Write it into the checklist, or a doc beside it if that fits better. It has to be precise enough to action without coming back to me.
+>
+> Derive the exact names, ARecord formats, parameter paths and conventions from the existing services rather than inventing them. Cover:
+>
+>   - ECR repo name and lifecycle rule
+>   - Database: MySQL 8, subnet group, security group with foc-tasks ingress, and the parameter group setting require_secure_transport
+>   - SSM parameter paths for DATABASE_URL and CHAT_SERVICE_API_KEY, matching the existing naming
+>   - Task definition: every environment variable and secret, the log group, CPU/memory consistent with comparable services, and Service Connect registering `chat-service:3000`
+>   - Target group name and health check path (/health)
+>   - ALB rule at priority 6 — all four paths fit in one rule
+>   - order-worker: add CHAT_SERVICE_URL and CHAT_SERVICE_API_KEY, make it a Service Connect client, and **force-redeploy it after chat-service is running** — a client only learns endpoints that existed when its task started
+>
+> **Give these three their own prominent block — each one silently breaks chat with an error that doesn't point at the cause:**
+>
+>   DB_SSL=true              — config defaults to false, so without this chat tries plaintext against an RDS that requires TLS
+>   NODE_EXTRA_CA_CERTS      — /etc/ssl/rds-ap-southeast-1-bundle.pem. The image carries the bundle but nothing trusts it without this; verified as 0 certs without, 3 with
+>   REDIS_TLS=true           — ElastiCache is in-transit Required and the variable defaults to false
+>
+> And note that CHAT_SERVICE_API_KEY must be the identical value in both chat-service and order-worker. Both are .optional() in order-service's schema, so a mismatch fails silently — system notifications just never arrive.
+>
+> ## Flag, don't resolve
+>
+> Two team decisions are still open and the handoff depends on both: new RDS instance for chat versus sharing supplier's, and sharing foc-order-redis versus a third cluster. Write the handoff so the decision point is explicit rather than assumed either way.
+>
+> ## Then
+>
+> Verify actionlint is clean against the existing baseline. AGENTS.md entries as usual — attribution headers, usage log, README row, appending to the live log table rather than fixing the duplication.
+>
+> PR header and body. Show me the diff before applying.
+
+> Apply the three files as shown, with two amendments:
+>
+>   - Drop the SSM parameter total. Say "chat adds 2" and leave the count out — a wrong number in a checklist is worse than none, and you can't see AWS to confirm it.
+>   - Keep every derived resource name clearly marked as derived. I'm getting a real task definition from George to reconcile against before this merges.
+>
+> ## 2. One thing to check
+>
+> Does deploy.yml's build matrix set fail-fast: false?
+>
+> If it doesn't, chat's build failing — which it will until the ECR repo exists — could cancel the other four services' builds and break the whole deployment. Report what you find; don't change it without telling me first, since that affects every service.
+>
+> ## 3. AGENTS.md
+>
+> Attribution headers, usage-log entry, README log index row — appending to the live table, not fixing the duplication.
+
+**Key responses:**
+
+_No task definition could be read._ The brief asked for an existing task definition to derive conventions from. **None is committed to this repo** — `git grep` for `containerDefinitions`, `requiresCompatibilities` and `executionRoleArn` returns nothing, and no task-definition JSON exists anywhere. They live only in AWS, which was not queried. Every name in the handoff is therefore derived from the plan's recorded facts, the run checklist and `compose.yaml`, and the handoff opens with a **"Derived names — reconcile these against a real task definition before merging"** table listing all nine derived values beside the pattern each follows, with checkboxes. George is supplying a real task definition to reconcile against before this merges.
+
+_The `fail-fast` check turned up a worse failure mode than the one asked about._ All three matrix jobs already set `fail-fast: false` (lines 50, 131, 160), so chat's leg cannot cancel its siblings and **no change was made**. But `fail-fast` does not cover the actual risk: the chain is `build` → `deploy-web` → `deploy-workers`, and `deploy-web` has `needs: build`. A failed leg still makes the `build` job conclude as failed, so `deploy-web` is **skipped entirely** — meaning a missing `foc/chat-service` ECR repository would stop **every** service deploying on every merge to `main`, not just chat. Reported to the user rather than silently fixed, and the ECR repository is now documented as a hard pre-merge prerequisite in both the workflow comment and the handoff's step 1, replacing the weaker "the job goes red" wording the brief suggested.
+
+_Handoff placed in its own file._ `docs/chat-service-aws-handoff.md` rather than inside the checklist: the handoff is a long one-time console walkthrough, while the checklist is a short recurring operational document. The checklist links to it and carries only the per-cycle changes.
+
+_The two open decisions._ Written as explicit option tables with the consequences of each, and the dependent steps marked *(see handoff)* in the checklist rather than assuming a road. Step 2 documents the own-instance option and step 2b the shared-instance option; step 3 documents sharing `foc-order-redis` and notes what a third cluster would add.
+
+_Amendments applied._ The SSM parameter total was dropped from the teardown list in favour of "list them in the console rather than working to a count; chat adds 2", because the plan's recorded list of 8 predates `SUPPLIER_ORDER_SERVICE_API_KEY` and the real total could not be confirmed.
+
+**Verification actually run:**
+
+- **`actionlint`** on `deploy.yml`: **baseline on `upstream/main` exits 0, and the modified file also exits 0** — a clean file stayed clean, and unlike `ci.yml` there are no pre-existing warnings to net out.
+- **Matrices parsed back out of the file** to confirm the edit landed where intended: the `build` matrix is 6 entries with `chat-service -> production @ foc/chat-service`, and `chat-service` appears in `deploy-web` while `deploy-workers` still has only the three workers.
+- Confirmed no numeric SSM count survives anywhere in `docs/*.md`.
+- `fail-fast: false` confirmed present on all three jobs, and the `needs:` graph confirmed as `build` → `deploy-web` → `deploy-workers`.
+
+**Files:**
+
+- `.github/workflows/deploy.yml` (modified: chat-service in the `build` and `deploy-web` matrices)
+- `docs/ecs-fargate-run-checklist.md` (modified: nine services, ALB rule 6, chat in the Redis-address list and scale-up order, troubleshooting rows, handoff link)
+- `docs/chat-service-aws-handoff.md` (created)
+- `ai/usage-log.md` (modified)
+- `README.md` (modified: Log index row)
+
+**Deviations / questions raised for the team:**
+
+1. **The `foc/chat-service` ECR repository must exist before this PR merges.** Not after — see Key responses. Until it does, every merge to `main` builds four images, fails chat's leg, and deploys nothing for any of the nine services.
+2. **Every resource name in the handoff is derived, not read.** No task definition is committed, so the nine derived values are listed in a reconciliation table for George to check against a real one. This is the single thing most likely to be wrong in the handoff.
+3. **Two team decisions remain open** and the handoff depends on both: chat's own RDS MySQL instance versus sharing `foc-supplier-db`, and sharing `foc-order-redis` versus a third ElastiCache cluster. Both are written as option tables, not assumed.
+4. **The SSM parameter total is deliberately absent** from the teardown list, at the user's instruction, because the recorded list of 8 predates `SUPPLIER_ORDER_SERVICE_API_KEY` and the real figure could not be confirmed without AWS access.
+5. **`/admin/send-otp`, `/admin/verify-otp` and `/admin/resend-otp` still have no ALB rule**, while the frontend calls all three (`frontend/src/api/admin.js`). The plan deliberately routed only `/admin/audit-logs` to user-service because every other `/admin/*` path was an SPA route at the time; Stage 30 then added three real API paths under that prefix. Unrelated to chat and not touched here, but it is the same class of defect ALB rule 6 prevents, and it should be verified in the console.
+6. **Still nothing verifying the `DB_SSL=true` path against a real server**, carried over from the previous entry and recorded in the handoff's "Known gaps".
+
+**What I kept/changed/rejected:**
+
+**Author review:**
 ## 2026-11-10 — Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite
 
 **Tool:** Claude Code (model: claude-fable-5-1)

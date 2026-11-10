@@ -5,11 +5,27 @@ Scope: Wrote the start, stop and teardown checklist asked for in docs/ecs-fargat
        ("Starting and ending a test run"), using the resources George created. No requirements,
        architecture, schema, or API decisions were made by the AI tool.
 Author review:
+Scope (2026-11-10, Claude Code, model: claude-opus-5): Counted chat-service into the start, stop
+       and teardown cycle, added the ALB rule and the chat troubleshooting rows, and linked the
+       handoff. The two open team decisions are left open rather than assumed. No requirements,
+       architecture, schema, or API decisions were made by the AI tool.
+Author review:
 -->
 
 # ECS Fargate: starting and stopping a test run
 
 Region: `ap-southeast-1`. Cost figures are the plan's rough, unverified estimates.
+
+> **`chat-service` is not deployed yet.** Its image builds and pushes on every merge, but the
+> database, task definition, ECS service, target group and ALB rule do not exist, so the deploy
+> step reports "not deployed" and nothing starts. This checklist already counts it, and the
+> items marked *(see handoff)* depend on two decisions the team has not made. Everything needed
+> to create it is in [chat-service-aws-handoff.md](chat-service-aws-handoff.md), whose resource
+> names are derived from existing patterns and still need reconciling against a real task
+> definition.
+>
+> The `foc/chat-service` ECR repository is the exception to "nothing starts": without it the
+> `build` job fails, and because `deploy-web` needs `build`, **no service deploys at all.**
 
 | State | Rough cost |
 |---|---|
@@ -20,10 +36,10 @@ Region: `ap-southeast-1`. Cost figures are the plan's rough, unverified estimate
 ## Stop
 
 1. **Let the queues drain.** Don't start this with orders mid-delivery. Check that the `credit-worker` and `order-worker` logs have shown no new jobs for a few minutes. Deleting Redis destroys anything still queued.
-2. **Scale down.** In **ECS → `foc`**, for each of the 8 services: **Update service**, set **Desired tasks** to `0`, and click **Update**.
+2. **Scale down.** In **ECS → `foc`**, for each of the 9 services: **Update service**, set **Desired tasks** to `0`, and click **Update**.
 3. **Delete the load balancer.** In **EC2 → Load balancers**, delete `foc-alb`. Keep the target groups.
-4. **Delete both Redis clusters.** In **ElastiCache → Redis OSS caches**, delete `foc-order-redis` and `foc-supplier-redis`, with no final backup.
-5. **Stop the databases.** In **RDS → Databases**, for each of the 4: **Actions → Stop temporarily**, with no snapshot.
+4. **Delete the Redis clusters.** In **ElastiCache → Redis OSS caches**, delete `foc-order-redis` and `foc-supplier-redis`, with no final backup. *(See handoff: if chat was given a third cluster rather than sharing `foc-order-redis`, delete that too.)*
+5. **Stop the databases.** In **RDS → Databases**, for each of the 4: **Actions → Stop temporarily**, with no snapshot. *(See handoff: 5 if chat was given its own MySQL instance rather than sharing supplier's.)*
 6. **Note the date.** RDS restarts stopped databases after 7 days, and they bill again. Stop them again, or run the full teardown.
 7. **Check.** Wait a day, because billing data lags, then look in **Billing → Bills** for anything unexpected.
 
@@ -33,8 +49,8 @@ Merges to `main` while stopped still build images and register new task definiti
 
 ## Start
 
-1. **Start the databases.** In **RDS → Databases**, for each of the 4: **Actions → Start**. Wait for **Available**.
-2. **Recreate both Redis clusters**, with the names `foc-order-redis` and `foc-supplier-redis`:
+1. **Start the databases.** In **RDS → Databases**, for each of the 4: **Actions → Start**. Wait for **Available**. *(See handoff: 5 if chat was given its own MySQL instance.)*
+2. **Recreate the Redis clusters**, with the names `foc-order-redis` and `foc-supplier-redis` *(plus chat's own, if it was given a third — see handoff)*:
 
    | Setting | Value |
    |---|---|
@@ -53,7 +69,7 @@ Merges to `main` while stopped still build images and register new task definiti
    - `master.foc-order-redis.ssesaz.apse1.cache.amazonaws.com`
    - `master.foc-supplier-redis.ssesaz.apse1.cache.amazonaws.com`
 
-   If either changed, create new revisions of `order-service`, `order-worker`, `credit-service`, `credit-worker`, `supplier-service` and `supplier-worker` with the new `REDIS_HOST`.
+   If either changed, create new revisions of `order-service`, `order-worker`, `credit-service`, `credit-worker`, `supplier-service` and `supplier-worker` with the new `REDIS_HOST` — **and `chat-service`, which shares `foc-order-redis` for its Socket.IO adapter.** Missing it is quiet: chat still serves HTTP and only cross-task realtime delivery breaks. *(If chat was given its own cluster, add its address here too.)*
 4. **Recreate the load balancer** `foc-alb`: Application Load Balancer, internet-facing, IPv4, in `foc-vpc`, with both public subnets, the `foc-alb` security group only, and an HTTP:80 listener forwarding to `foc-frontend`. Add these rules:
 
    | Priority | Paths | Forward to |
@@ -63,25 +79,30 @@ Merges to `main` while stopped still build images and register new task definiti
    | 3 | `/admin/audit-logs`, `/admin/audit-logs/*` | `foc-user` |
    | 4 | `/credits`, `/credits/*` | `foc-credit` |
    | 5 | `/orders`, `/orders/*`, `/socket.io`, `/socket.io/*` | `foc-order` |
+   | 6 | `/chat`, `/chat/*`, `/chat-socket.io`, `/chat-socket.io/*` | `foc-chat` |
+
+   Rule 6 is four paths, so it fits the 5-path-per-rule limit. Without it, chat requests fall
+   through to `foc-frontend` and die inside nginx, whose `resolver 127.0.0.11` is Docker's
+   embedded DNS and does not exist on Fargate.
 
 5. **Point CloudFront at it.** In **CloudFront → `E2R6YUXKH02JA7` → Origins → Edit**, paste the new load balancer DNS name, and keep **HTTP only**, port 80. Wait for it to deploy.
-6. **Scale up, in this order.** Set **Desired tasks** to `1`: `user-service`, `credit-service`, `supplier-service`, `order-service`, the 3 workers, then `frontend`. Wait for each web service to show **Completed**.
+6. **Scale up, in this order.** Set **Desired tasks** to `1`: `user-service`, `credit-service`, `supplier-service`, `order-service`, `chat-service`, the 3 workers, then `frontend`. Wait for each web service to show **Completed**. `chat-service` comes before the workers because `order-worker` calls its API.
 7. **Restart `user-service`.** Use **Update service → Force new deployment**, so it can find `credit-service`.
-8. **Check** `https://d2wshq3pru0fir.cloudfront.net`: log in, browse suppliers, and post an errand.
+8. **Check** `https://d2wshq3pru0fir.cloudfront.net`: log in, browse suppliers, and post an errand. Open a chat and send a message, which exercises `/chat/conversations` and the `wss://` upgrade on `/chat-socket.io`.
 
 ## Full teardown
 
 First remove the team repo's `AWS_DEPLOY_ROLE_ARN` variable or disable the `Deploy` workflow, as merges will otherwise fail. Then delete in this order, and confirm with **Billing → Bills** and Cost Explorer that nothing is still billing:
 
 1. ECS services, then the `foc` cluster
-2. `foc-alb` and the 5 target groups
+2. `foc-alb` and the 6 target groups
 3. The CloudFront distribution (disable it first)
-4. Both Redis clusters, then the `foc-redis` subnet and parameter groups
-5. All 4 RDS instances with no final snapshot, then the `foc-rds` subnet group and `foc-mysql` parameter group
+4. The Redis clusters, then the `foc-redis` subnet and parameter groups
+5. All 4 RDS instances with no final snapshot, then the `foc-rds` subnet group and `foc-mysql` parameter group *(5 instances if chat was given its own — see handoff)*
 6. The S3 photo bucket (empty it first)
-7. The 6 ECR repositories
-8. The 8 `/foc/...` SSM parameters
-9. The 9 `/ecs/foc/...` log groups, the task definitions, and the `foc` Cloud Map namespace
+7. The 7 ECR repositories
+8. Every `/foc/...` SSM parameter — list them in the console rather than working to a count; chat adds 2
+9. The 10 `/ecs/foc/...` log groups, the task definitions, and the `foc` Cloud Map namespace
 10. IAM roles `foc-ecs-task-execution`, `foc-supplier-task` and `foc-github-deploy`, plus the `foc-github-deploy` policy and the GitHub OIDC provider
 11. The security groups, then `foc-vpc` last
 
@@ -94,3 +115,6 @@ First remove the team repo's `AWS_DEPLOY_ROLE_ARN` variable or disable the `Depl
 | A one-off task can't reach a database | It wasn't run with the `foc-tasks` security group |
 | A Service Connect task fails to start | **Use log collection** was left on when creating the service |
 | CloudFront returns `502` or `504` | The load balancer is gone, or CloudFront's origin is out of date |
+| `chat-service` crash-loops on an unknown-CA or handshake error | `NODE_EXTRA_CA_CERTS` or `DB_SSL` is missing from its task definition — see the handoff's three-variable block |
+| Chat loads but system notifications never arrive | `CHAT_SERVICE_API_KEY` differs between `chat-service` and `order-worker`, or `order-worker` was not force-redeployed after `chat-service` first started |
+| Chat pages 404, or the `wss://` upgrade fails | ALB rule 6 is missing, so the request reached `foc-frontend` instead |

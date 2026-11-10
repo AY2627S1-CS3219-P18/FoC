@@ -4,6 +4,12 @@
 #        decision to deploy on every merge to main from the team repo. No requirements, architecture,
 #        schema, or API decisions were made by the AI tool.
 # Author review:
+# Tool: Claude Code (model: claude-opus-5), date: 2026-11-10
+# Scope: Added chat-service to the build and deploy-web matrices. Its stage name, ECR repository
+#        name and deploy ordering are read from chat-service/Dockerfile, the existing matrices and
+#        docs/ecs-fargate-session-prompt.md, not chosen here. No requirements, architecture,
+#        schema, or API decisions were made by the AI tool.
+# Author review:
 
 name: Deploy
 
@@ -63,6 +69,19 @@ jobs:
           - service: order-service
             target: production
             repository: foc/order-service
+          # Also `production`: chat-service/Dockerfile follows order-service's naming, not the
+          # `prod` the other three use.
+          #
+          # The `foc/chat-service` ECR repository MUST exist before this merges. fail-fast is off
+          # so a failed leg does not cancel its siblings, but the `build` job still concludes as
+          # failed, and `deploy-web` needs it — so one missing repository skips every deploy,
+          # for all nine services, not just this one.
+          #
+          # The ECS service itself can lag safely: ecs-deploy.sh skips with a notice when the
+          # service is missing, so chat reports "not deployed" while the rest deploy normally.
+          - service: chat-service
+            target: production
+            repository: foc/chat-service
           - service: frontend
             target: prod
             repository: foc/frontend
@@ -135,6 +154,10 @@ jobs:
           - { service: credit-service, repository: foc/credit-service }
           - { service: supplier-service, repository: foc/supplier-service }
           - { service: order-service, repository: foc/order-service }
+          # chat-service belongs here rather than in deploy-workers, for two reasons: it applies
+          # its Prisma migrations on boot the way order-service does, and order-worker calls its
+          # API, so it has to be running before the workers roll.
+          - { service: chat-service, repository: foc/chat-service }
           - { service: frontend, repository: foc/frontend }
     steps:
       - uses: actions/checkout@v7
