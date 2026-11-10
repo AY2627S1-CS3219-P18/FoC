@@ -6,6 +6,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-09, Codex, model: GPT-6): Implemented or tested the team-specified system conversations.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed image/video message types as instructed by the user.
+ * Author review: tng wen xi
  */
 
 import request from "supertest";
@@ -148,7 +150,7 @@ it("uses a lookahead and emits the last returned row as a reusable cursor", asyn
     { updatedAt: new Date(time), conversationId: { lt: id(2) } },
   ]);
 });
-it.each(["TEXT", "IMAGE", "VIDEO", "SYSTEM"])(
+it.each(["TEXT", "SYSTEM"])(
   "returns %s last messages and uses the timestamp/id read boundary",
   async (type) => {
     const r: any = row(1);
