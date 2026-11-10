@@ -14181,3 +14181,47 @@ No requirements, architecture, schema, or API decisions were made by the AI tool
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31a: Config and unlock-token utilities
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** generate
+**Scope:** Implementation code | Boilerplate
+**Governing decision:** instructions.md Stage 31 ("The unlock link and token" table, "Config" section, changes table rows 1-2, "Stage 31a: Config and unlock-token utilities")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+
+**Key responses:**
+
+Stage 31 has no remaining `[DECIDE]` placeholders, so 31a was implemented as written; per the stage's "implement one sub-stage at a time" rule, work stopped after 31a for the user's confirmation.
+
+- `src/config.ts`: `FRONTEND_BASE_URL` added to the Zod schema as `z.string().url()`, exposed as `config.frontend.baseUrl`. A trailing slash is stripped, mirroring the existing `CREDIT_SERVICE_URL` handling, so `'/unlock-account?token=...'` can be appended directly. A missing, empty or non-URL value exits at startup through the existing env-validation path, naming the variable (`FRONTEND_BASE_URL: Required` / `Invalid url`).
+- `.env.example`, `.env`, `.env.test`: `FRONTEND_BASE_URL=http://localhost:5173` added (`.env` is gitignored; listed for completeness).
+- `src/utils/jwt.ts`: `UNLOCK_TOKEN_TTL_SECONDS = 60 * 60` as a code constant at the top of the file (no env var). `signUnlockToken({ userId, lockedUntil: Date })` signs RS256 with the current key and `kid`, header `typ: ul+JWT`, claims exactly `sub`, `iat`, `exp` (1 h) and `lck` = `Math.floor(lockedUntil.getTime() / 1000)` (epoch seconds). `verifyUnlockToken(token)` asserts `typ === 'ul+JWT'` through the existing Stage 27 `assertTokenType`, resolves the key by `kid`, verifies RS256, and additionally throws if `sub` is not a string or `lck` is not a number; returns `{ user_id, lck }`. Because `verifyAccessToken` and `verifyElevationToken` already assert their own `typ`, they reject `ul+JWT` with no change to them.
+- Note for 31c: Postgres `timestamptz` carries microseconds while `lck` is whole seconds, so the "same instant" comparison in 31c must truncate `login_locked_until` to seconds (or compare `floor(extract(epoch ...))`) rather than compare raw values. Flagged here so it is not missed.
+- CORS report (report only, no change made): `src/app.ts` line 34 hardcodes `cors({ origin: 'http://localhost:5173', ... })`. It could read `config.frontend.baseUrl` instead; the dev value is identical. Left unchanged as instructed.
+- Tests for the 31a Verification bullets are scheduled for Stage 31e per the stage text; none were added here. Verification was done with a throwaway tsx script (not committed) covering every 31a bullet: `config.frontend.baseUrl` parsed; token header `ul+JWT`/RS256/`kid`; claims exactly `exp,iat,lck,sub`; `exp - iat = 3600`; `lck` equals the floored lock instant; the unlock verifier accepts the token and rejects `at+JWT`, `ep+JWT` and plain `JWT`; `verifyAccessToken` and `verifyElevationToken` reject `ul+JWT`; expired, tampered-signature and missing-`lck` tokens are rejected. All 14 checks passed. Startup with `FRONTEND_BASE_URL` empty and with `not-a-url` both exited with "Invalid or missing environment variables: - FRONTEND_BASE_URL: Invalid url".
+- `npx tsc --noEmit` (src and tests) clean; `npx eslint src tests` clean; `tests/config.test.ts` and `tests/utils/jwt.test.ts` 51/51 passed. Full suite (`npx vitest run`, real Postgres): 38 files, 1002/1002 passed. The two stderr stack traces are the pre-existing forced-failure tests.
+
+**Files:**
+
+- `user-service/src/config.ts` (modified)
+- `user-service/src/utils/jwt.ts` (modified)
+- `user-service/.env.example` (modified)
+- `user-service/.env` (modified, gitignored)
+- `user-service/.env.test` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #261)
+
+**Deviations / questions raised for the team:**
+
+- The running `foc-user-service` dev container reads `user-service/.env` at start and will need a restart to pick up `FRONTEND_BASE_URL` once this is merged (it is only read by config at startup; nothing uses it until 31b).
+- `instructions.md` had uncommitted team edits in the working tree when the branch was created; they were left untouched and not staged.
+- Nothing else; no ambiguity found in rows 1-2.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

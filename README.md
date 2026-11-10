@@ -854,3 +854,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 
 | 259 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
 | 260 | 2026-11-10 | user-service | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite | Tests share one loopback supertest server instead of a wildcard server per request. |
+| 261 | 2026-11-10 | user-service | Stage 31a: Config and unlock-token utilities | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair. |
