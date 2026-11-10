@@ -15076,3 +15076,114 @@ Windows-specific config runner and private-key permission assertion failures rem
 **What I kept/changed/rejected:**
 
 **Author review: Congchen**
+
+## 2026-11-10 — ECS Fargate: chat-service database TLS, keep-alive and CD
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** explain | generate
+**Scope:** Implementation code | Boilerplate | Debugging
+**Governing decision:** George's chat instructions in this session (quoted below), applying the existing decisions in `docs/ecs-fargate-session-prompt.md`: "DB encryption: Verified SSL enforced", Phase 1 item 3 (supplier MySQL SSL with hostname verification), Phase 1 item 4 (RDS CA file), Phase 1 item 8 (keep-alive) and Phase 3 (CD). George decided chat-service gets its own new database, using the `foc_admin` login.
+
+**Prompts (exact):**
+> check the freshly pulled chat service, give me the steps to deploy it on AWS
+
+> 1. enable database TLS for the mysql, like we did for supplier service
+> 2. apply the keep alive fix, same as the other services
+> 3. add it to CD, same as other services
+>
+>
+> i will make a new database, and it will use foc_admin
+
+> is this policy correct
+>
+> ```json
+> {
+>     "Version": "2012-10-17",
+>     "Statement": [
+>         {
+>             "Sid": "EcrLogin",
+>             "Effect": "Allow",
+>             "Action": "ecr:GetAuthorizationToken",
+>             "Resource": "*"
+>         },
+>         {
+>             "Sid": "EcrPush",
+>             "Effect": "Allow",
+>             "Action": [
+>                 "ecr:BatchCheckLayerAvailability",
+>                 "ecr:BatchGetImage",
+>                 "ecr:CompleteLayerUpload",
+>                 "ecr:GetDownloadUrlForLayer",
+>                 "ecr:InitiateLayerUpload",
+>                 "ecr:PutImage",
+>                 "ecr:UploadLayerPart"
+>             ],
+>             "Resource": "arn:aws:ecr:ap-southeast-1:993173880680:repository/foc/*"
+>         },
+>         {
+>             "Sid": "EcsTaskDefinitions",
+>             "Effect": "Allow",
+>             "Action": [
+>                 "ecs:DescribeTaskDefinition",
+>                 "ecs:RegisterTaskDefinition"
+>             ],
+>             "Resource": "*"
+>         },
+>         {
+>             "Sid": "EcsServices",
+>             "Effect": "Allow",
+>             "Action": [
+>                 "ecs:DescribeServices",
+>                 "ecs:UpdateService"
+>             ],
+>             "Resource": "arn:aws:ecs:ap-southeast-1:993173880680:service/foc/*"
+>         },
+>         {
+>             "Sid": "PassEcsRoles",
+>             "Effect": "Allow",
+>             "Action": "iam:PassRole",
+>             "Resource": [
+>                 "arn:aws:iam::993173880680:role/foc-ecs-task-execution",
+>                 "arn:aws:iam::993173880680:role/foc-supplier-task"
+>             ],
+>             "Condition": {
+>                 "StringEquals": {
+>                     "iam:PassedToService": "ecs-tasks.amazonaws.com"
+>                 }
+>             }
+>         }
+>     ]
+> }
+> ```
+
+**Key responses:**
+- First prompt (explain only, no files changed): read chat-service and the ECS plan and listed the AWS steps. Found that `order-service/src/worker.ts` now exits at startup without `CHAT_SERVICE_API_KEY`, so `order-worker`'s task definition needs `CHAT_SERVICE_URL` and `CHAT_SERVICE_API_KEY` before the stack is next started. The last Deploy run (`584174e`) found everything scaled to 0, so nothing live was affected. Declined to choose a separate or shared database, database TLS or the login, and left those to George, per AGENTS.md §2.1.
+- Database TLS: added `DB_SSL` (default `false`) to `chat-service/src/config/env.ts`. When it is on, `createPrismaClient` passes `ssl: { rejectUnauthorized: true }` to the MariaDB adapter, and `server.ts` passes the flag through. The connector types don't accept `servername`, so it was not set. A test showed Node still checks the hostname (case F below). Added the RDS CA bundle to the `production` stage of `chat-service/Dockerfile` with `ADD --chmod=644`, at the same path as supplier's. Migrations (`prisma migrate deploy`) don't go through the adapter, so they get TLS from `DATABASE_URL` query parameters (`?sslaccept=strict&sslcert=/etc/ssl/rds-ap-southeast-1-bundle.pem`), documented in `.env.example`. The app's URL parsing ignores query parameters.
+- Keep-alive: `server.keepAliveTimeout = 65_000` and `server.headersTimeout = 66_000` in `chat-service/src/server.ts`, as in user, order and supplier.
+- CD: added `chat-service` (target `production`, repository `foc/chat-service`) to the `build` and `deploy-web` lists in `.github/workflows/deploy.yml`.
+- Policy question: answered that the policy is correct and needs no change for chat-service, because `repository/foc/*` and `service/foc/*` already cover it, and it allows every AWS call in `.github/scripts/ecs-deploy.sh`. Noted that the `foc/chat-service` ECR repo must exist before this merges, or that build fails and the deploy jobs, which wait on all builds, are skipped.
+- Verification (run): `npm test` 197/197 passed; `npm run typecheck` and `npm run build` passed; the workflow YAML parses with chat-service in both lists. Against a throwaway MySQL 8.4 container with `--require-secure-transport=ON` and a test CA (certificate for `localhost` only):
+  - migrate with no TLS parameters: refused ("insecure transport are prohibited");
+  - migrate with TLS parameters via `127.0.0.1`: refused (P1011, certificate name mismatch);
+  - migrate with TLS parameters via `localhost`: all 4 migrations applied;
+  - app with `DB_SSL=true` and the CA in `NODE_EXTRA_CA_CERTS`: connected, `Ssl_cipher` `TLS_AES_256_GCM_SHA384`;
+  - app with `DB_SSL=false`, with the wrong hostname (case F) or without the CA trusted: each failed;
+  - production image, built locally, on a fresh database: migrations applied over TLS (5 tables), `/health` returned 200 with `Keep-Alive: timeout=65`, and every chat connection showed `TLSv1.3`. The CA file in the image is mode 644 and readable by `node`.
+  Not run: against real RDS or ElastiCache, and the GitHub Actions Deploy workflow. The host migrate tests ran on Windows; the Linux path was covered by the image test. Test containers and the image were removed afterwards.
+
+**Files:**
+- `chat-service/src/config/env.ts` (modified)
+- `chat-service/src/db/prisma.ts` (modified)
+- `chat-service/src/server.ts` (modified)
+- `chat-service/Dockerfile` (modified)
+- `chat-service/.env.example` (modified)
+- `.github/workflows/deploy.yml` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #285)
+
+**Deviations / questions raised for the team:**
+- None. AWS console steps (ECR repo, RDS instance, SSM parameters, task definitions including `order-worker`'s chat settings, target group, ALB rule, ECS service) remain for George.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
