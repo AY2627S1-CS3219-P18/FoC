@@ -10712,3 +10712,115 @@ Same as earlier stages: header comment on every file created or modified, and a 
 
 - **NFR1.1.1:** reword to: when an account is locked by the login lockout, the system emails the registered address a link, valid for 1 hour and tied to that lock, that opens a page where the user can press a button to clear the lock and its escalation (and any OTP send blocks). Sent for every login lock; not for OTP send blocks; not for pending or suspended accounts. Failed sends are retried as for OTP emails and then logged.
 - Remove the "deferred" note on NFR1.1.1 added for Stage 18.
+
+# Stage 32: Schedule Option on the Errand Form (frontend)
+
+> Read and implement this stage only. If any `[DECIDE]` remains in this file, stop and ask me. Do not pick a value yourself.
+
+## AI Usage Logging
+
+After the stage, generate the usage-log entry and add the AI disclosure header to every file you create or modify, in the same format as Stages 1–31.
+
+## Ground rules
+
+1. Read the current code first, not just this file. Where they disagree, follow the code and tell me.
+2. Frontend only. Do not change order-service, user-service or supplier-service, the series API (`/orders/series*`), its request or response shapes, or the worker. If something here needs a backend change, stop and report it.
+3. Follow existing conventions in `frontend/` (React 18 JSX, existing form components, Vitest + Testing Library).
+4. Write tests in this stage.
+5. When done, list every deviation from this file and every `[DECIDE]` that was still open.
+
+## The problem
+
+Recurring and delayed errands can only be created from a separate page, reached from the "New" button in the Scheduled section of My errands. The normal errand form (`/requests/new`) has no way to schedule.
+
+## Step 1: Read and report (no code changes)
+
+Report before editing:
+
+- What the "New" button in the Scheduled section opens today (route and component).
+- How the current series create form is built and what it shares with `CreateRequest.jsx`.
+- How the series edit form is reached today (route, component).
+- Which fields the normal form collects versus what `POST /orders/series` needs (`durationMinutes`, `startAt` / `startNow`, `rrule`).
+- Where the recurrence picker, date/time picker and `rrule` helpers live.
+- Whether `PATCH /orders/series/:seriesId/edit` accepts a change to the posting start time, and what it does to the next fire. If it doesn't, stop and tell me.
+
+## Step 2: Implement (decided)
+
+### Form layout
+
+All errands use the one form. Keep the existing sections and add the following, in this order:
+
+```
+1. WHEN SHOULD THIS ORDER BE SENT?
+   ( ) Send Now      ( ) Send Later (Schedule)
+                         └─ Select date & time
+
+2. WHEN DO YOU NEED IT BY?          (existing section, kept)
+   ( ) ASAP          ( ) By a specific time
+                         └─ Select target time
+
+3. RECURRENCE
+   [ ] Repeat this errand
+        └─ recurrence picker + end condition (expands inline when ticked)
+```
+
+- Default: Send Now, and Repeat unticked.
+- Send Later expands the date/time picker inline. Ticking Repeat expands the recurrence picker and end condition inline.
+- The end condition "after N occurrences" shows the word "times" after the number (e.g. "After [ 5 ] times").
+- Reuse the existing recurrence picker, date/time picker and series API module. Do not duplicate them.
+
+### Complete-by
+
+- Keep the current "When do you need it by?" behaviour. The user picks a complete-by time, and the frontend computes `durationMinutes` from it relative to the scheduled start time (Send Later) or the post time (Send Now). That duration is used for every later occurrence.
+- Keep the existing limits (duration max 1440 minutes, complete-by must be after the start).
+
+### What gets submitted
+
+(Derived from the Stage 28 spec: a one-time errand is a series with `COUNT=1`.)
+
+- Send Now, Repeat unticked → normal order, existing create call.
+- Send Later, Repeat unticked → series with `COUNT=1` and `startAt`.
+- Send Now, Repeat ticked → series with `startNow: true` and the chosen rule.
+- Send Later, Repeat ticked → series with `startAt` and the chosen rule.
+
+### Text and buttons
+
+- The remark "N credits will be reserved until this errand is completed or cancelled" and the "After posting, you'll have X of Y credits available" hint show only when Send Now is selected. They are hidden when Send Later is selected.
+- Submit button: "Post errand" for Send Now with no repeat, "Schedule errand" otherwise.
+
+### After submit
+
+- On success, go to My errands.
+
+### Removing the old page
+
+- Remove the "New" button from the Scheduled section.
+- Delete the old separate series create page, its route and any components only it used. Leave no dead routes or imports.
+
+### Editing a series
+
+- Keep the existing edit route and form.
+- The edit form must also allow changing when the errand posts (the start date and time), not just the other fields. Same field layout as the create form.
+
+## Decisions
+
+- ASAP together with Send Later: ASAP is hidden when Send Later is selected. Only "By a specific time" is available; the user must pick a complete-by time.
+- Send Now with Repeat ticked: show the credits remark and hint, same as any other Send Now submission, since the first occurrence posts immediately and reserves credits now.
+
+## Tests
+
+- Send Now, no repeat: normal order call, no series call.
+- Each of the other three combinations sends the series request with the expected `startNow` / `startAt`, `rrule` (including `COUNT=1` for one-time) and `durationMinutes`.
+- Duration is computed from the complete-by and the start time; validation errors for complete-by before start and over 24 h.
+- Send Later expands the date/time picker; Repeat expands the recurrence picker; "times" label on the after-N end condition.
+- Credits remark and hint show only for Send Now; submit button label per combination.
+- After a successful submit, lands on My errands.
+- Edit form can change the posting start time.
+- Update or remove any tests that referenced the old button, page or route.
+
+## Verification
+
+- Normal errand posting is unchanged.
+- A delayed errand and a recurring errand can both be created from the form and appear in the Scheduled section of My errands.
+- The "New" button and the old page are gone.
+- Phone-width viewport works.
