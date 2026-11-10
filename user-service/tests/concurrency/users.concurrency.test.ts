@@ -25,11 +25,17 @@
  *        about the concurrent-write race, not elevation itself.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import jwt from 'jsonwebtoken';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { signElevationToken } from '../../src/utils/jwt.js';
 import { CONCURRENT_REQUESTS as N, LOOP_ITERATIONS } from '../helpers/constants.js';
 import {
@@ -66,7 +72,7 @@ describe('concurrent PUT /users/:id/status', () => {
       const reasonFor = { suspended: 'FRAUD_OR_SCAM', active: 'ISSUE_RESOLVED' } as const;
       const rs = await Promise.all(
         statuses.map((status) =>
-          request(app)
+          api()
             .put(`/users/${target.id}/status`)
             .set('Authorization', bearer(token))
             .set('Elevated-Token', elevation)
@@ -116,7 +122,7 @@ describe('concurrent PUT /users/:id/role', () => {
       const reasonFor = { admin: 'APPOINTED_MODERATOR', user: 'ROLE_ENDED' } as const;
       const rs = await Promise.all(
         roles.map((role) =>
-          request(app)
+          api()
             .put(`/users/${target.id}/role`)
             .set('Authorization', bearer(token))
             .set('Elevated-Token', elevation)

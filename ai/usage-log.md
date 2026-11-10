@@ -13979,6 +13979,83 @@ Accepted all changes.
 
 **Author review:** gabriel yap
 
+## 2026-11-10 — Fix F4: unlockUser must not spread the full UserRow
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** refactor | generate
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** the team's F4 fix note pasted in chat on 2026-11-10 (quoted below); the documented user response shape is instructions.md Stage 9 / Stage 15c (camelCase) / Stage 18d (`isLocked`, `lockedUntil`, `lockLevel`), as already encoded in `toUserResponse`
+
+**Prompts (exact):**
+
+> dont forget the git workflow
+
+> Fix F4: unlockUser must not spread the full UserRow.
+>
+> - Define one shared constant in users.queries.ts listing the safe user columns (every
+>   column toUserResponse needs, plus the lock columns and the is_locked expression from
+>   F3), explicitly excluding password_hash. Use it for RETURNING / SELECT in user-facing
+>   queries instead of `*` where the row ends up in a response.
+> - unlockUser: keep the SELECT ... FOR UPDATE row internal, used only for the
+>   lock-vs-no-op decision and the audit "before" value. Do the clears in an
+>   UPDATE ... RETURNING <safe columns> and pass the returned row to toUserResponse.
+>   No object spread, no hand-assigned reset fields.
+> - Grep src/ for `...` spreads of user rows (`...user`, `...locked`, `...row`) and for
+>   `SELECT *` / `RETURNING *` on users whose result reaches a response or a log. Report
+>   each hit; fix any that carry password_hash outside a function that needs it
+>   (login, password change/reset).
+> - Test: for unlock (both the unlocked and no-op paths) and the other admin endpoints,
+>   assert the response body's keys equal exactly the documented set, and that
+>   JSON.stringify(body) contains neither "password_hash" nor "passwordHash".
+
+**Key responses:**
+Branched `fix/f4-unlock-safe-columns` off `main`.
+
+`users.queries.ts`: added the exported `SAFE_USER_COLUMNS` constant (`id, username, email, created_at, updated_at, status, role, active_view, login_failed_attempts, login_failure_window_start, login_locked_until, login_lock_level, <IS_LOCKED_SQL> AS is_locked`; `password_hash` deliberately absent) and the `SafeUserRow` type (`Omit<UserRow, 'password_hash'> & { is_locked: boolean }`). `findById`, `listUsersPage`'s SELECT, and the `updateUserStatus` / `updateUserRole` / `updateActiveView` RETURNING clauses now use `SAFE_USER_COLUMNS` instead of `*` and return `SafeUserRow`. `resetLoginLock` now ends in `RETURNING ${SAFE_USER_COLUMNS}` and returns the cleared `SafeUserRow | null` (its other callers, login and the two password paths, ignore the return value and are unchanged). `toUserResponse` now takes `SafeUserRow`; `UserRowWithLock` (the FOR UPDATE reads) still satisfies it structurally, so the no-op paths of changeUserStatus/changeUserRole compile unchanged, and the mapper body is untouched.
+
+`unlockUser`: the `lockUserByIdWithNow` row stays internal (lock-vs-no-op via `is_locked`, audit "before" value). The clears go through `resetLoginLock`, whose RETURNING row is passed straight to `toUserResponse`. The `{ ...locked, login_failed_attempts: 0, ... }` spread and its five hand-assigned fields are gone.
+
+Within-decision choice: `findById` was also used by `me.service.ts`'s `initiateEmailChange` and `initiatePasswordChange` for a pre-lock `bcrypt.compare` against `user.password_hash`. Rather than leave `findById` selecting `*` for those two callers (which would have left the admin `GET /users/:id` path fetching the hash), added `findPasswordHashById` (selects only `password_hash`) and switched those two pre-lock reads to it. Their in-transaction re-check against `locked.password_hash` is unchanged.
+
+Grep report (`src/`), spreads of user rows:
+
+- `users.service.ts` unlockUser `...locked`: carried `password_hash` into the mapper's input object. **Fixed** (removed, see above).
+- `users.queries.ts` listUsersPage `({ full_count, ...row }) => row`: now only ever sees `SAFE_USER_COLUMNS`, so it cannot carry the hash. Kept, with a comment.
+- `auditLog.queries.ts:158` same `full_count` pattern on audit-log rows, not user rows. Not a hit.
+  `SELECT *` / `RETURNING *` on `users`:
+- `findById`, `listUsersPage`, `updateUserStatus`, `updateUserRole`, `updateActiveView`: results reach responses via `toUserResponse`. **Fixed** (safe columns).
+- `lockUserById` / `lockUserByIdWithNow` (`SELECT * ... FOR UPDATE`): shared by login, refresh, the password/email change paths and the OTP services, which need `password_hash`; the admin no-op paths pass the row to `toUserResponse`, which copies only its listed fields. Kept; reported.
+- `findByUsername` / `findByEmail`: login needs the hash; the other callers (register duplicate checks, me.service uniqueness checks, forgot-password/reset flows, bootstrap) use `id`/`status` only and never return or log the row. Kept; reported.
+- `createUser` / `createSuperAdmin` (`RETURNING *`): callers use `.id` only; bootstrap's `console.log` prints the configured username, not the row. Kept; reported.
+- `updateUsername` / `updateEmail` (`RETURNING *`): `changeUsername` returns `{ username, email }` picked from it; `updateEmail`'s result is unused. Kept; reported.
+- `findSuperAdmin`: bootstrap existence check only. Kept; reported.
+- `findByIdWithNow` (`SELECT *` + `db_now`): no longer has any caller in `src/` (its Stage 20 caller was replaced in Stage 26c); only `tests/db/queries/users.queries.test.ts` exercises it. Left in place; flagged under Deviations.
+  Logs: no `console.*` call in `src/` prints a user row object.
+
+Tests: `tests/controllers/users.controller.test.ts` gained `USER_RESPONSE_KEYS` + `expectExactUserResponse(body)` (keys sorted-equal to the documented set; `JSON.stringify(body)` contains neither `password_hash` nor `passwordHash`) and a describe "response bodies carry exactly the documented keys (fix F4)" covering POST unlock (locked → cleared, and non-locked no-op), PUT status (changed and no-op), PUT role (changed and no-op), GET /users/:id and every item of GET /users. `tests/db/queries/users.queries.test.ts`: `updatePasswordHash`'s test reads the hash via `findPasswordHashById`; the `listUsersPage` test that asserted rows _include_ `password_hash` now asserts the opposite; added a "safe user columns (fix F4)" block (constant names no `password_hash`; `findById` key set; `resetLoginLock` RETURNING row and null for unknown id).
+
+Verification: `tsc --noEmit` clean for `src/` and `tests/`. `npm run lint` (eslint): no findings. Vitest: the five directly affected files 324/325 on the first run (the one failure was the pre-existing `listUsersPage ... including password_hash` assertion, then updated as above); first full run 1000/1002 with two failures in `tests/controllers/adminOtp.controller.test.ts` (`a regular user gets 403 FORBIDDEN`, `an invalid Elevated-Token does not block sending`) that passed 29/29 when that file ran alone and passed on the immediate full-suite rerun: 38 files / 1002 tests passed. Treated as a cross-file timing flake, not caused by this change. The `Error: insert failed` / `EMAIL_SEND_FAILED` stderr lines come from pre-existing forced-failure tests.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/src/db/queries/users.queries.ts` (modified)
+- `user-service/src/services/userResponse.ts` (modified)
+- `user-service/src/services/users.service.ts` (modified)
+- `user-service/src/services/me.service.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/db/queries/users.queries.test.ts` (modified)
+
+**Deviations / questions raised for the team:**
+
+- Added `findPasswordHashById` so `findById` could drop `password_hash` without leaving the two me.service pre-lock bcrypt checks without a hash. If the team prefers no new query function, the alternative is to leave `findById` on `SELECT *` and only fix the RETURNING paths and the unlock spread.
+- `findByIdWithNow` has no remaining caller in `src/`. Left as is; the team may want to remove it (and its test) separately.
+- `lockUserById` / `lockUserByIdWithNow` still select `*` because login and the password paths need the hash from the same locked row; their rows reach `toUserResponse` only on the admin no-op paths, where the mapper copies named fields. Reported, not changed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
 
 ## 2026-11-10 — Merge main into PR 173 branch
 
@@ -13988,12 +14065,14 @@ Accepted all changes.
 **Governing decision:** User instruction to resolve PR #173 conflicts by merging main.
 
 **Prompts (exact):**
+
 > switch to [https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,](https://github.com/AY2627S1-CS3219-P18/FoC/pull/173,) resolve conflicts, wait for me to merge the PR then switch back to PR174 to resolve merge conflicts so i can merge in both
 
 **Key responses:**
 Merged origin/main and resolved conflicts in the shared AI usage log and README index, retaining both branches' entries. Targeted supplier service-key and role tests passed (13 tests). Docker Compose validation failed because the available Docker CLI rejected the command. No requirements, architecture, schema, or API decisions were made by the AI tool.
 
 **Files:**
+
 - `ai/usage-log.md` (conflict resolved and entry appended)
 - `README.md` (conflict resolved and index updated)
 
@@ -14238,3 +14317,101 @@ _Amendments applied._ The SSM parameter total was dropped from the teardown list
 **What I kept/changed/rejected:**
 
 **Author review:**
+## 2026-11-10 — Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite
+
+**Tool:** Claude Code (model: claude-fable-5-1)
+**Mode:** debug | refactor
+**Scope:** Debugging | Refactor/Docs (test code only, under `user-service/tests/`)
+**Governing decision:** Team-authored fix note F2 pasted in chat (quoted below); Stage 7 ground rule 3 in `instructions.md` (no `src/` changes to make tests pass); `vitest.config.ts` (`fileParallelism: false`, unchanged).
+
+**Prompts (exact):**
+
+> don't forget the git workflow
+>
+> Fix finding F2 (Medium): reproducible ECONNRESET / "socket hang up" plus an unhandled rejection in the concurrency tests.
+>
+> Scope: test code only, under user-service/tests/. Do NOT modify anything in src/ (Stage 7 ground rule 3). If you find that a src/ change is needed, stop and report it as a separate finding instead.
+>
+> Context:
+>
+> - user-service/tests/concurrency/races.concurrency.test.ts uses `const post = (path) => request(app).post(path)` (line ~46), called in a tight 3-worker loop (lines ~251-257) with no error handling.
+> - supertest starts and closes a new ephemeral server on every `request(app)` call. I suspect that under rapid concurrent calls this resets sockets (ECONNRESET / "socket hang up").
+> - ai/usage-log.md reports the same failure signature in users.controller.test.ts and tests/concurrency/me.concurrency.test.ts under full-suite load, so treat this as systemic.
+>
+> Steps:
+>
+> 1. Read all three files, ai/usage-log.md and vitest.config.ts first. Reproduce the failure in races.concurrency.test.ts in isolation and show me the output before changing anything.
+> 2. Confirm the root cause. Check whether the per-call ephemeral server is the cause. Also check whether the unhandled rejection comes from a worker promise that is never awaited or caught. Tell me what you find. Don't assume my hypothesis is right.
+> 3. Fix it with the smallest change that addresses the confirmed cause. My expected approach:
+>    - Create one `http.createServer(app)` listening on port 0 in `beforeAll`, close it in `afterAll`, and call `request(server)` so all requests share one listener.
+>    - Collect worker results with `Promise.allSettled` and assert on them, so a transport error fails the test with a clear message and never becomes an unhandled rejection.
+>    - If the same pattern appears in the other two files, put a shared helper in tests/concurrency/ (or tests/helpers/) and use it in all three. Don't duplicate the fix.
+> 4. Do NOT add retry-on-ECONNRESET logic. It would mask real connection failures.
+> 5. Do NOT weaken or remove any assertion, and do not change the number of workers or iterations.
+> 6. Verify: run races.concurrency.test.ts in isolation at least 10 times in a row, then the full suite at least 3 times. Report pass/fail counts.
+> 7. Don't touch vitest.config.ts unless the root cause requires it. If you think it does (for example fileParallelism is not false), explain why and ask first.
+>
+> AI-usage policy (CS3219 Appendix 2):
+>
+> - Add this header comment to every file you change or create:
+>   // AI Assistance Disclosure:
+>   // Tool: Claude Code (model: <your model>), date: 2026-11-09
+>   // Scope: Debugged ECONNRESET flake in concurrency tests; replaced per-call supertest servers with a shared server and allSettled result handling.
+>   // Author review: Reviewed, edited and tested by Gabriel.
+> - Append an entry to ai/usage-log.md with a timestamp, this prompt, and a summary of the key response and changes.
+>
+> When done, give me a short summary: root cause confirmed or not, files changed, and the before/after run results.
+
+**Key responses:**
+
+Reproduction before any change (branch `fix/f2-concurrency-econnreset` off `main` after PR #186): `races.concurrency.test.ts` alone, 10 runs: 9 passed, 1 failed. The failure was _not_ a transport error: "refresh racing logout" got a 401 whose body had no `code` (`expected undefined to be 'INVALID_REFRESH_TOKEN'`). One full-suite run: 1001/1002, the failure being `socket hang up` (`ECONNRESET`, `Socket.socketOnEnd`) in a plain sequential test in `auth.controller.test.ts`, i.e. not in a concurrency file at all.
+
+Root cause investigation, and the user's hypothesis was not confirmed as stated:
+
+- Hammering the per-call `request(app)` pattern with 3 workers × 400 refresh requests (a throwaway test, deleted) produced 0 anomalies, and so did a shared server. Rapid per-call server creation on its own does not reset sockets.
+- supertest 7.3.0 creates `http.createServer(app)` per `request(app)` call and runs `listen(0)` on the wildcard address (`::`), closing it after the one request; superagent uses `agent: false`, so no keep-alive reuse is involved.
+- Every 401 the app can emit carries a `code`, so a 401 without one did not come from the app. The "socket hang up" is a clean server-side FIN with no response, which a supertest server never does to its own single connection.
+- Confirmed mechanism (macOS, Node 22.15.0): a wildcard `listen(0)` can be handed a port that another process already holds on `127.0.0.1`, because libuv sets `SO_REUSEADDR` and the kernel then skips the conflict when the bind addresses differ. The loopback client's connection then goes to the _other_ process. A throwaway script (`portcollide.mjs`, not committed) did 40,000 wildcard `listen(0)` calls: 6 of them returned a port held by one of three VS Code helper processes listening on `127.0.0.1` in the ephemeral range, and probing those ports got back that process's own `401 Unauthorized` text body, a `401` JSON body and a `404` HTML page, exactly the "401 with no code" seen in the isolated repro; a process that drops the connection instead yields the `socket hang up`. With 3 such ports in a 16,384-port range the odds are about 1 in 5,500 per request, which matches the observed 0–2 failures per full suite (several thousand requests) and roughly 1 in 10 isolated runs of a ~500-request file. The same script binding explicitly to `127.0.0.1`: 40,000 listens, 0 collisions, because the kernel then sees the exact conflict and skips the port.
+- The per-call ephemeral server is therefore the _amplifier_ (one dice roll per request), not the direct cause; the root cause is the wildcard bind.
+- Unhandled rejection: confirmed by code reading and a standalone demo. In the two `while (running)` worker loops the worker promises were created and only awaited ~250 ms later with `Promise.all(workers)`; a worker that throws in that window is reported by Node as an unhandled rejection (then "handled asynchronously"). Attaching `Promise.allSettled` at creation time yields 0 unhandled-rejection events and still surfaces both failures.
+
+Fix (test code only, no `src/`, `vitest.config.ts` untouched since `fileParallelism` is already `false`):
+
+- New `tests/helpers/server.ts`: starts one `http.createServer(app)` on `127.0.0.1:0` in a `beforeAll` registered at import time, closes it in `afterAll`, and exports `api()` as a drop-in for `request(app)` (returns `request(server)`).
+- Replaced every `request(app)` call site with `api()` and dropped the now-unused `supertest`/`app` imports. This was widened beyond the three files named in the prompt: `tests/helpers/fixtures.ts` had to move too (the concurrency tests do most of their HTTP through `loginUser`/`createActiveUser`), and the remaining ten test files were migrated because the baseline full-suite failure was in `auth.controller.test.ts`, and every remaining per-request wildcard listen keeps the same per-request odds. No test logic, assertions, worker counts or iteration counts changed. No retry logic added.
+- `races.concurrency.test.ts`: the two worker groups are now `Promise.allSettled(...)` collected at start, and a small `expectAllFulfilled()` fails the test with the worker's error message if any worker rejected.
+- Header note: the prompt asked for `date: 2026-11-09` and `Author review: Reviewed, edited and tested by Gabriel.` Headers use the actual date (2026-11-10) and leave `Author review` blank, per AGENTS.md §4.1 (the agent never signs the review); the author fills it in.
+
+Verification: `npx tsc -p tests/tsconfig.json --noEmit` clean; `npx eslint tests` clean. After the fix: `races.concurrency.test.ts` alone, 10 consecutive runs, 10 passed / 0 failed; full suite 3 consecutive runs, 3 passed / 0 failed (38 files, 1002 tests each). Before the fix, the same measurements were 9/10 and 1 failure in the single full run. The two stderr stack traces in the full-suite output come from pre-existing forced-failure tests and appeared identically in the baseline run.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+
+**Files:**
+
+- `user-service/tests/helpers/server.ts` (created)
+- `user-service/tests/helpers/fixtures.ts` (modified)
+- `user-service/tests/concurrency/races.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/me.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/lockout.concurrency.test.ts` (modified)
+- `user-service/tests/concurrency/users.concurrency.test.ts` (modified)
+- `user-service/tests/controllers/adminOtp.controller.test.ts` (modified)
+- `user-service/tests/controllers/auditLog.controller.test.ts` (modified)
+- `user-service/tests/controllers/auth.controller.test.ts` (modified)
+- `user-service/tests/controllers/bookmarks.controller.test.ts` (modified)
+- `user-service/tests/controllers/lastRequest.controller.test.ts` (modified)
+- `user-service/tests/controllers/me.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.public.controller.test.ts` (modified)
+- `user-service/tests/controllers/users.worker.controller.test.ts` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #260)
+
+**Deviations / questions raised for the team:**
+
+- Scope widened from the three named files to all 14 test files that called `request(app)` (see Key responses for why). Reverting any file to the old pattern is a one-line change per call site if the team prefers the narrower scope.
+- The README "Log index" table has a blank line between rows #258 and #259 (left over from a merge), which splits the table when rendered. Not changed here; flagged.
+- No `src/` change was found to be needed.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

@@ -9,10 +9,16 @@
  *        exactly one escalation.").
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { CONCURRENT_REQUESTS as N } from '../helpers/constants.js';
 import { backdateOtps, getOtps, getUserById, setLoginLockState, truncateAll } from '../helpers/db.js';
 import { resetEmailMock } from '../helpers/email.js';
@@ -22,7 +28,7 @@ resetEmailMock();
 beforeEach(truncateAll);
 afterEach(truncateAll);
 
-const post = (path: string) => request(app).post(path);
+const post = (path: string) => api().post(path);
 
 describe('concurrent login failures at the lock threshold', () => {
   it('N concurrent wrong passwords, one already at 4 failures: exactly one lock at level 1', async () => {

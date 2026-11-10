@@ -8,9 +8,17 @@
 //   additionally tolerates 429 mid-race and clears any lock between rounds so it cannot carry
 //   over. No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
-import request from 'supertest';
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`); the two background-worker loops now collect
+//        their outcome with Promise.allSettled at start so a throwing worker fails the test
+//        instead of becoming an unhandled rejection. No assertions, worker counts or iteration
+//        counts changed. No requirements, architecture, schema, or API decisions were made by
+//        the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import pool from '../../src/db/pool.js';
 import {
   CONCURRENT_REQUESTS as N,
@@ -43,7 +51,7 @@ resetEmailMock();
 beforeEach(truncateAll);
 afterEach(truncateAll);
 
-const post = (path: string) => request(app).post(path);
+const post = (path: string) => api().post(path);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const statuses = (rs: { status: number }[]) => rs.map((r) => r.status).sort();
 
@@ -60,6 +68,15 @@ function expectOneWinner(
     expect(l.status).toBe(loserStatus);
     expect(l.body.code).toBe(loserCode);
   }
+}
+
+// Background workers below are started, left running while the test does other things, and only
+// awaited later. Their settlement is collected the moment they start (Promise.allSettled attaches
+// the handler immediately), so a worker that throws - e.g. a transport error from a request -
+// fails the test here with its message instead of surfacing as an unhandled rejection.
+function expectAllFulfilled(outcomes: PromiseSettledResult<unknown>[]) {
+  const failures = outcomes.filter((o): o is PromiseRejectedResult => o.status === 'rejected');
+  expect(failures.map((f) => String(f.reason)), 'a background worker threw').toEqual([]);
 }
 
 describe('concurrent registration', () => {
@@ -255,14 +272,14 @@ describe('refresh racing logout', () => {
         results.push({ startedAt, status: res.status, code: res.body.code });
       }
     };
-    const workers = Array.from({ length: 3 }, worker);
+    const settled = Promise.allSettled(Array.from({ length: 3 }, worker));
 
     await sleep(100);
     const logout = await post('/auth/logout').set('Cookie', refreshCookie(refreshToken));
     const logoutDoneAt = performance.now();
     await sleep(150);
     running = false;
-    await Promise.all(workers);
+    expectAllFulfilled(await settled);
 
     expect(logout.status).toBe(200);
     const before = results.filter((r) => r.startedAt < logoutDoneAt);
@@ -330,7 +347,7 @@ describe('login racing reset-password', () => {
           loginStatuses.push(res.status);
         }
       };
-      const workers = Array.from({ length: 3 }, worker);
+      const settled = Promise.allSettled(Array.from({ length: 3 }, worker));
 
       await sleep(30);
       const reset = await post('/auth/reset-password').send({
@@ -340,7 +357,7 @@ describe('login racing reset-password', () => {
       });
       await sleep(80);
       running = false;
-      await Promise.all(workers);
+      expectAllFulfilled(await settled);
 
       expect(reset.status, `round ${i}: reset`).toBe(200);
       // Three workers hammering login with the now-stale password can rack up enough failures

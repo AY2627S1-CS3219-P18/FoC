@@ -300,6 +300,10 @@ Scope (2026-11-09, Codex, model: GPT-6): Indexed the request body example update
 Author review: tng wen xi
 Scope (2026-11-09, Codex, model: GPT-6): Added the chat health endpoint log index row.
 Author review: tng wen xi
+Scope (2026-11-10, Claude Code, model: claude-fable-5-1): Added Log index row #260 for fix F2
+       (shared loopback supertest server). No requirements, architecture, schema, or API
+       decisions were made by the AI tool.
+Author review:
 -->
 
 # CS3219 — Software Design and Architecture (AY2627 Sem 1)
@@ -846,7 +850,10 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 255 | 2026-11-10 | frontend | Stage 29: Auto-redirect instead of the blocked-page message | Opening another view's page now redirects to the current view's main page with a toast. |
 | 256 | 2026-11-10 | frontend | Stage 30: Email unmask on the admin user page | Admin user page's profile email gets the shared eye-icon unmask from /admin/users. |
 | 257 | 2026-11-10 | user-service | Fix F3: isLocked uses the DB clock (convention 5) | isLocked, the locked filter and unlock now share one clock_timestamp() SQL expression. |
+| 258 | 2026-11-10 | user-service | Fix F4: unlockUser must not spread the full UserRow | User-facing queries select a shared safe-column list; unlock responds from RETURNING. |
 
 | 258 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
 | 259 | 2026-11-10 | chat-service | Chat Service: AWS hardening parity (RDS TLS, ALB keep-alive) and CI coverage | DB_SSL, RDS CA bundle, keep-alive timeouts and a CI test + docker-build job |
 | 260 | 2026-11-10 | chat-service | Chat Service: CD wiring and the AWS console handoff | chat-service added to the deploy matrices; run checklist and a console handoff for George |
+| 259 | 2026-11-10 | supplier-service | Merge main into PR 173 branch | Resolved disclosure log and index conflicts. |
+| 260 | 2026-11-10 | user-service | Fix F2: ECONNRESET / "socket hang up" flake in the user-service test suite | Tests share one loopback supertest server instead of a wildcard server per request. |

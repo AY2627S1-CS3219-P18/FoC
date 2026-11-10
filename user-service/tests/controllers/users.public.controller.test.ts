@@ -6,10 +6,16 @@
  *        existing users.controller.test.ts is untouched.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+ * Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+ *        `request(app)` supertest servers with the shared loopback server in
+ *        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { truncateAll } from '../helpers/db.js';
 import { resetEmailMock } from '../helpers/email.js';
 import { accessTokenFor, bearer, createUserWithRole } from '../helpers/fixtures.js';
@@ -26,7 +32,7 @@ async function callerToken(role: 'user' | 'admin' | 'super admin' = 'user', n: n
 }
 
 const get = (path: string, token?: string) => {
-  const r = request(app).get(path);
+  const r = api().get(path);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
 

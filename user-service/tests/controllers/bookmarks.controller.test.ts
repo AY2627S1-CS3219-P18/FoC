@@ -4,9 +4,14 @@
 //        2026-11-05 supplier-bookmarking spec. No requirements, architecture, schema, or API
 //        decisions were made by the AI tool.
 // Author review:
-import request from 'supertest';
+// Tool: Claude Code (model: claude-fable-5-1), date: 2026-11-10
+// Scope: Fix F2 - debugged the ECONNRESET / "socket hang up" flake; replaced per-call
+//        `request(app)` supertest servers with the shared loopback server in
+//        tests/helpers/server.ts (`api()`). No test logic or assertions changed.
+//        No requirements, architecture, schema, or API decisions were made by the AI tool.
+// Author review:
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import app from '../../src/app.js';
+import { api } from '../helpers/server.js';
 import { getBookmarkRows, truncateAll } from '../helpers/db.js';
 import { accessTokenFor, bearer, createActiveUser } from '../helpers/fixtures.js';
 
@@ -16,7 +21,7 @@ afterEach(truncateAll);
 const UNAUTHORIZED = { message: 'Unauthorized', code: 'UNAUTHORIZED' };
 
 const call = (method: 'get' | 'put' | 'delete', token: string | undefined, suffix = '') => {
-  const r = request(app)[method]('/users/me/bookmarks' + suffix);
+  const r = api()[method]('/users/me/bookmarks' + suffix);
   return token ? r.set('Authorization', bearer(token)) : r;
 };
 
