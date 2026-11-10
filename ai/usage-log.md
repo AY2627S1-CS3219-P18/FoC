@@ -17713,11 +17713,13 @@ Accepted all changes.
 **Governing decision:** instructions.md "Stage 32: Schedule Option on the Errand Form (frontend)" (added to the repo in this same task, PR #202), plus its "Decisions" section, which records the two choices the user made in chat for this stage's two `[DECIDE]` placeholders (ASAP hidden under Send later; credits remark/hint shown for Send now + Repeat).
 
 **Prompts (exact):**
+
 > let's work on stage 32. git workflow too
 >
 > go for it
 
 **Key responses:**
+
 - Step 1 (read-and-report, no code changes) found that `/series/new` and the series create "page" were never a separate component - `CreateRequest.jsx` already branched internally on a `seriesMode` prop reusing every shared field. It also found that `PATCH /orders/series/:id/edit` has no field for the series' start time (`EditSeriesPayload` omits `startAt`; `series.service.ts`'s `EDITABLE_SERIES_FIELDS` rejects it as `INVALID_FIELD`) - reported to the user rather than worked around, since the stage is frontend-only and this would need an order-service change. The user decided to drop that requirement from this stage (edit form keeps today's behaviour: no start-time field) and flagged the backend gap for a future stage.
 - Rewrote `CreateRequest.jsx`'s create path into one unified form: a "When should this order be sent?" Send now/Send later toggle, the existing "When do you need it by?" section (ASAP hidden once Send later is chosen, per the user's decision), and a "Repeat this errand" checkbox that expands the existing `RecurrencePicker` inline. The four combinations route to `createOrder` (Send now, no repeat) or `createSeries` with `startNow`/`startAt`, an rrule (one-time errands get `...;COUNT=1`), and `durationMinutes` computed from the complete-by/start gap (omitted, so order-service's own default applies, when ASAP is chosen). Editing a series is otherwise unchanged. Credits remark/hint show for Send now (including with Repeat ticked, per the user's decision) and hide for Send later. The duration gap is now a hard validation error past 24h for both creating and editing a series (previously silently capped), per the stage's own test list.
 - Added a visible "time"/"times" label next to the recurrence picker's "After N occurrences" stepper (`RecurrencePicker.jsx`), previously screen-reader only.
@@ -17727,6 +17729,7 @@ Accepted all changes.
 - Incidentally noted while reading the code (not changed, not this stage's concern): `order-service/src/types/series.ts`'s doc comment for `durationMinutes` says "defaults to 1440 (24h)" but the actual runtime default in `series.service.ts` is 60 minutes.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `frontend/src/App.jsx` (modified)
 - `frontend/src/components/ScheduledSeriesSection.jsx` (modified)
@@ -17738,6 +17741,7 @@ Accepted all changes.
 - `README.md` (Log index row)
 
 **Deviations / questions raised for the team:**
+
 - The edit-series start-time requirement in the stage spec can't be met without an order-service change (see above); dropped from this stage per the user's decision.
 - Both `[DECIDE]` placeholders in the original stage spec were resolved with the user before implementation and are now recorded as "Decisions" in instructions.md (PR #202).
 
@@ -17774,3 +17778,34 @@ None.
 **What I kept/changed/rejected:**
 
 **Author review:**
+
+## 2026-11-11 — Stage 32 follow-up: default "send later" to 1 hour from now
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default value for the "Send later" start date/time fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> for scheduled errands, can you make "send later" default to 1 hour from the current time?
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the `startDate`/`startTime` state for the "Send later" option previously defaulted to today's date and a hardcoded `'09:00'`. Changed both to lazy `useState` initializers computing `localDate`/`localTime` from `Date.now() + 60 * 60_000` (1 hour from now), matching the default already applied to the "By a specific time" fields in the previous entry.
+- Verification: `vitest run` (frontend) 309/309 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
