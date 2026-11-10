@@ -17809,3 +17809,34 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-11 — Stage 32 follow-up: "needed by" default tracks send time
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default-value rule relating two existing fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> can change the "when do you need it by" default to 1 hour after the time that the order is sent (if send now, then 1 hour from now, if send later, then default to 2 hours from now)
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the "When do you need it by?" `date`/`time` fields previously always defaulted to a fixed 1 hour from now (set once at mount), regardless of the "When should this order be sent?" choice. Added a `deadlineTouched` flag (set true once the user hand-edits the deadline date/time inputs) and a shared `applyDeadlineDefault(sendAnchor)` helper that recomputes the deadline default as `sendAnchor + 1 hour`, called from the Send now/Send later toggle's `onClick` and from the Send-later date/time inputs' `onChange` — matching the file's existing no-`useEffect` style (an initial `useEffect`-based approach was tried but reverted after `oxlint` flagged the `react(set-state-in-effect)` anti-pattern). The default is skipped once `deadlineTouched` is true, so it never overwrites a value the user chose themselves. Editing an existing order is unaffected (the Send now/later section only renders when creating).
+- Verification: `oxlint src/pages/CreateRequest.jsx` clean; `vitest run tests/pages/CreateRequest.test.jsx tests/pages/CreateRequestSeries.test.jsx` 11/11 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
