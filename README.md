@@ -857,3 +857,4 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 261 | 2026-11-10 | user-service | Stage 31a: Config and unlock-token utilities | Added FRONTEND_BASE_URL and the RS256 `ul+JWT` unlock-token sign/verify pair. |
 | 262 | 2026-11-10 | user-service | Stage 31b: The email and sending it on every login lock | Every login lock now emails an unlock link in the background, reusing the Stage 19 retry mechanism. |
 | 263 | 2026-11-10 | user-service | Stage 31c: Unlock-by-link endpoint | Added POST /auth/unlock; shares the admin unlock's clearing code, no audit row, serialized by the row lock. |
+| 264 | 2026-11-10 | frontend | Stage 31d: Frontend page | Added /unlock-account: reads the token, one button, routes to /login with the matching toast. |

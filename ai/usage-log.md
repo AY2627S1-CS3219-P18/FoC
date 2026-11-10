@@ -14308,3 +14308,45 @@ Accepted all changes.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-10 — Stage 31d: Frontend page
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** instructions.md Stage 31 ("Frontend (`/unlock-account`)" table, changes table rows 7-9, "Stage 31d: Frontend page")
+
+**Prompts (exact):**
+
+> let's work on stage 31. don't forget the git workflow.
+> done. we can do one PR. let's start with the next stage.
+> go for 3c
+> once done start 31d
+
+**Key responses:**
+
+- `src/pages/UnlockAccount.jsx` (new): reads `token` from the query string via `useSearchParams`. A missing/empty token shows the invalid-link banner immediately (reusing `errorMessages.INVALID_UNLOCK_TOKEN`'s text) and disables the button, sending no request, matching how the same banner appears after a failed `POST /auth/unlock`. Pressing the button calls `authApi.unlockAccount(token)`; the button is disabled while the call is in flight (`busy` state) and on success the component navigates away before `busy` is ever reset, so a double-click sends exactly one request. `UNLOCKED` and `ALREADY_UNLOCKED` both navigate to `/login` and then call `showToast` (the existing toast system from `components/Toast.jsx`, the same one `ViewGate` already uses) with the two exact strings the stage specifies. `INVALID_UNLOCK_TOKEN` stays on the page and shows the banner via `describeError`. Not wrapped in `RequireAuth` or `ViewGate` — same as `/login`, `/register`, `/forgot-password` — so it is reachable logged out and logged in and is not subject to the Stage 29 `ViewGate` redirect; confirmed it is also absent from `routing/views.js`'s `PAGE_VIEW` list, so no stop-and-ask was needed.
+- `src/api/auth.js`: added `unlockAccount(token)` — `POST /auth/unlock` with `{ token }`, returning `{ message, code }` unchanged (matches the backend contract from Stage 31c).
+- `src/api/errorMessages.js`: added `INVALID_UNLOCK_TOKEN` (banner), text matching the backend's `AppError` message exactly, as the file's other entries already do.
+- `src/App.jsx`: added `<Route path="/unlock-account" element={<UnlockAccount />} />`, alongside `/login`, `/register`, `/forgot-password`.
+- `frontend/vite.config.js`, `frontend/nginx/default.conf`: no changes. Checked both: `POST /auth/unlock` is already covered by the existing `/auth` proxy entry (vite) and `/auth` location (nginx) — Stage 31's own row 9 text says "do not add a whole prefix," and a new exact-path entry for `/auth/unlock` would duplicate what `/auth` already forwards. `/unlock-account` is a frontend-only route; checked that no other frontend route (`/login`, `/register`, `/forgot-password`) has its own nginx `location` block — they all rely on the existing SPA fallback (`location / { try_files ... /index.html; }`), so `/unlock-account` is already served the same way with no new entry.
+- Verification: `npm run build` (vite build) succeeded; `npm run lint` (oxlint) showed only pre-existing warnings in files I did not touch, nothing in the new/changed files. A throwaway scratch RTL test (`tests/pages/scratch_UnlockAccount.test.jsx`, not committed), using the existing Vitest + `@testing-library/react` setup with `api/auth` mocked, covered: missing-token banner + disabled button + no request; opening a valid-token link sends no request; pressing on `UNLOCKED` makes exactly one request and lands on `/login` showing the unlocked toast text; `ALREADY_UNLOCKED` lands on `/login` with the no-longer-locked toast text; `INVALID_UNLOCK_TOKEN` stays on the page showing the banner with no redirect; a double-click while the first call is still pending sends exactly one request. All 6 passed, then the file was deleted. Ran the full frontend suite afterward (`npx vitest run`): 278/279 passed; the one failure (`tests/pages/CreateRequest.test.jsx`, a `maxLength` assertion unrelated to this stage) was confirmed via `git stash` to pre-date this change and is not touched by anything in Stage 31d.
+- Manual verification still needed (cannot be done in this environment): phone-width viewport check; opening the link in a fresh tab through the dev proxy and through nginx (direct hit, not an in-app navigation) to confirm the SPA fallback serves the page rather than a 404; a real-browser click-through of the full email-link flow end to end.
+
+**Files:**
+
+- `frontend/src/pages/UnlockAccount.jsx` (created)
+- `frontend/src/api/auth.js` (modified)
+- `frontend/src/api/errorMessages.js` (modified)
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #264)
+
+**Deviations / questions raised for the team:**
+
+- None. No `[DECIDE]` placeholders remained in the Stage 31d rows; no ambiguity found. `vite.config.js`/`nginx/default.conf` were deliberately left unchanged (reasoning above), reported here rather than silently skipped.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
