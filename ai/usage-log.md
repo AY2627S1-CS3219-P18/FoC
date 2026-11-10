@@ -17378,6 +17378,7 @@ Author review: tng wen xi
 **Governing decision:** AGENTS.md §5 append-only disclosure policy; both existing branch versions of ai/usage-log.md.
 
 **Prompts (exact):**
+
 > bro help me solve the merge conflicts.
 
 **Key responses:**
@@ -17385,6 +17386,7 @@ Resolved the sole unmerged file, ai/usage-log.md, by preserving both branches' c
 Verification: confirmed that the resolved log preserves the complete HEAD version followed by the incoming branch's appended entry; checked for remaining conflict markers and whitespace errors. No runtime tests run because the resolution only changes disclosure Markdown.
 
 **Files:**
+
 - `ai/usage-log.md` (resolved conflict and appended this entry)
 - `README.md` (appended disclosure scope and Log index row)
 
@@ -17413,6 +17415,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction quoted below; existing frontend conversation pagination and status filters in frontend/src/pages/Chat.jsx.
 
 **Prompts (exact):**
+
 > can u change the conversation listing to remove 'Load more chats' and auto load more when i scroll to the bottom of the page
 
 **Key responses:**
@@ -17420,6 +17423,7 @@ Replaced the Load more chats button with a bottom sentinel observed through Inte
 Verification: updated Chat.test.jsx suite passed (42 tests); frontend production build passed with a chunk-size warning; git diff --check passed before disclosure updates. An initial edit command used the wrong working directory and made no changes; the test run immediately after it verified unchanged code. Corrected the working directory, applied changes and reran the tests successfully. No browser verification performed.
 
 **Files:**
+
 - `frontend/src/pages/Chat.jsx` (modified)
 - `frontend/tests/pages/Chat.test.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
@@ -17450,6 +17454,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction quoted below; existing DemoControls rendering in frontend/src/App.jsx.
 
 **Prompts (exact):**
+
 > now i need your help to remove the demo button on the bottom left.
 
 **Key responses:**
@@ -17457,6 +17462,7 @@ Removed the DemoControls import and global render from App.jsx, removing the bot
 Verification: frontend production build passed with the existing chunk-size warning. No new tests or browser checks run for this UI removal.
 
 **Files:**
+
 - `frontend/src/App.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
 - `README.md` (disclosure scope, Log index row and table formatting)
@@ -17486,6 +17492,7 @@ Author review: tng wen xi
 **Governing decision:** User-reported failure quoted below; existing searchable drop-off and sort controls in frontend/src/pages/RequestBoard.jsx and frontend/src/components/SearchableSelect.jsx.
 
 **Prompts (exact):**
+
 > the searchable dropdown doesnt seem to be working on my end
 
 **Key responses:**
@@ -17493,6 +17500,7 @@ Identified the horizontal overflow container surrounding absolutely positioned d
 Verification: SearchableSelect and RequestBoard tests passed (5 tests across 2 files). Frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed.
 
 **Files:**
+
 - `frontend/src/pages/RequestBoard.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
 - `README.md` (disclosure scope and Log index row)
@@ -17505,7 +17513,6 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
-
 
 ## 2026-11-10 — Move errand form actions below Anything else
 
@@ -17523,6 +17530,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction below specifies placing the entire bottom bar below Anything else; existing CreateRequest.jsx form and actions.
 
 **Prompts (exact):**
+
 > maybe the whole bottom bar can be moved to right below anything else
 
 The prompt included a screenshot of the form and overlapping mobile action bar/chat bubble.
@@ -17532,6 +17540,7 @@ Moved the existing credit notice, Cancel and submit controls into normal documen
 Verification: CreateRequest and CreateRequestSeries suites passed (7 tests across 2 files); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
 
 **Files:**
+
 - `frontend/src/pages/CreateRequest.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
 - `README.md` (disclosure scope and Log index row)
@@ -17561,6 +17570,7 @@ Author review: tng wen xi
 **Governing decision:** User instruction below and existing chat header/composer in frontend/src/pages/Chat.jsx.
 
 **Prompts (exact):**
+
 > on mobile, left-align the title and make the text box and send button less chunky.
 
 The prompt included a screenshot of the mobile chat header and composer.
@@ -17570,6 +17580,7 @@ Left-aligned the title on mobile. Reduced the mobile input and Send button to 40
 Verification: Chat tests passed (42 tests); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
 
 **Files:**
+
 - `frontend/src/pages/Chat.jsx` (modified)
 - `ai/usage-log.md` (appended this entry)
 - `README.md` (disclosure scope and Log index row)
@@ -17591,6 +17602,7 @@ tng wen xi
 **Governing decision:** The existing order-service code on `main` (`584174e`), `order-service/prisma/schema.prisma`, `.github/workflows/deploy.yml`, `docs/ecs-fargate-session-prompt.md` and `docs/ecs-fargate-run-checklist.md`. The docs describe these as they are; nothing new was decided.
 
 **Prompts (exact):**
+
 > 1. look through all the work ive done, see if theres any author review unfilled that i need to sign off, then produce the cmd for me to use to automatically fill it in with "George Yeo"
 > 2. once done, focus only on order service, produce a clean architecture diagram using PUML and output the file here in the session not in the repo
 > 3. then create a README detailing order service
@@ -17744,6 +17756,7 @@ Accepted all changes.
 **Governing decision:** N/A — mobile-viewport CSS bug fix, no requirements/architecture/schema/API decision involved; reported directly by the user with an iPhone-width screenshot of /admin/users.
 
 **Prompts (exact):**
+
 > this is the manage users page on iphone dimensions - help me resolve this (using git workflow e.g. PR)
 > [attached screenshot of AdminUsers page clipped on a narrow viewport]
 
@@ -17752,6 +17765,7 @@ Root cause: `App.jsx`'s `<main className="flex-1">` is a flex item inside a `fle
 Verification: dev server start and any available build/lint/test checks run via a verification subagent; manual login-gated visual check of /admin/users on a simulated iPhone width was not performed in this session.
 
 **Files:**
+
 - `frontend/src/App.jsx` (modified)
 - `ai/usage-log.md` (this entry)
 - `README.md` (Log index row)
@@ -17772,11 +17786,12 @@ Accepted all changes.
 **Governing decision:** The API reference documents the routes, validation and error codes already implemented in `order-service/src` (routes, controllers, services, `constants/errors.ts`, `realtime/socket-server.ts`). The footer change is George's chat instruction quoted below.
 
 **Prompts (exact):**
+
 > ok the diagrams are very messy, lets pivot and find another way of working this together
 >
 > commit the readme and make a PR first, we will also add other changes
 >
-> 1. remove the  "UI Prototype" text at the bottom of each page in the frontend
+> 1. remove the "UI Prototype" text at the bottom of each page in the frontend
 
 > also add an API document for order service, that gives the endpoints of every exposed API and its description and necessary parameters
 
@@ -17806,7 +17821,6 @@ Accepted all changes.
 
 **Author review:** George Yeo
 
-
 ## 2026-11-10 — Restore complete usage-log entries during merge
 
 <!--
@@ -17823,6 +17837,7 @@ Author review:
 **Governing decision:** AGENTS.md append-only disclosure requirements and the existing stage-2/stage-3 Git versions of ai/usage-log.md.
 
 **Prompts (exact):**
+
 > help me solve this merge conflict
 
 **Key responses:**
@@ -17830,6 +17845,7 @@ Resolved the sole unmerged file, ai/usage-log.md. Reconstructed its interleaved 
 Verification: programmatic checks confirmed preservation of the incoming shared prefix, complete local tail and complete incoming tail, with no active conflict markers in the restored file. No runtime tests run because this resolution only changes disclosure Markdown.
 
 **Files:**
+
 - `ai/usage-log.md` (resolved and appended this entry)
 - `README.md` (disclosure scope and Log index row)
 
@@ -17841,3 +17857,224 @@ I kept all changes.
 
 **Author review:**
 tng wen xi
+
+## 2026-11-10 — user-service: full service README
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs
+**Governing decision:** The existing user-service code on this branch (routes, controllers, services, `src/config.ts`, `src/db/init.sql`, `prisma/migrations/`, `Dockerfile`, root `compose.yaml`, `.github/workflows/deploy.yml`) and `docs/user-service-instructions.md`. The README describes these as they are; nothing new was decided.
+
+**Prompts (exact):**
+
+> read through the README.md files for the other services. do up a similar one for my user service.
+
+**Key responses:**
+
+- Read `chat-service/README.md`, `credit-service/README.md`, `order-service/README.md` and `supplier-service/README.md` for the house style (overview, tech stack, folder structure, env var table, API table, data model, background work, tests, Docker, deployment).
+- Delegated a read-only exploration of `user-service` to a subagent to extract: the full API surface (every route, auth requirement, body/response shape, status codes) from `src/routes/` and `src/controllers/`; the schema from `src/db/init.sql`; the credit-allocation outbox relay (`src/services/creditOutbox.relay.ts`, `src/scripts/replayCreditOutbox.ts`); the JWT/JWKS and key-rotation design (`src/utils/jwt.ts`); login-lockout/OTP-escalation (`src/services/lockEscalation.ts`, `config.ts`); admin elevation (`src/utils/elevation.ts`); bootstrap (`src/services/bootstrap.service.ts`); scripts, tests, Docker and deployment config.
+- Rewrote `user-service/README.md` as a full service README in the same style as the other services: overview, tech stack, folder structure, an environment-variable table, the API surface grouped by router, JWT/JWKS/key-rotation, admin elevation, login lockout and OTP escalation, the data model, the credit-outbox background worker, super-admin/test-user bootstrap, scripts, tests, Docker and deployment. Kept the prior "Database migrations" section (written earlier) verbatim at the end, since it was already accurate.
+- Verification: every endpoint, status code, env var, table/column and config default was read from the current source (not from `instructions.md`'s design intent, except to label four stage numbers the agent found explicitly named in code comments). No code was changed, and no tests were run because this was a documentation-only change.
+
+**Files:**
+
+- `user-service/README.md` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #321)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — user-service: API reference
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** docs, generate
+**Scope:** Refactor/Docs
+**Governing decision:** The existing user-service code on this branch (`src/routes/`,
+`src/controllers/`, `src/services/`, `src/middleware/`, `src/app.ts`, `src/config.ts`) and
+`instructions.md`/`docs/user-service-instructions.md` for the stage citations named in the
+document. The doc describes the API as it stands; nothing new was decided, and items with no
+traceable stage citation are marked INVENTED or pointed at the spec/commit note they actually
+come from, matching `credit-service/API.md`'s convention.
+
+**Prompts (exact):**
+
+> read through the API.md files for the other services. do up a similar one for my user service.
+
+**Key responses:**
+
+- Read `credit-service/API.md`, `order-service/API.md` and `chat-service/docs/api.md` for the
+  house style and level of detail (base URL, auth model, per-route request/response shapes,
+  error codes, auth requirements, async interfaces, and a closing "what was invented" section).
+- Delegated a read-only exploration of `user-service`'s full HTTP surface to a subagent
+  (routes, controllers, middleware, JWT/JWKS, elevation, lockout/OTP escalation, bookmarks,
+  audit log, the credit-allocation outbox relay) and cross-checked its claims about `src/app.ts`
+  and `src/config.ts` directly against the source before writing.
+- Wrote `user-service/API.md`: authentication (bearer, role, service key, elevation token,
+  JWKS), the shared error envelope, the user object, and every route grouped by router
+  (`/auth`, `/users/me`, `/users`, `/admin/audit-logs`, `/admin`), plus the credit-allocation
+  outbox relay (not a BullMQ queue, unlike the sibling services) and a closing section listing
+  routes/behaviours with no traceable instructions.md stage citation.
+- Verification: every endpoint, status code, auth rule and response shape was read from the
+  current source on this branch; no code was changed and no tests were run, since this is a
+  documentation-only change.
+
+**Files:**
+
+- `user-service/API.md` (created)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row #322)
+
+**Deviations / questions raised for the team:**
+
+`PUT /users/me/preferred-lang`, the CORS origin literal in `src/app.ts`, the
+`pendingToken`/`EMAIL_MISMATCH`/`ul+JWT`/`pv+JWT` mechanism, `GET /users/public[/:id]`, and the
+bookmarks/last-request routes have no traceable instructions.md stage number in the code
+comments — flagged in the doc's "What was invented" section rather than guessed at.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-10 — Stage 32: schedule option on the errand form
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate, refactor
+**Scope:** Implementation code
+**Governing decision:** instructions.md "Stage 32: Schedule Option on the Errand Form (frontend)" (added to the repo in this same task, PR #202), plus its "Decisions" section, which records the two choices the user made in chat for this stage's two `[DECIDE]` placeholders (ASAP hidden under Send later; credits remark/hint shown for Send now + Repeat).
+
+**Prompts (exact):**
+
+> let's work on stage 32. git workflow too
+>
+> go for it
+
+**Key responses:**
+
+- Step 1 (read-and-report, no code changes) found that `/series/new` and the series create "page" were never a separate component - `CreateRequest.jsx` already branched internally on a `seriesMode` prop reusing every shared field. It also found that `PATCH /orders/series/:id/edit` has no field for the series' start time (`EditSeriesPayload` omits `startAt`; `series.service.ts`'s `EDITABLE_SERIES_FIELDS` rejects it as `INVALID_FIELD`) - reported to the user rather than worked around, since the stage is frontend-only and this would need an order-service change. The user decided to drop that requirement from this stage (edit form keeps today's behaviour: no start-time field) and flagged the backend gap for a future stage.
+- Rewrote `CreateRequest.jsx`'s create path into one unified form: a "When should this order be sent?" Send now/Send later toggle, the existing "When do you need it by?" section (ASAP hidden once Send later is chosen, per the user's decision), and a "Repeat this errand" checkbox that expands the existing `RecurrencePicker` inline. The four combinations route to `createOrder` (Send now, no repeat) or `createSeries` with `startNow`/`startAt`, an rrule (one-time errands get `...;COUNT=1`), and `durationMinutes` computed from the complete-by/start gap (omitted, so order-service's own default applies, when ASAP is chosen). Editing a series is otherwise unchanged. Credits remark/hint show for Send now (including with Repeat ticked, per the user's decision) and hide for Send later. The duration gap is now a hard validation error past 24h for both creating and editing a series (previously silently capped), per the stage's own test list.
+- Added a visible "time"/"times" label next to the recurrence picker's "After N occurrences" stepper (`RecurrencePicker.jsx`), previously screen-reader only.
+- Removed the `/series/new` route (`App.jsx`), its `PAGE_VIEW` entry (`routing/views.js`), and the "New" button in `ScheduledSeriesSection.jsx` (and its now-unused `Plus` import). No separate page/component existed to delete, per the Step 1 finding.
+- Rewrote the create-mode tests in `CreateRequestSeries.test.jsx` for the unified form (all three series-producing combinations, the COUNT=1 rrule, the "before start"/"over 24h" validation errors, the "times" label, and that the credits remark/hint only show for Send now); the series-edit describe block is otherwise unchanged. Corrected a stale disclosure-comment claim in `ScheduledSeriesSection.test.jsx` that said it tested the "New" button's navigation - no test there ever did.
+- Verification: `vitest run` (frontend) 309/309 passed; `oxlint .` clean (no new warnings in changed files, same pre-existing warnings elsewhere); `vite build` succeeded. Live-browser/full-stack verification was not performed: `docker compose up` for the full stack fails on a missing `TRANSLATION_LLM_KEY` (chat-service) in `.env`, and reading/filling that secret was blocked by the harness's own credential-handling guard; the user chose to rely on the automated test suite instead of supplying it.
+- Incidentally noted while reading the code (not changed, not this stage's concern): `order-service/src/types/series.ts`'s doc comment for `durationMinutes` says "defaults to 1440 (24h)" but the actual runtime default in `series.service.ts` is 60 minutes.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/App.jsx` (modified)
+- `frontend/src/components/ScheduledSeriesSection.jsx` (modified)
+- `frontend/src/components/RecurrencePicker.jsx` (modified)
+- `frontend/src/routing/views.js` (modified)
+- `frontend/tests/pages/CreateRequestSeries.test.jsx` (modified)
+- `frontend/tests/components/ScheduledSeriesSection.test.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+- The edit-series start-time requirement in the stage spec can't be met without an order-service change (see above); dropped from this stage per the user's decision.
+- Both `[DECIDE]` placeholders in the original stage spec were resolved with the user before implementation and are now recorded as "Decisions" in instructions.md (PR #202).
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Stage 32 follow-up: default "by a specific time" to 1 hour from now
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default value for the "By a specific time" date/time fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> for scheduled errands, can you make "by a specific time" default to 1 hour from the current time?
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the `date`/`time` state for the "By a specific time" option previously defaulted to today's date and a hardcoded `'15:30'` when not editing an existing order with a `completeBy`. Changed both to lazy `useState` initializers computing `localDate`/`localTime` from `Date.now() + 60 * 60_000` (1 hour from now), matching the existing pattern already used for the series "deliver by" defaults elsewhere in the same file. Editing an existing order/deadline is unchanged (still seeds from `order.completeBy`).
+- Verification: `vitest run` (frontend) 309/309 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Stage 32 follow-up: default "send later" to 1 hour from now
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default value for the "Send later" start date/time fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> for scheduled errands, can you make "send later" default to 1 hour from the current time?
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the `startDate`/`startTime` state for the "Send later" option previously defaulted to today's date and a hardcoded `'09:00'`. Changed both to lazy `useState` initializers computing `localDate`/`localTime` from `Date.now() + 60 * 60_000` (1 hour from now), matching the default already applied to the "By a specific time" fields in the previous entry.
+- Verification: `vitest run` (frontend) 309/309 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap
+
+## 2026-11-11 — Stage 32 follow-up: "needed by" default tracks send time
+
+**Tool:** Claude Code (model: claude-sonnet-5)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction in chat (explicit default-value rule relating two existing fields; not a schema, API, or architecture change).
+
+**Prompts (exact):**
+
+> can change the "when do you need it by" default to 1 hour after the time that the order is sent (if send now, then 1 hour from now, if send later, then default to 2 hours from now)
+
+**Key responses:**
+
+- In `CreateRequest.jsx`, the "When do you need it by?" `date`/`time` fields previously always defaulted to a fixed 1 hour from now (set once at mount), regardless of the "When should this order be sent?" choice. Added a `deadlineTouched` flag (set true once the user hand-edits the deadline date/time inputs) and a shared `applyDeadlineDefault(sendAnchor)` helper that recomputes the deadline default as `sendAnchor + 1 hour`, called from the Send now/Send later toggle's `onClick` and from the Send-later date/time inputs' `onChange` — matching the file's existing no-`useEffect` style (an initial `useEffect`-based approach was tried but reverted after `oxlint` flagged the `react(set-state-in-effect)` anti-pattern). The default is skipped once `deadlineTouched` is true, so it never overwrites a value the user chose themselves. Editing an existing order is unaffected (the Send now/later section only renders when creating).
+- Verification: `oxlint src/pages/CreateRequest.jsx` clean; `vitest run tests/pages/CreateRequest.test.jsx tests/pages/CreateRequestSeries.test.jsx` 11/11 passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (this entry)
+- `README.md` (Log index row)
+
+**Deviations / questions raised for the team:**
+
+None.
+
+**What I kept/changed/rejected:**
+Accepted all changes.
+
+**Author review:** gabriel yap

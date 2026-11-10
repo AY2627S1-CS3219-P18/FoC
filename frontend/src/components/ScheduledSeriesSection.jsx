@@ -10,11 +10,15 @@
  *        ConfirmActionDialog (role="alertdialog", click-outside-to-cancel, busy state).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - removed the "New" button: recurring/delayed errands are
+ *        now created from the normal errand form (/requests/new), not a separate page.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
 import Button from './Button'
 import { useApiNotice } from './ApiNotice'
 import { useApi } from '../api/useApi'
@@ -159,9 +163,6 @@ export default function ScheduledSeriesSection() {
     <section className="mt-8">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-40">Scheduled</h2>
-        <Button variant="secondary" size="sm" onClick={() => navigate('/series/new')}>
-          <Plus size={14} aria-hidden="true" /> New
-        </Button>
       </div>
 
       {notice}
