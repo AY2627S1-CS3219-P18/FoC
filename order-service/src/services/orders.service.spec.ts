@@ -64,13 +64,13 @@
  * Scope (2026-10-21): Credit transfer - completion (requester or system)
  *        queues a credit_transfer outbox row; other transitions do not.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): create / edit take the supplier-service reference check (stubbed
  *        to "exists" for the existing cases); new coverage for not found (422 codes),
  *        unavailable, and edit checking only the ids it changes, after authorization.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Tested status notification jobs and fallback text.
  * Author review:tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested team-specified order-based courier participant delivery.
@@ -84,13 +84,17 @@
  * Scope (2026-11-09): Default complete-by - create with completeBy absent or null stores
  *        now + 1 hour; edit with completeBy: null leaves it out of the write.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09): Synchronous reservation - createOrder fakes keep the order in memory
  *        and take a credits client; the outbox reserve-task cases are replaced by open /
  *        insufficient / rejected / unavailable outcomes and the pending-order 409 check.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-10, Codex, model: GPT-6): Verified terminal transitions enqueue archiving after notification.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Author review:tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
  * Scope: the pending-order test now expects the system actor may cancel a pending order, so it checks 'completed' instead (team decision in chat, 2026-11-11: pending counts as not yet collected).
@@ -1277,6 +1281,7 @@ describe('transitionOrder', () => {
             4,
             'The order has been marked as completed',
             true,
+            actor === 'system' ? undefined : actor,
           ),
         ],
       });
@@ -1292,7 +1297,15 @@ describe('transitionOrder', () => {
 
     await transitionOrder(prisma, orderId, 'delivered', courierId);
     expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
-      data: [notificationRow(orderId, 4, 'The order has been delivered')],
+      data: [
+        notificationRow(
+          orderId,
+          4,
+          'The order has been delivered',
+          false,
+          courierId,
+        ),
+      ],
     });
   });
 
@@ -1401,7 +1414,13 @@ describe('transitionOrder', () => {
     expect(outboxOf(prisma).createMany).toHaveBeenCalledWith({
       data: [
         ...releaseRow(orderId, 4).data,
-        notificationRow(orderId, 4, 'The order has been cancelled', true),
+        notificationRow(
+          orderId,
+          4,
+          'The order has been cancelled',
+          true,
+          requesterId,
+        ),
       ],
     });
   });
@@ -1445,7 +1464,13 @@ describe('transitionOrder', () => {
           taskName: 'chat_participant',
           payload: { orderId, userId: courierId, role: 'COURIER' },
         }),
-        notificationRow(orderId, 4, 'The order has been accepted'),
+        notificationRow(
+          orderId,
+          4,
+          'The order has been accepted',
+          false,
+          courierId,
+        ),
       ],
     });
   });
@@ -1711,12 +1736,13 @@ describe('transitionOrder', () => {
   });
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 function notificationRow(
   orderId: string,
   version: number,
   message: string,
   archiveAfter = false,
+  triggeredByUserId?: string,
 ) {
   return {
     taskName: 'chat_notification',
@@ -1725,6 +1751,7 @@ function notificationRow(
       orderId,
       message,
       ...(archiveAfter ? { archiveAfter: true } : {}),
+      ...(triggeredByUserId ? { triggeredByUserId } : {}),
       messageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     },
   };

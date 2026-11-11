@@ -4,7 +4,7 @@
  * Scope: ECS Fargate migration - tests for REDIS_TLS, per George's ECS Fargate plan,
  *        Phase 1 item 5. No requirements, architecture, schema, or API decisions were
  *        made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { describe, expect, it } from 'vitest';

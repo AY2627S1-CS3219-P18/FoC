@@ -24,7 +24,7 @@ import { request } from "./http";
 
 export const encodeCursor = (cursor) =>
   cursor ? btoa(JSON.stringify(cursor)) : undefined;
-// AI-generated (edited by <name>).
+// AI-generated
 export const listChats = (role, cursor, status) =>
   request("/chat/conversations", {
     query: {

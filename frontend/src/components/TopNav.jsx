@@ -70,11 +70,16 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Moved or tested live unread counts on the floating chat shortcut and removed the top shortcut.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
+ * Scope: Removed the notification bell button from the desktop nav, per George's chat instruction
+ *        (notifications are delivered through the chat system). No requirements, architecture,
+ *        schema, or API decisions were made by the AI tool.
+ * Author review: George Yeo
  */
 
 import { useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Bell, LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import Logo from "./Logo";
 import Button from "./Button";
 import CreditPill from "./CreditPill";
@@ -142,15 +147,6 @@ export default function TopNav() {
                 >
                   <CreditPill value={credits.available} size="md" />
                 </Link>
-
-                <button
-                  type="button"
-                  className="relative flex h-10 w-10 items-center justify-center rounded-btn text-ink-70 hover:bg-surface-alt"
-                  aria-label="Notifications"
-                >
-                  <Bell size={18} aria-hidden="true" />
-                  <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-pill bg-orange" />
-                </button>
                 <Link
                   to="/account"
                   className="flex h-10 items-center gap-2 rounded-btn px-1.5 hover:bg-surface-alt"

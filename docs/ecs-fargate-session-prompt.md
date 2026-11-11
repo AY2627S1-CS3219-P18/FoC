@@ -4,32 +4,39 @@ Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Copied this plan into docs/ verbatim from George's local file, below this header. The AI tool
        changed none of the plan's text in this copy and made no requirements, architecture, schema,
        or API decisions in doing so. This note covers the copy only, not who wrote the plan.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Reworded the plan to record George's chat decisions (coursework deployment, CD on the team repo,
        deploy on every merge to main, budget alert skipped), and listed facts found during Phase 1 and
        Phase 2. The decisions are George's; no requirements, architecture, schema, or API decisions
        were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 Scope: Recorded George's decision to use an ECS task role for S3 after NUS's organisation policy blocked
        creating the IAM user, and the bucket's account regional name. The decisions are George's; no
        requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Recorded facts from Phase 2 steps 10-14: MySQL version, database logins, the user database name,
        SSM parameter names and the one-off log group. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Recorded facts from Phase 2 and Phase 4: ALB rule limit, the superadmin smoke test finding and
        the task definition order for shipping 1fad383. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
 Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-07
 Scope: Linked the run checklist and recorded the deployment status. No requirements, architecture,
        schema, or API decisions were made by the AI tool.
-Author review:
+Author review: George Yeo
+Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-10
+Scope: Recorded George's 2026-11-10 chat decisions (deploy chat-service with its own MySQL database
+       and the foc_admin login, verified database TLS as for supplier, real SMTP with
+       NODE_ENV=production for user-service) and the facts found while carrying them out. The
+       decisions are George's; no requirements, architecture, schema, or API decisions were made by
+       the AI tool.
+Author review: George Yeo
 -->
 
 # Task: move FoC from Docker Compose to AWS ECS on Fargate, for the coursework's cloud deployment
@@ -50,17 +57,17 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 | Area | Decision |
 |---|---|
 | Compute | ECS Fargate, X86_64, exactly 1 task per service, no autoscaling |
-| Services | 8 ECS services: `user-service`, `credit-service`, `supplier-service`, `order-service`, `frontend`, `order-worker`, `credit-worker`, `supplier-worker` |
+| Services | 9 ECS services: `user-service`, `credit-service`, `supplier-service`, `order-service`, `chat-service` (added 2026-11-10), `frontend`, `order-worker`, `credit-worker`, `supplier-worker` |
 | Routing | ALB path rules, one target group per web service. nginx's routing role is replaced, but the frontend image stays unchanged and keeps serving static files |
 | HTTPS | CloudFront in front of the ALB, using the default `*.cloudfront.net` domain. No custom domain or ACM. CloudFront to ALB stays HTTP |
 | Networking | Tasks in public subnets with public IPs and no NAT. RDS and ElastiCache in private subnets |
 | Service calls | ECS Service Connect, reusing the Compose names so URL values don't change |
-| Databases | 4 RDS instances mirroring Compose: Postgres 17 (order), Postgres 16 (user), Postgres 16 (credit), MySQL 8 (supplier) |
-| DB encryption | Verified SSL enforced on all four |
+| Databases | 5 RDS instances mirroring Compose: Postgres 17 (order), Postgres 16 (user), Postgres 16 (credit), MySQL 8 (supplier), MySQL 8.4 (chat, added 2026-11-10) |
+| DB encryption | Verified SSL enforced on all five |
 | Redis | 2 ElastiCache clusters (order, supplier), cluster mode disabled, TLS on, `noeviction`, single node, no snapshots |
 | Secrets | SSM Parameter Store SecureString, injected through the task definition |
 | Photos | S3 bucket with public read, plus an ECS task role limited to that bucket. No stored keys |
-| Email | No SMTP server. `user-service` runs with `NODE_ENV=development` and an empty `SMTP_HOST`, so it logs OTPs instead of emailing them (`user-service/src/services/email.service.ts`), and I read them in CloudWatch Logs. All other services use `NODE_ENV=production` |
+| Email | Changed 2026-11-10: real email through Brevo's SMTP relay, with the password in SSM. All services, including `user-service`, use `NODE_ENV=production`, so the refresh cookie is `Secure` and `user-service` exits at startup if an SMTP setting is empty. (Before: no SMTP, and `user-service` ran with `NODE_ENV=development` and logged OTPs to CloudWatch.) |
 | Auth | JWT verification stays inside the services (RS256 via JWKS) |
 | Deploys | Web services: min healthy 100%, max 200%. Workers: min healthy 0%, max 100% |
 | Supplier health | New static `GET /health`, mounted ahead of the per-IP rate limiter |
@@ -89,6 +96,20 @@ I'm George. Your job is to edit the FoC repo (a campus errand app: requesters po
 - **Smoke test finding:** `superadmin` has no credit balance, so a transfer to it as courier ends in `COURIER_NOT_FOUND` and a dead-letter row while the order shows `completed`. Raised for the team to decide.
 - **`SUPPLIER_SERVICE_URL`:** `order-service` must run a task definition with this variable before `1fad383` deploys, because CD only swaps the image. That was missed on the first deploy, so `order-service:3` added it afterwards.
 - **Status on 2026-11-07:** Phase 2 and Phase 4 are complete, and `1fad383` is live. The smoke test's browser steps are George's report.
+- **chat-service (2026-11-10):** deployed from PR #193.
+  - Its own RDS instance, `foc-chat-service` (MySQL 8.4, `foc_admin` login). It was created without an initial database name, so a one-off task ran `CREATE DATABASE chat_service;`.
+  - Verified TLS through `DB_SSL=true` and `NODE_EXTRA_CA_CERTS`. Migrations get TLS from `DATABASE_URL`'s `?sslaccept=strict&sslcert=/etc/ssl/rds-ap-southeast-1-bundle.pem`. It applies its Prisma migrations at boot, like order.
+  - It shares `foc-order-redis` with order, as in Compose: Socket.IO prefix `chat-socket.io` and translation queue `queue:chat:translation`.
+  - 0.5 vCPU / 1 GB, Service Connect client and server `chat-service:3000`, target group `foc-chat` (`/health`), and load balancer rule 6: `/chat/conversations`, `/chat/conversations/*`, `/chat-socket.io`, `/chat-socket.io/*`.
+  - It must be running before `order-worker` starts.
+- **Settings added on `main` after the 2026-11-07 deploy:** CD only swaps the image, so these were added to new task definition revisions on 2026-11-10.
+  - `order-worker`: `CHAT_SERVICE_URL`, `CHAT_SERVICE_API_KEY`, `SUPPLIER_ORDER_SERVICE_API_KEY`, `USER_ORDER_SERVICE_URL` and `USER_ORDER_SERVICE_API_KEY`.
+  - `user-service`: `USER_ORDER_SERVICE_API_KEY`, `ELEVATION_TOKEN_TTL_MINUTES=15`, `FRONTEND_BASE_URL`, and the SMTP settings.
+  - `supplier-service` and `supplier-worker`: `SUPPLIER_ORDER_SERVICE_API_KEY`.
+  - `chat-service`: `TRANSLATION_LLM_KEY`. `TRANSLATION_LLM_MODEL` is left at its code default.
+- **New SSM parameters (2026-11-10):** `/foc/chat/database-url`, `/foc/chat/service-api-key`, `/foc/chat/translation-llm-key`, `/foc/user/smtp-pass`, `/foc/user/order-service-api-key` (shared by user-service and order-worker) and `/foc/supplier/order-service-api-key` (shared by supplier-service, supplier-worker and order-worker). `/foc/chat/db-password` was made for the database-creation task.
+- **User database schema:** `user-service` doesn't change its schema at boot. On 2026-11-10, login failed with `column "preferred_lang" does not exist`. A one-off `postgres:16` task applied the statements `init.sql` gained since 2026-11-07: `users.preferred_lang`, the two `users_otps` send-limit columns and the `last_request` table. `user-service/prisma/migrations` (added 2026-11-09) was not used, because its baseline includes changes this database didn't have. The run checklist's "Before starting after merges" covers future changes.
+- **Status on 2026-11-10:** all 9 services ran, and login worked after the schema fix. The rest of the smoke test was in progress.
 
 ## What the repo looks like (found by reading `acd4397`)
 
@@ -227,7 +248,7 @@ Leaving only the tasks and RDS off still costs about $2/day (rough estimate), so
 ## Known limitations to leave alone
 
 - CloudFront to ALB is plain HTTP, and another AWS customer's distribution could also reach the ALB. A secret header would fix the second part, but it's out of scope for test runs.
-- OTPs and email addresses appear in CloudWatch Logs, and real email delivery isn't tested. The refresh cookie has no `Secure` flag, so a browser could send it over plain HTTP before CloudFront's redirect to HTTPS. Fine for throwaway test accounts, but real users would need SMTP and `NODE_ENV=production`.
+- ~~OTPs and email addresses appear in CloudWatch Logs, and real email delivery isn't tested. The refresh cookie has no `Secure` flag.~~ Resolved on 2026-11-10 by the Email decision above: real SMTP, and `NODE_ENV=production` on `user-service`.
 - `user-service` has no `trust proxy`, so `req.ip` stored with refresh tokens will be the ALB's address.
 - `order-redis` has no AOF equivalent, so a Redis failure loses queued credit jobs. Fine for throwaway data, not for real users. MemoryDB is the upgrade path.
 - The README's "Known gap: no TLS" and "planned single-EC2 deployment" text is out of date. Only update it if I ask.

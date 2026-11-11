@@ -22,14 +22,38 @@
  * Scope (2026-11-08, Codex, model: GPT-6): Fixed the chat animation to react directly to incoming messages and move the entire shortcut.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Added the stored chat title above notification text using existing chat details.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Added sender names to user-message notification headings using the existing lookup.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Suppressed incoming notifications for the currently open conversation.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useMatch } from "react-router-dom";
 import { MessageCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { listChats } from "../api/chat";
+import { getChat, listChats } from "../api/chat";
+import { useUserName } from "../api/lookups";
 import { useChatMessages, useChatReady } from "../realtime/chatSocket";
+import { useToast } from "./Toast";
 import { useAuth } from "../context/AuthContext";
+
+// AI-generated
+function NotificationTitle({ title, senderId }) {
+  const name = useUserName(senderId);
+  return (
+    <span className="block font-semibold">
+      {name ? `${name} · ${title}` : title}
+    </span>
+  );
+}
 
 // Shortcut into the conversations, fixed to the bottom-right.
 // Hidden when logged out - there are no conversations to reach - and hidden on the chat
@@ -37,23 +61,50 @@ import { useAuth } from "../context/AuthContext";
 export default function ChatBubble() {
   const location = useLocation();
   const { pathname } = location;
+  const openChat = useMatch("/chat/:id");
+  const openChatId = useRef(null);
+  openChatId.current = openChat?.params.id ?? null;
+  const { showToast } = useToast();
   const { isLoggedIn, user } = useAuth();
   const [unread, setUnread] = useState({ role: null, userId: null, count: 0 });
   const [chatRefresh, setChatRefresh] = useState(0);
   const [animation, setAnimation] = useState(0);
   const lastAnimatedMessage = useRef(null);
+  // AI-generated
   useChatMessages((message) => {
     setChatRefresh((value) => value + 1);
     if (
       !isLoggedIn ||
-      pathname.startsWith("/chat") ||
+      message.conversationId === openChatId.current ||
       message.senderId === user?.id ||
+      message.triggeredByUserId === user?.id ||
       !message.messageId
     )
       return;
     if (lastAnimatedMessage.current === message.messageId) return;
     lastAnimatedMessage.current = message.messageId;
-    setAnimation((value) => value + 1);
+    // Use the existing details endpoint: realtime messages carry the conversation ID.
+    const notify = (title) => {
+      // The user may open this conversation while its title is loading.
+      if (message.conversationId === openChatId.current) return;
+      showToast(
+        <>
+          <NotificationTitle
+            title={title}
+            senderId={message.type === "SYSTEM" ? null : message.senderId}
+          />
+          <span className="block">
+            {message.content || "You have a new message"}
+          </span>
+        </>,
+        "info",
+      );
+    };
+    getChat(message.conversationId).then(
+      (chat) => notify(chat.title || "Chat"),
+      () => notify("Chat"),
+    );
+    if (!pathname.startsWith("/chat")) setAnimation((value) => value + 1);
   });
   useChatReady(() => setChatRefresh((value) => value + 1));
   useEffect(() => {

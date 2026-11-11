@@ -23,6 +23,15 @@
  *        /requests/:id/edit (RequireAuth, ViewGate requiredView REQUESTER).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the bottom-left demo controls from the app per user instruction.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - removed /series/new: the normal errand form
+ *        (/requests/new) now also creates recurring/delayed errands, so there is no longer a
+ *        separate series-create route. /series/:id/edit is unchanged.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 /*
@@ -100,6 +109,14 @@
  * Scope: Added /unlock-account, per instructions.md Stage 31d. Not wrapped in RequireAuth or
  *        ViewGate, like /login, /register and /forgot-password, so it is reachable logged out
  *        and logged in and is not subject to the Stage 29 redirect.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Bug fix - added `min-w-0` to the <main> flex item so a wide child (e.g. the
+ *        Manage users table's `min-w-[720px]`) no longer stretches <main> and scrolls the
+ *        whole page horizontally on narrow viewports; the table's own `overflow-x-auto`
+ *        wrapper now scrolls instead, per the standard flexbox min-width:auto fix.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -180,7 +197,7 @@ export default function App() {
       <NavigationHistoryTracker />
       <SessionExpiryBanner />
       <TopNav />
-      <main className="flex-1">
+      <main className="min-w-0 flex-1">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -231,16 +248,6 @@ export default function App() {
               <RequireAuth>
                 <ViewGate requiredView={VIEWS.REQUESTER}>
                   <CreateRequest />
-                </ViewGate>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/series/new"
-            element={
-              <RequireAuth>
-                <ViewGate requiredView={VIEWS.REQUESTER}>
-                  <CreateRequest seriesMode />
                 </ViewGate>
               </RequireAuth>
             }

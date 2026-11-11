@@ -60,7 +60,7 @@ export function createSocketServer(
     socket.on("disconnect", () => clearTimeout(expiry));
     await socket.join(`user:${userId}`);
     socket.emit("ready");
-    // AI-generated (edited by <name>).
+    // AI-generated
     // Preserve join/leave order when membership lookups are still in flight.
     let roomOperations = Promise.resolve();
     for (const event of ["chat:join", "chat:leave"] as const) {

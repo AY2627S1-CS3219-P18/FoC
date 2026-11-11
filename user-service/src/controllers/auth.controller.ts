@@ -35,6 +35,16 @@
 //   (model: claude-sonnet-5). Governing decision: instructions.md Stage 31 ("Backend endpoint"
 //   row). No requirements, architecture, schema, or API decisions were made by the AI tool.
 // Author review:
+// 2026-11-10: Bug fix - register now sets a `pendingToken` cookie (REFRESH_COOKIE_OPTIONS,
+//   maxAge = config.otp.ttlMinutes minutes) from the now non-void authService.register(). The
+//   verifyOtp/resendOtp 'Registration' branches read that cookie and pass it through to
+//   authService as `pendingToken`; verifyOtp's 'Registration' branch also clears the cookie on
+//   success. The 'Forgot Password' branches of both are unchanged. Tool: Claude Code (model:
+//   claude-sonnet-5). Governing decision: bug report + team decisions recorded in this task's
+//   conversation (pending-token cookie mechanism, EMAIL_MISMATCH 403 with no OTP-counter
+//   interaction, TTL = config.otp.ttlMinutes). No requirements, architecture, schema, or API
+//   decisions were made by the AI tool.
+// Author review:
 
 import { z } from 'zod';
 import { config } from '../config.js';
@@ -76,7 +86,11 @@ const registerSchema = z
 
 export const register = asyncHandler(async (req, res) => {
   const { username, email, password } = registerSchema.parse(req.body);
-  await authService.register({ username, email, password });
+  const { pendingToken } = await authService.register({ username, email, password });
+  res.cookie('pendingToken', pendingToken, {
+    ...REFRESH_COOKIE_OPTIONS,
+    maxAge: config.otp.ttlMinutes * 60 * 1000,
+  });
   res.status(201).json({ message: 'Verification code sent to your email', code: 'OTP_SENT' });
 });
 
@@ -172,13 +186,17 @@ const resendOtpSchema = z.object({ email: emailField, purpose: resendPurposeSche
 export const verifyOtp = asyncHandler(async (req, res) => {
   const { email, otp, purpose } = verifyOtpSchema.parse(req.body);
   switch (PURPOSE_MAP[purpose]) {
-    case 'Registration':
-      await authService.verifyRegistrationOtp({ email, otp });
+    case 'Registration': {
+      const pendingToken =
+        typeof req.cookies.pendingToken === 'string' ? req.cookies.pendingToken : undefined;
+      await authService.verifyRegistrationOtp({ email, otp, pendingToken });
+      res.clearCookie('pendingToken', REFRESH_COOKIE_OPTIONS);
       res.status(200).json({
         message: 'Registration complete. You can now log in.',
         code: 'REGISTER_SUCCESS',
       });
       return;
+    }
     case 'Forgot Password':
       await authService.verifyForgotPasswordOtp({ email, otp });
       res.status(200).json({
@@ -192,9 +210,12 @@ export const verifyOtp = asyncHandler(async (req, res) => {
 export const resendOtp = asyncHandler(async (req, res) => {
   const { email, purpose } = resendOtpSchema.parse(req.body);
   switch (PURPOSE_MAP[purpose]) {
-    case 'Registration':
-      await authService.resendRegistrationOtp({ email });
+    case 'Registration': {
+      const pendingToken =
+        typeof req.cookies.pendingToken === 'string' ? req.cookies.pendingToken : undefined;
+      await authService.resendRegistrationOtp({ email, pendingToken });
       break;
+    }
     case 'Forgot Password':
       await authService.resendForgotPasswordOtp({ email });
       break;

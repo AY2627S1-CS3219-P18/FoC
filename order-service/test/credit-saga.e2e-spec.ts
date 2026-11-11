@@ -1,5 +1,8 @@
 /*
  * AI Assistance Disclosure:
+ * Scope (2026-11-10, Codex, model: GPT-6): Aligned saga assertions with existing chat outbox tasks.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Updated test fixtures for precise delivery details.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
@@ -29,16 +32,16 @@
  * Scope (2026-10-21): Credit transfer - e2e check that completing an order relays a
  *        credit_transfer job ({ requestId, courierId }) to queue:credit:transfer.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
  * Scope (2026-10-22): listOrders takes the caller's id (authz fix); the open-listing walk
  *        passes REQUESTER.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): createOrder takes the supplier-service reference check; stubbed here.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Synchronous reservation (George, 2026-11-09) - createOrder reserves in
  *        the request: open / failed outcomes, the transient failure's release, and the
@@ -46,7 +49,7 @@
  *        the real database's advisory lock). Pending rows for the listing test are seeded
  *        directly.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { config as loadDotenv } from 'dotenv';
@@ -294,7 +297,11 @@ describe('credit reservation saga (e2e)', () => {
     ).resolves.toMatchObject({ ok: true });
     const jobs = await h.drain();
 
-    expect(jobs.map((j) => j.taskName)).toEqual(['credit_release']);
+    // AI-generated (edited by <name>).
+    expect(jobs.map((j) => j.taskName)).toEqual([
+      'credit_release',
+      'chat_notification',
+    ]);
     const order = await prisma.orderRequest.findUniqueOrThrow({
       where: { id: result.order.id },
     });
@@ -461,7 +468,18 @@ describe('credit transfer on completion (e2e)', () => {
     });
     await relayOnce();
 
-    expect(enqueued).toEqual([
+    // AI-generated (edited by <name>).
+    expect(enqueued.map(({ job }) => job.taskName)).toEqual([
+      'chat_participant',
+      'chat_notification',
+      'chat_notification',
+      'chat_notification',
+      'credit_transfer',
+      'chat_notification',
+    ]);
+    expect(
+      enqueued.filter(({ job }) => job.taskName === 'credit_transfer'),
+    ).toEqual([
       {
         key: 'queue:credit:transfer',
         job: {
@@ -507,7 +525,21 @@ describe('accept (e2e)', () => {
     expect(order.status).toBe('accepted');
     expect(couriers).toContain(order.courierId);
     expect(order.acceptedAt).toBeInstanceOf(Date);
-    expect(await prisma.outbox.count()).toBe(0); // accepting queues no credit task
+    // AI-generated (edited by <name>).
+    const tasks = await prisma.outbox.findMany({ orderBy: { id: 'asc' } });
+    expect(tasks.map((task) => task.taskName)).toEqual([
+      'chat_participant',
+      'chat_notification',
+    ]);
+    expect(tasks[0]?.payload).toEqual({
+      orderId: order.id,
+      userId: order.courierId,
+      role: 'COURIER',
+    });
+    expect(tasks[1]?.payload).toMatchObject({
+      orderId: order.id,
+      triggeredByUserId: order.courierId,
+    });
   });
 });
 

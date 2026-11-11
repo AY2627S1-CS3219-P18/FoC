@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
  * Scope: ECS Fargate migration - checks DB_SSL reaches the mysql2 pool, per George's ECS Fargate plan,
  *        Phase 1 item 3. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

@@ -5,12 +5,12 @@
 #     credit-service/tests/setup/globalSetup.ts) and the committed .env.test files, not
 #     chosen here. Node 24 matches every service Dockerfile.
 #     No requirements, architecture, schema, or API decisions were made by the AI tool.
-#   Author review:
+#   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 #   2026-11-04: Added the docker-build matrix job. Builds each service's deploy target so
 #     an image break cannot pass CI, as order-service's deps stage did. Target names are
 #     read from the existing Dockerfiles, not chosen here.
 #     No requirements, architecture, schema, or API decisions were made by the AI tool.
-#   Author review:
+#   Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 name: CI
 

@@ -4,20 +4,20 @@
  * Scope: Generated UI mockup component Wallet.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Wired the balance and the transaction list onto Credit Service, replacing the hardcoded
  *        figures from src/data. Filter options now follow Credit Service's four transaction types.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Every row with a request_id now shows its errand reference, transfers included, so a
  *        reservation and its transfer read as one errand. Counterparty names resolve for all
  *        users via GET /users/public, keeping the shortened-id fallback.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-10-22
  * Scope: /wallet is now wrapped in RequireAuth (App.jsx), which replaces the gating effect
@@ -27,6 +27,12 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
  * Author review: Congchen
+ * Scope (2026-11-10, Claude Code, model: claude-opus-5): Reservation and release rows now show the
+ *        amount beside "held" / "returned", which previously rendered the word alone while an
+ *        allocation showed "+20". The amount was already passed to Delta; neither type is given a
+ *        signed delta, because neither changes total_balance.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -50,11 +56,14 @@ const TYPE_FILTERS = [
 
 const ICONS = { in: ArrowDown, out: ArrowUp, hold: Ban, return: RotateCcw }
 
-// A reservation holds credits rather than spending them, so it has no signed delta to show.
+// A reservation holds credits rather than spending them, and a release gives them back, so
+// neither changes total_balance and neither gets a signed delta. The amount is still shown, so
+// the row says how much moved, but without a + or − that would not add up against the total.
 function Delta({ direction, delta, amount }) {
   if (direction === 'hold' || direction === 'return') {
     return (
       <span className="w-20 shrink-0 text-right text-sm text-ink-40">
+        <span className="tnum font-medium text-ink-70">{amount}</span>{' '}
         {direction === 'hold' ? 'held' : 'returned'}
       </span>
     )

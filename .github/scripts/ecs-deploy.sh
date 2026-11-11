@@ -3,7 +3,7 @@
 # Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
 # Scope: ECS Fargate CD deploy step, per docs/ecs-fargate-session-prompt.md Phase 3. No requirements,
 #        architecture, schema, or API decisions were made by the AI tool.
-# Author review:
+# Author review: George Yeo
 #
 # Points one ECS service at a new image: fetch its current task definition, swap only the image,
 # register it, update the service, and wait for it to settle. Secrets and env stay in AWS.

@@ -12,6 +12,9 @@
  * Author review: tng wen xi
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 import { createHttpChatClient } from './chat.client.js';
 const input = {
@@ -51,6 +54,7 @@ it('creates the conversation before sending the exact system text and stable ID'
     orderId: input.orderId,
     messageId: input.messageId,
     message: 'The order has been created',
+    triggeredByUserId: input.requesterId,
   });
 });
 it('reuses the message ID after a notification response is lost and accepts duplicate success', async () => {
@@ -92,7 +96,7 @@ it.each([
   expect(fetchImpl).toHaveBeenCalledTimes(1);
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it('sends a status notification directly with the supplied UUID', async () => {
   const fetchImpl = vi
     .fn<typeof fetch>()
@@ -115,7 +119,7 @@ it('sends a status notification directly with the supplied UUID', async () => {
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it.each([
   [200, true, undefined],
   [503, false, 'transient'],
@@ -150,7 +154,7 @@ it.each([
   );
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it('sends the final notification before archiving and safely retries archive failure', async () => {
   const fetchImpl = vi
     .fn<typeof fetch>()

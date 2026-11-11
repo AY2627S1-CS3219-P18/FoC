@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component RequestCard.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Dropped the venue-dependent location suffix now that qualifiedName always includes the supplier's location. No requirements, architecture, schema, or API decisions were made by

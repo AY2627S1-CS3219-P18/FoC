@@ -13,7 +13,7 @@
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - optional TLS, per
  *        George's ECS Fargate plan, Phase 1 item 5. No requirements, architecture, schema, or API
  *        decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { Redis } from "ioredis";

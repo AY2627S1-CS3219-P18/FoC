@@ -5,11 +5,11 @@
 //    supplier-service/src/worker/main.ts. Consumes queue:credit:transfer and calls the
 //    same transferCredits the HTTP route calls.
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 //  2026-11-06: ECS Fargate migration - pass REDIS_TLS to the connection, per George's ECS
 //    Fargate plan, Phase 1 item 5. Tool: Claude Code (model: claude-opus-5-5). No requirements,
 //    architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 import { Worker } from 'bullmq';
 import { config } from '../config.js';

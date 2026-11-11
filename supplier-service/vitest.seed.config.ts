@@ -9,11 +9,11 @@
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - pass DB_SSL and
  *        PHOTO_STORE_REGION through, per George's ECS Fargate plan, Phase 1 item 9. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - stopped filling in the
  *        MinIO dev keys when a task role is available, per George's decision of 2026-11-06. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

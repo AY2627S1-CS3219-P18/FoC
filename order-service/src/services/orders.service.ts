@@ -61,13 +61,13 @@
  *        the system's auto-complete) writes a `credit_transfer` outbox row in the same
  *        transaction (transfer contract agreed with Wee Jean, 2026-10-20).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-22
  * Scope (2026-10-22): getOrder for GET /orders/:id - an order the viewer may not read
  *        (canViewOrder) answers ORDER_NOT_FOUND like a missing one, so the endpoint does
  *        not reveal which ids exist.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): createOrder / editOrder check that supplierId and deliveryLocationId
  *        exist in supplier-service (caller's token passed through) after the shape checks;
@@ -75,7 +75,7 @@
  *        unreachable -> SUPPLIER_SERVICE_UNAVAILABLE, nothing written (George, 2026-10-23).
  *        Edit checks only the fields it changes, after the requester / open checks.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented or tested the team-specified order chat delivery and message ID deduplication.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified status notifications and username fallback.
@@ -87,14 +87,14 @@
  *        instead of NULL; editOrder with completeBy: null keeps the stored value (George,
  *        2026-11-09). Existing NULL rows are not touched.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-09): createOrder reserves credits synchronously (one credit-service call,
  *        no retry) and settles the order to open / failed before returning; the outbox
  *        credit_reserve task is gone. A requester with a pending order gets
  *        ORDER_PENDING_EXISTS; a per-requester advisory lock guards the check (George,
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 f (instructions.md) - extracted createOrder's pending-order-create +
  *        reserve + settle sequence into exported createPendingOrderAndSettle, unchanged in
@@ -104,6 +104,9 @@
  *        architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented or verified user-specified order message actor fields and toast filtering.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
  * Scope: TransitionOptions.message override and cancelOrdersForSupplier (team decision in chat, 2026-11-11: a supplier shut-down cancels its open/accepted requests).
@@ -719,7 +722,7 @@ function creditTasksFor(
   to: RequestStatus,
   options: TransitionOptions,
 ): OutboxTask[] {
-  // AI-generated (edited by <name>).
+  // AI-generated
   if (order.status === 'pending' && to === 'open')
     return [buildChatCreateTask(order)];
   // Completion pays the courier: credit-service moves the reserved credits.
@@ -753,7 +756,7 @@ export const transitionOrder = async (
   if (!check.ok) return check;
 
   const tasks = creditTasksFor(order, to, options);
-  // AI-generated (edited by <name>).
+  // AI-generated
   const messages: Partial<Record<RequestStatus, string>> = {
     cancelled: 'The order has been cancelled',
     expired: 'The order has expired',
@@ -788,6 +791,7 @@ export const transitionOrder = async (
         order.id,
         message,
         to === 'completed' || to === 'cancelled',
+        actorId === SYSTEM_ACTOR ? undefined : actorId,
       ),
     );
 

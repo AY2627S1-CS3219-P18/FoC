@@ -1,6 +1,6 @@
 // Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflict and retained preferred language in safe user queries.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 // AI Assistance Disclosure:
 // Tool: Claude Code (claude-sonnet-5), date: 2026-09-25
 // 25/09/2026: Stage 4b - user queries
@@ -57,7 +57,7 @@
 //   `locked` filter; added the UserRowWithLock type. Governing decision: the team's F3 fix note
 //   (chat, 2026-11-10) and instructions.md convention 5.
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 // Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflict and retained DB lock status for preferred language updates.
 // No requirements, architecture, schema, or API decisions were made by the AI tool.
 // 2026-11-10: Fix F4 (Tool: Claude Code, model: claude-fable-5-1) - added SAFE_USER_COLUMNS (every
@@ -67,7 +67,7 @@
 //   findPasswordHashById for me.service's pre-lock bcrypt checks, which were the only findById
 //   callers that need the hash. Governing decision: the team's F4 fix note (chat, 2026-11-10).
 //   No requirements, architecture, schema, or API decisions were made by the AI tool.
-// Author review:
+// Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 import pool from "../pool.js";
 import { insertDefaultRow } from './lastRequest.queries.js';
 import type { Queryable } from "../transaction.js";

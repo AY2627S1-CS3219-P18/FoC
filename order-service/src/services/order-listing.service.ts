@@ -34,7 +34,7 @@
  *        users' accepted / picked_up / completed rows are no longer listable (George,
  *        2026-10-22). The default and status=open listing stays public.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Codex (model: GPT-6), date: 2026-11-05
  * Scope: Implemented the team-specified admin user order listing contract from chat.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -386,7 +386,7 @@ export function listMyOrders(
   });
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export const ADMIN_USER_ORDERS_PAGE_SIZE = 10;
 
 /** Admin history includes every status and both participation roles. */

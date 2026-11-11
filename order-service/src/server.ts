@@ -18,20 +18,20 @@
  * Scope (2026-11-06): ECS Fargate migration - Redis TLS through redisConnectionOptions,
  *        per George's ECS Fargate plan, Phase 1 item 5.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-06): ECS Fargate migration - longer HTTP keep-alive, per George's ECS
  *        Fargate plan, Phase 1 item 8.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-10-23
  * Scope (2026-10-23): passes SUPPLIER_SERVICE_URL to the app.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-09
  * Scope (2026-11-09): Passes CREDIT_SERVICE_URL to the app for the synchronous reserve (George,
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
  * Scope: passes ORDER_SUPPLIER_SERVICE_API_KEY to the app (team decision in chat, 2026-11-11).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.

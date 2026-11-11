@@ -29,7 +29,7 @@ export function createMessagePublisher(io: Server): MessagePublisher {
   };
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export type ReadReceipt = {
   conversationId: string;
   userId: string;

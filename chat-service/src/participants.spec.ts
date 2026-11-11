@@ -6,6 +6,8 @@
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Tested requester and non-revoked courier limits.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import request from "supertest";
 import { createApp } from "./app.js";
@@ -21,7 +23,11 @@ function setup() {
     joinedAt: new Date("2026-11-08T00:00:00Z"),
   }));
   const tx = {
-    conversation: { updateMany, findUnique },
+    conversation: {
+      updateMany,
+      findUnique: (args: { where: { orderId?: string } }) =>
+        args.where.orderId ? Promise.resolve({ conversationId: id }) : findUnique(args),
+    },
     chatParticipant: { create },
   };
   const transaction = vi.fn().mockImplementation(async (fn) => fn(tx));
@@ -35,10 +41,10 @@ function setup() {
   });
   const post = (
     body: object = { userId, role: "COURIER" },
-    conversationId = id,
+    orderId = id,
   ) =>
     request(app)
-      .post(`/chat/conversations/${conversationId}/participants`)
+      .post(`/chat/orders/${orderId}/participants`)
       .set("X-Service-Key", "test")
       .send(body);
   return { app, post, updateMany, findUnique, create, transaction };
@@ -86,7 +92,7 @@ it.each([
   expect((await t.post(body)).status).toBe(400);
   expect(t.transaction).not.toHaveBeenCalled();
 });
-it("rejects invalid conversation ID", async () => {
+it("rejects invalid order ID", async () => {
   const t = setup();
   expect((await t.post(undefined, "bad")).status).toBe(400);
   expect(t.transaction).not.toHaveBeenCalled();
@@ -98,7 +104,7 @@ it.each([
   ["wrong", "valid", 401],
 ])("checks key %s and token %s", async (key, token, status) => {
   const t = setup();
-  const req = request(t.app).post(`/chat/conversations/${id}/participants`);
+  const req = request(t.app).post(`/chat/orders/${id}/participants`);
   if (key) req.set("X-Service-Key", String(key));
   if (token) req.set("Authorization", `Bearer ${token}`);
   expect((await req.send({ userId, role: "COURIER" })).status).toBe(status);
@@ -115,7 +121,7 @@ it("returns 500 on persistence failure", async () => {
   }
 });
 
-// AI-generated (edited by <name>).
+// AI-generated
 it.each([
   ["REQUESTER", "REQUESTER", null, 409],
   ["REQUESTER", "REQUESTER", new Date(), 409],

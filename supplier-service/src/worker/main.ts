@@ -16,7 +16,7 @@
  * Tool: Claude Code (model: claude-opus-5-5), date: 2026-11-06
  * Scope: ECS Fargate migration - optional Redis TLS for BullMQ, per George's ECS Fargate plan, Phase 1
  *        item 5. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): passes a supplier status reader (pool query) to the suspension handler.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:

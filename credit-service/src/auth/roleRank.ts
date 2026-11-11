@@ -4,7 +4,7 @@
 //    rank comparison in user-service/src/middleware/authorize.ts rather than testing
 //    role === 'admin', so 'super admin' is not denied (team decision 2026-10-16).
 //    No requirements, architecture, schema, or API decisions were made by the AI tool.
-//    Author review:
+//    Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
 
 /**
  * Copied from user-service/src/middleware/authorize.ts. It is duplicated rather than

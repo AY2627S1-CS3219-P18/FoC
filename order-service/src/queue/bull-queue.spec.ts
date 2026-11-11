@@ -4,7 +4,7 @@
  * Scope: Credit transfer - unit tests for per-queue job options and job ids (fake BullMQ
  *        queues; no Redis in the test environment).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import {

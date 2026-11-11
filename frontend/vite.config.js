@@ -8,7 +8,7 @@
  * Author review: tng wen xi
  * Tool: Claude Code (model: claude-opus-5), date: 2026-10-19
  * Scope: Added the /credits proxy to the credit service. No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  * Scope (2026-10-19): Restored environment-configured proxy targets so Docker
  *        uses service names while host-run Vite uses localhost. No requirements,
  *        architecture, schema, or API decisions were made by the AI tool.
@@ -21,7 +21,7 @@
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-06
  * Scope: Added the /admin/audit-logs proxy to the user service, per instructions.md Stage 26e.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  * Scope (2026-11-08, Codex, model: GPT-6): Connected the team-requested frontend chat entry points and existing HTTP contracts.
  * Author review: tng wen xi
  * Scope (2026-11-08, Codex, model: GPT-6): Implemented team-specified chat room subscriptions and realtime frontend updates.
@@ -30,7 +30,7 @@
  * Scope: Added the /admin/send-otp, /admin/verify-otp and /admin/resend-otp proxies to the
  *        user service, per instructions.md Stage 27c (same target as /admin/audit-logs).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 import react from "@vitejs/plugin-react";

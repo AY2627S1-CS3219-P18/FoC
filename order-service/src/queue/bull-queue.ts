@@ -12,7 +12,7 @@
  *        queue gets attempts 5 with a custom backoff (the consumer supplies the powers-of-5
  *        delays), following supplier-service's split.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import { Queue, type ConnectionOptions, type JobsOptions } from 'bullmq';

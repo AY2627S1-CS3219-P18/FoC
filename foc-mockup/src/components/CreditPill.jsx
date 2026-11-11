@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component CreditPill.jsx from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 // The signature element. Black filled capsule, white tabular number.

@@ -4,7 +4,7 @@
  * Scope: Generated UI mockup component suppliers.js from team-authored blueprint.md.
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
- * Author review: <pending — team member to sign>
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Reshaped the mock data and helpers to the Supplier Service response contract
@@ -17,7 +17,7 @@
  * Scope: Supplier objects now carry location_id, faculty_id and categories as {category, category_id} objects. Per the team's decision in chat;
  *        no other requirements, architecture, schema, or API decisions were made by the
  *        AI tool.
- * Author review:
+ * Author review: Reviewed and verified by Koh Wee Jean, 2026-11-10.
  */
 
 // TEAM DECISION (2026-09-30): supplier objects use exactly the fields the Supplier Service API

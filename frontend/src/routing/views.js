@@ -13,7 +13,7 @@
  *        mirroring the ViewGate routes in App.jsx, so the view toggle can tell when the user
  *        is leaving a page of the old view (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-09
  * Scope: Stage 28 g (instructions.md) - added /series/new and /series/:id/edit to PAGE_VIEW
  *        as VIEWS.REQUESTER, same as /requests/new and /requests/:id/edit (ViewGate wraps
@@ -28,6 +28,12 @@
  * Scope: Stage 29 - VIEW_MODE_LABEL's comment updated: it is now the text ViewGate and
  *        ActiveViewToggle use for the "You are now in <view> mode" redirect toast, not the
  *        removed blocked-page message. No value changed.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
+ * Scope: Stage 32 (instructions.md) - removed the '/series/new' entry; that route no longer
+ *        exists (see App.jsx).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
  */
@@ -69,7 +75,6 @@ export const PAGE_VIEW = [
   ['/suppliers/:id', VIEWS.REQUESTER],
   ['/requests/new', VIEWS.REQUESTER],
   ['/requests/:id/edit', VIEWS.REQUESTER],
-  ['/series/new', VIEWS.REQUESTER],
   ['/series/:id/edit', VIEWS.REQUESTER],
   ['/my-errands', VIEWS.REQUESTER],
   ['/requests', VIEWS.COURIER],

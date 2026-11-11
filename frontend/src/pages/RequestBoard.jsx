@@ -40,6 +40,9 @@
  * Author review: Congchen
  * Scope (2026-11-08, Codex, model: GPT-6): Replaced native dropdowns with the requested searchable control.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Fixed clipped searchable filter menus by allowing the filter row to wrap.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -258,7 +261,7 @@ export default function RequestBoard() {
         />
       </div>
 
-      <div className="hide-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+      <div className="mt-3 flex flex-wrap gap-2 pb-1">
         {FILTERS.map((f) => (
           <button
             key={f}

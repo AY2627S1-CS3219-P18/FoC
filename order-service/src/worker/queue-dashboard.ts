@@ -6,7 +6,7 @@
  *        all queues). Read-only so the board cannot retry or delete jobs behind the
  *        dead-letter table's back. Base path /admin/queues is by convention.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 
 import type { Server } from 'node:http';

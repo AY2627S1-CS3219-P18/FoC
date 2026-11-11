@@ -29,6 +29,8 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Resolved merge conflicts.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: Congchen
+ * Scope (2026-11-10, Codex, model: GPT-6): Removed the conversation-ID participant endpoint per user instruction.
+ * Author review: tng wen xi
  */
 import { authenticateMessage } from "../middleware/authenticate-message.js";
 import type { MessagePublisher } from "../realtime/messages.js";
@@ -78,42 +80,29 @@ export function conversationsRouter(
     createAuthenticate(userServiceUrl, verifyToken),
     getMessages(prisma),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/messages",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
     postMessage(prisma, publish, enqueueTranslation),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/read",
     createAuthenticate(userServiceUrl, verifyToken),
     postRead(prisma, publishRead),
   );
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/:conversationID/translation",
     createAuthenticate(userServiceUrl, verifyToken),
     postTranslation(prisma, enqueueTranslation),
   );
-  // AI-generated (edited by <name>).
-  router.post(
-    "/:conversationID/participants",
-    authenticateMessage(apiKey, userServiceUrl, verifyToken),
-    (req, res, next) => {
-      if (req.user) {
-        res.sendStatus(403);
-        return;
-      }
-      next();
-    },
-    postParticipant(prisma),
-  );
   router.post("/", authenticateService(apiKey), postConversation(prisma));
   return router;
 }
 
-// AI-generated (edited by <name>).
+// AI-generated
 export function systemNotificationsRouter(
   prisma: PrismaClient,
   apiKey: string,
@@ -123,7 +112,7 @@ export function systemNotificationsRouter(
   enqueueTranslation?: import("../translation/queue.js").TranslationEnqueuer,
 ) {
   const router = Router();
-  // AI-generated (edited by <name>).
+  // AI-generated
   router.post(
     "/orders/:orderId/archive",
     authenticateMessage(apiKey, userServiceUrl, verifyToken),
@@ -139,7 +128,7 @@ export function systemNotificationsRouter(
       }
       next();
     },
-    postParticipant(prisma, true),
+    postParticipant(prisma),
   );
   router.post(
     "/send-system-notification",

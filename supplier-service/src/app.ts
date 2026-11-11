@@ -37,7 +37,7 @@
  * Scope (2026-11-06, Claude Code, model: claude-opus-5-5): ECS Fargate migration - static GET /health ahead of
  *        the rate limiter and longer HTTP keep-alive, per George's ECS Fargate plan, Phase 1 items 7 and 8.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
- * Author review:
+ * Author review: George Yeo
  */
 import express from 'express';
 import { createLookupService } from './business/lookupService.js';
