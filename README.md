@@ -919,3 +919,7 @@ One row per entry in [/ai/usage-log.md](ai/usage-log.md), newest at the bottom. 
 | 282 | 2026-11-10 | user-service, frontend                                        | Stage 31e: Tests (Vitest)                                                                                        | Added 45+ tests covering every 31a-31d Verification bullet that needs no Docker or real browser.                                                |
 | 283 | 2026-11-10 | repository | Resolve main merge conflicts for message translation | Reconciled chat, frontend, user-service, and disclosure changes. |
 | 284 | 2026-11-10 | user-service | User-service test verification after merge | Updated language-field assertions and ran tests. |
+| 285 | 2026-11-11 | supplier-service, order-service, frontend | Supplier deletion linked to order-service | Worker now cancels uncollected orders via order-service; reactivation check; demo code removed. |
+| 286 | 2026-11-11 | supplier-service, docs | Architecture doc and presentation updated for the supplier shut-down flow | Recorded the live order-service flow; Message Service renamed Chat Service. |
+| 287 | 2026-11-11 | order-service, docs | Supplier shut-down also cancels pending requests | Pending requests follow the same cancel flow; credit released, no chat notice. |
+| 288 | 2026-11-11 | order-service, docs | Pending shut-down notice sent through the order-less system message | Pending requests get the same message via the non-order chat route. |
