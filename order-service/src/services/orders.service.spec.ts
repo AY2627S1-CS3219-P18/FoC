@@ -92,6 +92,10 @@
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Verified terminal transitions enqueue archiving after notification.
  * Author review:tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: the pending-order test now expects the system actor may cancel a pending order, so it checks 'completed' instead (team decision in chat, 2026-11-11: pending counts as not yet collected).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -1487,7 +1491,7 @@ describe('transitionOrder', () => {
       transitionOrder(prisma, orderId, 'failed', requesterId),
     ).resolves.toEqual({ ok: false, error: ErrorCode.FORBIDDEN });
     await expect(
-      transitionOrder(prisma, orderId, 'cancelled', 'system'),
+      transitionOrder(prisma, orderId, 'completed', 'system'),
     ).resolves.toEqual({ ok: false, error: ErrorCode.INVALID_TRANSITION });
     await expect(
       transitionOrder(prisma, orderId, 'accepted', courierId),

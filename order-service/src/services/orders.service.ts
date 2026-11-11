@@ -105,13 +105,27 @@
  * Author review:
  * Scope (2026-11-10, Codex, model: GPT-6): Implemented or tested team-specified order chat archiving after final notifications.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: TransitionOptions.message override and cancelOrdersForSupplier (team decision in chat, 2026-11-11: a supplier shut-down cancels its open/accepted requests).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: cancelOrdersForSupplier includes pending requests (queues the credit release, no chat notice because a pending request has no chat yet); settleReservation tolerates a request cancelled mid-settle (team decision in chat, 2026-11-11: pending counts as not yet collected and follows the same cancellation flow).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: a pending request cancelled by a supplier shut-down gets the same message through the order-less system notification (notifySeriesEvent, recipient = requester) instead of a per-order chat (team decision in chat, 2026-11-11: a pending request gets the same message through the order-less system-message route).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import type { PrismaClient } from '../db/prisma.js';
+import { randomUUID } from 'node:crypto';
 import { insertOutboxRows } from '../db/outbox.repository.js';
 import {
   buildChatCreateTask,
   buildChatNotificationTask,
+  notifySeriesEvent,
   buildChatParticipantTask,
   buildReleaseTask,
   buildTransferTask,
@@ -440,8 +454,10 @@ async function settleReservation(
     new Date(),
     options,
   );
-  // Only this request moves its own pending order, so a refusal here is a bug.
   if (!result.ok) {
+    // A supplier shut-down may have cancelled it between the reserve and this settle.
+    const current = await prisma.orderRequest.findUnique({ where: { id: orderId } });
+    if (current?.status === 'cancelled') return current;
     throw new Error(
       `Order ${orderId} could not move to ${to}: ${result.error}`,
     );
@@ -636,6 +652,43 @@ export async function runRequestMaintenance(
   return { completed, expired };
 }
 
+/**
+ * Supplier shut-down: cancels every request for `supplierId` that has not been picked up
+ * (pending, open or accepted), as the system actor. Each cancel releases the reserved credits and
+ * queues the chat notice in the same transaction (see transitionOrder). Returns how many
+ * were cancelled; a request that changes under us is skipped, so a retry is safe.
+ */
+export async function cancelOrdersForSupplier(
+  prisma: PrismaClient,
+  supplierId: number,
+  supplierName: string,
+  now: Date = new Date(),
+  events?: OrderEventPublisher,
+): Promise<{ cancelled: number }> {
+  const orders = await prisma.orderRequest.findMany({
+    where: { supplierId, status: { in: ['pending', 'open', 'accepted'] } },
+  });
+  const message = `${supplierName} has been shut down temporarily. Your request has been automatically cancelled and reserved credits are refunded`;
+  let cancelled = 0;
+  for (const order of orders) {
+    const result = await transitionOrder(
+      prisma,
+      order.id,
+      'cancelled',
+      SYSTEM_ACTOR,
+      now,
+      {
+        events,
+        message,
+        // A pending reserve may have committed without us hearing back; release it (as createOrder does).
+        releaseCredits: order.status === 'pending',
+      },
+    );
+    if (result.ok) cancelled += 1;
+  }
+  return { cancelled };
+}
+
 /** Statuses in which credit-service holds a reservation for the order. */
 const FUNDED_STATUSES: ReadonlySet<RequestStatus> = new Set([
   'open',
@@ -656,6 +709,8 @@ export interface TransitionOptions {
   events?: OrderEventPublisher;
   /** Reason carried on the event (a failed reservation's code). */
   reason?: string;
+  /** Replaces the default chat notification text for this transition. */
+  message?: string;
 }
 
 /** Tasks that must commit together with moving `order` to `to`. */
@@ -707,7 +762,7 @@ export const transitionOrder = async (
     delivered: 'The order has been delivered',
     completed: 'The order has been marked as completed',
   };
-  let message = messages[to];
+  let message = options.message ?? messages[to];
   if (to === 'accepted' && options.acceptanceUsername) {
     try {
       const username = await options.acceptanceUsername();
@@ -718,7 +773,16 @@ export const transitionOrder = async (
   }
   if (to === 'accepted')
     tasks.push(buildChatParticipantTask(order.id, actorId));
-  if (message)
+  if (message && order.status === 'pending' && to === 'cancelled') {
+    // A pending request has no chat yet (created on pending -> open): use the order-less route.
+    tasks.push(
+      notifySeriesEvent({
+        userId: order.requesterId,
+        messageId: randomUUID(),
+        message,
+      }),
+    );
+  } else if (message)
     tasks.push(
       buildChatNotificationTask(
         order.id,

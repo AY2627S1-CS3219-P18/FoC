@@ -32,6 +32,10 @@
  *        2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: passes ORDER_SUPPLIER_SERVICE_API_KEY to the app (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { createServer } from 'node:http';
@@ -79,6 +83,7 @@ const app = createApp({
   userServiceUrl: env.USER_SERVICE_URL,
   supplierServiceUrl: env.SUPPLIER_SERVICE_URL,
   creditServiceUrl: env.CREDIT_SERVICE_URL,
+  supplierServiceKey: env.ORDER_SUPPLIER_SERVICE_API_KEY,
   events,
 });
 httpServer.on('request', app);
