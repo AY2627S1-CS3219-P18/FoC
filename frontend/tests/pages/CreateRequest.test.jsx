@@ -18,7 +18,7 @@ import { expect, it, vi } from 'vitest'
 import CreateRequest from '../../src/pages/CreateRequest'
 
 vi.mock('../../src/context/AuthContext', () => ({ useAuth: () => ({ credits: { available: 10 }, isLoggedIn: true, sessionReady: true }) }))
-vi.mock('../../src/api/suppliers', () => ({ listSuppliers: () => Promise.resolve({ data: [] }), getSupplier: () => Promise.resolve(null) }))
+vi.mock('../../src/api/suppliers', () => ({ listAllSuppliers: () => Promise.resolve({ data: [] }), getSupplier: () => Promise.resolve(null) }))
 vi.mock('../../src/api/lastRequest', () => ({ getLastRequest: vi.fn(() => Promise.resolve({ last_req_del_loc_id: 3, last_req_del_loc_details: 'Level 2 lobby' })), saveLastRequest: vi.fn(() => Promise.resolve()) }))
 vi.mock('../../src/api/orders', () => ({ createOrder: vi.fn(() => Promise.reject(new Error('Rejected'))), editOrder: vi.fn(() => Promise.resolve()), listMyOrders: vi.fn(() => Promise.resolve({ orders: [{ id: 'abc', supplierId: 1, description: 'Lunch', deliveryLocationId: 3, deliveryDetails: 'Lobby' }] })), reserveFailureMessage: vi.fn() }))
 vi.mock('../../src/realtime/orderSocket', () => ({ watchOrderEvents: () => ({ stop: vi.fn() }) }))

@@ -26,6 +26,10 @@
  * Scope: Mounted BookmarksProvider inside ToastProvider, per the 2026-11-05 supplier-bookmarking
  *        spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: removed DemoProvider (the demo is gone, all services are live).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import React from 'react'
@@ -33,7 +37,6 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
-import { DemoProvider } from './context/DemoContext'
 import { ToastProvider } from './components/Toast'
 import { BookmarksProvider } from './context/BookmarksContext'
 import './index.css'
@@ -42,13 +45,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <DemoProvider>
-          <ToastProvider>
-            <BookmarksProvider>
-              <App />
-            </BookmarksProvider>
-          </ToastProvider>
-        </DemoProvider>
+        <ToastProvider>
+          <BookmarksProvider>
+            <App />
+          </BookmarksProvider>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,

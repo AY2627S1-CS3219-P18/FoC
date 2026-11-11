@@ -5,6 +5,8 @@
  *        Visual/layout implementation only. No requirements, architecture, or
  *        schema decisions were made by the AI tool.
  * Author review: <pending — team member to sign>
+ * Scope (2026-11-11, Codex, model: GPT-6): Removed the demo controls from the app.
+ * Author review:
  *
  * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-09-30
  * Scope: Added the three admin supplier routes (list, new, edit). No requirements, architecture, schema, or API decisions were
@@ -113,7 +115,6 @@ import {
 import SessionExpiryBanner from "./components/SessionExpiryBanner";
 import TopNav from "./components/TopNav";
 import Footer from "./components/Footer";
-import DemoControls from "./components/DemoControls";
 import ChatBubble from "./components/ChatBubble";
 import { RequireAuth, RequireRole, ViewGate } from "./components/RouteGuards";
 import { VIEWS } from "./routing/views";
@@ -385,7 +386,6 @@ export default function App() {
       </main>
       {showFooter && <Footer />}
       <ChatBubble />
-      <DemoControls />
     </div>
   );
 }

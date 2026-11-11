@@ -130,6 +130,14 @@
  * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflict in disclosure header.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: the supplier picker now loads every supplier (listAllSuppliers) instead of the first page (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: (same change)
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from '../components/SearchableSelect'
@@ -140,7 +148,7 @@ import Button from '../components/Button'
 import SupplierImage from '../components/SupplierImage'
 import RecurrencePicker from '../components/RecurrencePicker'
 import { useApi, useReferenceData } from '../api/useApi'
-import { getSupplier, listSuppliers } from '../api/suppliers'
+import { getSupplier, listAllSuppliers } from '../api/suppliers'
 import { createOrder, editOrder, listMyOrders } from '../api/orders'
 import { createSeries, editSeries, getSeries, seriesErrorMessage } from '../api/series'
 import { buildRuleText, defaultRuleState, parseRuleText } from '../domain/seriesRule'
@@ -282,8 +290,8 @@ function RequestForm({ order, series, seriesMode }) {
       ? Math.min(1440, Math.round((seriesDeliverBy.getTime() - seriesAnchor.getTime()) / 60_000))
       : null
 
-  // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
-  const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
+  // The supplier comes from the Supplier Service; the picker lists every supplier.
+  const { data: supplierPage } = useApi(() => listAllSuppliers({ sortOrder: 'A-Z' }), [])
   const { data: chosen } = useApi(() => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)), [supplierId])
   const suppliers = supplierPage?.data ?? []
   const supplier = supplierId ? chosen : null
