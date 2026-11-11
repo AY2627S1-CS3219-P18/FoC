@@ -130,6 +130,9 @@
  * Scope (2026-11-09, Codex, model: GPT-6): Resolved merge conflict in disclosure header.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-10, Codex, model: GPT-6): Moved the credit notice and submit actions below Anything else on mobile per user instruction.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  *
  * Tool: Claude Code (model: claude-sonnet-5), date: 2026-11-10
  * Scope: Stage 32 (instructions.md) - the normal errand form (/requests/new) now also creates
@@ -168,40 +171,53 @@
  *        field itself, per user request in chat. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: the supplier picker now loads every supplier (listAllSuppliers) instead of the first page (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
-import SearchableSelect from '../components/SearchableSelect'
-import { useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Check, Loader2, Minus, Plus, X } from 'lucide-react'
-import Button from '../components/Button'
-import SupplierImage from '../components/SupplierImage'
-import RecurrencePicker from '../components/RecurrencePicker'
-import { useApi, useReferenceData } from '../api/useApi'
-import { getSupplier, listSuppliers } from '../api/suppliers'
-import { createOrder, editOrder, listMyOrders } from '../api/orders'
-import { createSeries, editSeries, getSeries, seriesErrorMessage } from '../api/series'
-import { buildRuleText, defaultRuleState, parseRuleText } from '../domain/seriesRule'
-import { qualifiedName } from '../data/suppliers'
-import { useAuth } from '../context/AuthContext'
-import { getLastRequest, saveLastRequest } from '../api/lastRequest'
+import SearchableSelect from "../components/SearchableSelect";
+import { useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Check, Loader2, Minus, Plus, X } from "lucide-react";
+import Button from "../components/Button";
+import SupplierImage from "../components/SupplierImage";
+import RecurrencePicker from "../components/RecurrencePicker";
+import { useApi, useReferenceData } from "../api/useApi";
+import { getSupplier, listAllSuppliers } from "../api/suppliers";
+import { createOrder, editOrder, listMyOrders } from "../api/orders";
+import {
+  createSeries,
+  editSeries,
+  getSeries,
+  seriesErrorMessage,
+} from "../api/series";
+import {
+  buildRuleText,
+  defaultRuleState,
+  parseRuleText,
+} from "../domain/seriesRule";
+import { qualifiedName } from "../data/suppliers";
+import { useAuth } from "../context/AuthContext";
+import { getLastRequest, saveLastRequest } from "../api/lastRequest";
 
-const MAX_CHARS = 200
-const MAX_DURATION_MINUTES = 1440
+const MAX_CHARS = 200;
+const MAX_DURATION_MINUTES = 1440;
 
 // Defaults follow the clock rather than a hardcoded date that goes stale overnight.
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => new Date().toISOString().slice(0, 10);
 
-const pad = (n) => String(n).padStart(2, '0')
+const pad = (n) => String(n).padStart(2, "0");
 // Local date and time inputs for an ISO timestamp.
 const localDate = (iso) => {
-  const d = new Date(iso)
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-}
+  const d = new Date(iso);
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+};
 const localTime = (iso) => {
-  const d = new Date(iso)
-  return pad(d.getHours()) + ':' + pad(d.getMinutes())
-}
+  const d = new Date(iso);
+  return pad(d.getHours()) + ":" + pad(d.getMinutes());
+};
 
 // Order F18 (Wen Xi's edit page, carried over): /requests/:id/edit reuses the form for one of the
 // requester's errands. The form mounts once that order is loaded, so its fields start from it.
@@ -209,48 +225,66 @@ const localTime = (iso) => {
 // loading a series (getSeries) instead of an order. Stage 32: creating one (/requests/new) no
 // longer needs seriesMode - the create form always offers the schedule/repeat options itself.
 export default function CreateRequest({ seriesMode = false }) {
-  const { id: editId } = useParams()
-  const { data: orderData, loading: orderLoading, error: orderError } = useApi(
-    () => (!seriesMode && editId ? listMyOrders('requester') : Promise.resolve(null)),
+  const { id: editId } = useParams();
+  const {
+    data: orderData,
+    loading: orderLoading,
+    error: orderError,
+  } = useApi(
+    () =>
+      !seriesMode && editId ? listMyOrders("requester") : Promise.resolve(null),
     [seriesMode, editId],
-  )
-  const { data: seriesData, loading: seriesLoading, error: seriesError } = useApi(
+  );
+  const {
+    data: seriesData,
+    loading: seriesLoading,
+    error: seriesError,
+  } = useApi(
     () => (seriesMode && editId ? getSeries(editId) : Promise.resolve(null)),
     [seriesMode, editId],
-  )
+  );
 
-  if (!editId) return <RequestForm order={null} series={null} />
+  if (!editId) return <RequestForm order={null} series={null} />;
 
   if (seriesMode) {
-    if (seriesData) return <RequestForm key={seriesData.id} order={null} series={seriesData} />
+    if (seriesData)
+      return (
+        <RequestForm key={seriesData.id} order={null} series={seriesData} />
+      );
     return (
       <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
-        <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Edit recurring errand</h1>
+        <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
+          Edit recurring errand
+        </h1>
         {seriesLoading || (!seriesData && !seriesError) ? (
           <p className="mt-4 text-sm text-ink-70">Loading…</p>
         ) : (
           <p role="alert" className="mt-4 text-sm text-alert">
-            {seriesError ? seriesErrorMessage(seriesError) : 'This recurring errand was not found.'}
+            {seriesError
+              ? seriesErrorMessage(seriesError)
+              : "This recurring errand was not found."}
           </p>
         )}
       </div>
-    )
+    );
   }
 
-  const order = orderData?.orders?.find((o) => o.id === editId)
-  if (order) return <RequestForm key={order.id} order={order} series={null} />
+  const order = orderData?.orders?.find((o) => o.id === editId);
+  if (order) return <RequestForm key={order.id} order={order} series={null} />;
   return (
     <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">Edit errand</h1>
+      <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
+        Edit errand
+      </h1>
       {orderLoading || (!orderData && !orderError) ? (
         <p className="mt-4 text-sm text-ink-70">Loading errand…</p>
       ) : (
         <p role="alert" className="mt-4 text-sm text-alert">
-          {orderError ? orderError.message : 'This errand was not found.'}
+          {orderError ? orderError.message : "This errand was not found."}
         </p>
       )}
     </div>
-  )
+  );
 }
 
 // Order F1.1.1 — supplier, description, delivery location, credits offered, expiration,
@@ -260,138 +294,211 @@ export default function CreateRequest({ seriesMode = false }) {
 // itself become a delayed or recurring errand depending on the Send-later/Repeat choices
 // below).
 function RequestForm({ order, series }) {
-  const [params] = useSearchParams()
-  const navigate = useNavigate()
-  const { credits } = useAuth()
-  const isEditOrder = order !== null
-  const isEditSeries = series !== null
-  const isEdit = isEditOrder || isEditSeries
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { credits } = useAuth();
+  const isEditOrder = order !== null;
+  const isEditSeries = series !== null;
+  const isEdit = isEditOrder || isEditSeries;
 
   const [supplierId, setSupplierId] = useState(
-    isEdit ? String((series ?? order).supplierId) : params.get('supplier') || '',
-  )
-  const [description, setDescription] = useState((series ?? order)?.description ?? '')
-  const [details, setDetails] = useState((series ?? order)?.deliveryDetails ?? '')
-  const { data: last, loading: lastLoading } = useApi(() => isEdit ? Promise.resolve(null) : getLastRequest().catch(() => null), [])
-  const [locationId, setLocationId] = useState(isEdit ? String((series ?? order).deliveryLocationId) : '')
-  const [timing, setTiming] = useState(order?.completeBy ? 'later' : 'asap')
+    isEdit
+      ? String((series ?? order).supplierId)
+      : params.get("supplier") || "",
+  );
+  const [description, setDescription] = useState(
+    (series ?? order)?.description ?? "",
+  );
+  const [details, setDetails] = useState(
+    (series ?? order)?.deliveryDetails ?? "",
+  );
+  const { data: last, loading: lastLoading } = useApi(
+    () => (isEdit ? Promise.resolve(null) : getLastRequest().catch(() => null)),
+    [],
+  );
+  const [locationId, setLocationId] = useState(
+    isEdit ? String((series ?? order).deliveryLocationId) : "",
+  );
+  const [timing, setTiming] = useState(order?.completeBy ? "later" : "asap");
   // "By a specific time" defaults to 1 hour from now when not editing an existing deadline.
   const [date, setDate] = useState(() =>
-    order?.completeBy ? localDate(order.completeBy) : localDate(new Date(Date.now() + 60 * 60_000).toISOString()),
-  )
+    order?.completeBy
+      ? localDate(order.completeBy)
+      : localDate(new Date(Date.now() + 60 * 60_000).toISOString()),
+  );
   const [time, setTime] = useState(() =>
-    order?.completeBy ? localTime(order.completeBy) : localTime(new Date(Date.now() + 60 * 60_000).toISOString()),
-  )
+    order?.completeBy
+      ? localTime(order.completeBy)
+      : localTime(new Date(Date.now() + 60 * 60_000).toISOString()),
+  );
   // Once the "needed by" date/time has been hand-edited, the send-mode effect below leaves it
   // alone rather than clobbering the user's choice.
-  const [deadlineTouched, setDeadlineTouched] = useState(false)
-  const [offer, setOffer] = useState(series?.credits ?? 4)
-  const [extra, setExtra] = useState((series ?? order)?.additionalDetails ?? '')
-  const [posting, setPosting] = useState(false)
-  const [postError, setPostError] = useState(null)
-  const [dismissedLocation, setDismissedLocation] = useState(false)
-  const { locations, loading: locationsLoading } = useReferenceData()
-  const savedLocation = !isEdit && last?.last_req_del_loc_id != null && last.last_req_del_loc_details && last.last_req_del_loc_details !== 'Nil'
-    ? locations.find((l) => Number(l.location_id) === Number(last.last_req_del_loc_id)) : null
+  const [deadlineTouched, setDeadlineTouched] = useState(false);
+  const [offer, setOffer] = useState(series?.credits ?? 4);
+  const [extra, setExtra] = useState(
+    (series ?? order)?.additionalDetails ?? "",
+  );
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState(null);
+  const [dismissedLocation, setDismissedLocation] = useState(false);
+  const { locations, loading: locationsLoading } = useReferenceData();
+  const savedLocation =
+    !isEdit &&
+    last?.last_req_del_loc_id != null &&
+    last.last_req_del_loc_details &&
+    last.last_req_del_loc_details !== "Nil"
+      ? locations.find(
+          (l) => Number(l.location_id) === Number(last.last_req_del_loc_id),
+        )
+      : null;
 
   // Stage 32: when creating (not isEdit), "When should this order be sent?" (Send now/Send
   // later) and "Repeat this errand" together decide whether this becomes a normal order, a
   // one-time scheduled series (rrule ending in COUNT=1), or a recurring one.
-  const [sendMode, setSendMode] = useState('now')
-  const [repeat, setRepeat] = useState(false)
+  const [sendMode, setSendMode] = useState("now");
+  const [repeat, setRepeat] = useState(false);
   // "Send later" defaults to 1 hour from now, same as "By a specific time" above.
-  const [startDate, setStartDate] = useState(() => localDate(new Date(Date.now() + 60 * 60_000).toISOString()))
-  const [startTime, setStartTime] = useState(() => localTime(new Date(Date.now() + 60 * 60_000).toISOString()))
+  const [startDate, setStartDate] = useState(() =>
+    localDate(new Date(Date.now() + 60 * 60_000).toISOString()),
+  );
+  const [startTime, setStartTime] = useState(() =>
+    localTime(new Date(Date.now() + 60 * 60_000).toISOString()),
+  );
   const [ruleState, setRuleState] = useState(() =>
-    isEditSeries ? parseRuleText(series.rrule, new Date(series.startAt)) : defaultRuleState(new Date()),
-  )
+    isEditSeries
+      ? parseRuleText(series.rrule, new Date(series.startAt))
+      : defaultRuleState(new Date()),
+  );
 
   // "When do you need it by?" defaults to 1 hour after the order is sent: 1 hour from now for
   // Send now, or 1 hour after the chosen Send-later time (so 2 hours from now by default, since
   // Send later itself defaults to 1 hour from now). Applied from the event that changes the
   // send time, and skipped once the user has hand-edited the deadline themselves.
   const applyDeadlineDefault = (sendAnchor) => {
-    if (deadlineTouched || Number.isNaN(sendAnchor.getTime())) return
-    const deadlineDefault = new Date(sendAnchor.getTime() + 60 * 60_000)
-    setDate(localDate(deadlineDefault.toISOString()))
-    setTime(localTime(deadlineDefault.toISOString()))
-  }
+    if (deadlineTouched || Number.isNaN(sendAnchor.getTime())) return;
+    const deadlineDefault = new Date(sendAnchor.getTime() + 60 * 60_000);
+    setDate(localDate(deadlineDefault.toISOString()));
+    setTime(localTime(deadlineDefault.toISOString()));
+  };
 
   // Stage 28 g: series-only fields for editing an existing series. `startAt` can't be edited
   // once created (editSeries has no such field - order-service), so there is no start-time
   // field here; see the file header for why this stays a known gap rather than a workaround.
   const [deliverByDate, setDeliverByDate] = useState(() => {
-    if (!isEditSeries) return today()
-    const anchorMs = new Date(series.startAt).getTime()
-    const durationMs = (series.durationMinutes ?? 60) * 60_000
-    return localDate(new Date(anchorMs + durationMs).toISOString())
-  })
+    if (!isEditSeries) return today();
+    const anchorMs = new Date(series.startAt).getTime();
+    const durationMs = (series.durationMinutes ?? 60) * 60_000;
+    return localDate(new Date(anchorMs + durationMs).toISOString());
+  });
   const [deliverByTime, setDeliverByTime] = useState(() => {
-    if (!isEditSeries) return '10:00'
-    const anchorMs = new Date(series.startAt).getTime()
-    const durationMs = (series.durationMinutes ?? 60) * 60_000
-    return localTime(new Date(anchorMs + durationMs).toISOString())
-  })
-  const seriesAnchor = isEditSeries ? new Date(series.startAt) : null
-  const seriesAnchorInvalid = isEditSeries && Number.isNaN(seriesAnchor.getTime())
-  const seriesDeliverBy = isEditSeries ? new Date(deliverByDate + 'T' + deliverByTime) : null
-  const seriesDeliverByInvalid = isEditSeries && Number.isNaN(seriesDeliverBy.getTime())
+    if (!isEditSeries) return "10:00";
+    const anchorMs = new Date(series.startAt).getTime();
+    const durationMs = (series.durationMinutes ?? 60) * 60_000;
+    return localTime(new Date(anchorMs + durationMs).toISOString());
+  });
+  const seriesAnchor = isEditSeries ? new Date(series.startAt) : null;
+  const seriesAnchorInvalid =
+    isEditSeries && Number.isNaN(seriesAnchor.getTime());
+  const seriesDeliverBy = isEditSeries
+    ? new Date(deliverByDate + "T" + deliverByTime)
+    : null;
+  const seriesDeliverByInvalid =
+    isEditSeries && Number.isNaN(seriesDeliverBy.getTime());
   const seriesDeliverByTooEarly =
-    isEditSeries && !seriesAnchorInvalid && !seriesDeliverByInvalid && seriesDeliverBy.getTime() <= seriesAnchor.getTime()
+    isEditSeries &&
+    !seriesAnchorInvalid &&
+    !seriesDeliverByInvalid &&
+    seriesDeliverBy.getTime() <= seriesAnchor.getTime();
   const seriesGapMinutes =
-    isEditSeries && !seriesAnchorInvalid && !seriesDeliverByInvalid && !seriesDeliverByTooEarly
-      ? Math.round((seriesDeliverBy.getTime() - seriesAnchor.getTime()) / 60_000)
-      : null
-  const seriesDeliverByTooLate = seriesGapMinutes !== null && seriesGapMinutes > MAX_DURATION_MINUTES
+    isEditSeries &&
+    !seriesAnchorInvalid &&
+    !seriesDeliverByInvalid &&
+    !seriesDeliverByTooEarly
+      ? Math.round(
+          (seriesDeliverBy.getTime() - seriesAnchor.getTime()) / 60_000,
+        )
+      : null;
+  const seriesDeliverByTooLate =
+    seriesGapMinutes !== null && seriesGapMinutes > MAX_DURATION_MINUTES;
 
   // Stage 32: for creating, `isSeriesCreate` is true whenever the result has to be a series
   // (scheduled for later, and/or repeating) rather than a normal order.
-  const isSeriesCreate = !isEdit && (repeat || sendMode === 'later')
-  const createAnchor = !isEdit ? (sendMode === 'now' ? new Date() : new Date(startDate + 'T' + startTime)) : null
-  const createAnchorInvalid = !isEdit && sendMode === 'later' && Number.isNaN(createAnchor.getTime())
+  const isSeriesCreate = !isEdit && (repeat || sendMode === "later");
+  const createAnchor = !isEdit
+    ? sendMode === "now"
+      ? new Date()
+      : new Date(startDate + "T" + startTime)
+    : null;
+  const createAnchorInvalid =
+    !isEdit && sendMode === "later" && Number.isNaN(createAnchor.getTime());
   // ASAP only makes sense relative to "now", so it is hidden once the order itself is
   // scheduled for later (team decision) - "When do you need it by?" then always asks for a
   // specific time.
-  const asapAvailable = isEditOrder || (!isEdit && sendMode === 'now')
-  const effectiveTiming = asapAvailable ? timing : 'later'
+  const asapAvailable = isEditOrder || (!isEdit && sendMode === "now");
+  const effectiveTiming = asapAvailable ? timing : "later";
 
-  // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
-  const { data: supplierPage } = useApi(() => listSuppliers({ sortOrder: 'A-Z' }), [])
-  const { data: chosen } = useApi(() => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)), [supplierId])
-  const suppliers = supplierPage?.data ?? []
-  const supplier = supplierId ? chosen : null
+  // The supplier comes from the Supplier Service; the picker lists every supplier.
+  const { data: supplierPage } = useApi(
+    () => listAllSuppliers({ sortOrder: "A-Z" }),
+    [],
+  );
+  const { data: chosen } = useApi(
+    () => (supplierId ? getSupplier(supplierId) : Promise.resolve(null)),
+    [supplierId],
+  );
+  const suppliers = supplierPage?.data ?? [];
+  const supplier = supplierId ? chosen : null;
 
   // Series credits stay editable (instructions.md: "all fields editable, including credits"),
   // unlike a normal order's offer, which is fixed once posted.
-  const insufficient = (!isEdit || isEditSeries) && offer > credits.available
-  const remaining = credits.available - offer
-  const deadline = effectiveTiming === 'later' ? new Date(date + 'T' + time) : null
-  const deadlineInvalid = deadline !== null && Number.isNaN(deadline.getTime())
+  const insufficient = (!isEdit || isEditSeries) && offer > credits.available;
+  const remaining = credits.available - offer;
+  const deadline =
+    effectiveTiming === "later" ? new Date(date + "T" + time) : null;
+  const deadlineInvalid = deadline !== null && Number.isNaN(deadline.getTime());
   const createGapMinutes =
     isSeriesCreate && deadline && !deadlineInvalid && !createAnchorInvalid
       ? Math.round((deadline.getTime() - createAnchor.getTime()) / 60_000)
-      : null
-  const createDeliverByTooEarly = createGapMinutes !== null && createGapMinutes <= 0
-  const createDeliverByTooLate = createGapMinutes !== null && createGapMinutes > MAX_DURATION_MINUTES
+      : null;
+  const createDeliverByTooEarly =
+    createGapMinutes !== null && createGapMinutes <= 0;
+  const createDeliverByTooLate =
+    createGapMinutes !== null && createGapMinutes > MAX_DURATION_MINUTES;
 
   const complete = isEditOrder
-    ? Boolean(supplierId && description.trim() && locationId && details.trim()) && !deadlineInvalid
+    ? Boolean(
+        supplierId && description.trim() && locationId && details.trim(),
+      ) && !deadlineInvalid
     : isEditSeries
-      ? Boolean(supplierId && description.trim() && locationId && details.trim()) &&
-        !seriesAnchorInvalid && !seriesDeliverByInvalid && !seriesDeliverByTooEarly && !seriesDeliverByTooLate
-      : Boolean(supplierId && description.trim() && locationId && details.trim()) &&
-        !createAnchorInvalid && !deadlineInvalid && !createDeliverByTooEarly && !createDeliverByTooLate
+      ? Boolean(
+          supplierId && description.trim() && locationId && details.trim(),
+        ) &&
+        !seriesAnchorInvalid &&
+        !seriesDeliverByInvalid &&
+        !seriesDeliverByTooEarly &&
+        !seriesDeliverByTooLate
+      : Boolean(
+          supplierId && description.trim() && locationId && details.trim(),
+        ) &&
+        !createAnchorInvalid &&
+        !deadlineInvalid &&
+        !createDeliverByTooEarly &&
+        !createDeliverByTooLate;
 
   // One-time scheduled errand (Send later, Repeat unticked): a series whose rrule ends after
   // its first occurrence (Stage 32 spec, "derived from the Stage 28 spec: a one-time errand is
   // a series with COUNT=1").
-  const oneTimeRuleText = () => buildRuleText({ ...defaultRuleState(createAnchor ?? new Date()), end: { type: 'after', count: 1 } })
+  const oneTimeRuleText = () =>
+    buildRuleText({
+      ...defaultRuleState(createAnchor ?? new Date()),
+      end: { type: "after", count: 1 },
+    });
 
   const onSubmit = async () => {
-    setPosting(true)
-    setPostError(null)
-    const exact = details.trim()
-    saveLastRequest(locationId, exact).catch(() => {})
+    setPosting(true);
+    setPostError(null);
+    const exact = details.trim();
+    saveLastRequest(locationId, exact).catch(() => {});
     try {
       if (isEditOrder) {
         // F18: PATCH /orders/:id/edit with the editable fields; credits stay as reserved.
@@ -402,7 +509,7 @@ function RequestForm({ order, series }) {
           deliveryDetails: exact,
           completeBy: deadline ? deadline.toISOString() : null,
           additionalDetails: extra.trim() || null,
-        })
+        });
       } else if (isEditSeries) {
         // Stage 28 g: PATCH /orders/series/:id/edit. startAt can't change, so it isn't sent.
         await editSeries(series.id, {
@@ -414,7 +521,7 @@ function RequestForm({ order, series }) {
           rrule: buildRuleText(ruleState),
           durationMinutes: seriesGapMinutes,
           additionalDetails: extra.trim() || null,
-        })
+        });
       } else if (isSeriesCreate) {
         // Stage 32: POST /orders/series. Each occurrence reserves its own credits when it
         // posts. ASAP omits durationMinutes, same as a normal order omitting completeBy -
@@ -426,10 +533,14 @@ function RequestForm({ order, series }) {
           deliveryDetails: exact,
           credits: offer,
           rrule: repeat ? buildRuleText(ruleState) : oneTimeRuleText(),
-          ...(createGapMinutes !== null && { durationMinutes: createGapMinutes }),
+          ...(createGapMinutes !== null && {
+            durationMinutes: createGapMinutes,
+          }),
           additionalDetails: extra.trim() || null,
-          ...(sendMode === 'now' ? { startNow: true } : { startAt: createAnchor.toISOString() }),
-        })
+          ...(sendMode === "now"
+            ? { startNow: true }
+            : { startAt: createAnchor.toISOString() }),
+        });
       } else {
         // POST /orders reserves the credits before it answers: 201 means the errand is open,
         // and a failure (409 pending order, 422 refused, 503 credit-service down) carries its
@@ -442,83 +553,109 @@ function RequestForm({ order, series }) {
           credits: offer,
           ...(deadline && { completeBy: deadline.toISOString() }),
           additionalDetails: extra.trim() || null,
-        })
+        });
       }
-      navigate('/my-errands')
+      navigate("/my-errands");
     } catch (e) {
-      setPostError(isEditSeries || isSeriesCreate ? seriesErrorMessage(e) : e.message)
+      setPostError(
+        isEditSeries || isSeriesCreate ? seriesErrorMessage(e) : e.message,
+      );
     } finally {
-      setPosting(false)
+      setPosting(false);
     }
-  }
+  };
 
   const requiredMark = (
     <>
-      <span aria-hidden="true" className="text-alert"> *</span>
+      <span aria-hidden="true" className="text-alert">
+        {" "}
+        *
+      </span>
       <span className="sr-only"> (required)</span>
     </>
-  )
+  );
 
   const label = (text, htmlFor, required = false) => (
     <label htmlFor={htmlFor} className="block text-base font-semibold text-ink">
       {text}
       {required && requiredMark}
     </label>
-  )
+  );
 
-  const postingNow = !isEdit && sendMode === 'now' && !repeat
-  const submitLabel = isEdit ? 'Save changes' : postingNow ? 'Post errand' : 'Schedule errand'
-  const submitLoadingLabel = isEdit ? 'Saving…' : postingNow ? 'Posting…' : 'Scheduling…'
+  const postingNow = !isEdit && sendMode === "now" && !repeat;
+  const submitLabel = isEdit
+    ? "Save changes"
+    : postingNow
+      ? "Post errand"
+      : "Schedule errand";
+  const submitLoadingLabel = isEdit
+    ? "Saving…"
+    : postingNow
+      ? "Posting…"
+      : "Scheduling…";
 
   return (
-    <div className="page-gutter mx-auto w-full max-w-[640px] py-8 pb-32 md:py-10 md:pb-10">
+    <div className="page-gutter mx-auto w-full max-w-[640px] py-8 md:py-10">
       <h1 className="font-display text-2xl font-bold text-ink md:text-3xl">
-        {isEditSeries ? 'Edit recurring errand' : isEditOrder ? 'Edit errand' : 'Post an errand'}
+        {isEditSeries
+          ? "Edit recurring errand"
+          : isEditOrder
+            ? "Edit errand"
+            : "Post an errand"}
       </h1>
 
       <div className="mt-8 space-y-8">
         {/* 1. Pick-up from */}
         <section>
-          {label('Pick-up from', 'supplier', true)}
+          {label("Pick-up from", "supplier", true)}
           {supplier ? (
             <div className="mt-2 flex items-center gap-3 rounded-card border border-line p-3">
               <div className="w-16 shrink-0">
-                <SupplierImage supplier={supplier} ratio="aspect-square" rounded="rounded-[10px]" compact />
+                <SupplierImage
+                  supplier={supplier}
+                  ratio="aspect-square"
+                  rounded="rounded-[10px]"
+                  compact
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-ink">
                   {qualifiedName(supplier)}
                 </p>
-                <p className="truncate text-sm text-ink-40">{supplier.faculty}</p>
+                <p className="truncate text-sm text-ink-40">
+                  {supplier.faculty}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSupplierId('')}
+                onClick={() => setSupplierId("")}
                 className="min-h-[44px] shrink-0 px-2 py-2 text-sm font-medium text-blue hover:underline md:min-h-0"
               >
                 Change
               </button>
             </div>
           ) : (
-            <div className="mt-2"><SearchableSelect
-              id="supplier"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
-            >
-              <option value="">Choose a stall</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {qualifiedName(s)}
-                </option>
-              ))}
-            </SearchableSelect></div>
+            <div className="mt-2">
+              <SearchableSelect
+                id="supplier"
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+              >
+                <option value="">Choose a stall</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {qualifiedName(s)}
+                  </option>
+                ))}
+              </SearchableSelect>
+            </div>
           )}
         </section>
 
         {/* 2. What do you need? */}
         <section>
-          {label('What do you need?', 'description', true)}
+          {label("What do you need?", "description", true)}
           <textarea
             id="description"
             rows={4}
@@ -530,7 +667,8 @@ function RequestForm({ order, series }) {
           />
           <div className="mt-1.5 flex items-start justify-between gap-4">
             <p className="max-w-prose text-sm text-ink-40">
-              Be specific. Your courier is buying this for you, so mention anything that matters.
+              Be specific. Your courier is buying this for you, so mention
+              anything that matters.
             </p>
             <span className="tnum shrink-0 text-sm text-ink-40">
               {description.length}/{MAX_CHARS}
@@ -540,46 +678,77 @@ function RequestForm({ order, series }) {
 
         {/* 3. Deliver to */}
         <section>
-          {label('Deliver to', 'location', true)}
+          {label("Deliver to", "location", true)}
           {savedLocation && !dismissedLocation && (
             <div className="mt-2 rounded-card border border-line p-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="font-semibold">Your previous location?</p>
                 <div className="flex shrink-0 gap-2">
-                  <Button type="button" variant="ghost" aria-label="Dismiss" onClick={() => setDismissedLocation(true)}><X size={18} aria-hidden="true" /></Button>
-                  <Button type="button" aria-label="Confirm" onClick={() => { setLocationId(String(last.last_req_del_loc_id)); setDetails(last.last_req_del_loc_details); setDismissedLocation(true) }}><Check size={18} aria-hidden="true" /></Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    aria-label="Dismiss"
+                    onClick={() => setDismissedLocation(true)}
+                  >
+                    <X size={18} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    aria-label="Confirm"
+                    onClick={() => {
+                      setLocationId(String(last.last_req_del_loc_id));
+                      setDetails(last.last_req_del_loc_details);
+                      setDismissedLocation(true);
+                    }}
+                  >
+                    <Check size={18} aria-hidden="true" />
+                  </Button>
                 </div>
               </div>
-              <p>{savedLocation.location}<br />{last.last_req_del_loc_details}</p>
+              <p>
+                {savedLocation.location}
+                <br />
+                {last.last_req_del_loc_details}
+              </p>
             </div>
           )}
-          {(isEdit || dismissedLocation || (!lastLoading && !locationsLoading && !savedLocation)) && <>
-          {/* Delivery locations are the Supplier Service's location reference list (ids). */}
-          <div className="mt-2"><SearchableSelect
-            id="location"
-            value={locationId}
-            onChange={(e) => setLocationId(e.target.value)}
-            className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
-          >
-            <option value="">Choose a drop-off point</option>
-            {locations.map((l) => (
-              <option key={l.location_id} value={l.location_id}>
-                {l.location}
-              </option>
-            ))}
-          </SearchableSelect></div>
-          <div className="mt-4">
-            {label('Exact delivery details', 'delivery-details', true)}
-            <input
-              id="delivery-details"
-              type="text" maxLength={250}
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              placeholder="e.g. Meet at the side entrance."
-              className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink" />
-            <span className="tnum text-sm text-ink-40">{details.length}/250</span>
-          </div>
-          </>}
+          {(isEdit ||
+            dismissedLocation ||
+            (!lastLoading && !locationsLoading && !savedLocation)) && (
+            <>
+              {/* Delivery locations are the Supplier Service's location reference list (ids). */}
+              <div className="mt-2">
+                <SearchableSelect
+                  id="location"
+                  value={locationId}
+                  onChange={(e) => setLocationId(e.target.value)}
+                  className="h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                >
+                  <option value="">Choose a drop-off point</option>
+                  {locations.map((l) => (
+                    <option key={l.location_id} value={l.location_id}>
+                      {l.location}
+                    </option>
+                  ))}
+                </SearchableSelect>
+              </div>
+              <div className="mt-4">
+                {label("Exact delivery details", "delivery-details", true)}
+                <input
+                  id="delivery-details"
+                  type="text"
+                  maxLength={250}
+                  value={details}
+                  onChange={(e) => setDetails(e.target.value)}
+                  placeholder="e.g. Meet at the side entrance."
+                  className="mt-2 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
+                />
+                <span className="tnum text-sm text-ink-40">
+                  {details.length}/250
+                </span>
+              </div>
+            </>
+          )}
         </section>
 
         {/* 4. When should this order be sent? (creating only). Send now vs. Send later -
@@ -587,30 +756,38 @@ function RequestForm({ order, series }) {
             new errand, not just a recurring one. */}
         {!isEdit && (
           <section>
-            <span className="block text-base font-semibold text-ink">When should this order be sent?</span>
+            <span className="block text-base font-semibold text-ink">
+              When should this order be sent?
+            </span>
             <div className="mt-2 inline-flex w-full rounded-btn border border-line p-1">
               {[
-                ['now', 'Send now'],
-                ['later', 'Send later'],
+                ["now", "Send now"],
+                ["later", "Send later"],
               ].map(([value, text]) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => {
-                    setSendMode(value)
-                    applyDeadlineDefault(value === 'now' ? new Date() : new Date(startDate + 'T' + startTime))
+                    setSendMode(value);
+                    applyDeadlineDefault(
+                      value === "now"
+                        ? new Date()
+                        : new Date(startDate + "T" + startTime),
+                    );
                   }}
                   aria-pressed={sendMode === value}
                   className={
-                    'h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 ' +
-                    (sendMode === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                    "h-11 md:h-10 flex-1 rounded-[7px] px-3 text-sm font-medium transition-colors duration-150 " +
+                    (sendMode === value
+                      ? "bg-ink text-white"
+                      : "text-ink-70 hover:text-ink")
                   }
                 >
                   {text}
                 </button>
               ))}
             </div>
-            {sendMode === 'later' && (
+            {sendMode === "later" && (
               <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm text-ink-70">Date</span>
@@ -618,8 +795,10 @@ function RequestForm({ order, series }) {
                     type="date"
                     value={startDate}
                     onChange={(e) => {
-                      setStartDate(e.target.value)
-                      applyDeadlineDefault(new Date(e.target.value + 'T' + startTime))
+                      setStartDate(e.target.value);
+                      applyDeadlineDefault(
+                        new Date(e.target.value + "T" + startTime),
+                      );
                     }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
@@ -630,8 +809,10 @@ function RequestForm({ order, series }) {
                     type="time"
                     value={startTime}
                     onChange={(e) => {
-                      setStartTime(e.target.value)
-                      applyDeadlineDefault(new Date(startDate + 'T' + e.target.value))
+                      setStartTime(e.target.value);
+                      applyDeadlineDefault(
+                        new Date(startDate + "T" + e.target.value),
+                      );
                     }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
@@ -646,7 +827,9 @@ function RequestForm({ order, series }) {
             ASAP/specific-time toggle, with ASAP hidden once Send later is chosen above. */}
         {isEditSeries ? (
           <section>
-            <span className="block text-base font-semibold text-ink">When do you need it by?</span>
+            <span className="block text-base font-semibold text-ink">
+              When do you need it by?
+            </span>
             <div className="foc-fade mt-2 grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-sm text-ink-70">Date</span>
@@ -677,8 +860,8 @@ function RequestForm({ order, series }) {
               </p>
             ) : (
               <p className="mt-1.5 max-w-prose text-sm text-ink-40">
-                The gap between this and the start time becomes the deadline for every future
-                occurrence (at most 24 hours).
+                The gap between this and the start time becomes the deadline for
+                every future occurrence (at most 24 hours).
               </p>
             )}
           </section>
@@ -694,10 +877,10 @@ function RequestForm({ order, series }) {
                   scheduled for a later, user-chosen time. */}
               {(asapAvailable
                 ? [
-                    ['asap', 'ASAP', 'By 1 hour from now'],
-                    ['later', 'By a specific time', null],
+                    ["asap", "ASAP", "By 1 hour from now"],
+                    ["later", "By a specific time", null],
                   ]
-                : [['later', 'By a specific time', null]]
+                : [["later", "By a specific time", null]]
               ).map(([value, text, hint]) => (
                 <button
                   key={value}
@@ -705,15 +888,20 @@ function RequestForm({ order, series }) {
                   onClick={() => setTiming(value)}
                   aria-pressed={effectiveTiming === value}
                   className={
-                    'min-h-11 md:min-h-10 flex-1 rounded-[7px] px-3 py-1 text-sm font-medium leading-tight transition-colors duration-150 ' +
-                    (effectiveTiming === value ? 'bg-ink text-white' : 'text-ink-70 hover:text-ink')
+                    "min-h-11 md:min-h-10 flex-1 rounded-[7px] px-3 py-1 text-sm font-medium leading-tight transition-colors duration-150 " +
+                    (effectiveTiming === value
+                      ? "bg-ink text-white"
+                      : "text-ink-70 hover:text-ink")
                   }
                 >
                   <span className="block">{text}</span>
                   {hint && (
                     <span
                       className={
-                        'block text-xs font-normal ' + (effectiveTiming === value ? 'text-white/80' : 'text-ink-40')
+                        "block text-xs font-normal " +
+                        (effectiveTiming === value
+                          ? "text-white/80"
+                          : "text-ink-40")
                       }
                     >
                       {hint}
@@ -722,7 +910,7 @@ function RequestForm({ order, series }) {
                 </button>
               ))}
             </div>
-            {effectiveTiming === 'later' && (
+            {effectiveTiming === "later" && (
               <div className="foc-fade mt-3 grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm text-ink-70">Date</span>
@@ -730,8 +918,8 @@ function RequestForm({ order, series }) {
                     type="date"
                     value={date}
                     onChange={(e) => {
-                      setDeadlineTouched(true)
-                      setDate(e.target.value)
+                      setDeadlineTouched(true);
+                      setDate(e.target.value);
                     }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
@@ -742,8 +930,8 @@ function RequestForm({ order, series }) {
                     type="time"
                     value={time}
                     onChange={(e) => {
-                      setDeadlineTouched(true)
-                      setTime(e.target.value)
+                      setDeadlineTouched(true);
+                      setTime(e.target.value);
                     }}
                     className="mt-1 h-12 w-full rounded-btn border border-line bg-surface px-3 text-base text-ink"
                   />
@@ -762,7 +950,8 @@ function RequestForm({ order, series }) {
             )}
             {!isSeriesCreate && (
               <p className="mt-1.5 max-w-prose text-sm text-ink-40">
-                This is when the food should reach you. Your courier sees it before accepting.
+                This is when the food should reach you. Your courier sees it
+                before accepting.
               </p>
             )}
           </section>
@@ -780,7 +969,9 @@ function RequestForm({ order, series }) {
                 onChange={(e) => setRepeat(e.target.checked)}
                 className="h-5 w-5 rounded border border-line text-ink"
               />
-              <span className="text-base font-semibold text-ink">Repeat this errand</span>
+              <span className="text-base font-semibold text-ink">
+                Repeat this errand
+              </span>
             </label>
             {repeat && (
               <div className="foc-fade mt-3">
@@ -793,7 +984,9 @@ function RequestForm({ order, series }) {
         {/* 6b. Repeat (editing a series). */}
         {isEditSeries && (
           <section>
-            <span className="block text-base font-semibold text-ink">Repeat</span>
+            <span className="block text-base font-semibold text-ink">
+              Repeat
+            </span>
             <div className="mt-2">
               <RecurrencePicker value={ruleState} onChange={setRuleState} />
             </div>
@@ -849,8 +1042,8 @@ function RequestForm({ order, series }) {
             </span>
             <div
               className={
-                'mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 ' +
-                (insufficient ? 'border-alert' : 'border-line')
+                "mt-2 inline-flex h-16 items-center gap-6 rounded-btn border px-4 " +
+                (insufficient ? "border-alert" : "border-line")
               }
             >
               <button
@@ -879,14 +1072,16 @@ function RequestForm({ order, series }) {
             {insufficient ? (
               /* Credit F1.2.2 — insufficient credits. */
               <p className="mt-2 max-w-prose text-sm text-alert">
-                You have <span className="tnum">{credits.total}</span> credits,{' '}
-                <span className="tnum">{credits.reserved}</span> of them reserved. Lower your offer or
-                wait for an errand to complete.
+                You have <span className="tnum">{credits.total}</span> credits,{" "}
+                <span className="tnum">{credits.reserved}</span> of them
+                reserved. Lower your offer or wait for an errand to complete.
               </p>
-            ) : (isEdit || sendMode === 'now') ? (
+            ) : isEdit || sendMode === "now" ? (
               <p className="mt-2 text-sm text-ink-40">
-                After posting, you&rsquo;ll have <span className="tnum">{remaining}</span> of{' '}
-                <span className="tnum">{credits.available}</span> credits available.
+                After posting, you&rsquo;ll have{" "}
+                <span className="tnum">{remaining}</span> of{" "}
+                <span className="tnum">{credits.available}</span> credits
+                available.
               </p>
             ) : null}
           </section>
@@ -894,7 +1089,7 @@ function RequestForm({ order, series }) {
 
         {/* 9. Anything else? */}
         <section>
-          {label('Anything else?', 'extra')}
+          {label("Anything else?", "extra")}
           <input
             id="extra"
             type="text"
@@ -906,19 +1101,19 @@ function RequestForm({ order, series }) {
         </section>
       </div>
 
-      {/* Footer bar: sticky to the viewport on mobile. */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface p-4 md:static md:mt-10 md:p-0 md:pt-6">
-        <div className="page-gutter mx-auto flex max-w-[640px] flex-col gap-3 md:flex-row md:items-center md:justify-between md:px-0">
+      {/* AI-generated (edited by <name>). Actions scroll with the form below Anything else. */}
+      <div className="mt-8 border-t border-line bg-surface pt-6 md:mt-10">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <p className="max-w-prose text-sm text-ink-70">
               {isEditSeries ? (
-                'Changes apply to future occurrences only; orders already posted are unaffected.'
+                "Changes apply to future occurrences only; orders already posted are unaffected."
               ) : isEditOrder ? (
-                'Update the details of this open errand.'
-              ) : sendMode === 'now' ? (
+                "Update the details of this open errand."
+              ) : sendMode === "now" ? (
                 <>
-                  <span className="tnum">{offer}</span> credits will be reserved until this errand
-                  is completed or cancelled
+                  <span className="tnum">{offer}</span> credits will be reserved
+                  until this errand is completed or cancelled
                 </>
               ) : null}
             </p>
@@ -929,7 +1124,11 @@ function RequestForm({ order, series }) {
             )}
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button variant="ghost" className="flex-1 md:flex-none" onClick={() => navigate(-1)}>
+            <Button
+              variant="ghost"
+              className="flex-1 md:flex-none"
+              onClick={() => navigate(-1)}
+            >
               Cancel
             </Button>
             <Button
@@ -937,12 +1136,18 @@ function RequestForm({ order, series }) {
               disabled={insufficient || !complete || posting}
               onClick={onSubmit}
             >
-              {posting && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+              {posting && (
+                <Loader2
+                  size={16}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              )}
               {posting ? submitLoadingLabel : submitLabel}
             </Button>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

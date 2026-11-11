@@ -124,6 +124,12 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Implemented user-requested automatic conversation pagination on bottom scrolling.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Left-aligned the mobile chat title and reduced mobile composer sizing per user instruction.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
  */
 
 import {
@@ -313,6 +319,9 @@ function ChatView() {
   const [hasArchived, setHasArchived] = useState(false);
   const [tabUnread, setTabUnread] = useState({ active: 0, archived: 0 });
   const [page, setPage] = useState(null);
+  const listBottom = useRef(null);
+  const listGeneration = useRef(0);
+  const loadingMore = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [retry, setRetry] = useState(0);
@@ -327,6 +336,8 @@ function ChatView() {
   }, [id, orderId]);
   useEffect(() => {
     let live = true;
+    listGeneration.current += 1;
+    loadingMore.current = false;
     setPage(null);
     setError(null);
     setLoading(true);
@@ -374,11 +385,17 @@ function ChatView() {
     };
   }, [role, user?.id, retry, id, orderId]);
 
-  const more = async () => {
+  // AI-generated (edited by <name>).
+  const more = useCallback(async () => {
+    if (loading || loadingMore.current || error || !page?.hasMore) return;
+    const generation = listGeneration.current;
+    loadingMore.current = true;
     setLoading(true);
     setError(null);
     try {
       const next = await loadChatPage(role, page.nextCursor, status);
+      // Ignore responses from a previously selected list.
+      if (generation !== listGeneration.current) return;
       setPage((prev) => ({
         ...next,
         conversations: pinSystemChat([
@@ -387,11 +404,25 @@ function ChatView() {
         ]),
       }));
     } catch (err) {
-      setError(err.message);
+      if (generation === listGeneration.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (generation === listGeneration.current) {
+        loadingMore.current = false;
+        setLoading(false);
+      }
     }
-  };
+  }, [loading, error, page, role, status]);
+
+  // AI-generated (edited by <name>).
+  useEffect(() => {
+    if (id || orderId || loading || error || !page?.hasMore || !listBottom.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) void more();
+    });
+    observer.observe(listBottom.current);
+    return () => observer.disconnect();
+  }, [id, orderId, loading, error, page, more]);
+
   const onRead = useCallback((conversationId) => {
     setPage((previous) =>
       previous
@@ -517,9 +548,7 @@ function ChatView() {
               ))}
             </ul>
             {page?.hasMore && (
-              <button disabled={loading} onClick={more}>
-                Load more chats
-              </button>
+              <div ref={listBottom} className="h-px" aria-hidden="true" />
             )}
           </aside>
         )}
@@ -864,7 +893,7 @@ function Thread({ id, user, onRead, errandReturnTo }) {
         >
           <ArrowLeft size={20} aria-hidden="true" />
         </Link>
-        <h2 className="text-center text-lg font-semibold">
+        <h2 className="text-left text-lg font-semibold md:text-center">
           <ChatTitle chat={chat} role={user?.activeView} />
         </h2>
         <div className="flex items-center gap-2">
@@ -1066,7 +1095,7 @@ function Thread({ id, user, onRead, errandReturnTo }) {
           disabled={
             busy || !chat || chat.status !== "ACTIVE" || chat.orderId === null
           }
-          className="min-w-0 flex-1 rounded-btn border border-line p-3"
+          className="h-10 min-w-0 flex-1 rounded-btn border border-line px-3 py-2 text-sm md:h-auto md:p-3 md:text-base"
         />
         <button
           type="submit"
@@ -1077,9 +1106,9 @@ function Thread({ id, user, onRead, errandReturnTo }) {
             chat?.status !== "ACTIVE" ||
             chat?.orderId === null
           }
-          className="flex items-center gap-2 rounded-btn bg-ink px-4 text-white disabled:opacity-50"
+          className="flex h-10 items-center gap-1.5 rounded-btn bg-ink px-3 text-sm text-white disabled:opacity-50 md:h-auto md:gap-2 md:px-4 md:text-base"
         >
-          <Send size={20} aria-hidden="true" /> Send
+          <Send size={20} className="h-4 w-4 md:h-5 md:w-5" aria-hidden="true" /> Send
         </button>
       </form>
     </section>

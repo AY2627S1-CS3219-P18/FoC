@@ -31,6 +31,10 @@
  *        synchronous reserve on POST /orders (George, 2026-11-09).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: George Yeo
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: mounts /suppliers (service-key protected, outside the user-JWT /orders middleware) (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import express, { type Express } from 'express';
@@ -40,6 +44,7 @@ import { createAuthenticate } from './middleware/authenticate.js';
 import { errorHandler, notFound } from './middleware/error-handler.js';
 import { healthRouter } from './routes/health.routes.js';
 import { ordersRouter } from './routes/orders.routes.js';
+import { suppliersRouter } from './routes/suppliers.routes.js';
 import type { OrderEventPublisher } from './realtime/order-events.js';
 import {
   createHttpSuppliersClient,
@@ -62,6 +67,8 @@ export interface AppDeps {
   /** credit-service for the reserve made while creating an order; defaults to HTTP. */
   credits?: CreditsClient;
   creditServiceUrl?: string;
+  /** Key supplier-service's worker must send to POST /suppliers/:id/cancel-orders. */
+  supplierServiceKey?: string;
 }
 
 /**
@@ -77,6 +84,7 @@ export function createApp({
   suppliers = createHttpSuppliersClient(supplierServiceUrl),
   creditServiceUrl = 'http://localhost:3003',
   credits = createHttpCreditsClient(creditServiceUrl),
+  supplierServiceKey,
 }: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -87,6 +95,11 @@ export function createApp({
     '/orders',
     authenticate ?? createAuthenticate(userServiceUrl),
     ordersRouter(prisma, { suppliers, credits, events, userServiceUrl }),
+  );
+
+  app.use(
+    '/suppliers',
+    suppliersRouter(prisma, { serviceKey: supplierServiceKey, events }),
   );
 
   app.use(notFound);

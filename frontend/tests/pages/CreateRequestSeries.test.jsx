@@ -29,7 +29,7 @@ vi.mock('../../src/context/AuthContext', () => ({
   useAuth: () => ({ credits: { available: 10 }, isLoggedIn: true, sessionReady: true }),
 }))
 vi.mock('../../src/api/suppliers', () => ({
-  listSuppliers: () => Promise.resolve({ data: [{ id: 1, name: 'Deck Cafe' }] }),
+  listAllSuppliers: () => Promise.resolve({ data: [{ id: 1, name: 'Deck Cafe' }] }),
   getSupplier: (id) => Promise.resolve({ id: Number(id), name: 'Deck Cafe' }),
 }))
 vi.mock('../../src/api/lastRequest', () => ({

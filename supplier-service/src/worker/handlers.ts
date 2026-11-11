@@ -6,11 +6,17 @@
  *        an invalid payload is a bad job (team answer 2026-09-30). No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): the suspension handler skips the job when the supplier is live again (is_deleted false and is_active true) (team decision in chat).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): the suspension handler passes the supplier name to the real Order client; the Message client is removed because order-service now sends the chat notice (team contract in chat).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { UnrecoverableError } from 'bullmq';
 import { z } from 'zod';
 import type { PhotoStorage } from '../storage/photoStorage.js';
-import type { MessageClient, OrderClient } from './downstream.js';
+import type { OrderClient } from './downstream.js';
 
 /** Resolves on success; a rejection is a failed attempt, an UnrecoverableError a bad job (no retries). */
 export type JobHandler = (payload: unknown) => Promise<void>;
@@ -34,11 +40,25 @@ export function createPhotoCleanupHandler(storage: Pick<PhotoStorage, 'delete'>)
   };
 }
 
-export function createSuspensionHandler({ order, message }: { order: OrderClient; message: MessageClient }): JobHandler {
+/** Reads the supplier's current flags; null when the row does not exist. */
+export interface SupplierStatusReader {
+  getStatus(supplierId: number): Promise<{ name: string; isDeleted: boolean; isActive: boolean } | null>;
+}
+
+export function createSuspensionHandler({
+  order,
+  suppliers,
+}: {
+  order: OrderClient;
+  suppliers: SupplierStatusReader;
+}): JobHandler {
   return async (payload) => {
     const { supplier_id } = parsePayload(suspensionPayload, payload);
-    // Order cancellation first, then the notification (Arch §8.1); the job is retried as a unit.
-    await order.deleteUncollectedRequests(supplier_id);
-    await message.notifyAffected(supplier_id);
+    // The supplier may have been reactivated since the job was queued: then nothing is cancelled.
+    const status = await suppliers.getStatus(supplier_id);
+    if (status === null) throw new UnrecoverableError(`Supplier ${supplier_id} does not exist.`);
+    if (!status.isDeleted && status.isActive) return;
+    // order-service cancels the uncollected requests and posts the chat notice; the job is retried as a unit.
+    await order.deleteUncollectedRequests(supplier_id, status.name);
   };
 }

@@ -16,6 +16,11 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed reactivateSupplier; added SupplierChange.reactivate (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): added CurrentSupplier.isActive and
+ *        SupplierChange.extraTasks so setting a supplier inactive queues the suspension task in the same
+ *        transaction (team decision given in chat, 2026-11-11). No requirements, architecture, schema,
+ *        or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { CurrentPhoto } from '../business/photoPlan.js';
 import type { OutboxTask } from '../queue/tasks.js';
@@ -46,6 +51,7 @@ export interface CurrentSupplier {
   type: 'Store' | 'Facility';
   locationId: number;
   isDeleted: boolean;
+  isActive: boolean;
   version: number;
   /** In display order. */
   photos: CurrentPhoto[];
@@ -77,6 +83,8 @@ export interface SupplierChange {
    * and is_active true, so the flags commit only if the whole edit transaction succeeds.
    */
   reactivate?: boolean;
+  /** Written to the outbox in the update transaction, stamped with the new version. */
+  extraTasks?: OutboxTask[];
 }
 
 export interface SupplierWriteRepository {

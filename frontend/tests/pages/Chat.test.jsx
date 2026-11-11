@@ -85,6 +85,13 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Combined existing translation and chat branch changes during merge resolution.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Scope (2026-11-10, Codex, model: GPT-6): Updated pagination tests to trigger bottom intersection.
+ * No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: removed the DemoProvider wrapper (the demo is gone, all services are live).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -97,7 +104,6 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Chat from "../../src/pages/Chat";
-import { DemoProvider } from "../../src/context/DemoContext";
 
 const realtime = vi.hoisted(() => ({
   handlers: [],
@@ -146,23 +152,30 @@ vi.mock("../../src/context/AuthContext", () => ({
 function renderChat(initialEntries) {
   return render(
     <MemoryRouter initialEntries={initialEntries}>
-      <DemoProvider>
-        <Routes>
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chats" element={<Chat />} />
-          <Route path="/my-errands" element={<p>Errand cards</p>} />
-          <Route path="/my-deliveries" element={<p>Delivery cards</p>} />
-          <Route path="/suppliers" element={<p>Suppliers page</p>} />
-          <Route path="/requests" element={<p>Find errands page</p>} />
-          <Route path="/some-other-page" element={<p>The previous page</p>} />
-        </Routes>
-      </DemoProvider>
+      <Routes>
+        <Route path="/chat/:id" element={<Chat />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/chats" element={<Chat />} />
+        <Route path="/my-errands" element={<p>Errand cards</p>} />
+        <Route path="/my-deliveries" element={<p>Delivery cards</p>} />
+        <Route path="/suppliers" element={<p>Suppliers page</p>} />
+        <Route path="/requests" element={<p>Find errands page</p>} />
+        <Route path="/some-other-page" element={<p>The previous page</p>} />
+      </Routes>
     </MemoryRouter>,
   );
 }
 
+let chatListObserver;
+
+// AI-generated
 beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback) { this.callback = callback; }
+    observe() { chatListObserver = this; }
+    disconnect() {}
+  });
+  chatListObserver = undefined;
   chatApi.markMessagesRead.mockResolvedValue({});
   chatApi.listChats.mockResolvedValue({
     conversations: [],
@@ -184,6 +197,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Chat outer back arrow", () => {
@@ -1067,11 +1081,12 @@ it("pins an older FoC conversation found beyond the first page without duplicati
     systemLink.compareDocumentPosition(orderLink) &
       Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+  await waitFor(() => expect(chatListObserver).toBeDefined());
+  act(() => chatListObserver.callback([{ isIntersecting: true }]));
   await waitFor(() =>
     expect(
-      screen.queryByRole("button", { name: "Load more chats" }),
-    ).not.toBeInTheDocument(),
+      chatApi.listChats,
+    ).toHaveBeenCalledWith("requester", cursor, "active"),
   );
   expect(screen.getAllByRole("link", { name: /FoC/ })).toHaveLength(1);
 });
@@ -1151,7 +1166,8 @@ describe("Active and archived chat tabs", () => {
       screen.queryByRole("link", { name: /active-1/ }),
     ).not.toBeInTheDocument();
     expect(archived).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Load more chats" }));
+    await waitFor(() => expect(chatListObserver).toBeDefined());
+  act(() => chatListObserver.callback([{ isIntersecting: true }]));
     await screen.findByRole("link", { name: /archived-2/ });
     expect(chatApi.listChats).toHaveBeenCalledWith(
       "requester",

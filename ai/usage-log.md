@@ -16495,7 +16495,7 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-11-10
 Scope: Resolved the append-only usage-log conflict and indexed this task.
 No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: tng wen xi
 -->
 
 **Tool:** Codex (model: GPT-6)
@@ -16518,6 +16518,207 @@ Verification: confirmed that the resolved log preserves the complete HEAD versio
 
 **Deviations / questions raised for the team:**
 None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Automatically load more chats on bottom scrolling
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the requested conversation pagination implementation and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction quoted below; existing frontend conversation pagination and status filters in frontend/src/pages/Chat.jsx.
+
+**Prompts (exact):**
+
+> can u change the conversation listing to remove 'Load more chats' and auto load more when i scroll to the bottom of the page
+
+**Key responses:**
+Replaced the Load more chats button with a bottom sentinel observed through IntersectionObserver. Reused existing pagination and status filters, guarded duplicate requests, ignored pagination responses after a list refresh, and preserved error/retry feedback. Updated existing pagination tests to trigger bottom intersection.
+Verification: updated Chat.test.jsx suite passed (42 tests); frontend production build passed with a chunk-size warning; git diff --check passed before disclosure updates. An initial edit command used the wrong working directory and made no changes; the test run immediately after it verified unchanged code. Corrected the working directory, applied changes and reran the tests successfully. No browser verification performed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `frontend/tests/pages/Chat.test.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Remove bottom-left demo button
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded removal of the demo controls and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction quoted below; existing DemoControls rendering in frontend/src/App.jsx.
+
+**Prompts (exact):**
+
+> now i need your help to remove the demo button on the bottom left.
+
+**Key responses:**
+Removed the DemoControls import and global render from App.jsx, removing the bottom-left Demo button and its panel. Added the required disclosure headers and README index row, and removed a blank line that split the preceding index row from the table.
+Verification: frontend production build passed with the existing chunk-size warning. No new tests or browser checks run for this UI removal.
+
+**Files:**
+
+- `frontend/src/App.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope, Log index row and table formatting)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Fix clipped searchable errand filters
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the searchable filter layout fix and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** debug
+**Scope:** Debugging
+**Governing decision:** User-reported failure quoted below; existing searchable drop-off and sort controls in frontend/src/pages/RequestBoard.jsx and frontend/src/components/SearchableSelect.jsx.
+
+**Prompts (exact):**
+
+> the searchable dropdown doesnt seem to be working on my end
+
+**Key responses:**
+Identified the horizontal overflow container surrounding absolutely positioned dropdown menus. Removed the clipping overflow and allowed filters to wrap onto additional lines. Kept existing searchable selection and query behavior.
+Verification: SearchableSelect and RequestBoard tests passed (5 tests across 2 files). Frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed.
+
+**Files:**
+
+- `frontend/src/pages/RequestBoard.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Move errand form actions below Anything else
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-specified mobile errand form layout change.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below specifies placing the entire bottom bar below Anything else; existing CreateRequest.jsx form and actions.
+
+**Prompts (exact):**
+
+> maybe the whole bottom bar can be moved to right below anything else
+
+The prompt included a screenshot of the form and overlapping mobile action bar/chat bubble.
+
+**Key responses:**
+Moved the existing credit notice, Cancel and submit controls into normal document flow immediately after Anything else. Removed fixed mobile positioning, duplicated horizontal padding and the old bottom clearance reserved for the fixed bar. The action area now scrolls with the form, including its existing recurring/edit variants.
+Verification: CreateRequest and CreateRequestSeries suites passed (7 tests across 2 files); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
+
+**Files:**
+
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
+
+## 2026-11-10 — Compact mobile chat composer and align title
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Recorded the user-requested mobile chat styling changes and verification.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: tng wen xi
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** generate
+**Scope:** Implementation code
+**Governing decision:** User instruction below and existing chat header/composer in frontend/src/pages/Chat.jsx.
+
+**Prompts (exact):**
+
+> on mobile, left-align the title and make the text box and send button less chunky.
+
+The prompt included a screenshot of the mobile chat header and composer.
+
+**Key responses:**
+Left-aligned the title on mobile. Reduced the mobile input and Send button to 40px height, smaller text and padding, and a 16px send icon. Retained the existing desktop styles through responsive classes.
+Verification: Chat tests passed (42 tests); frontend production build passed with the existing chunk-size warning. Browser visual verification was not performed. git diff --check passed.
+
+**Files:**
+
+- `frontend/src/pages/Chat.jsx` (modified)
+- `ai/usage-log.md` (appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-11-10 — order-service: README overview and architecture diagrams
 
@@ -16745,6 +16946,43 @@ Accepted all changes.
 **What I kept/changed/rejected:**
 
 **Author review:** George Yeo
+
+## 2026-11-10 — Restore complete usage-log entries during merge
+
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-11-10
+Scope: Restored complete disclosure entries from both merge stages and indexed the resolution.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review:
+-->
+
+**Tool:** Codex (model: GPT-6)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** AGENTS.md append-only disclosure requirements and the existing stage-2/stage-3 Git versions of ai/usage-log.md.
+
+**Prompts (exact):**
+
+> help me solve this merge conflict
+
+**Key responses:**
+Resolved the sole unmerged file, ai/usage-log.md. Reconstructed its interleaved tail using complete entries from Git's merge stages: preserved incoming shared history and its existing signatures, restored the complete local Resolve usage-log merge conflict entry and five frontend entries, then retained all five incoming entries. Preserved existing author reviews without signing new ones. Added the required README index row. Left other merged implementation files unchanged.
+Verification: programmatic checks confirmed preservation of the incoming shared prefix, complete local tail and complete incoming tail, with no active conflict markers in the restored file. No runtime tests run because this resolution only changes disclosure Markdown.
+
+**Files:**
+
+- `ai/usage-log.md` (resolved and appended this entry)
+- `README.md` (disclosure scope and Log index row)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+I kept all changes.
+
+**Author review:**
+tng wen xi
 
 ## 2026-11-10 — user-service: full service README
 
@@ -17128,3 +17366,202 @@ None.
 Accepted all changes.
 
 **Author review:** gabriel yap
+
+## 2026-11-11 — Supplier deletion linked to order-service
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | refactor | docs
+**Scope:** Implementation code | Boilerplate | Refactor/Docs
+**Governing decision:** Team decisions given in chat on 2026-11-11 (quoted in the prompts below): the supplier worker calls an order-service endpoint with a supplier id; open/accepted (not picked up) requests are cancelled and a system message is sent to each request chat using the chat key; a new, separate service key authenticates the worker; route POST /suppliers/:id/cancel-orders; the worker sends the supplier name; a suspension job is skipped if the supplier is not deleted and is active; setting a supplier inactive also queues the job; pickers load all suppliers using existing endpoints; remove all demo code.
+
+**Prompts (exact):**
+
+> 1. I realised that the actual supplier deletion flow is still mocked - the soft deletion is queued in the supplier-worker, but not linked with the order service? Ensure that it actually runs. And when it runs, it calls the api of the order service to initiate the request deletion (only applies to uncollected requests - this should already be validated in the order-service). The existing order service should have configurations to notify the requester via a request-level system message if the supplier is deleted showing "<supplier name> has been shut down temporarily. Your request has been automatically cancelled and reserved credits are refunded"
+> 2. ensure the suspension handler checks the supplier is reactivated before deletion
+> 3. Since the picker only needs the names, lets return all suppliers for the picker - this means an additional endpoint? To query just the ids?
+> 4. Strip away all instances of demo controls - all services are live
+> 5. essentially ensure the service is deployment ready.
+>
+> perform these edits in a new branch "linking supplier with order service"
+> I already have some changes in the currene branch. move exerthing over. Do not commit the contributions-presentation.md. Thats for me only
+
+> the supplier-service's queued supplier deletion task will call the order-deletion endpoint in order-service -is that configured already? The order-service should have an endpoint to handle deletion of requests that have not been picked up yet, as well as sending the notification to the appropriate request chat
+
+> The existing system already calls for these data specifically to populate the tables. Just update them to return all instead of a paginated version since this is just for the pickers and contain very little data
+
+> handler skips a supplier deletion if is_deleted is false and is_active is true. The order will still be deleted if is_active is false - in fact, if the supplier is set to inactive (not just deleted), the order deletion task will be queued as well
+
+> Remove all of it
+
+> Follow existing conventions. The endpoint name will follow existing conventions, something like /deleteSupplier/:id will be at just take in a supplier id and will return 200 for confirmation. The actual deletion logic will just check through all existing orders associated with that supplier id, and if the order has not been picked up, the order will be cancelled, and a system message sent to that associated chat usnig the chat's key. To authenticate the supplier worker, a similar service key will be added (what is the supplier key? can i reuse that?)
+
+> (answers to the agent's questions) Worker sends it (Recommended) / if i use POST /suppliers/:id/cancel-orders, will order service still receive it? if yes, go for it / New key (Recommended)
+
+**Key responses:**
+Confirmed the link was not configured (the worker used a logging mock; order-service had no endpoint). Built order-service `POST /suppliers/:supplierId/cancel-orders` (header `order-supplier-service-key`, body `{ supplierName }`, 200 `{ cancelled }`): it cancels open/accepted requests as the system actor, writing the credit release and the chat notice (shut-down text, chat archived) to the outbox in the same transaction, so the existing worker sends it with the chat key. The system actor may now cancel open/accepted requests (status matrix and its spec updated). Supplier-service: the worker uses a real HTTP order client (mock Order/Message clients and MOCK_DOWNSTREAM_FAILURE removed, since order-service now sends the notice); the suspension handler skips a supplier that is not deleted and is active; setting a supplier inactive queues the suspension task. Frontend: removed DemoContext/DemoProvider and the unused mock data files and seed arrays; the create-request supplier picker now reads every page of the existing list endpoint (no new endpoint). Env, compose and README updated for ORDER_SUPPLIER_SERVICE_API_KEY and ORDER_SERVICE_URL. Answered the key question: SUPPLIER_ORDER_SERVICE_API_KEY protects supplier-service routes called by order-service, so a new key was added. Verification: supplier-service 450/450 and order-service 826/826 tests and tsc pass; frontend tests pass when run in isolation, but a few unrelated timer tests intermittently time out in the full run. A `git stash` was run by mistake mid-session and immediately popped; no changes were lost. Not verified: docker compose end to end; the AWS ECS task definitions (not in the repo) need the new variables.
+
+**Files:**
+
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/config/env.ts` (modified)
+- `order-service/src/app.ts` (modified)
+- `order-service/src/server.ts` (modified)
+- `order-service/src/middleware/service-key.ts` (created)
+- `order-service/src/routes/suppliers.routes.ts` (created)
+- `order-service/src/routes/suppliers.routes.spec.ts` (created)
+- `order-service/.env.example` (modified)
+- `supplier-service/src/worker/downstream.ts` (modified)
+- `supplier-service/src/worker/handlers.ts` (modified)
+- `supplier-service/src/worker/main.ts` (modified)
+- `supplier-service/src/config.ts` (modified)
+- `supplier-service/src/business/supplierUpdateService.ts` (modified)
+- `supplier-service/src/persistence/supplierWriteRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierWriteRepository.ts` (modified)
+- `supplier-service/src/persistence/mysqlSupplierStatusReader.ts` (created)
+- `supplier-service/test/worker/downstream.test.ts` (modified)
+- `supplier-service/test/worker/handlers.test.ts` (modified)
+- `supplier-service/test/business/supplierUpdateService.test.ts` (modified)
+- `supplier-service/test/persistence/mysqlSupplierWriteRepository.test.ts` (modified)
+- `supplier-service/README.md` (modified)
+- `supplier-service/.env.example` (modified)
+- `compose.yaml` (modified)
+- `.env.example` (modified)
+- `frontend/src/main.jsx` (modified)
+- `frontend/src/api/suppliers.js` (modified)
+- `frontend/src/pages/CreateRequest.jsx` (modified)
+- `frontend/src/data/requests.js` (modified)
+- `frontend/src/data/suppliers.js` (modified)
+- `frontend/src/context/DemoContext.jsx` (deleted)
+- `frontend/src/data/locations.js`, `messages.js`, `transactions.js`, `users.js` (deleted)
+- `frontend/tests/pages/Chat.test.jsx`, `CreateRequest.test.jsx`, `CreateRequestSeries.test.jsx` (modified)
+- `ai/usage-log.md` (entry appended), `README.md` (index row added)
+
+**Deviations / questions raised for the team:**
+The agent stopped twice per AGENTS.md §2.1 and got the contract, route, key and name source from the team. Open points: (1) the new variables must be added to the ECS task definitions (order-service: ORDER_SUPPLIER_SERVICE_API_KEY; supplier-worker: ORDER_SERVICE_URL, ORDER_SUPPLIER_SERVICE_API_KEY) and to the root `.env`; (2) requests still `pending` (reserve in flight) are not cancelled; (3) supplier-service PROJECT_STATE.md decision C39 (mock downstream clients) is now superseded and was left unedited; (4) the pickers read every page client-side rather than via a changed endpoint.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Architecture doc and presentation updated for the supplier shut-down flow
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** docs
+**Scope:** Refactor/Docs
+**Governing decision:** The team decisions recorded in the previous 2026-11-11 entry (route, key, body, cancel rule, reactivation skip, inactive trigger) and the team's instruction to call the Message Service the Chat Service.
+
+**Prompts (exact):**
+
+> what has been the convention with the routes? do they follow the endpoint?
+> update the supplierservicearchitectureplan and contributions presentation with these new flows (and renaming the message service to chat service - since that is whats used now).
+> With these, all gaps should be closed?
+
+**Key responses:**
+Answered the route-convention question from the code (order-service uses `/<resource>/:id/<verb>`, so the new route follows it; no route uses a camelCase verb-first name). Updated `supplier-service/SupplierServiceArchitecture.md` (header scope, §8.1 text and sequence diagram, the deferral paragraph replaced with the recorded contract, §9 items 5, 17, 22 and a new item 24) and `docs/contributions-presentation.md` (§2.1 diagram and integration bullets, §2.3 diagram) to describe the implemented flow and rename Message Service to Chat Service. Only the team's decisions were recorded; no rationale was drafted. The presentation stays uncommitted at the user's request. Answered that not all gaps are closed (see below).
+
+**Files:**
+
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `docs/contributions-presentation.md` (modified, not to be committed)
+- `ai/usage-log.md` (entry appended), `README.md` (index row added)
+
+**Deviations / questions raised for the team:**
+Remaining gaps listed to the user: ECS task definitions and the root `.env` need the new variables; `pending` requests are not cancelled; end-to-end compose run not done; `supplier-service/PROJECT_STATE.md` C39 is superseded and unedited; older "Message Service" mentions in dated change-log lines of the architecture doc were left as history.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Supplier shut-down also cancels pending requests
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team decision given in chat on 2026-11-11 (prompt below): `pending` counts as "not yet collected" and follows the same cancellation flow.
+
+**Prompts (exact):**
+
+> pending state is still "not yet collected" and follows the exact same cancellation flow
+
+**Key responses:**
+Order-service now cancels `pending` requests too: the system actor may cancel a pending request (status matrix and its spec updated), `cancelOrdersForSupplier` selects pending/open/accepted, and a pending cancel always queues the credit release (a reserve may have committed unseen, as createOrder already assumes). Choice made within the decision: a pending request has no chat yet (the chat is created on pending to open), so no chat notice is queued for it; the team should confirm this. `settleReservation` now returns the order instead of throwing when a shut-down cancelled it between the reserve and the settle. Architecture doc and presentation updated. order-service 826/826 tests and tsc pass.
+
+**Files:**
+
+- `order-service/src/domain/order-status.ts` (modified)
+- `order-service/src/domain/order-status.spec.ts` (modified)
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/services/orders.service.spec.ts` (modified)
+- `order-service/src/routes/suppliers.routes.spec.ts` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `docs/contributions-presentation.md` (modified, not to be committed)
+- `ai/usage-log.md` (entry appended), `README.md` (index row added)
+
+**Deviations / questions raised for the team:**
+Confirm that a pending request should get no chat notice (it has no chat). The mid-settle race (shut-down between reserve and settle) is handled but not covered by a test.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Pending shut-down notice sent through the order-less system message
+
+**Tool:** Claude Code (model: claude-sonnet-5-5)
+**Mode:** generate | docs
+**Scope:** Implementation code | Refactor/Docs
+**Governing decision:** Team decision given in chat on 2026-11-11 (prompt below); reuses the existing order-less system notification (`notifySeriesEvent`, `orderId` null plus `recipient`).
+
+**Prompts (exact):**
+
+> there is curently a option to send system messages not attached to any orders. The same message will be sent but through that portal instead of the per order chat
+
+**Key responses:**
+For a pending request cancelled by a supplier shut-down, `transitionOrder` now queues the same message as an order-less notification to the requester (idempotency key: a fresh messageId) instead of skipping it; open/accepted requests are unchanged. Supersedes the "no chat notice" choice in the previous entry. Route test extended; order-service 826/826 tests and tsc pass. Architecture doc and presentation wording updated.
+
+**Files:**
+
+- `order-service/src/services/orders.service.ts` (modified)
+- `order-service/src/routes/suppliers.routes.spec.ts` (modified)
+- `supplier-service/SupplierServiceArchitecture.md` (modified)
+- `docs/contributions-presentation.md` (modified, not to be committed)
+- `ai/usage-log.md` (entry appended), `README.md` (index row added)
+
+**Deviations / questions raised for the team:**
+None.
+
+**What I kept/changed/rejected:**
+
+**Author review:**
+
+## 2026-11-11 — Merge main into docs/api-readme
+
+**Tool:** Claude Code (model: claude-opus-5-5)
+**Mode:** refactor
+**Scope:** Refactor/Docs
+**Governing decision:** AGENTS.md §5.1 (append-only log, one copy per entry) and §6 (README must keep the Log index table)
+
+**Prompts (exact):**
+
+> help me resolve merge conflict for
+
+**Key responses:**
+
+- Checked every staged file for leftover conflict markers; none found.
+- `ai/usage-log.md`: the merge resolution had added this branch's five 2026-11-11 entries (README Services section, README header tidy-up, API.md consolidation, supplier-service section, API.md table of contents) twice. Confirmed the two copies were byte-identical and removed the second one. No other entries were changed.
+- `README.md`: this branch's version had no Log index table, while main's did. Kept this branch's header and Services section, restored main's Log index table verbatim (rows up to #341), and added rows #342-347 for this branch's entries and this merge. Main's existing duplicate row numbers were left as they are.
+- Verification: grep for conflict markers across all staged files; checked each of this branch's entries appears exactly once in the log and the README has exactly one Log index section.
+
+**Files:**
+
+- `README.md` (modified)
+- `ai/usage-log.md` (modified, this entry)
+
+**Deviations / questions raised for the team:**
+
+Main's Log index already contains duplicated rows (e.g. #321-325 repeat as #327-331) and some reused numbers; not changed here, flagged for the team.
+
+**What I kept/changed/rejected:**
+
+**Author review:**

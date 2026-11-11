@@ -17,6 +17,10 @@
 # No requirements, architecture, schema, or API decisions were made by the AI tool.
 # Author review:
 
+# Scope (2026-11-11, Codex, model: GPT-6): Updated endpoint documentation to match existing routes and validation.
+# No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
+
 openapi: 3.0.3
 info:
   title: FoC Supplier Service API
@@ -24,10 +28,11 @@ info:
   description: |
     Supplier directory for FoC: user-facing reads, administrator management, and reference data.
 
-    Source of truth for the contract is `SupplierServiceArchitecture.md` (§6.2, §7, §8). Every route
-    requires a User Service bearer token. The service fetches the User Service JWKS from
-    `/auth/.well-known/jwks.json` and verifies the RS256 signature locally.
-    All endpoints are rate-limited per client IP per minute using PER_IP_RATE_LIMIT (default 30).
+    The architecture is recorded in `SupplierServiceArchitecture.md`. API routes require a User Service
+    bearer token, except where a Supplier-Order-Service-Key is also accepted. The service fetches the
+    User Service JWKS from `/auth/.well-known/jwks.json` and verifies RS256 signatures locally.
+    API routes are rate-limited per client IP per minute using PER_IP_RATE_LIMIT (default 30).
+    The unauthenticated health endpoint is outside the limiter.
 
     `isOpen` is computed, not stored, in Singapore time (UTC+8).
 servers:
@@ -46,6 +51,24 @@ tags:
     description: Faculty, location and category management (roles admin, super admin).
 
 paths:
+  /health:
+    servers:
+      - url: /
+    get:
+      operationId: healthCheck
+      summary: Check whether the service process is running
+      security: []
+      responses:
+        "200":
+          description: Service process is running; dependencies are not checked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
   /suppliers:
     get:
       tags: [Suppliers]
@@ -79,6 +102,9 @@ paths:
     get:
       tags: [Suppliers]
       operationId: getSupplier
+      security:
+        - bearerAuth: []
+        - supplierOrderServiceKey: []
       summary: Get one visible supplier
       parameters:
         - $ref: "#/components/parameters/SupplierId"
@@ -99,6 +125,9 @@ paths:
     get:
       tags: [Reference]
       operationId: listLocationOptions
+      security:
+        - bearerAuth: []
+        - supplierOrderServiceKey: []
       summary: List locations with their faculty
       responses:
         "200":
@@ -175,8 +204,8 @@ paths:
         `is_active = true` are restored in one transaction. Submitted photos replace the existing ones; none
         submitted leaves them; `version` is bumped once.
 
-        A Store needs `openingHours` or `is24h=true`. A Facility's hours are set by the server (day 8,
-        00:00-23:59). A 24/7 Store sends a single `openingHours` entry `{"day": 8, "open": "00:00", "close": "23:59"}`.
+        A Store needs `openingHours`. A Facility's hours are set by the server (day 8,
+        00:00-23:59). A 24/7 Store sets `is24h=true`; `openingHours` must contain the single day-8 entry `{"day": 8, "open": "00:00", "close": "23:59"}`.
         An entry with `open` equal to `close` is rejected.
       parameters:
         - name: Idempotency-Key
@@ -391,10 +420,12 @@ paths:
         content:
           application/json:
             schema:
-              allOf:
-                - $ref: "#/components/schemas/LocationWrite"
-              required: []
+              type: object
               minProperties: 1
+              properties:
+                location: { type: string, minLength: 1, maxLength: 255 }
+                faculty_id: { type: integer, minimum: 1 }
+                level: { type: integer }
       responses:
         "200":
           description: Updated.
@@ -484,6 +515,11 @@ paths:
 
 components:
   securitySchemes:
+    supplierOrderServiceKey:
+      type: apiKey
+      in: header
+      name: Supplier-Order-Service-Key
+      description: Order Service key accepted on supplier detail and location reference reads. A valid bearer token takes precedence; an invalid key without a valid token returns 401 INVALID_SERVICE_KEY.
     bearerAuth:
       type: http
       scheme: bearer
@@ -578,7 +614,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     TooManyRequests:
-      description: More than 30 requests per minute from this IP.
+      description: The configured per-IP request limit per minute was exceeded (PER_IP_RATE_LIMIT; default 30).
       headers:
         Retry-After:
           schema: { type: integer }
@@ -829,7 +865,7 @@ components:
         desc: { type: string }
         openingHours:
           type: string
-          description: "JSON array of `{day, open, close}` with day 1-7. Required for a Store unless `is24h` is `true`."
+          description: "JSON array of `{day, open, close}` with day 1-7. Required for a Store; when `is24h` is `true`, send the single day-8 entry."
           example: '[{"day":1,"open":"09:00","close":"18:00"}]'
         is24h:
           type: string

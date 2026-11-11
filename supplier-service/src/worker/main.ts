@@ -17,16 +17,23 @@
  * Scope: ECS Fargate migration - optional Redis TLS for BullMQ, per George's ECS Fargate plan, Phase 1
  *        item 5. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: George Yeo
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): passes a supplier status reader (pool query) to the suspension handler.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): the worker uses the HTTP Order client (ORDER_SERVICE_URL + ORDER_SUPPLIER_SERVICE_API_KEY) instead of the logging mocks; the Message mock is removed (team contract in chat).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { config } from '../config.js';
 import { pool } from '../db/pool.js';
 import { createMysqlDeadLetterRepository } from '../persistence/mysqlDeadLetterRepository.js';
+import { createMysqlSupplierStatusReader } from '../persistence/mysqlSupplierStatusReader.js';
 import { createMysqlOutboxRepository } from '../persistence/mysqlOutboxRepository.js';
 import { createBullJobQueue } from '../queue/bullQueue.js';
 import { PHOTO_DELETION_TASK_NAME } from '../queue/photoDeletionJob.js';
 import { SUSPENSION_TASK_NAME } from '../queue/tasks.js';
 import { createConfiguredPhotoStorage } from '../storage/s3PhotoStorage.js';
-import { createMockMessageClient, createMockOrderClient } from './downstream.js';
+import { createHttpOrderClient } from './downstream.js';
 import { createPhotoCleanupHandler, createSuspensionHandler } from './handlers.js';
 import { createJobProcessor } from './jobProcessor.js';
 import { createOutboxRelay } from './outboxRelay.js';
@@ -39,6 +46,10 @@ const connection = {
   port: config.redis.port,
   ...(config.redis.tls ? { tls: {} } : {}),
 };
+if (config.orderServiceUrl === undefined || config.orderSupplierServiceApiKey === undefined) {
+  throw new Error('ORDER_SERVICE_URL and ORDER_SUPPLIER_SERVICE_API_KEY are required by the supplier worker');
+}
+const orderServiceKey = config.orderSupplierServiceApiKey;
 const deadLetters = createMysqlDeadLetterRepository(pool);
 const jobQueue = createBullJobQueue(connection);
 
@@ -46,8 +57,8 @@ const processor = createJobProcessor({
   handlers: {
     [PHOTO_DELETION_TASK_NAME]: createPhotoCleanupHandler(createConfiguredPhotoStorage(config.photoStore)),
     [SUSPENSION_TASK_NAME]: createSuspensionHandler({
-      order: createMockOrderClient({ fail: config.mockDownstreamFailure }),
-      message: createMockMessageClient({ fail: config.mockDownstreamFailure }),
+      order: createHttpOrderClient(config.orderServiceUrl, orderServiceKey),
+      suppliers: createMysqlSupplierStatusReader(pool),
     }),
   },
   deadLetters,
