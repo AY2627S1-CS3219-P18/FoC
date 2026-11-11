@@ -55,6 +55,9 @@
 #
 # Production-like:  docker compose up --build
 # Dev (hot reload): docker compose -f compose.yaml -f compose.dev.yaml up --build --watch
+# Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): order-service gets ORDER_SUPPLIER_SERVICE_API_KEY; supplier-worker gets ORDER_SERVICE_URL and the key; MOCK_DOWNSTREAM_FAILURE removed (team contract in chat).
+#        No requirements, architecture, schema, or API decisions were made by the AI tool.
+# Author review:
 
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-11-07
@@ -156,6 +159,8 @@ services:
       SUPPLIER_SERVICE_URL: http://supplier-service:3002
       # POST /orders reserves credits here before answering (503 if it is down).
       CREDIT_SERVICE_URL: http://credit-service:3003
+      # supplier-worker's shut-down call (POST /suppliers/:id/cancel-orders) is checked against this.
+      ORDER_SUPPLIER_SERVICE_API_KEY: ${ORDER_SUPPLIER_SERVICE_API_KEY:?set ORDER_SUPPLIER_SERVICE_API_KEY in .env}
     ports:
       - "${ORDER_SERVICE_PORT:-3002}:3000"
     depends_on:
@@ -529,7 +534,8 @@ services:
       PHOTO_STORE_BUCKET: ${PHOTO_STORE_BUCKET:-supplier-photos}
       PHOTO_STORE_ACCESS_KEY: ${PHOTO_STORE_ACCESS_KEY:-photostoredev}
       PHOTO_STORE_SECRET_KEY: ${PHOTO_STORE_SECRET_KEY:-photostoredev-secret}
-      MOCK_DOWNSTREAM_FAILURE: ${MOCK_DOWNSTREAM_FAILURE:-false}
+      ORDER_SERVICE_URL: http://order-service:3000
+      ORDER_SUPPLIER_SERVICE_API_KEY: ${ORDER_SUPPLIER_SERVICE_API_KEY:?set ORDER_SUPPLIER_SERVICE_API_KEY in .env}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
