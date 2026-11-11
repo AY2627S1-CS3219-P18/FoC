@@ -16,18 +16,21 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added a reactivation-plus-photo-edit test; the reactivation builder accepts existing photos and an upload stub.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): CurrentSupplier fake gains isActive; tests for queueing the suspension task when a supplier is set inactive.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { CurrentSupplier, SupplierWriteRepository } from '../../src/persistence/supplierWriteRepository.js';
 import { createInMemoryPhotoStorage } from '../storage/inMemoryPhotoStorage.js';
-import { buildPhotoCleanupTask } from '../../src/queue/tasks.js';
+import { buildPhotoCleanupTask, buildSuspensionTask } from '../../src/queue/tasks.js';
 import { AppError } from '../../src/utils/AppError.js';
 import type { UpdateSupplierInput } from '../../src/validation/supplierUpdateInput.js';
 import { createSupplierUpdateService } from '../../src/business/supplierUpdateService.js';
 
 const NOW = new Date('2026-09-29T02:00:00Z');
 const current: CurrentSupplier = {
-  supplierId: 101, name: 'Campus Store', type: 'Store', locationId: 4, isDeleted: false, version: 3,
+  supplierId: 101, name: 'Campus Store', type: 'Store', locationId: 4, isDeleted: false, isActive: true, version: 3,
   photos: [{ photoId: 1, location: 'loc-a' }, { photoId: 2, location: 'loc-b' }],
 };
 const png = { buffer: Buffer.from('p'), mimeType: 'image/png' as const };
@@ -72,8 +75,19 @@ describe('updateSupplier', () => {
     expect(result).toEqual({ statusCode: 200, body: { id: 101, version: 4 } });
     expect(repo.updateSupplier).toHaveBeenCalledWith(101, {
       version: 3, now: '2026-09-29 10:00:00', name: 'New Name', isActive: false,
+      extraTasks: [buildSuspensionTask(101)],
     });
     expect(reader.getAdminSupplier).toHaveBeenCalledWith(101);
+  });
+
+  it('queues no suspension task when isActive stays true or the supplier was already inactive', async () => {
+    const stays = setup();
+    await stays.service.updateSupplier(101, { ...base, isActive: true }, []);
+    expect(stays.repo.updateSupplier).toHaveBeenCalledWith(101, expect.not.objectContaining({ extraTasks: expect.anything() }));
+
+    const already = setup({ findCurrent: vi.fn().mockResolvedValue({ ...current, isActive: false }) });
+    await already.service.updateSupplier(101, { ...base, isActive: false }, []);
+    expect(already.repo.updateSupplier).toHaveBeenCalledWith(101, expect.not.objectContaining({ extraTasks: expect.anything() }));
   });
 
   it('422s a collision with another supplier but allows the supplier itself', async () => {

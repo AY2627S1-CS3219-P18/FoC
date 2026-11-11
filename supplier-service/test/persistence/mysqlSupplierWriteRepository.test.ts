@@ -26,6 +26,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added a reactivation case asserting a single is_active = TRUE and no is_active = ? placeholder.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): findCurrent test covers is_active.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool } from 'mysql2/promise';
 import { describe, expect, it, vi } from 'vitest';
@@ -268,13 +271,13 @@ describe('findCurrent', () => {
   it('returns the supplier with its photos in display order, or null', async () => {
     const { pool, poolQuery } = fakePool([]);
     poolQuery
-      .mockResolvedValueOnce([[{ supplier_id: 101, supplier_name: 'S', supplier_type: 'Store', location_id: 4, is_deleted: 0, version: '3' }], []])
+      .mockResolvedValueOnce([[{ supplier_id: 101, supplier_name: 'S', supplier_type: 'Store', location_id: 4, is_deleted: 0, is_active: 1, version: '3' }], []])
       .mockResolvedValueOnce([[{ photo_id: 1, photo_location: 'a' }], []])
       .mockResolvedValueOnce([[], []]);
     const repo = createMysqlSupplierWriteRepository(pool);
 
     expect(await repo.findCurrent(101)).toEqual({
-      supplierId: 101, name: 'S', type: 'Store', locationId: 4, isDeleted: false, version: 3,
+      supplierId: 101, name: 'S', type: 'Store', locationId: 4, isDeleted: false, isActive: true, version: 3,
       photos: [{ photoId: 1, location: 'a' }],
     });
     expect(await repo.findCurrent(999)).toBeNull();

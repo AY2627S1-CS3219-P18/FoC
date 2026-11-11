@@ -30,6 +30,10 @@
  *        per instructions.md Stage 28 c1 (order-service worker access to the supplier lookups).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): replaced MOCK_DOWNSTREAM_FAILURE with ORDER_SERVICE_URL and
+ *        ORDER_SUPPLIER_SERVICE_API_KEY (worker-only, optional here), per the team contract in chat.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from "zod";
@@ -61,7 +65,9 @@ const envSchema = z.object({
   PHOTO_STORE_SECRET_KEY: z.string().min(1).optional(),
   // Required by the S3 SDK. MinIO ignores it, so the default keeps Compose working.
   PHOTO_STORE_REGION: z.string().min(1).default("us-east-1"),
-  MOCK_DOWNSTREAM_FAILURE: z.enum(["true", "false"]).optional(),
+  // Worker only (it exits at startup without them): where and how it calls order-service.
+  ORDER_SERVICE_URL: z.string().url().optional(),
+  ORDER_SUPPLIER_SERVICE_API_KEY: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -102,5 +108,6 @@ export const config = Object.freeze({
     secretKey: values.PHOTO_STORE_SECRET_KEY,
     region: values.PHOTO_STORE_REGION,
   }),
-  mockDownstreamFailure: values.MOCK_DOWNSTREAM_FAILURE === "true",
+  orderServiceUrl: values.ORDER_SERVICE_URL,
+  orderSupplierServiceApiKey: values.ORDER_SUPPLIER_SERVICE_API_KEY,
 });

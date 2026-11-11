@@ -19,6 +19,9 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): removed reactivateSupplier; updateSupplier gains reactivation mode (flags restored in the edit's own UPDATE) (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): findCurrent returns is_active; updateSupplier writes SupplierChange.extraTasks to the outbox (team decision in chat).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { CurrentPhoto } from '../business/photoPlan.js';
@@ -119,7 +122,7 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
 
     async findCurrent(supplierId) {
       const [rows] = await pool.query<RowDataPacket[]>(
-        `SELECT supplier_id, supplier_name, supplier_type, location_id, is_deleted, version
+        `SELECT supplier_id, supplier_name, supplier_type, location_id, is_deleted, is_active, version
          FROM supplier WHERE supplier_id = ?`,
         [supplierId],
       );
@@ -135,6 +138,7 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
         type: row.supplier_type as 'Store' | 'Facility',
         locationId: Number(row.location_id),
         isDeleted: Boolean(row.is_deleted),
+        isActive: Boolean(row.is_active),
         version: Number(row.version),
         photos: photos.map((photo) => ({ photoId: Number(photo.photo_id), location: String(photo.photo_location) })),
       };
@@ -222,6 +226,9 @@ export function createMysqlSupplierWriteRepository(pool: Pool): SupplierWriteRep
           }
           if (change.onPhotosRemoved !== undefined) {
             await insertOutboxRows(conn, change.version + 1, change.onPhotosRemoved(removedPhotos));
+          }
+          if (change.extraTasks !== undefined) {
+            await insertOutboxRows(conn, change.version + 1, change.extraTasks);
           }
           return { removedPhotos };
         });

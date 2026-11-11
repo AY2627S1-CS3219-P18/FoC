@@ -11,9 +11,12 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added the reactivation mode option (Phase 4 plan Task 8).
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): setting a supplier inactive (active -> inactive) queues the suspension task in the same transaction (team decision in chat).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import type { PhotoWrite, SupplierChange, SupplierWriteRepository } from '../persistence/supplierWriteRepository.js';
-import { buildPhotoCleanupTask } from '../queue/tasks.js';
+import { buildPhotoCleanupTask, buildSuspensionTask } from '../queue/tasks.js';
 import type { PhotoFile, PhotoStorage } from '../storage/photoStorage.js';
 import { AppError } from '../utils/AppError.js';
 import { sgtDatetime } from '../utils/time.js';
@@ -86,6 +89,11 @@ export function createSupplierUpdateService({ repo, storage, reader, clock = () 
       if (input.locationId !== undefined) change.locationId = input.locationId;
       if (input.isActive !== undefined) change.isActive = input.isActive;
       if (input.categoryIds !== undefined) change.categoryIds = input.categoryIds;
+
+      // Going inactive cancels uncollected requests just as a soft delete does (team decision, 2026-11-11).
+      if (options.reactivate !== true && input.isActive === false && current.isActive) {
+        change.extraTasks = [buildSuspensionTask(supplierId)];
+      }
 
       const hoursSent = input.openingHours !== undefined || input.is24h !== undefined;
       if (hoursSent || (input.type !== undefined && input.type !== current.type)) {
