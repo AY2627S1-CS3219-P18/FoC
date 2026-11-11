@@ -10,6 +10,10 @@
  * Scope: Documented the ids parameter and added EMPTY_PAGE, per the 2026-11-05 supplier-bookmarking
  *        spec. No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: added listAllSuppliers, which reads every page of GET /api/v1/suppliers for the pickers (team decision in chat, 2026-11-11: pickers get all suppliers, no new endpoint).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { request } from './http'
@@ -21,6 +25,17 @@ const BASE = '/api/v1'
 // `ids` is a comma-separated string of 1 to 20 supplier ids (the "Bookmarked" filter); the response then
 // also carries `unavailable: [{ id, status: 'hidden' | 'deleted' | 'invalid' }]`.
 export const listSuppliers = (params) => request(BASE + '/suppliers', { query: params })
+
+// For pickers that need every supplier (names only are shown): reads each page of the list in turn.
+export async function listAllSuppliers(params) {
+  const first = await listSuppliers({ ...params, page: 1 })
+  const rest = []
+  for (let page = 2; page <= (first?.metadata?.totalPages ?? 1); page += 1) {
+    rest.push(listSuppliers({ ...params, page }))
+  }
+  const pages = await Promise.all(rest)
+  return { ...first, data: [first, ...pages].flatMap((p) => p?.data ?? []) }
+}
 
 // What the Bookmarked filter shows without a request when the user has no bookmarks.
 export const EMPTY_PAGE = {

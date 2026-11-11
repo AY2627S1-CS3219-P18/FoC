@@ -9,7 +9,7 @@ Scope: 2026-09-29 update — added the Phase 1 requester-mode API section (Suppl
        "Phase 1 — Supplier Read APIs"), listing the four read endpoints, their accepted roles, and
        the §7.2 query parameters. No requirements, architecture, schema, or API decisions were made
        by the AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-09-29 update — added the local photo store section (development/unit-test MinIO
        instance, `compose.photo-store.yaml`) per SupplierServiceArchitecture.md §8.2 and §9 item 21.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
@@ -22,17 +22,17 @@ Scope: 2026-09-30 update — added the Phase 3 `PUT /api/v1/admin/suppliers/:id`
        table (SupplierServiceSpec.md, "Phase 3 — Admin Update"). Tool: Claude Code (model:
        claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made by the
        AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-09-30 update — documented the Phase 4 `DELETE /api/v1/admin/suppliers/:id` row, the
        reactivation and cleanup wording, the "Background worker" section and the upgrade notes
        (SupplierServiceSpec.md, "Phase 4"). Tool: Claude Code (model: claude-sonnet-5-5). No
        requirements, architecture, schema, or API decisions were made by the AI tool; the change
        records the team's decisions of 2026-09-30.
-Author review:
+Author review: Congchen
 Scope: 2026-09-30 update — documented the OpenAPI file and the local seed (`npm run seed`). Tool: Claude
        Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made
        by the AI tool.
-Author review:
+Author review: Congchen
 Scope: 2026-10-20 update — documented local JWKS retrieval and RS256 bearer-token verification
        for the authentication middleware. No requirements, architecture, schema, or API decisions
        were made by the AI tool.
@@ -41,17 +41,31 @@ Scope (2026-11-02, Codex, model: GPT-6): Clarified the implemented JWKS authenti
 Author review: Congchen
 Scope: 2026-11-05 update (Claude Code, model: claude-sonnet-5-5) — Documented the ids filter and unavailable array, and recorded workstream W8, per the 2026-11-05 supplier-bookmarking spec.
        No requirements, architecture, schema, or API decisions were made by the AI tool.
-Author review:
+Author review: Congchen
 Scope (2026-11-06, Claude Code, model: claude-opus-5-5): Documented that the photo store keys are optional
        on ECS, per George's task role decision of 2026-11-06. No requirements, architecture, schema, or API
        decisions were made by the AI tool.
 Author review: George Yeo
+Scope (2026-11-11, Codex, model: GPT-6): Updated the service overview and API documentation from existing implementation.
+No requirements, architecture, schema, or API decisions were made by the AI tool.
+Author review: Congchen
 -->
 
 # Supplier Service
 
-See [SupplierServiceArchitecture.md](./SupplierServiceArchitecture.md) for the decided architecture
-and [SupplierServiceSpec.md](./SupplierServiceSpec.md) for the phased implementation plan.
+The Supplier Service maintains FoC's directory of stores and facilities. Users can browse and filter
+visible suppliers, view their details and opening hours, and retrieve locations and categories.
+Administrators manage suppliers, photos and reference data, including soft deletion and reactivation.
+
+The service uses a four-tier architecture: HTTP controllers handle requests, business services apply
+supplier workflows, repositories mediate persistence, and MySQL stores supplier data. Redis supports
+idempotency and background jobs; an S3-compatible photo store holds images. A separate worker relays
+outbox tasks and processes photo cleanup and supplier suspension. The suspension integrations are
+currently mocks. The User Service supplies signing keys for bearer-token verification.
+
+See [SupplierServiceArchitecture.md](./SupplierServiceArchitecture.md) for the architecture and
+[SupplierServiceSpec.md](./SupplierServiceSpec.md) for the phased implementation plan. For the
+implemented HTTP contract, including authentication and errors, see [openapi.yaml](./openapi.yaml).
 
 ## Setup
 
@@ -108,8 +122,11 @@ docker compose up -d supplier-worker    # run it as the compose service (from th
 - A job that has used all attempts, a job with an unknown name or an invalid payload (no retry), and an
   outbox row whose `task_name` has no queue are written to `dead_letter_jobs` (`job_id`
   `outbox-<outbox id>`, `status` `UNRESOLVED`).
-- The suspension job calls the Order Service delete and then the Message Service notify. Both are
-  mocks that log a line and do nothing else; set `MOCK_DOWNSTREAM_FAILURE=true` to make them fail.
+- The suspension job (queued by a soft delete, or by setting a supplier inactive) first checks the supplier's
+  flags: a supplier that is live again (`is_deleted` false and `is_active` true) is skipped. Otherwise it calls
+  order-service `POST /suppliers/:id/cancel-orders` (body `{ "supplierName" }`, header
+  `order-supplier-service-key`), which cancels the open/accepted requests and posts the request-chat notice.
+  `ORDER_SERVICE_URL` and `ORDER_SUPPLIER_SERVICE_API_KEY` are required by the worker.
 - On `SIGINT`/`SIGTERM` the worker takes no new jobs and lets the active job finish. Observed on
   2026-09-30 with an idle worker under `docker stop`: it stopped in about 3 s, the log showed
   `SIGINT` (not `SIGTERM`), and the exit code was 143. Stopping during an in-flight job has not been
@@ -139,8 +156,9 @@ instance must be running before `npm run test:minio` (see Tests) is run.
 
 ## API (Phase 1 — requester mode)
 
-All routes below are versioned under `/api/v1` and require a valid User Service bearer token.
-Accepted roles: `user`, `admin`, `super admin` (§7).
+Routes below are versioned under `/api/v1`. They accept User Service bearer tokens with roles
+`user`, `admin`, or `super admin`. Supplier detail and location reference reads also accept the
+`Supplier-Order-Service-Key` header, configured with `SUPPLIER_ORDER_SERVICE_API_KEY`.
 
 | Method & path                                | Query parameters                                                                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -149,7 +167,8 @@ Accepted roles: `user`, `admin`, `super admin` (§7).
 | `GET /api/v1/suppliers/reference/location`   | —                                                                                                                                          |
 | `GET /api/v1/suppliers/reference/categories` | —                                                                                                                                          |
 
-See `SupplierServiceArchitecture.md` §7.2–§7.3 for the full request/response contract.
+See [openapi.yaml](./openapi.yaml) for request and response details. `GET /health` is unauthenticated
+and reports process health without checking dependencies.
 
 ## API (Phase 2 — admin mode)
 
@@ -157,7 +176,7 @@ All routes require a valid bearer token with role `admin` or `super admin` (§7)
 
 | Method & path                                                                                           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/admin/suppliers`                                                                           | Same query parameters as the user list; includes inactive and soft-deleted suppliers and adds `isActive`, `isDeleted`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET /api/v1/admin/suppliers`                                                                           | User-list query parameters except `ids`; includes inactive and soft-deleted suppliers and adds `isActive`, `isDeleted`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `GET /api/v1/admin/suppliers/:id`                                                                       | Adds `isActive`, `isDeleted`, `createdOn`, `createdBy`, `updatedOn`, `version`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `POST /api/v1/admin/suppliers`                                                                          | `multipart/form-data`: `name`, `type`, `location_id`, `category_id` (JSON array), `desc`, `openingHours` (JSON array), `is24h`, and 0–10 JPEG/PNG `photos` (≤ 5 MB each). Requires an `Idempotency-Key` UUID header. `201` on create. When the name, type and location match a soft-deleted supplier, `200`: the submitted details and photos are applied through the edit cycle and `is_deleted = false`, `is_active = true` are restored in the same transaction (submitted photos replace the existing ones; no photos submitted leaves them; `version` is bumped once). If anything fails before the commit, the supplier stays soft-deleted and unchanged                                                                                                                                                                                                                              |
 | `PUT /api/v1/admin/suppliers/:id`                                                                       | `multipart/form-data`: `name`, `type`, `desc`, `location_id`, `category_id` (JSON array; replaces the whole set), `openingHours` (JSON array), `is24h`, `isActive`, required `version`, `isPhotoDirty`, `photo_ids` (JSON array; numbers are existing photo ids, strings are placeholders), `placeholder_ids` (JSON array; the i-th placeholder matches the i-th uploaded `photos` file), and 0–10 JPEG/PNG `photos` (≤ 5 MB each). No `Idempotency-Key`. `200` with the updated admin supplier; `404` for an unknown or soft-deleted supplier; `409` for a stale `version`; `422` for a validation failure, a duplicate name/type/location, nothing to update, or files sent without `isPhotoDirty`. Excluded-photo cleanup tasks (`task_name` `image_cleanup`) are written to the `outbox` table in the update transaction and processed by the background worker (see Background worker) |

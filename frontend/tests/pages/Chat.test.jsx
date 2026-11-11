@@ -88,6 +88,10 @@
  * Scope (2026-11-10, Codex, model: GPT-6): Updated pagination tests to trigger bottom intersection.
  * No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: tng wen xi
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: removed the DemoProvider wrapper (the demo is gone, all services are live).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import {
@@ -100,7 +104,6 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Chat from "../../src/pages/Chat";
-import { DemoProvider } from "../../src/context/DemoContext";
 
 const realtime = vi.hoisted(() => ({
   handlers: [],
@@ -149,18 +152,16 @@ vi.mock("../../src/context/AuthContext", () => ({
 function renderChat(initialEntries) {
   return render(
     <MemoryRouter initialEntries={initialEntries}>
-      <DemoProvider>
-        <Routes>
-          <Route path="/chat/:id" element={<Chat />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chats" element={<Chat />} />
-          <Route path="/my-errands" element={<p>Errand cards</p>} />
-          <Route path="/my-deliveries" element={<p>Delivery cards</p>} />
-          <Route path="/suppliers" element={<p>Suppliers page</p>} />
-          <Route path="/requests" element={<p>Find errands page</p>} />
-          <Route path="/some-other-page" element={<p>The previous page</p>} />
-        </Routes>
-      </DemoProvider>
+      <Routes>
+        <Route path="/chat/:id" element={<Chat />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/chats" element={<Chat />} />
+        <Route path="/my-errands" element={<p>Errand cards</p>} />
+        <Route path="/my-deliveries" element={<p>Delivery cards</p>} />
+        <Route path="/suppliers" element={<p>Suppliers page</p>} />
+        <Route path="/requests" element={<p>Find errands page</p>} />
+        <Route path="/some-other-page" element={<p>The previous page</p>} />
+      </Routes>
     </MemoryRouter>,
   );
 }

@@ -41,6 +41,10 @@
  *        CHAT_SERVICE_API_KEY: only the worker uses them. No requirements, architecture,
  *        schema, or API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: ORDER_SUPPLIER_SERVICE_API_KEY, the key supplier-service's worker sends to the supplier shut-down endpoint (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { z } from 'zod';
@@ -70,6 +74,8 @@ const EnvSchema = z.object({
     .default('http://localhost:3004'),
   /** Same value as supplier-service's own copy; the scheduled-errands worker only. */
   SUPPLIER_ORDER_SERVICE_API_KEY: z.string().min(1).optional(),
+  /** Same value as supplier-service's own copy; authenticates its worker's shut-down call. */
+  ORDER_SUPPLIER_SERVICE_API_KEY: z.string().min(1).optional(),
   /** Scheduled-errands worker only, for GET /users/worker/:id. */
   USER_ORDER_SERVICE_URL: z
     .url({ protocol: /^https?$/ })

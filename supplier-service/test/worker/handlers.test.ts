@@ -11,6 +11,12 @@
  * Scope (2026-09-30, Claude Code, model: claude-sonnet-5-5): added payload-constraint tests for both handlers; renamed the repeated-delivery cleanup test.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): reactivation-skip tests for the suspension handler; fakes gain a supplier status reader.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Scope (2026-11-11, Claude Code, model: claude-sonnet-5-5): suspension tests rewritten for the HTTP Order client (supplier name passed, no Message client), the reactivation skip and the missing-supplier bad job.
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 import { UnrecoverableError } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
@@ -59,52 +65,60 @@ describe('payload constraints that only the schemas enforce', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
-  it.each([{ supplier_id: 0 }, { supplier_id: -1 }, { supplier_id: 1.5 }])(
-    'suspension handler rejects %j as a bad job',
-    async (payload) => {
-      const order = { deleteUncollectedRequests: vi.fn() };
-      const message = { notifyAffected: vi.fn() };
-      const error = await createSuspensionHandler({ order, message })(payload).catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(UnrecoverableError);
-      expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
-      expect(message.notifyAffected).not.toHaveBeenCalled();
-    },
-  );
+});
+
+const deleted = { name: 'Campus Store', isDeleted: true, isActive: true };
+const statusOf = (status: { name: string; isDeleted: boolean; isActive: boolean } | null) => ({
+  getStatus: vi.fn().mockResolvedValue(status),
 });
 
 describe('suspension handler', () => {
-  it('cancels uncollected orders, then notifies, for the supplier', async () => {
-    const calls: string[] = [];
-    const order = { deleteUncollectedRequests: vi.fn(async () => void calls.push('order')) };
-    const message = { notifyAffected: vi.fn(async () => void calls.push('message')) };
-    await createSuspensionHandler({ order, message })({ supplier_id: 101 });
-    expect(order.deleteUncollectedRequests).toHaveBeenCalledWith(101);
-    expect(message.notifyAffected).toHaveBeenCalledWith(101);
-    expect(calls).toEqual(['order', 'message']);
+  it.each([{ supplier_id: 0 }, { supplier_id: -1 }, { supplier_id: 1.5 }, { supplier_id: 'x' }])(
+    'rejects %j as a bad job',
+    async (payload) => {
+      const order = { deleteUncollectedRequests: vi.fn() };
+      const error = await createSuspensionHandler({ order, suppliers: statusOf(deleted) })(payload).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(UnrecoverableError);
+      expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['soft-deleted', deleted],
+    ['inactive but not deleted', { name: 'Campus Store', isDeleted: false, isActive: false }],
+  ])('cancels uncollected orders, passing the supplier name, when the supplier is %s', async (_label, status) => {
+    const order = { deleteUncollectedRequests: vi.fn().mockResolvedValue(undefined) };
+    await createSuspensionHandler({ order, suppliers: statusOf(status) })({ supplier_id: 101 });
+    expect(order.deleteUncollectedRequests).toHaveBeenCalledWith(101, 'Campus Store');
   });
 
-  it('does not notify when the order call fails', async () => {
-    const order = { deleteUncollectedRequests: vi.fn().mockRejectedValue(new Error('order down')) };
-    const message = { notifyAffected: vi.fn() };
-    await expect(createSuspensionHandler({ order, message })({ supplier_id: 101 })).rejects.toThrow('order down');
-    expect(message.notifyAffected).not.toHaveBeenCalled();
-  });
-
-  it('treats a payload without a numeric supplier_id as a bad job', async () => {
+  it('skips the job when the supplier was reactivated (not deleted, active)', async () => {
     const order = { deleteUncollectedRequests: vi.fn() };
-    const message = { notifyAffected: vi.fn() };
-    const error = await createSuspensionHandler({ order, message })({ supplier_id: 'x' }).catch((e: unknown) => e);
+    await createSuspensionHandler({
+      order,
+      suppliers: statusOf({ name: 'Campus Store', isDeleted: false, isActive: true }),
+    })({ supplier_id: 101 });
+    expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
+  });
+
+  it('treats a missing supplier row as a bad job', async () => {
+    const order = { deleteUncollectedRequests: vi.fn() };
+    const error = await createSuspensionHandler({ order, suppliers: statusOf(null) })({ supplier_id: 101 }).catch(
+      (e: unknown) => e,
+    );
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(order.deleteUncollectedRequests).not.toHaveBeenCalled();
   });
 
-  it('can be re-run as a unit after a partial failure: the order call repeats, the notification then goes out', async () => {
-    const order = { deleteUncollectedRequests: vi.fn().mockResolvedValue(undefined) };
-    const message = { notifyAffected: vi.fn().mockRejectedValueOnce(new Error('msg down')).mockResolvedValue(undefined) };
-    const handler = createSuspensionHandler({ order, message });
-    await expect(handler({ supplier_id: 101 })).rejects.toThrow('msg down');
+  it('fails the attempt when order-service fails, and can be re-run', async () => {
+    const order = {
+      deleteUncollectedRequests: vi.fn().mockRejectedValueOnce(new Error('order down')).mockResolvedValue(undefined),
+    };
+    const handler = createSuspensionHandler({ order, suppliers: statusOf(deleted) });
+    await expect(handler({ supplier_id: 101 })).rejects.toThrow('order down');
     await expect(handler({ supplier_id: 101 })).resolves.toBeUndefined();
     expect(order.deleteUncollectedRequests).toHaveBeenCalledTimes(2);
-    expect(message.notifyAffected).toHaveBeenCalledTimes(2);
   });
 });

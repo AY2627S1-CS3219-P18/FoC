@@ -15,6 +15,14 @@
  *        only) replaces pending -> cancelled.
  *        No requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review: george-yeo
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: matrix updated: system may cancel open/accepted (team decision in chat, 2026-11-11: a supplier shut-down cancels its open/accepted requests).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: matrix: system may cancel pending (team decision in chat, 2026-11-11: pending counts as not yet collected and follows the same cancellation flow).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import { ErrorCode } from '../constants/errors.js';
@@ -65,11 +73,12 @@ const ACTOR_FOR: Record<ActorRole, string> = {
 const SPEC: Record<string, ActorRole[]> = {
   'pending>open': ['system'], // issue #4: reservation confirmed
   'pending>failed': ['system'], // reservation failed (George, 2026-10-20)
+  'pending>cancelled': ['system'], // supplier shut-down, F8.4.2
   'open>accepted': ['other'], // F11.1, F11.2.1 (not the requester)
   'open>expired': ['system'], // F16.1
-  'open>cancelled': ['requester'], // F17.1
+  'open>cancelled': ['requester', 'system'], // F17.1, F8.4.2
   'accepted>picked_up': ['courier'], // F13.1.1
-  'accepted>cancelled': ['requester'], // F17.2 (+ deadline)
+  'accepted>cancelled': ['requester', 'system'], // F17.2 (+ deadline for requester), F8.4.2
   'picked_up>delivered': ['courier'], // F14.1.1
   'picked_up>cancelled': ['requester'], // F17.2 (+ deadline)
   'delivered>completed': ['requester', 'system'], // F15.1.1, F15.1.4

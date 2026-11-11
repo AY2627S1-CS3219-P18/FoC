@@ -6,37 +6,41 @@
  *        the method names and the logging-mock approach are the team's answer of 2026-09-30. No
  *        requirements, architecture, schema, or API decisions were made by the AI tool.
  * Author review:
+ *
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: Replaced the logging mocks with an HTTP Order Service client, per the team's contract given
+ *        in chat on 2026-11-11: POST {ORDER_SERVICE_URL}/suppliers/:id/cancel-orders, JSON body
+ *        { supplierName }, header order-supplier-service-key, 200 on success. The Message Service
+ *        port is removed: order-service now sends the request-chat system message itself. No
+ *        requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 /** Order Service delete entrypoint (F8.4.2): cancels requests for the supplier not yet collected. */
 export interface OrderClient {
-  deleteUncollectedRequests(supplierId: number): Promise<void>;
+  deleteUncollectedRequests(supplierId: number, supplierName: string): Promise<void>;
 }
 
-/** Message Service notify entrypoint (F8.4.3): notifies affected requesters/couriers. */
-export interface MessageClient {
-  notifyAffected(supplierId: number): Promise<void>;
-}
+export const ORDER_CALL_TIMEOUT_MS = 10_000;
 
-interface MockOptions {
-  /** Force every call to fail, so retries and dead-lettering can be exercised. */
-  fail?: boolean;
-  log?: (message: string) => void;
-}
-
-export function createMockOrderClient({ fail = false, log = console.log }: MockOptions = {}): OrderClient {
+/** A non-2xx answer or a network failure rejects, so BullMQ retries the job. */
+export function createHttpOrderClient(
+  baseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs: number = ORDER_CALL_TIMEOUT_MS,
+): OrderClient {
   return {
-    async deleteUncollectedRequests(supplierId) {
-      log(`[mock order-service] delete uncollected requests for supplier ${supplierId}`);
-      if (fail) throw new Error('mock order-service failure');
-    },
-  };
-}
-
-export function createMockMessageClient({ fail = false, log = console.log }: MockOptions = {}): MessageClient {
-  return {
-    async notifyAffected(supplierId) {
-      log(`[mock message-service] notify users affected by supplier ${supplierId}`);
-      if (fail) throw new Error('mock message-service failure');
+    async deleteUncollectedRequests(supplierId, supplierName) {
+      const response = await fetchImpl(new URL(`/suppliers/${supplierId}/cancel-orders`, baseUrl), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'order-supplier-service-key': serviceKey },
+        body: JSON.stringify({ supplierName }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      await response.body?.cancel();
+      if (!response.ok) {
+        throw new Error(`order-service answered ${response.status} to the cancel-orders call for supplier ${supplierId}`);
+      }
     },
   };
 }

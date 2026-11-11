@@ -171,6 +171,10 @@
  *        field itself, per user request in chat. No requirements, architecture, schema, or
  *        API decisions were made by the AI tool.
  * Author review:
+ * Tool: Claude Code (model: claude-sonnet-5-5), date: 2026-11-11
+ * Scope: the supplier picker now loads every supplier (listAllSuppliers) instead of the first page (team decision in chat, 2026-11-11).
+ *        No requirements, architecture, schema, or API decisions were made by the AI tool.
+ * Author review:
  */
 
 import SearchableSelect from "../components/SearchableSelect";
@@ -181,7 +185,7 @@ import Button from "../components/Button";
 import SupplierImage from "../components/SupplierImage";
 import RecurrencePicker from "../components/RecurrencePicker";
 import { useApi, useReferenceData } from "../api/useApi";
-import { getSupplier, listSuppliers } from "../api/suppliers";
+import { getSupplier, listAllSuppliers } from "../api/suppliers";
 import { createOrder, editOrder, listMyOrders } from "../api/orders";
 import {
   createSeries,
@@ -433,9 +437,9 @@ function RequestForm({ order, series }) {
   const asapAvailable = isEditOrder || (!isEdit && sendMode === "now");
   const effectiveTiming = asapAvailable ? timing : "later";
 
-  // The supplier comes from the Supplier Service; the first page of the list feeds the picker.
+  // The supplier comes from the Supplier Service; the picker lists every supplier.
   const { data: supplierPage } = useApi(
-    () => listSuppliers({ sortOrder: "A-Z" }),
+    () => listAllSuppliers({ sortOrder: "A-Z" }),
     [],
   );
   const { data: chosen } = useApi(

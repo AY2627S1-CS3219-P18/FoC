@@ -90,6 +90,14 @@ Scope (2026-11-04, Codex, model: GPT-6): Recorded team-supplied Phase 5 test arr
        No requirements, architecture, schema, or API decisions were made by the AI tool.
 Scope (2026-11-02, Codex, model: GPT-6): Documented the existing JWKS cache and verification flow.
 Author review: Congchen
+Scope: 2026-11-11 update — recorded the team's decisions of 2026-11-11 (given in chat): the suspension job
+       now calls a live Order Service endpoint, `POST /suppliers/:supplierId/cancel-orders`, which cancels
+       uncollected requests and posts the request-chat system message through the Chat Service (the
+       former "Message Service" is the Chat Service); a supplier set inactive queues the same job; the job
+       is skipped when the supplier is live again. Updated §8.1 and §9 items 5, 17 and 22. Tool: Claude
+       Code (model: claude-sonnet-5-5). No requirements, architecture, schema, or API decisions were made
+       by the AI tool.
+Author review:
 -->
 
 # Supplier Service Architecture
@@ -1008,9 +1016,16 @@ dynamic so that the supplier-management experience can adapt to different viewpo
 Deleting a supplier is a soft delete implemented by updating the supplier's `is_deleted` field.
 Past records and requests that have already been picked up remain unchanged. For requests that have
 not yet been collected, the Supplier Service writes a downstream workflow task to the `outbox` table
-in the same transaction as the delete. A background worker uses the BullMQ job queue to interact with the Order Service's delete API and then the Message Service's
-messaging API to send a message to the request poster. The same worker/job-queue mechanism is
-intended to support the broader supplier-suspension, order-cancellation, and user-notification flow.
+in the same transaction as the delete. A background worker uses the BullMQ job queue to call the Order Service's cancel-orders endpoint
+(`POST /suppliers/:supplierId/cancel-orders`, below). The Order Service cancels the requests and
+posts the request-level system message to each request's chat through the Chat Service. The same
+worker/job-queue mechanism supports the supplier-suspension, order-cancellation, and user-notification flow.
+
+The same suspension job is also queued when an admin edit sets `is_active` from true to false, in the
+same transaction as that edit. Before calling the Order Service the worker reads the supplier's current
+flags; if `is_deleted` is false and `is_active` is true (the supplier was reactivated or switched back
+on after the job was queued), the job completes without calling the Order Service. If the supplier is
+soft-deleted or inactive, the call is made. A supplier row that does not exist is a bad job.
 
 The delete (which also bumps `updated_on` and `version`) and its `outbox` row commit in one
 transaction, and the client receives its response once that transaction commits; the response does
@@ -1026,7 +1041,7 @@ sequenceDiagram
     participant Redis as BullMQ queue (Redis)
     participant Worker as Background worker
     participant Order as Order Service
-    participant Message as Message Service
+    participant Chat as Chat Service
 
     Admin->>Supplier: DELETE /api/v1/admin/suppliers/:id
     Supplier->>DB: Update supplier.is_deleted and insert outbox row (one transaction)
@@ -1035,8 +1050,15 @@ sequenceDiagram
     Worker->>Redis: Add job (job id outbox-<id>, name = task_name, data = payload)
     Worker->>DB: Delete the outbox row once added
     Redis->>Worker: Deliver workflow job
-    Worker->>Order: Delete requests not yet collected
-    Worker->>Message: Message affected request poster
+    Worker->>DB: Read supplier name, is_deleted and is_active
+    alt is_deleted is false and is_active is true
+        Worker-->>Redis: Complete the job, nothing cancelled
+    else soft-deleted or inactive
+        Worker->>Order: POST /suppliers/:supplierId/cancel-orders {supplierName}
+        Order->>Order: Cancel open and accepted requests, queue credit release and chat notice (one transaction)
+        Order->>Chat: System notification to each request chat (order worker, chat service key)
+        Order-->>Worker: 200 {cancelled}
+    end
     alt Job still fails after 5 attempts (delayed retries)
         Worker->>DB: Insert dead_letter_jobs row (status UNRESOLVED)
     end
@@ -1047,8 +1069,8 @@ worker handler processes it), and `payload` (the data that handler needs, derive
 already-decided database schema — for example a photo-deletion job's `payload` carries the
 `photo_id`/`photo_location` to remove). In BullMQ the job id is `outbox-<outbox id>`, the job name is
 `task_name` and the job data is `payload`. The suspension job is `supplier_suspension` on queue key
-`queue:supplier:suspension` with payload `{supplier_id}`; it calls the Order Service delete and then
-the Message Service notify. The photo-deletion job is `image_cleanup` on `queue:image:cleanup`. A
+`queue:supplier:suspension` with payload `{supplier_id}`; it calls the Order Service cancel-orders
+endpoint, which also sends the chat notice. The photo-deletion job is `image_cleanup` on `queue:image:cleanup`. A
 queue key maps to BullMQ as prefix plus name split at the last colon (`queue:supplier:suspension`
 is prefix `queue:supplier`, name `suspension`; the relay queue is `queue:outbox:relay`). Retries are
 BullMQ delayed jobs, with a maximum of 5 attempts and delays of 5 s, 25 s, 125 s and 625 s. A bad job
@@ -1061,9 +1083,23 @@ mechanism for visibility into failed jobs.
 The worker is a separate process and container; on the standard shutdown signals it takes no new
 jobs and lets the active job finish.
 
-The concrete request contracts for the Order Service's delete API and the Message Service's
-messaging API remain deferred and mocked until those services are built; this is an explicit,
-continued deferral rather than an oversight.
+**Order Service cancel-orders endpoint (team contract, 2026-11-11).** `POST
+/suppliers/:supplierId/cancel-orders` on the Order Service, called only by the supplier worker (it is
+not routed through the public gateway). The path carries the supplier id; the JSON body is
+`{ "supplierName": string }`; the caller authenticates with the header `order-supplier-service-key`,
+a secret separate from `SUPPLIER_ORDER_SERVICE_API_KEY` (which authenticates the Order Service when
+it calls the Supplier Service). A missing or wrong key is `401`; an unconfigured key is `503`; an
+invalid id or name is `400`; success is `200 {cancelled: <count>}`. The Order Service cancels every
+request for that supplier whose status is `pending`, `open` or `accepted` (not yet picked up), as the system actor.
+For each one, in a single transaction, it queues the credit release and a chat notification reading
+"<supplier name> has been shut down temporarily. Your request has been automatically cancelled and
+reserved credits are refunded", and the chat is archived after the notice. A `pending` request is
+cancelled by the same flow, but has no chat yet (the chat is created when a request becomes `open`), so
+its notice, with the same text, is sent through the Chat Service's system notification that is not
+attached to any order, addressed to the requester. The Order Service's worker
+sends the notice to the Chat Service using the Chat Service key. A request already picked up or
+finished is left unchanged. The worker needs `ORDER_SERVICE_URL` and `ORDER_SUPPLIER_SERVICE_API_KEY`;
+a non-2xx answer or network failure fails the attempt and is retried as described above.
 
 ### 8.2 Photo upload workflow
 
@@ -1219,10 +1255,10 @@ additional design decisions.
 4. User and administrator visibility rules are defined by `is_deleted` and `is_active`; `isOpen` is
    derived from opening hours using Singapore time (UTC+8), including overnight intervals.
 5. Soft deletion preserves past records and requests already picked up. For requests not yet
-   collected, the Supplier Service queues a background workflow that assumes an Order Service delete
-   entrypoint and a future Message Service `sendMsg` entrypoint. Their concrete request contracts
-   remain intentionally deferred and mocked until those services are built. Redis job payloads,
-   retry limits, and dead-letter behavior are now recorded (see item 17).
+   collected, the Supplier Service queues a background workflow that calls the Order Service's
+   cancel-orders endpoint, which cancels the requests and notifies the request chats through the Chat
+   Service (contract recorded in §8.1, 2026-11-11). Redis job payloads, retry limits, and dead-letter
+   behavior are recorded (see item 17).
 6. The concrete MySQL tables, foreign keys, indexes, uniqueness constraints, `updatedOn`, and direct
    one-to-many photo relationship are recorded. Seed contents for faculties, locations, categories,
    and levels will be supplied by the mock database.
@@ -1265,8 +1301,8 @@ additional design decisions.
     maximum of 5 attempts; a job that still fails after retries are exhausted is written to the new
     `dead_letter_jobs` table (§6.2, §6.4) for visibility. The client receives its API response
     immediately once the relevant database write and Redis enqueue succeed, without waiting for the
-    background worker to finish (§8.1, §8.2). The Order Service and Message Service request
-    contracts remain an explicit, continued deferral until those services are built.
+    background worker to finish (§8.1, §8.2). The Order Service request contract is recorded in
+    §8.1 (2026-11-11); the Chat Service is called by the Order Service, not by the Supplier Service.
 18. Same-origin deployment is now explained: a single API gateway fronts all FoC services, so the
     SPA and the Supplier Service API share an origin without needing CORS configuration.
     `supplier_name`/`supplier_type`/`location_id` uniqueness is now recorded, enforced by both an
@@ -1341,8 +1377,8 @@ additional design decisions.
     rows ordered by `version` then `id`, adds each to BullMQ (job id `outbox-<id>`, job name =
     `task_name`, data = `payload`) and deletes the row once added; ordering is enqueue order only
     (§6.4, §8.1, §8.2); (c) suspension is one job, `supplier_suspension` on `queue:supplier:suspension`
-    with payload `{supplier_id}`, calling the mocked Order Service delete then the mocked Message
-    Service notify (§8.1); (d) retries are BullMQ delayed jobs, max 5 attempts, delays 5 s / 25 s /
+    with payload `{supplier_id}`, calling the Order Service (the 2026-11-11 contract in §8.1 replaced the
+    original mocked Order and Message Service calls) (§8.1); (d) retries are BullMQ delayed jobs, max 5 attempts, delays 5 s / 25 s /
     125 s / 625 s; a bad job or an unroutable outbox row goes straight to `dead_letter_jobs` (§8.1);
     (e) the worker is a separate process and container, standard shutdown signals apply and the
     active job finishes (§8.1); (f) reactivation applies the submitted details and photos through the
@@ -1357,6 +1393,14 @@ additional design decisions.
     `categories` is a list of `{category, category_id}` objects, for example
     `[{"category": "Food", "category_id": 1}, {"category": "Drinks", "category_id": 2}]`
     (§7.3). The admin edit form uses these ids for `location_id` and `category_id` on `PUT`.
+
+24. Supplier shut-down decisions recorded (2026-11-11): (a) the suspension job calls `POST
+    /suppliers/:supplierId/cancel-orders` on the Order Service with `{supplierName}` and the
+    `order-supplier-service-key` header; the Order Service cancels `pending`, `open` and `accepted` requests,
+    queues the credit release and a request-chat system notice, and answers `200 {cancelled}`; (b) the
+    former Message Service is the Chat Service, reached by the Order Service; (c) an admin edit that
+    changes `is_active` from true to false queues the same job in the edit's transaction; (d) the
+    worker skips the call when `is_deleted` is false and `is_active` is true when it runs (§8.1).
 
 These items should remain visible for team review before the service contracts and implementation
 are treated as complete.
